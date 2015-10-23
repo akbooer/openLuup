@@ -1,0 +1,12 @@
+#!/bin/sh
+#
+# reload loop for openLuup
+# @akbooer, Aug 2015
+# you may need to change ‘lua’ to ‘lua5.1’ depending on your install
+
+lua5.1 openLuup/init.lua $1
+
+while [ $? -eq 42 ]
+do
+   lua5.1 openLuup/init.lua
+done

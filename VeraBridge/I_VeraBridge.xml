@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<implementation>
+<files>L_VeraBridge.lua</files>
+<startup>init</startup>
+ <actionList>
+    <action>
+  		<serviceId>urn:upnp-org:serviceId:SwitchPower1</serviceId>
+  		<name>SetTarget</name>
+  		<job>
+  			if (p ~= nil) then p.switchPower(lul_device, lul_settings.newTargetValue)  end
+  			return 4,0
+  		</job>
+    </action>
+    <action>
+  		<serviceId>urn:upnp-org:serviceId:Dimming1</serviceId>
+  		<name>SetLoadLevelTarget</name>
+  		<job>
+  			if (p ~= nil) then p.setDimmerLevel(lul_device, lul_settings.newLoadlevelTarget) end
+			return 4,0
+		</job>
+    </action>
+    <action>
+  		<serviceId>urn:micasaverde-com:serviceId:DoorLock1</serviceId>
+  		<name>SetTarget</name>
+  		<job>
+  			if (p ~= nil) then p.setLockStatus(lul_device, lul_settings.newTargetValue) end
+  			return 4,0
+  		</job>
+    </action>     
+    <action>
+      	<serviceId>urn:upnp-org:serviceId:TemperatureSetpoint1_Heat</serviceId>
+      	<name>SetCurrentSetpoint</name>
+      	<job>
+      		if (p ~= nil) then p.SetTheNewTemp(lul_device, lul_settings.NewCurrentSetpoint)  end
+  			return 4,0
+  		</job>
+    </action>
+    <action>
+      	<serviceId>urn:upnp-org:serviceId:HVAC_UserOperatingMode1</serviceId>
+      	<name>SetModeTarget</name>
+      	<job>
+      		if (p ~= nil) then p.SetModeTarget(lul_device, lul_settings.NewModeTarget) end
+  			return 4,0
+  		</job>
+    </action>
+    <action>
+  		<serviceId>urn:upnp-org:serviceId:WindowCovering1</serviceId>
+  		<name>Up</name>
+  		<job>
+  			if (p ~= nil) then p.windowCovering(lul_device, "Up")  end
+  			return 4,0
+  		</job>
+    </action>
+    <action>
+  		<serviceId>urn:upnp-org:serviceId:WindowCovering1</serviceId>
+  		<name>Down</name>
+  		<job>
+  			if (p ~= nil) then p.windowCovering(lul_device, "Down") end
+  			return 4,0
+  		</job>
+    </action>
+    <action>
+  		<serviceId>urn:upnp-org:serviceId:WindowCovering1</serviceId>
+  		<name>Stop</name>
+  		<job>
+  			if (p ~= nil) then p.windowCovering(lul_device, "Stop") end
+  			return 4,0
+  		</job>
+    </action>
+    <action>
+    	<serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
+    	<name>SetArmed</name>
+    	<job>
+    		if (p ~= nil) then p.setArmed(lul_device, lul_settings.newArmedValue) end
+  			return 4,0
+  		</job>
+    </action>
+    
+  </actionList>
+</implementation>

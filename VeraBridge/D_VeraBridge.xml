@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:schemas-micasaverde-com:device:HomeAutomationGateway:1</deviceType>
+    <friendlyName>Vera Bridge</friendlyName>
+    <manufacturer>akbooer</manufacturer>
+    <manufacturerURL></manufacturerURL>
+    <modelDescription>Vera Bridge</modelDescription>
+    <modelName>1.0</modelName>
+    <modelNumber>1</modelNumber>
+    <handleChildren>1</handleChildren>
+    <UDN></UDN>
+    <serviceList>
+    </serviceList>
+		<staticJson>D_VeraBridge.json</staticJson>
+    <implementationList>
+      <implementationFile>I_VeraBridge.xml</implementationFile>
+    </implementationList>
+  </device>
+</root>
