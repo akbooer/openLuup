@@ -154,6 +154,7 @@ local function parse_impl_xml (impl_xml)
   loadList[#loadList+1] = actions                       -- append the actions for jobs
   loadList[#loadList+1] = incoming                      -- append the incoming data handler
   local source_code = table.concat (loadList, '\n')     -- concatenate the code
+  source_code = source_code: gsub ("&lt;", "<")         -- fix this particular XML quote
   return {
     source_code = source_code,
     startup     = i.startup,

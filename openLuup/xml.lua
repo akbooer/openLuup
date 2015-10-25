@@ -67,7 +67,6 @@ local function xml_read (self, filename)
     if f then 
       xml = f: read "*a"
       f: close ()  
-      xml = xml:gsub ("&lt;", "<")      -- TODO: IS THIS & replacement sufficient???
       xml_cache[filename] = xml         -- save in cache
     end
   end
