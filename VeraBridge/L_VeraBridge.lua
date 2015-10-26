@@ -1,7 +1,7 @@
 -- VeraBridge
 -- bi-directional monitor/control link to remote Vera system
 
-local version =  "2015.10.08   @akbooer"
+local version =  "2015.10.16   @akbooer"
 
 
 -- 2015-08-24   openLuup-specific code to action ANY serviceId/action request
@@ -9,6 +9,8 @@ local version =  "2015.10.08   @akbooer"
 local devNo                      -- our device number
 
 local json = require "openLuup.json"
+local url  = require "socket.url"
+
 
 local ip                         -- remote machine ip address
 local POLL_DELAY = 5              -- number of seconds between remote polls
@@ -152,7 +154,7 @@ local function wget (request)
   luup.log (request)
   local status, result = luup.inet.wget (request)
   if status ~= 0 then
-    luup.log ("failed requests status: " .. 0)
+    luup.log ("failed requests status: " .. (result or '?'))
   end
 end
 
@@ -319,7 +321,9 @@ local function generic_action (serviceId, name)
     local devNo = remote_by_local_id[tonumber(lul_device) or ''] or ''
     local request = {basic_request, "DeviceNum=" .. devNo }
     for a,b in pairs (lul_settings) do
-      request[#request+1] = table.concat {a, '=', b or ''}
+      if a ~= "DeviceNum" then        -- thanks to @CudaNet for finding this bug!
+        request[#request+1] = table.concat {a, '=', url.escape(b) or ''}  -- TODO: check with @CudaNet
+      end
     end
     local url = table.concat (request, '&')
     wget (url)
