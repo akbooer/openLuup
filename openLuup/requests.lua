@@ -1,5 +1,5 @@
 local _NAME = "openLuup.requests"
-local revisionDate = "2015.10.19"
+local revisionDate = "2015.10.27"
 local banner = " version " .. revisionDate .. "  @akbooer"
 
 --
@@ -479,8 +479,8 @@ local function scene (r,p,f)
   end
   --Example: http://ip_address:3480/data_request?id=scene&action=list&scene=5
   local function list (scene)
-    if scene then
-      return tostring (scene)
+    if scene and scene.user_table then
+      return json.encode (scene.user_table()) or "ERROR"
     end
     return "ERROR"
   end
@@ -602,8 +602,25 @@ user or pass = optional: override the camera's default username/password
 
 --]]
 
-local function request_image ()
-  error "request_image not yet implemented"
+local function request_image (_, p)
+  local sid = "urn:micasaverde-com:serviceId:Camera1"
+  local image, status
+  local devNo = tonumber(p.cam)
+  local cam = luup.devices[devNo]
+  if cam then
+    local ip = p.ip or luup.attr_get ("ip", devNo) or ''
+    local url = p.url or cam:variable_get (sid, "URL") or ''
+--    local timeout = tonumber(cam:variable_get (sid, "Timeout")) or 5
+    local timeout = tonumber(p.timeout) or 5
+    if url then
+      status, image = luup.inet.wget ("http://" .. ip .. url.value, timeout)
+    end
+  end
+  if image then
+    return image, "image/jpeg"
+  else
+    return "ERROR"
+  end
 end
 
 
@@ -617,7 +634,7 @@ local function exit () scheduler.stop() ; return ("requested openLuup exit at ".
 
 local function reload () luup.reload () end     -- reload openLuup
 
-local function file (p,q) return server.http_file (q.parameters or '') end                 -- file access
+local function file (_,p) return server.http_file (p.parameters or '') end                 -- file access
 
 local function altui (_,p) plugins.create {PluginNum = 8246, TracRev=tonumber(p.rev)} end    -- install ALTUI
 
