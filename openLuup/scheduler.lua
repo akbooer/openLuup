@@ -293,7 +293,9 @@ end
 
 -- step through one cycle of task processing
 local function task_callbacks ()
+  local N = 0       -- loop iteration count
   repeat
+    N = N + 1
     local njn = next_job_number
   
     local local_job_list = {}
@@ -328,7 +330,8 @@ local function task_callbacks ()
         job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local copy)
       end
     end
-  until njn == next_job_number    -- keep going until no more new jobs queued
+  until njn == next_job_number        -- keep going until no more new jobs queued
+        or N > 5                      -- or too many iterations
 end
 
 ----
@@ -397,6 +400,7 @@ local function luup_callbacks ()
 end
 
 local function stop (code)
+  _log ("schedule stop request after " .. next_job_number .. " jobs")
   exit_code = 0
 end
 
@@ -413,6 +417,7 @@ local function start ()
     
   until exit_code
   _log ("exiting with code " .. tostring (exit_code))
+  _log (next_job_number .. " jobs completed ")
   return exit_code
 end
 

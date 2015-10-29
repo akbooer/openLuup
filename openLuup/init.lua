@@ -1,5 +1,5 @@
 local _NAME = "openLuup.init"
-local revisionDate = "2015.10.19"
+local revisionDate = "2015.10.29"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -105,18 +105,18 @@ local function load_user_data (user_data_json)
 end
 
 -- what it says...
-local function compile_and_run_startup (lua)
-  _log "running Startup Lua"
+local function compile_and_run (lua, name)
+  _log ("running " .. name)
   local startup_env = loader.shared_environment    -- shared with scenes
-  local startup_function = "_openLuup_STARTUP_"
-  local source = table.concat {"function ", startup_function, " () ", lua, "end" }
-  local code, error_msg = loader.compile_lua (source, "startup", startup_env) -- load, compile, instantiate
+  local source = table.concat {"function ", name, " () ", lua, "end" }
+  local code, error_msg = 
+    loader.compile_lua (source, name, startup_env) -- load, compile, instantiate
   if not code then 
-    _log (error_msg, startup_function) 
+    _log (error_msg, name) 
   else
-    local ok, err = scheduler.context_switch (nil, code[startup_function])  -- no device context
-    if not ok then _log ("ERROR: " .. err, "openLuup.startup") end
-    code[startup_function] = nil      -- remove it from the name space
+    local ok, err = scheduler.context_switch (nil, code[name])  -- no device context
+    if not ok then _log ("ERROR: " .. err, name) end
+    code[name] = nil      -- remove it from the name space
   end
 end
 
@@ -180,7 +180,7 @@ do -- STARTUP
         ok = load_user_data (code)
         code = userdata.attributes ["StartupCode"] or ''  -- substitute the Startup Lua
       end
-      compile_and_run_startup (code)  -- either the given file or the code embedded in user_data
+      compile_and_run (code, "_openLuup_STARTUP_")  -- the given file or the code in user_data
     else
       _log "no init data"
     end
@@ -189,26 +189,19 @@ do -- STARTUP
   end
   _log "startup completed"
 end
-
-do -- SERVER
+ 
+local status
+do -- SERVER and SCHEDULER
   local s = server.start "3480"               -- start the port 3480 Web server
   if not s then error "openLuup - no server socket" end
-end
 
--- start the heartbeat
-do
+  -- start the heartbeat
   timers.call_delay(openLuupPulse, 6 * 60)     -- it's alive! it's alive!!
+
+   status = scheduler.start ()           -- this is the main scheduling loop!
 end
 
-local status = scheduler.start ()           -- this is the main scheduling loop!
-
-_log "saving user_data"
-save_user_data ()
-
-local fmt = "exiting with code %s - after %0.1f hours"
-_log (fmt:format (tostring (status), (os.time() - timers.loadtime) / 60 / 60))
-
-os.exit (status)
+luup.reload (status)      -- actually, it's a final exit
 
 -----------
 

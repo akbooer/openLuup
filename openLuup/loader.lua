@@ -17,17 +17,18 @@ local function _pristine_environment ()
   local ENV
 
   local function shallow_copy2 (a)
+    local meta = {}
     local b = {}
     for i,j in pairs (a) do 
       b[i] = j 
     end
-    return b
+    return setmetatable (b, {__index = meta, __newindex = meta})
   end
 
   local function shallow_copy (a)
     local b = {}
     for i,j in pairs (a) do 
---      if type (j) == "table" then
+--      if type (j) == "table" and i == "string"then
 --        b[i] = shallow_copy2 (j)       -- TODO: check this stops people messing with system modules
 --      else
         b[i] = j 
@@ -50,6 +51,8 @@ local function _pristine_environment ()
 end
 
 local new_environment = _pristine_environment ()
+
+local shared_environment  = new_environment "openLuup_startup_and_scenes"
 
 ------------------
 
@@ -154,8 +157,8 @@ local function parse_impl_xml (impl_xml)
   loadList[#loadList+1] = actions                       -- append the actions for jobs
   loadList[#loadList+1] = incoming                      -- append the incoming data handler
   local source_code = table.concat (loadList, '\n')     -- concatenate the code
-  source_code = source_code: gsub ("&lt;", "<")         -- fix this particular XML quote
-  source_code = source_code: gsub ("&gt;", ">")         -- and this one (thank you I_Nest1.xml)
+  local gsub = {lt = '<', gt = '>', amp = '&'}
+  source_code = source_code: gsub ("&(%w+);", gsub)     -- fix all XML quoted characters
   return {
     source_code = source_code,
     startup     = i.startup,
@@ -293,6 +296,7 @@ end
 
 return {
     compile_lua         = compile_lua,
+--    compile_and_run     = compile_and_run,
     new_environment     = new_environment,
     parse_service_xml   = parse_service_xml,
     parse_device_xml    = parse_device_xml,
@@ -301,7 +305,7 @@ return {
     read_device         = read_device,
     read_impl           = read_impl,
     read_json           = read_json,
-    shared_environment  = new_environment "openLuup_startup_and_scenes",
+    shared_environment  = shared_environment,
 --    load_user_data    = load_user_data,
 --    save_user_data    = save_user_data,
     version             = version,

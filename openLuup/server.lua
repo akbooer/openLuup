@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2015.10.15"
+local revisionDate = "2015.10.29"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -362,6 +362,7 @@ end
 -- returns list of utility function(s)
 -- 
 local function start (port, backlog)
+  local server, msg = socket.bind ('*', port, backlog or 64) 
    
   -- new client connection
   local function server_incoming (server)
@@ -371,16 +372,19 @@ local function start (port, backlog)
     until not sock
   end
 
+  local function stop()
+    server: close()
+  end
+
   -- start(), create HTTP server job and start listening
-  local server, msg = socket.bind ('*', port, backlog or 64) 
   if server then 
     server:settimeout (0)                                       -- don't block 
     scheduler.socket_watch (server, server_incoming)            -- start watching for incoming
     _log (table.concat {"starting HTTP server on ", myIP, ':', port, ' ', tostring(server)})
+    return {stop = stop}
   else
     _log ("error starting server: " .. (msg or '?'))
-  end
-  return not not server   -- true or false (rather than the socket itself)
+  end  
 end
 
 --- return module variables and methods

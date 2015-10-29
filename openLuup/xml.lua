@@ -9,12 +9,7 @@ local version = "XML  2015.10.21  @akbooer"
 -- TODO: proper XML parser rather than nasty hack?
 -- TODO: escape special characters in encode and decode
 --
---  :gsub("&", "&amp;")
---  :gsub("<", "&lt;")
---  :gsub(">", "&gt;")
---  :gsub('"', "&quot;")
---  :gsub("'", "&apos;")
-
+-- gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
 
 -- XML:extract ("name", "subname", "subsubname", ...)
 -- return named part or empty list
@@ -67,7 +62,7 @@ local function xml_read (self, filename)
     if f then 
       xml = f: read "*a"
       f: close ()  
-      xml_cache[filename] = xml         -- save in cache
+      xml_cache[filename] = xml   -- save in cache
     end
   end
 --  print ("xml", filename, hits, reads)

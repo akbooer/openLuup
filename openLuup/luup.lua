@@ -1,5 +1,5 @@
 local _NAME = "openLuup.luup"
-local revisionDate = "2015.10.15"
+local revisionDate = "2015.10.29"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -488,23 +488,58 @@ local function create_device (...)
   return devNo
 end
 
+--
+-- clean up child processes (specifically, nuke curl from WW_Nest)
+--
+local function nuke_WWN_curls (ps_command) 
+  if not (ps_command and ps_command ~= '') then return end
+  
+  local function exec (command)
+    local f = _G.io.popen (command)
+    if f then 
+      local a = f:read "*a"
+      f:close ()
+      return a
+    end
+  end
 
+  local proc = exec (ps_command)
+
+  for a,b in (proc or ''): gmatch "%s*(%d+)(%C+)" do
+    if b: match "developer.api.nest.com" then
+      _log ("killing [" ..  a .. "] " .. b)
+      exec ("kill " .. a)
+    end
+  end
+
+end
 
 -- function: reload
 -- parameters: none
 -- returns: none
 --
-local function reload ()
-  local fmt = "device %d '%s' requesting reload"
-  local devNo = luup.device or 0
-  local name = (luup.devices[devNo] or {}).description or "_system_"
-  local txt = fmt:format ( devNo, name)
-  print (txt)
-  _log (txt)
+local function reload (exit_status)
+  
+  if not exit_status then         -- we're going to reload
+    exit_status = 42              -- special 'reload' exit status
+    local fmt = "device %d '%s' requesting reload"
+    local devNo = luup.device or 0
+    local name = (luup.devices[devNo] or {}).description or "_system_"
+    local txt = fmt:format (devNo, name)
+    print (txt)
+    _log (txt)
+  end
+  
   _log ("saving user_data", "luup.reload") 
   local ok, msg = userdata.save (luup)
   assert (ok, msg or "error writing user_data")
-  os.exit (42)      -- special 'reload' exit status
+  
+  local ps_command = luup.attr_get "ps_command"     -- probably "ps -x" or just "ps"
+  nuke_WWN_curls (ps_command)      -- hate to do it, but it's necessary (no thanks to MCV / Vera)
+  
+  local fmt = "exiting with code %s - after %0.1f hours"
+  _log (fmt:format (tostring (exit_status), (os.time() - timers.loadtime) / 60 / 60))
+  os.exit (exit_status) 
 end 
 
 -- JOB module
