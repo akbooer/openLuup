@@ -1,5 +1,5 @@
 
-local t = require "luaunit"
+local t = require "tests.luaunit"
 
 -- openLuup.scheduler TESTS
 

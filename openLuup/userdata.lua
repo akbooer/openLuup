@@ -1,4 +1,4 @@
-local version = "openLuup.user_data  2015.10.14  @akbooer"
+local version = "openLuup.user_data  2015.10.30  @akbooer"
 
 -- user_data
 -- saving and loading, plus utility functions used by HTTP requests id=user_data, etc.
@@ -78,6 +78,10 @@ local attributes = {
 --    weatherCity = "Oxford England",
 --    tempFormat = "C" },
 --  zwave_heal = "1426331082",    
+
+-- openLuup specials
+
+ShutdownCode = '',
 
 }
 
@@ -171,7 +175,7 @@ local function save_user_data (luup, filename)
     -- scenes
     local scenes = data.scenes
     for _, s in pairs (luup.scenes or {}) do
-      scenes[#scenes+1] = s:user_table ()
+      scenes[#scenes+1] = s: user_table ()
     end    
     --
     local j, msg = json.encode (data)

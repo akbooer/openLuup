@@ -1,4 +1,4 @@
-local version = "openLuup.loader  2015.10.22  @akbooer"
+local version = "openLuup.loader  2015.10.30  @akbooer"
 
 --
 -- Loader for Device, Implementation, and JSON files
@@ -16,23 +16,10 @@ local version = "openLuup.loader  2015.10.22  @akbooer"
 local function _pristine_environment ()
   local ENV
 
-  local function shallow_copy2 (a)
-    local meta = {}
-    local b = {}
-    for i,j in pairs (a) do 
-      b[i] = j 
-    end
-    return setmetatable (b, {__index = meta, __newindex = meta})
-  end
-
   local function shallow_copy (a)
     local b = {}
     for i,j in pairs (a) do 
---      if type (j) == "table" and i == "string"then
---        b[i] = shallow_copy2 (j)       -- TODO: check this stops people messing with system modules
---      else
         b[i] = j 
---      end
     end
     return b
   end

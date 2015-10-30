@@ -1,4 +1,4 @@
-local t = require "luaunit"
+local t = require "tests.luaunit"
 
 -- openLuup.scenes TESTS
 
@@ -62,20 +62,37 @@ function TestScenes:test_scene_create ()
   local sc, err = s.create (example_scene)    -- works with Lua or JSON scene definition
   t.assertIsNil (err)
   t.assertIsTable (sc)
+  local luup_scene = 
+    {
+      description="Example Scene",
+      hidden=false,
+      page=0,
+      paused=false,
+      remote=0,
+      room_num=0
+    }
+  t.assertItemsEquals (sc, luup_scene)
+  t.assertIsFunction (sc.rename)
   t.assertIsFunction (sc.run)
+  t.assertIsFunction (sc.stop)
+  t.assertIsFunction (sc.user_table)
+  -- now trigger it!
   local trig = {enabled = 1, name = "test trigger"}
   sc.run (trig)
   t.assertIsNumber (trig.last_run)    -- check that last run time has been inserted
-  t.assertEquals (sc.last_run, trig.last_run)
+  local u = sc: user_table ()          -- get the user_data version of things
+  t.assertNotNil (u.last_run)
+  t.assertEquals (u.last_run, trig.last_run)
 end
 
 function TestScenes:test_scene_stop ()
   local sc, err = s.create (json_example)
-  for _,tim in pairs (sc.timers) do
+  local u = sc: user_table ()          -- get the user_data version of things
+  for _,tim in pairs (u.timers) do
     t.assertEquals (tim.enabled, 1)     -- check all enabled
   end
   sc:stop()
-  for _,tim in pairs (sc.timers) do
+  for _,tim in pairs (u.timers) do
     t.assertEquals (tim.enabled, 0)     -- check all disabled
   end
 end
@@ -90,8 +107,9 @@ function TestScenes:test_scene_rename ()
   local sc, err = s.create (json_example)
   local nn,nr = "New Name", 3
   sc.rename (nn, nr)
-  t.assertEquals (sc.name, nn)
-  t.assertEquals (sc.room, nr)
+  local u = sc: user_table ()          -- get the user_data version of things
+  t.assertEquals (u.name, nn)
+  t.assertEquals (u.room, nr)
   t.assertEquals (sc.description, nn)
   t.assertEquals (sc.room_num, nr)
 end
@@ -106,7 +124,8 @@ function TestScenes:test_scene_lua ()
     ]]
   } 
   local sc, err = s.create (lua_scene)    -- works with Lua or JSON scene definition
-  t.assertIsString (sc.lua)
+  local u = sc: user_table ()          -- get the user_data version of things
+  t.assertIsString (u.lua)
   sc.run()
 end
 
@@ -131,8 +150,10 @@ function TestScenes:test_multiple_scene_lua ()
   } 
   local sc42,err42 = s.create (lua_scene_42) 
   local sc43,err43 = s.create (lua_scene_43)    -- works with Lua or JSON scene definition
-  t.assertIsString (sc42.lua)
-  t.assertIsString (sc43.lua)
+  local u42 = sc42: user_table ()          -- get the user_data version of things
+  local u43 = sc43: user_table ()          -- get the user_data version of things
+  t.assertIsString (u42.lua)
+  t.assertIsString (u43.lua)
   t.assertIsNil (err42)
   t.assertIsNil (err43)
   sc42.run()
@@ -150,7 +171,15 @@ if multifile then return end
 t.LuaUnit.run "-v" 
 
 ---------------------
+local pretty = require "pretty"
 
 local sc, err = s.create (json_example)
 
+print (pretty(sc))
+print "---------------"
+
 print (tostring(sc))
+
+
+-----
+

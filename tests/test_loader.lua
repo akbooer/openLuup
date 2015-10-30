@@ -1,4 +1,4 @@
-local t = require "luaunit"
+local t = require "tests.luaunit"
 
 -- Device Files module tests
 
@@ -9,7 +9,7 @@ local function noop () end
 
 luup = {
     call_timer = noop,
-    log = print,
+    log = function (...) print ('\n', ...) end,
     set_failure = noop,   
   }
 
@@ -584,7 +584,7 @@ t.LuaUnit.run "-v"
 
 -------------------
 
-require "pretty"
+local pretty = require "pretty"
 
 local s = loader.read_service "S_SwitchPower1.xml"
 --s = df.parse_service_xml (xml.xml2Lua (S))

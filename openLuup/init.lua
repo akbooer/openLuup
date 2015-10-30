@@ -29,13 +29,18 @@ local plugins       = require "openLuup.plugins"
 
 -- save user_data (persistence for scenes and rooms)
 local function save_user_data ()
+  
+  for _,sc in pairs (luup.scenes) do
+    DEBUG_SCENES ("SAVE_USER_DATA", sc)
+  end
+  
   local ok, msg = userdata.save (luup)
   if not ok then
     _log (msg or "error writing user_data")
   end
 end
 
--- load user_data (persistence for scenes and rooms)
+-- load user_data (persistence for attributes, rooms, devices and scenes)
 local function load_user_data (user_data_json)  
   _log "loading user_data json..."
   local user_data, msg = userdata.parse (user_data_json)
@@ -88,8 +93,7 @@ local function load_user_data (user_data_json)
     luup.scenes = scs
     _log ("number of scenes = " .. #luup.scenes)
     
-    luup.scenes = user_data.scenes or {}
-    for i,n in ipairs (luup.scenes) do _log (("scene#%d '%s'"):format (i,n.name)) end
+    for i,n in ipairs (luup.scenes) do _log (("scene#%d '%s'"):format (i,n.description)) end
     _log "...scene loading completed"
   
     -- PLUGINS

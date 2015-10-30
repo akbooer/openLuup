@@ -1,5 +1,5 @@
 local _NAME = "openLuup.luup"
-local revisionDate = "2015.10.29"
+local revisionDate = "2015.10.30"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -489,22 +489,35 @@ local function create_device (...)
 end
 
 --
+-- user ShutDown code
+--
+
+local function compile_and_run (lua, name)
+  _log ("running " .. name)
+  local startup_env = loader.shared_environment    -- shared with scenes
+  local source = table.concat {"function ", name, " () ", lua, "end" }
+  local code, error_msg = 
+    loader.compile_lua (source, name, startup_env) -- load, compile, instantiate
+  if not code then 
+    _log (error_msg, name) 
+  else
+    local ok, err = scheduler.context_switch (nil, code[name])  -- no device context
+    if not ok then _log ("ERROR: " .. err, name) end
+    code[name] = nil      -- remove it from the name space
+  end
+end
+
+--
 -- clean up child processes (specifically, nuke curl from WW_Nest)
 --
 local function nuke_WWN_curls (ps_command) 
-  if not (ps_command and ps_command ~= '') then return end
   
-  local function exec (command)
-    local f = _G.io.popen (command)
-    if f then 
-      local a = f:read "*a"
-      f:close ()
-      return a
-    end
+  local proc  
+  local f = _G.io.popen "ps -x"
+  if f then 
+    proc = f:read "*a"
+    f:close ()
   end
-
-  local proc = exec (ps_command)
-
   for a,b in (proc or ''): gmatch "%s*(%d+)(%C+)" do
     if b: match "developer.api.nest.com" then
       _log ("killing [" ..  a .. "] " .. b)
@@ -534,8 +547,10 @@ local function reload (exit_status)
   local ok, msg = userdata.save (luup)
   assert (ok, msg or "error writing user_data")
   
-  local ps_command = luup.attr_get "ps_command"     -- probably "ps -x" or just "ps"
-  nuke_WWN_curls (ps_command)      -- hate to do it, but it's necessary (no thanks to MCV / Vera)
+  local shutdown = luup.attr_get "ShutdownCode"
+  if shutdown and (shutdown ~= '') then
+    compile_and_run (shutdown, "_openLuup_user_Shutdown_") 
+  end
   
   local fmt = "exiting with code %s - after %0.1f hours"
   _log (fmt:format (tostring (exit_status), (os.time() - timers.loadtime) / 60 / 60))
@@ -639,7 +654,7 @@ return {
     scenes              = scenes,
     devices             = devices, 
 --    xj                  = "what is this?",
-  
+
 }
 
 -----------

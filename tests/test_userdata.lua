@@ -1,4 +1,4 @@
-local t = require "luaunit"
+local t = require "tests.luaunit"
 
 -- Device Files module tests
 

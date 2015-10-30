@@ -122,11 +122,7 @@ local function create (scene_json)
   end
 
   local function user_table ()          -- used by user_data request
-    local u = {}
-    for a,b in pairs (scene) do
-      if type(b) ~= "function" then u[a] = b end    -- JSON doesn't do functions!
-    end
-    return u
+    return scene
   end
 
   --create ()
@@ -165,13 +161,15 @@ local function create (scene_json)
     room        = tonumber (scn.room) or 0,       -- TODO: ensure room number valid
     timers      = scn.timers or {},
     triggers    = {},                             -- expunge these
-    -- methods
+  }
+   
+  local methods = {
     rename      = scene_rename,
     run         = scene_runner,
     stop        = scene_stopper,
     user_table  = user_table,
   }
-    
+  
   luup_scene = {
       description = scene.name,
       hidden = false,
@@ -190,8 +188,8 @@ local function create (scene_json)
 
 -- luup.scenes contains all the scenes in the system as a table indexed by the scene number. 
   return setmetatable (luup_scene, {
-      __index = scene, 
-      __new_index = scene,
+      __index = methods, 
+      __tostring = function () return json.encode (user_table()) or '?' end,
     })
 end
 

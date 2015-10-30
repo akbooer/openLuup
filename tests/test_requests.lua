@@ -1,17 +1,72 @@
 
-local t = require "luaunit"
+local t = require "tests.luaunit"
 
 -- openLuup.requests TESTS
 --
+-- actually, this is more of a system test 
+-- since it requires SO much to be working.
+--
+
+luup            = require "openLuup.luup"
 
 local requests  = require "openLuup.requests"
-luup      = require "openLuup.luup"
 local json      = require "openLuup.json"
+local scenes    = require "openLuup.scenes"
 
 local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
 local devNo = luup.create_device (devType)
 luup.variable_set ("myService","name1", 42, devNo)     -- add a couple of variables
 luup.variable_set ("myService","name2", 88, devNo)     -- add a couple of variables
+  
+local example_scene = {
+  id = 42,
+  name = "test_scene_name",
+  room = 0,
+  groups = {
+    {
+      delay = 0,
+      actions = {
+        {
+          action = "ToggleState",
+          arguments = {},
+          device = "94",   -- why this is a string, I have NO idea
+          service ="urn:micasaverde-com:serviceId:HaDevice1",
+        },
+      },
+    },
+  },
+  timers = {
+    {
+      enabled = 1,
+      id = 1,
+      interval = "5m",        -- this is actually the "time" parameter in timer calls
+      name = "Five minutes",
+      type = 1,
+    } , 
+    {
+      enabled = 1,
+      id = 2,
+      interval = "10",        -- this is actually the "time" parameter in timer calls
+      name = "Ten Seconds",
+      type = 1,
+    } , 
+  },
+  lua =   -- this HAS to be a string for external tools to work.
+  [[
+    luup.log "hello from 'test_scene_name'"
+  ]],   
+}
+
+
+local json_example_scene = json.encode (example_scene)
+
+do -- make a scene!  
+  local parameters = {action = "create", json = json_example_scene}
+  local s = requests.scene ("scene", parameters)
+  t.assertEquals (s, "OK")
+end
+
+
 
 TestRequests = {}     -- luup tests
 
@@ -26,13 +81,13 @@ end
 function TestRequests:test_basic_types ()
   t.assertIsFunction (requests.action)
   t.assertIsFunction (requests.alive)
-  t.assertIsFunction (requests.debug)
-  t.assertIsFunction (requests.exit)
+  t.assertIsFunction (requests.device)
   t.assertIsFunction (requests.file)
   t.assertIsFunction (requests.iprequests)
   t.assertIsFunction (requests.invoke)
   t.assertIsFunction (requests.jobstatus)
   t.assertIsFunction (requests.live_energy_usage)
+  t.assertIsFunction (requests.reload)
   t.assertIsFunction (requests.room)
   t.assertIsFunction (requests.sdata)
   t.assertIsFunction (requests.status) 
@@ -44,6 +99,10 @@ function TestRequests:test_basic_types ()
   -- check functional identities 
   t.assertEquals (requests.status, requests.status2)
   t.assertEquals (requests.user_data, requests.user_data2)
+  -- check openLuup extras
+  t.assertIsFunction (requests.altui)
+  t.assertIsFunction (requests.debug)
+  t.assertIsFunction (requests.exit)
 end  
 
 function TestRequests:test_action ()
@@ -142,7 +201,7 @@ function TestRequests:test_user_data ()
   local juser2 = requests.user_data ("user_data", parameters, format)
 --  t.assertEquals (juser2, "NO CHANGES")   -- should be a plain text return
   
-  -- test content of device table  
+  -- test content of devices table  
   t.assertIsTable (user.devices)
   local d = user.devices[1]
   t.assertIsString (d.device_type)
@@ -152,6 +211,18 @@ function TestRequests:test_user_data ()
   t.assertIsString (d.room)
   t.assertIsTable (d.states)
   t.assertIsNumber (d.time_created)
+  
+  -- test content of scenes table
+  local s = user.scenes
+  t.assertIsTable (s)
+  t.assertTrue (#s == 1)
+  local sc = s[1]                           -- this is the user_data version of scene #1
+  local u = luup.scenes[42].user_table()    -- and this is the scene itself
+--  local pretty = require "pretty"
+--  print (pretty(sc))
+--  print "---------"
+--  print (pretty(u))
+  t.assertItemsEquals (sc, u)
 end
 
 function TestRequests:test_variableget_set ()
@@ -221,48 +292,7 @@ end
 
 -- SCENES
 
-local example_scene = {
-  id = 42,
-  name = "test_scene_name",
-  room = 0,
-  groups = {
-    {
-      delay = 0,
-      actions = {
-        {
-          action = "ToggleState",
-          arguments = {},
-          device = "94",   -- why this is a string, I have NO idea
-          service ="urn:micasaverde-com:serviceId:HaDevice1",
-        },
-      },
-    },
-  },
-  timers = {
-    {
-      enabled = 1,
-      id = 1,
-      interval = "5m",        -- this is actually the "time" parameter in timer calls
-      name = "Five minutes",
-      type = 1,
-    } , 
-    {
-      enabled = 1,
-      id = 2,
-      interval = "10",        -- this is actually the "time" parameter in timer calls
-      name = "Ten Seconds",
-      type = 1,
-    } , 
-  },
-  lua =   -- this HAS to be a string for external tools to work.
-  [[
-    luup.log "hello from 'test_scene_name'"
-  ]],   
-}
-
 TestSceneRequests = {}
-
-local json_example_scene = json.encode (example_scene)
 
 local function scene_count ()
   local n = 0
@@ -288,7 +318,8 @@ function TestSceneRequests:test_scene_rename ()
   local parameters = {action = "rename", scene = 42, name = new_name}
   local s = requests.scene ("scene", parameters)
   t.assertEquals (s, "OK")
-  t.assertEquals (luup.scenes[42].name, new_name)
+  t.assertEquals (luup.scenes[42].description, new_name)        -- check ok here...
+  t.assertEquals (luup.scenes[42].user_table().name, new_name)  -- ..and here
 end
 
 --Example: http://ip_address:3480/data_request?id=scene&action=delete&scene=5

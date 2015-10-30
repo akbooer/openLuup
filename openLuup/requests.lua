@@ -1,5 +1,5 @@
 local _NAME = "openLuup.requests"
-local revisionDate = "2015.10.27"
+local revisionDate = "2015.10.30"
 local banner = " version " .. revisionDate .. "  @akbooer"
 
 --
@@ -8,7 +8,6 @@ local banner = " version " .. revisionDate .. "  @akbooer"
 -- These are all implemented as standard luup.register_handler callbacks with the usual three parameters
 --
 
-local luup          = require "openLuup.luup"
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
 local xml           = require "openLuup.xml"
@@ -452,14 +451,14 @@ local function scene (r,p,f)
   local function delete (scene) 
     if scene then 
       scene:stop()                             -- stop scene triggers and timers
-      luup.scenes[scene.id] = nil              -- remove reference to the scene
+      luup.scenes[scene.user_table().id] = nil -- remove reference to the scene
     end
   end
   --Example: http://ip_address:3480/data_request?id=scene&action=create&json=[valid json data]
   local function create () 
     local new_scene, msg = scenes.create (p.json)
     if new_scene then
-      local id = new_scene.id
+      local id = new_scene.user_table().id
       if luup.scenes[id] then
         delete (luup.scenes[id])               -- remove the old scene with this id
       end
