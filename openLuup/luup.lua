@@ -335,7 +335,7 @@ local function call_action (service, action, arguments, device)
     return Device_0: call_action (service, action, arguments) 
   else
     local target_device = devices[devNo] or missing(devNo)
-    local svc = target_device.services[service]             -- TODO: fix error on missing device access
+--    local svc = target_device.services[service]             -- TODO: fix error on missing device access
     local dev = find_handler (target_device)
        
     return dev: call_action (service, action, arguments, devNo)  
@@ -387,6 +387,7 @@ end
 local function job_watch (global_function_name, device)
   local fct = entry_point (global_function_name "luup.job_watch")
   -- TODO: implement job_watch
+  error "luup.job_watch not implemented"
 end
 
 
@@ -505,26 +506,6 @@ local function compile_and_run (lua, name)
     if not ok then _log ("ERROR: " .. err, name) end
     code[name] = nil      -- remove it from the name space
   end
-end
-
---
--- clean up child processes (specifically, nuke curl from WW_Nest)
---
-local function nuke_WWN_curls (ps_command) 
-  
-  local proc  
-  local f = _G.io.popen "ps -x"
-  if f then 
-    proc = f:read "*a"
-    f:close ()
-  end
-  for a,b in (proc or ''): gmatch "%s*(%d+)(%C+)" do
-    if b: match "developer.api.nest.com" then
-      _log ("killing [" ..  a .. "] " .. b)
-      exec ("kill " .. a)
-    end
-  end
-
 end
 
 -- function: reload
@@ -650,6 +631,7 @@ return {
     -- tables 
     
     ir                  = {},
+    remotes             = remotes,
     rooms               = rooms,
     scenes              = scenes,
     devices             = devices, 

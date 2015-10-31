@@ -28,12 +28,7 @@ local devutil       = require "openLuup.devices"
 local plugins       = require "openLuup.plugins"
 
 -- save user_data (persistence for scenes and rooms)
-local function save_user_data ()
-  
-  for _,sc in pairs (luup.scenes) do
-    DEBUG_SCENES ("SAVE_USER_DATA", sc)
-  end
-  
+local function save_user_data () 
   local ok, msg = userdata.save (luup)
   if not ok then
     _log (msg or "error writing user_data")
