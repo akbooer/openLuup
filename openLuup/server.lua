@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2015.10.29"
+local revisionDate = "2015.11.01"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -124,8 +124,8 @@ end
 -- URL parameter is parsed table of URL structure (see url.parse)
 local function http_dispatch_request (URL)    
   local dispatch
---  _log (URL.path, "openLuup.HTTP.GET")
-  if URL.query then
+-- see: http://forum.micasaverde.com/index.php/topic,34465.msg254637.html#msg254637
+  if URL.query and URL.path == "/data_request" then     -- Thanks @vosmont 
     dispatch = http_query 
   else
     dispatch = http_file 

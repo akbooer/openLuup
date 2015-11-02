@@ -1,22 +1,24 @@
--- VeraBridge
+_NAME = "VeraBridge"
+_VERSION = "2015.11.01"
+_DESCRIPTION = "VeraBridge plugin for openLuup!!"
+_AUTHOR = "@akbooer"
+
 -- bi-directional monitor/control link to remote Vera system
-
-local version =  "2015.10.16   @akbooer"
-
+-- NB. this version ONLY works in openLuup
+-- it plays with action calls and device creation in ways that you can't do in Vera,
+-- in order to be able to implement ANY command action and 
+-- also to logically group device numbers for remote machine device clones.
 
 -- 2015-08-24   openLuup-specific code to action ANY serviceId/action request
+-- 2015-11-01   change device numbering scheme
 
 local devNo                      -- our device number
 
-local json = require "openLuup.json"
-local url  = require "socket.url"
+local json    = require "openLuup.json"
+local url     = require "socket.url"
 
-
-local ip                         -- remote machine ip address
+local ip                          -- remote machine ip address
 local POLL_DELAY = 5              -- number of seconds between remote polls
-
-local local_by_remote_id = {}    -- child device indices
-local remote_by_local_id = {}
 
 local local_room_index           -- bi-directional index of our rooms
 local remote_room_index          -- bi-directional of remote rooms
@@ -25,6 +27,18 @@ local SID = {
   gateway  = "urn:akbooer-com:serviceId:VeraBridge1",
   altui    = "urn:upnp-org:serviceId:altui1"          -- Variables = 'DisplayLine1' and 'DisplayLine2'
 }
+
+-- mapping between remote and local device IDs
+
+local OFFSET                      -- offset to base of new device numbering scheme
+
+local function local_by_remote_id (id) 
+  return id + OFFSET
+end
+
+local function remote_by_local_id (id)
+  return id - OFFSET
+end
 
 --create a variable list for each remote device from given states table
 local function create_variables (states)
@@ -52,38 +66,36 @@ local function create_room(n)
 end
 
 -- create a child device for each remote one
+-- we cheat standard luup here by manipulating the top-level attribute Device_Num_Next
+-- in advance of calling chdev.append so that we can force a specific device number.
 -- this devices table is from the "user_data" request
 local function create_children (devices, new_room)
-  local family_tree = {}      -- list of remote dev.id_parent indexed by remote dev.id
   local remote_attr = {}      -- important attibutes, indexed by remote dev.id
   
+  local Device_Num_Next = luup.attr_get "Device_Num_Next"    -- save the real one
   local childDevices = luup.chdev.start(devNo)
   local embedded = false
   local invisible = false
   
+  local n = 0
   for _, dev in ipairs (devices) do
     if not (dev.invisible == "1") then
-      local remote_id = tonumber (dev.id) or 'missing'
-      family_tree[remote_id] = tonumber (dev.id_parent)
+      n = n + 1
+      local remote_id = tonumber (dev.id) 
+      local cloneId = local_by_remote_id(remote_id)
       remote_attr[remote_id] = {manufacturer = dev.manufacturer, model = dev.model}
       local variables = create_variables (dev.states)
       local impl_file = 'X'  -- override device file's implementation definition... musn't run here!
+      luup.attr_set ("Device_Num_Next", cloneId)    -- set this, in case next call creates new device
       luup.chdev.append (devNo, childDevices, dev.id, dev.name, 
         dev.device_type, dev.device_file, impl_file, 
         variables, embedded, invisible, new_room)
     end
   end
+  
+  luup.attr_set ("Device_Num_Next", Device_Num_Next)  -- restore original BEFORE possible reload
   luup.chdev.sync(devNo, childDevices)
-  -- now find their device numbers and index them...
-  local n = 0
-  for i, dev in pairs (luup.devices) do
-    if dev.device_num_parent == devNo then       -- it's one of ours
-      n = n + 1
-      local id = tonumber (dev.id)              -- strangely inconsistent re. string vs. number
-      local_by_remote_id[id] = i
-      remote_by_local_id[i] = id
-    end
-  end
+  
   luup.log ("local children created = " .. n)
   return n
 end
@@ -119,8 +131,8 @@ end
 -- this devices table is from the "status" request
 local function UpdateVariables(devices)
   for _, dev in pairs (devices) do
-    local i = local_by_remote_id[dev.id]
-    if i and (type (dev.states) == "table") then
+    local i = local_by_remote_id(dev.id)
+    if i and luup.devices[i] and (type (dev.states) == "table") then
       for _, v in ipairs (dev.states) do
         local value = luup.variable_get (v.service, v.variable, i)
         if v.value ~= value then
@@ -148,6 +160,22 @@ function VeraBridge_delay_callback (DataVersion)
   luup.call_delay ("VeraBridge_delay_callback", POLL_DELAY, DataVersion)
 end
 
+-- find other bridges in order to establish base device number for cloned devices
+local function findOffset ()
+  local offset
+  local bridges = {}      -- devNos of ALL bridges
+  for d, dev in pairs (luup.devices) do
+    if dev.device_type == "VeraBridge" then
+      bridges[#bridges + 1] = d
+    end
+  end
+  table.sort (bridges)      -- sort into ascending order by deviceNo
+  for d, n in ipairs (bridges) do
+    if n == devNo then offset = d end
+  end
+  return offset * 10000   -- every remote machine starts in a new block of 10,000 devices
+end
+
 -- logged request
 
 local function wget (request)
@@ -156,153 +184,6 @@ local function wget (request)
   if status ~= 0 then
     luup.log ("failed requests status: " .. (result or '?'))
   end
-end
-
--- CONTROL actions
-
--- the implementation file calls p.<actionName> from a job
-
-p = {}        -- GLOBAL (accessed by the <job> tags in the implementation file)
-
---    <action>
---  		<serviceId>urn:upnp-org:serviceId:SwitchPower1</serviceId>
---  		<name>SetTarget</name>
---  		<job>
---  			if (p ~= nil) then p.switchPower(lul_device, lul_settings.newTargetValue)  end
---  			return 4,0
---  		</job>
---    </action>
-
-function p.switchPower(lul_device, newTargetValue)
-  wget (table.concat {
-      "http://", ip, ":3480/data_request?id=action", 
-      "&action=SetTarget", 
-      "&serviceId=urn:upnp-org:serviceId:SwitchPower1",
-      "&DeviceNum=", remote_by_local_id[lul_device],
-      "&newTargetValue=", newTargetValue})
-end
-
---    <action>
---  		<serviceId>urn:upnp-org:serviceId:Dimming1</serviceId>
---  		<name>SetLoadLevelTarget</name>
---  		<job>
---  			if (p ~= nil) then p.setDimmerLevel(lul_device, lul_settings.newLoadlevelTarget) end
---			return 4,0
---		</job>
---    </action>
-
-function p.setDimmerLevel(lul_device, newLoadlevelTarget)
-  wget (table.concat {
-      "http://", ip, ":3480/data_request?id=action", 
-      "&action=SetLoadLevelTarget", 
-      "&serviceId=urn:upnp-org:serviceId:Dimming1",
-      "&DeviceNum=", remote_by_local_id[lul_device],
-      "&newLoadlevelTarget=", newLoadlevelTarget})
-end
-
---    <action>
---  		<serviceId>urn:micasaverde-com:serviceId:DoorLock1</serviceId>
---  		<name>SetTarget</name>
---  		<job>
---  			if (p ~= nil) then p.setLockStatus(lul_device, lul_settings.newTargetValue) end
---  			return 4,0
---  		</job>
---    </action> 
-
-function p.setLockStatus(lul_device, newTargetValue)
-  wget (table.concat {
-      "http://", ip, ":3480/data_request?id=action", 
-      "&action=SetTarget", 
-      "&serviceId=urn:micasaverde-com:serviceId:DoorLock1",
-      "&DeviceNum=", remote_by_local_id[lul_device],
-      "&newTargetValue=", newTargetValue})
-end
-
---    <action>
---      	<serviceId>urn:upnp-org:serviceId:TemperatureSetpoint1_Heat</serviceId>
---      	<name>SetCurrentSetpoint</name>
---      	<job>
---      		if (p ~= nil) then p.SetTheNewTemp(lul_device, lul_settings.NewCurrentSetpoint)  end
---  			return 4,0
---  		</job>
---    </action>
-
-function p.SetTheNewTemp(lul_device, NewCurrentSetpoint)
-  wget (table.concat {
-      "http://", ip, ":3480/data_request?id=action", 
-      "&action=SetCurrentSetpoint", 
-      "&serviceId=urn:upnp-org:serviceId:TemperatureSetpoint1_Heat",
-      "&DeviceNum=", remote_by_local_id[lul_device],
-      "&NewCurrentSetpoint=", NewCurrentSetpoint})
-end
-
---    <action>
---      	<serviceId>urn:upnp-org:serviceId:HVAC_UserOperatingMode1</serviceId>
---      	<name>SetModeTarget</name>
---      	<job>
---      		if (p ~= nil) then p.SetModeTarget(lul_device, lul_settings.NewModeTarget) end
---  			return 4,0
---  		</job>
---    </action>
-
-function p.SetModeTarget(lul_device, NewModeTarget)
-  wget (table.concat {
-      "http://", ip, ":3480/data_request?id=action", 
-      "&action=SetModeTarget", 
-      "&serviceId=urn:upnp-org:serviceId:HVAC_UserOperatingMode1",
-      "&DeviceNum=", remote_by_local_id[lul_device],
-      "&NewModeTarget=", NewModeTarget})
-end
-
---    <action>
---  		<serviceId>urn:upnp-org:serviceId:WindowCovering1</serviceId>
---  		<name>Up</name>
---  		<job>
---  			if (p ~= nil) then p.windowCovering(lul_device, "Up")  end
---  			return 4,0
---  		</job>
---    </action>
---    <action>
---  		<serviceId>urn:upnp-org:serviceId:WindowCovering1</serviceId>
---  		<name>Down</name>
---  		<job>
---  			if (p ~= nil) then p.windowCovering(lul_device, "Down") end
---  			return 4,0
---  		</job>
---    </action>
---    <action>
---  		<serviceId>urn:upnp-org:serviceId:WindowCovering1</serviceId>
---  		<name>Stop</name>
---  		<job>
---  			if (p ~= nil) then p.windowCovering(lul_device, "Stop") end
---  			return 4,0
---  		</job>
---    </action>
-
-function p.windowCovering(lul_device, direction)
-  wget (table.concat {
-      "http://", ip, ":3480/data_request?id=action", 
-      "&action=", direction,
-      "&serviceId=urn:upnp-org:serviceId:WindowCovering1",
-      "&DeviceNum=", remote_by_local_id[lul_device]})
-end
-
---    <action>
---    	<serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
---    	<name>SetArmed</name>
---    	<job>
---    		if (p ~= nil) then p.setArmed(lul_device, lul_settings.newArmedValue) end
---  			return 4,0
---  		</job>
---    </action>
-
-function p.setArmed(lul_device, newArmedValue)
-  wget (table.concat {
-      "http://", ip, ":3480/data_request?id=action", 
-      "&action=SetArmed", 
-      "&serviceId=urn:micasaverde-com:serviceId:SecuritySensor1",
-      "&DeviceNum=", remote_by_local_id[lul_device],
-      "&newArmedValue=", newArmedValue})
 end
 
 --
@@ -318,7 +199,8 @@ local function generic_action (serviceId, name)
       "&action=", name,
     }
   local function job (lul_device, lul_settings)
-    local devNo = remote_by_local_id[tonumber(lul_device) or ''] or ''
+    local devNo = remote_by_local_id (lul_device)
+    if not devNo then return end        -- not a device we have cloned
     local request = {basic_request, "DeviceNum=" .. devNo }
     for a,b in pairs (lul_settings) do
       if a ~= "DeviceNum" then        -- thanks to @CudaNet for finding this bug!
@@ -329,18 +211,21 @@ local function generic_action (serviceId, name)
     wget (url)
     return 4,0
   end
-  return {job = job}
+  return {run = job}    -- TODO: job or run ?
 end
 
 
 -- plugin startup
 function init (lul_device)
   luup.log ("VeraBridge")
-  luup.log (version)
+  luup.log (_VERSION)
   luup.log (_NAME)
-  
+    
   devNo = lul_device
-  local catch = luup.devices[devNo].action_callback    -- only effective in openLuup
+  OFFSET = findOffset ()
+  luup.log ("device clone numbering starts at " .. OFFSET)
+
+  local catch = luup.devices[devNo].action_callback    -- catch all undefined action calls
   if catch then catch (generic_action) end
   
   ip = luup.attr_get ("ip", devNo)
@@ -348,7 +233,7 @@ function init (lul_device)
   
   local Ndev = GetUserData ()
   luup.variable_set (SID.gateway, "Devices", Ndev, devNo)
-  luup.variable_set (SID.gateway, "Version", version, devNo)
+  luup.variable_set (SID.gateway, "Version", _VERSION, devNo)
   luup.variable_set (SID.altui, "DisplayLine1", Ndev.." devices", devNo)
   luup.variable_set (SID.altui, "DisplayLine2", ip, devNo)
 

@@ -1,4 +1,4 @@
-local revisionDate = "2015.10.19"
+local revisionDate = "2015.11.01"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -337,8 +337,10 @@ local function create (devNo, device_type, internal_id, description, upnp_file, 
   local j = d.json_file
   if j and not static_data[j] then
     local json = files.read_json (j)  
-    json.device_json = j              -- insert possibly missing info (for ALTUI icons - thanks @amg0!)
-    static_data [j] = json  
+    if json then
+      json.device_json = j              -- insert possibly missing info (for ALTUI icons - thanks @amg0!)
+    end
+  static_data [j] = json  
   end
   
   -- read implementation file, if present  

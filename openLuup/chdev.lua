@@ -1,5 +1,5 @@
 local _NAME = "openLuup.chdev"
-local revisionDate = "2015.10.15"
+local revisionDate = "2015.11.01"
 local banner = "    version " .. revisionDate .. "  @akbooer"
 
 
@@ -30,8 +30,15 @@ _log (banner, _NAME)   -- for version control
 -- but you do pass it to the append and sync functions.
   
 local function start (device)
-  return {}                 -- local database for new devices
+  -- build a table of device's current children, indexed by (alt)id
   -- NB: this is essential to avoid changing luup.devices whilst it might be being traversed
+  local old = {}
+  for devNo, dev in pairs (luup.devices) do
+    if dev.device_num_parent == device then
+      old[dev.id] = devNo
+    end
+  end
+  return {old = old, reload = false}      -- lists of existing child devices
 end
 
 -- function: append
@@ -42,19 +49,28 @@ end
 -- returns: nothing
 --
 -- Adds one child to device.
--- Pass in the ptr which you received from the uup.chdev.start call. 
+-- Pass in the ptr which you received from the luup.chdev.start call. 
 -- Give each child a unique id so you can keep track of which is which. 
 -- You can optionally provide a description which the user sees in the user interface.
 -- device_type is the UPnP device type, such as urn:schemas-upnp-org:device:BinaryLight:1.
 -- NOTE: On UI7, the device_type MUST be either the empty string, 
 -- or the same as the one in the device file, otherwise the Luup engine will restart continuously. 
 
-local function append (device, ptr, id, descr, ...)
-  _log (("[%s] %s"):format (id or '?', descr or ''), "luup.chdev.append")
-  ptr[#ptr+1] = {
-    id = id,                                      -- easy access for later
-    parameters = {device, ptr, id, descr, ...}    -- save all the parameters for later
-  }
+local function append (device, ptr, id, description, device_type, device_filename, 
+  implementation_filename, parameters, embedded, invisible, room) 
+  _log (("[%s] %s"):format (id or '?', description or ''), "luup.chdev.append")
+  if ptr.old[id] then 
+    ptr.old[id] = nil       -- it existed already
+  else
+    ptr.reload = true       -- we will need a reload 
+    room = tonumber(room) or 0
+    if embedded then room = luup.devices[device].room_num end
+    -- create_device (device_type, internal_id, description, upnp_file, upnp_impl, 
+    --                  ip, mac, hidden, invisible, parent, room, pluginnum, statevariables...)
+    luup.create_device (device_type, id, description, 
+            device_filename, implementation_filename, 
+            nil, nil, embedded, invisible, device, room, nil, parameters)
+  end
 end
   
 -- function: sync
@@ -63,50 +79,18 @@ end
 --
 -- Pass in the ptr which you received from the start function. 
 -- Tells the Luup engine you have finished enumerating the child devices. 
-
--- Note extra parameter "room" cf. luup 
-
--- new_child()
-local function new_child (device, ptr, id, description, device_type, device_filename, 
-  implementation_filename, parameters, embedded, invisible, room)    
-  room = tonumber(room) or 0
-  if embedded then room = luup.devices[device].room_num end
-  -- create_device (device_type, internal_id, description, upnp_file, upnp_impl, 
-  --                  ip, mac, hidden, invisible, parent, room, pluginnum, statevariables...)
-  local childDevNo = luup.create_device (device_type, id, description, 
-          device_filename, implementation_filename, 
-          nil, nil, embedded, invisible, device, room, nil, parameters)
-  return childDevNo
-end
-
--- sync()
+-- 
 local function sync (device, ptr)
-  local reload = false              -- may be needed later
-  _log (table.concat{"syncing ", #ptr, " children"}, "luup.chdev.sync")
-  -- build a table of device's current children, indexed by (alt)id
-  local old = {}
-  for devNo, dev in pairs (luup.devices) do
-    if dev.device_num_parent == device then
-      old[dev.id] = devNo
-    end
-  end
-  -- compare sync list with existing children, creating any new ones
-  for _,new in ipairs (ptr) do
-    if not old[new.id] then
-      new_child (unpack (new.parameters,1,12))      -- make call to luup.create_device
-      reload = true
-    end
-    old[new.id] = nil   -- mark as done
-  end
-  -- check if any existing ones not now required
-  for _, devNo in pairs(old) do
+  _log (table.concat{"syncing children"}, "luup.chdev.sync")
+ -- check if any existing ones not now required
+  for _, devNo in pairs(ptr.old) do
     local fmt = "deleting [%d] %s"
     _log (fmt:format (devNo, luup.devices[devNo].description or '?'))
     luup.devices[devNo] = nil     -- no finesse required here, ...
 -- TODO: delete any grandchildren ??
-    reload = true                 -- ...system will be reloaded
+    ptr.reload = true                 -- ...system will be reloaded
   end
-  if reload then
+  if ptr.reload then
     luup.reload() 
   end
 end

@@ -1,5 +1,5 @@
 local _NAME = "openLuup.init"
-local revisionDate = "2015.10.29"
+local revisionDate = "2015.11.01"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -190,17 +190,18 @@ do -- STARTUP
 end
  
 local status
+
 do -- SERVER and SCHEDULER
-  local s = server.start "3480"               -- start the port 3480 Web server
+  local s = server.start "3480"                 -- start the port 3480 Web server
   if not s then error "openLuup - no server socket" end
 
   -- start the heartbeat
-  timers.call_delay(openLuupPulse, 6 * 60)     -- it's alive! it's alive!!
+  timers.call_delay(openLuupPulse, 6 * 60)      -- it's alive! it's alive!!
 
-   status = scheduler.start ()           -- this is the main scheduling loop!
+  status = scheduler.start ()                   -- this is the main scheduling loop!
 end
 
-luup.reload (status)      -- actually, it's a final exit
+luup.reload (status)      -- actually, it's a final exit (but it saves the user_data.json file)
 
 -----------
 

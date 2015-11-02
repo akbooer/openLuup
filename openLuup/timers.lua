@@ -1,4 +1,4 @@
-local version = "openLuup.timers   2015.10.19  @akbooer"
+local version = "openLuup.timers   2015.10.31  @akbooer"
 
 
 -- openLuup TIMERS modules
@@ -168,7 +168,7 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   time = (tostring(time or '')): lower ()
   local target           -- fwd ref to function which calculates target time of next call
   
-  -- NB: all timers (except absolute) can bevimplemented as jobs which timeout and get re-run
+  -- NB: all timers (except absolute) can be implemented as jobs which timeout and get re-run
   -- scene timers would have to run this way, but simple luup call_timers are one-shot, sadly.
   -- the timeout period is the time difference between now and target time
   -- as returned by the function target() which is local to each timer type.
@@ -324,6 +324,9 @@ local function cpu_clock ()
   return this + offset
 end
   
+local function timenow ()
+  return socket.gettime()
+end
 
 ---- return methods
 
@@ -332,6 +335,7 @@ return {
   sleep       = sleep,
   sunrise     = sunrise,
   sunset      = sunset,
+  timenow     = timenow,
   is_night    = is_night,
   call_delay  = call_delay,
   call_timer  = call_timer,

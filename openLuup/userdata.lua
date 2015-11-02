@@ -5,7 +5,7 @@ local version = "openLuup.user_data  2015.10.30  @akbooer"
 
 local json = require "openLuup.json"
 
-local plugins = require "openLuup/plugins"
+local plugins = require "openLuup.plugins"
 
 --
 -- Here a complete list of top-level (scalar) attributes taken from an actual Vera user_data2 request
@@ -81,7 +81,7 @@ local attributes = {
 
 -- openLuup specials
 
-ShutdownCode = '',
+  ShutdownCode = '',
 
 }
 

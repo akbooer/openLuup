@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<implementation>
+  <functions></functions>
+  <files>L_openLuupExtensions.lua"</files>
+  <startup>init</startup>
+
+  <actionList>
+
+    <action>
+      <serviceId>openLuup</serviceId>
+      <name>Test</name>
+      <run>
+        luup.log "openLuup Test action called"
+        luup.variable_set ("openLuup", "Test", lul_settings.TestValue, lul_device) 
+        luup.log "openLuup Test action completed"
+      </run>
+    </action>
+
+    <action>
+      <serviceId>openLuup</serviceId>
+      <name>GetStats</name>
+      <run>
+      </run>
+    </action>
+
+    <action>
+      <serviceId>openLuup</serviceId>
+      <name>SetStartupCode</name>
+      <run>
+        luup.attr_set ("StartupCode", lul_settings.StartupCode or '')
+        luup.log "Startup code updated"
+      </run>
+    </action>
+
+    <action>
+      <serviceId>openLuup</serviceId>
+      <name>SetShutdownCode</name>
+      <run>
+        luup.attr_set ("ShutdownCode", lul_settings.ShutdownCode or '')  
+        luup.log "Shutdown code updated"
+      </run>
+    </action>
+
+  </actionList>
+
+</implementation>

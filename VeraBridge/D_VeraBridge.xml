@@ -5,7 +5,7 @@
     <minor>0</minor>
   </specVersion>
   <device>
-    <deviceType>urn:schemas-micasaverde-com:device:HomeAutomationGateway:1</deviceType>
+    <deviceType>VeraBridge</deviceType>
     <friendlyName>Vera Bridge</friendlyName>
     <manufacturer>akbooer</manufacturer>
     <manufacturerURL></manufacturerURL>

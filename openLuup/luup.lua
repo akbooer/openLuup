@@ -1,5 +1,5 @@
 local _NAME = "openLuup.luup"
-local revisionDate = "2015.10.30"
+local revisionDate = "2015.11.01"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -483,7 +483,7 @@ local function create_device (...)
   devices[devNo] = dev                          -- save it
   local d = (dev.device_file ~= '') and dev.device_file
   local dtype = d or dev.device_type or '?'
-  local itype = dev.implementation_file or 'no-implementation-file'
+  local itype = dev.attributes.impl_file or 'no-implementation-file'
   local msg = ("[%d] %s / %s"): format (devNo, dtype, itype)
   _log (msg, "luup.create_device" )
   return devNo

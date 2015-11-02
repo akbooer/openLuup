@@ -1,4 +1,4 @@
-local version = "openLuup.gateway    2015.10.15  @akbooer"
+local version = "openLuup.gateway    2015.11.01  @akbooer"
 
 -- HOME AUTOMATION GATEWAY
 --
@@ -16,7 +16,9 @@ local Device_0 = devutil.create (0, "urn:schemas-micasaverde-com:device:HomeAuto
 
 -- No need for an implementation file - we can define all the services right here
 
-Device_0.services["urn:micasaverde-com:serviceId:HomeAutomationGateway1"] = 
+local SID = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+
+Device_0.services[SID] = 
 {
   actions = {
     
@@ -37,9 +39,78 @@ Device_0.services["urn:micasaverde-com:serviceId:HomeAutomationGateway1"] =
     You can specify multiple variables by separating them with a line feed ('\n'), and use ',
     ' and '=' to separate service, variable and value, like this: 
       service,variable=value\nservice,variable=value\n...
-    If Reload is 1, the Luup engine will be restarted after the device is created. --]]
-    CreateDevice = {
-      
+    If Reload is 1, the Luup engine will be restarted after the device is created. 
+    
+           <name>DeviceNum</name>
+          <direction>out</direction>
+          <retval/>
+          <relatedStateVariable>DeviceNum</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>deviceType</name>
+          <direction>in</direction>
+          <relatedStateVariable>UDN</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>internalID</name>
+          <direction>in</direction>
+          <relatedStateVariable>UDN</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>Description</name>
+          <direction>in</direction>
+          <relatedStateVariable>UDN</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>UpnpDevFilename</name>
+          <direction>in</direction>
+          <relatedStateVariable>UDN</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>UpnpImplFilename</name>
+          <direction>in</direction>
+          <relatedStateVariable>UDN</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>IpAddress</name>
+          <direction>in</direction>
+          <relatedStateVariable>UDN</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>MacAddress</name>
+          <direction>in</direction>
+          <relatedStateVariable>UDN</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>DeviceNumParent</name>
+          <direction>in</direction>
+          <relatedStateVariable>DeviceNum</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>RoomNum</name>
+          <direction>in</direction>
+          <relatedStateVariable>DeviceNum</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>StateVariables</name>
+          <direction>in</direction>
+          <relatedStateVariable>UDN</relatedStateVariable>
+        </argument>
+    
+    --]]
+    CreateDevice = {  -- run as a job so that the calling action returns success immediately
+      job = function (lul_device, p)
+    -- luup.create_device (device_type, internal_id, description, upnp_file, upnp_impl, 
+    --                  ip, mac, hidden, invisible, parent, room, pluginnum, statevariables...)
+        local ip, mac, hidden, invisible, parent
+        local devNo = luup.create_device ('', '', p.Description, p.UpnpDevFilename, p.UpnpImplFilename,
+                                        ip, mac, hidden, invisible, parent, p.RoomNum)
+        Device_0:variable_set (SID, DeviceNum, devNo)    -- for return variable
+        if p.Reload == '1' then
+          luup.reload ()
+        end
+        return devNo  
+      end
     },
     
     -- action=CreatePluginDevice&PluginNum=int 	
