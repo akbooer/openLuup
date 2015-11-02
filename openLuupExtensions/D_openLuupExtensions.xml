@@ -9,7 +9,7 @@
       <service>
         <serviceType>openLuup</serviceType>
         <serviceId>openLuup</serviceId>
-        <SCPDURL>S_openLuup.xml</SCPDURL>
+        <SCPDURL>S_openLuupExtensions.xml</SCPDURL>
       </service>
     </serviceList>
     <implementationList>

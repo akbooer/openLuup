@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<scpd xmlns="urn:schemas-upnp-org:service-1-0">
+  <actionList>
+
+    <action>
+      <name>Test</name>
+      <argumentList>
+        <argument>
+          <name>TestValue</name>
+          <direction>in</direction>
+          <relatedStateVariable>Test</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>ReturnValue</name>
+          <direction>out</direction>
+          <relatedStateVariable>Test</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+
+    <action>
+      <name>SetStartupCode</name>
+      <argumentList>
+        <argument>
+          <name>StartupCode</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+
+    <action>
+      <name>SetShutdownCode</name>
+      <argumentList>
+        <argument>
+          <name>ShutdownCode</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+
+    <action>
+      <name>GetStats</name>
+      <argumentList>
+        <argument>
+          <name>CPU</name>
+          <direction>out</direction>
+          <relatedStateVariable>CpuLoad_Hours</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>Memory</name>
+          <direction>out</direction>
+          <relatedStateVariable>Memory_Mb</relatedStateVariable>
+        </argument>
+        <argument>
+          <name>Uptime</name>
+          <direction>out</direction>
+          <relatedStateVariable>Uptime_Days</relatedStateVariable>
+        </argument>
+      </argumentList>
+    </action>
+ 
+    <action>
+      <name>Reset</name>
+    </action>
+
+  </actionList>
+</scpd>
