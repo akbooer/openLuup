@@ -1,5 +1,5 @@
 _NAME = "openLuup:Extensions"
-_VERSION = "2015.11.01"
+_VERSION = "2015.11.02"
 _DESCRIPTION = "openLuup:Extensions plugin for openLuup!!"
 _AUTHOR = "@akbooer"
 
@@ -46,7 +46,9 @@ local function ticker ()
   luup.variable_set (SID.ole, "CpuLoad_Hours",   hours,   lul_device)
   luup.variable_set (SID.ole, "Uptime_Days",     days,    lul_device)
   
-  display ("Uptime " .. days .. " days", "Memory " .. memory .. " Mb")
+  display (
+    "Uptime " .. days .. " days", 
+    "Memory " .. memory .. " Mb,  CPU " .. percent .. " %")
   
   local sfmt = "openLuup PLUGIN memory: %0.1f Mb, uptime: %0.2f days, cpu: %0.2f hours (%0.1f%%)"
   local stats = sfmt: format (memory, days, hours, percent)
