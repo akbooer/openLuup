@@ -1,4 +1,4 @@
-local revisionDate = "2015.11.01"
+local revisionDate = "2015.11.03"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -29,6 +29,8 @@ end
 local static_data = {}          -- cache for decoded static JSON data, indexed by filename
 
 local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
+
+local sys_watchers = {}         -- list of system-wide (ie. non-device-specific) watchers
 
 ----
 --
@@ -138,11 +140,55 @@ function service.new (serviceId, devNo)        -- factory for new services
     -- variables
     actions       = actions,
     variables     = variables,
+    watchers      = {},                       -- callback hooks for service (any variable)
     -- methods
     variable_set  = variable_set,
     variable_get  = variable_get,
   }
 end
+
+
+-----
+--
+-- WATCH devices, services and variables
+-- 
+-- function: variable_watch
+-- parameters: device (number), function (function), service (string), variable (string or nil)
+-- returns: nothing
+-- Adds the function to the list(s) of watchers
+-- If variable is nil, function will be called whenever any variable in the service is changed. 
+-- If device is nil see: http://forum.micasaverde.com/index.php/topic,34567.0.html
+-- thanks @vosmont for clarification of undocumented feature
+--
+
+local function variable_watch (dev, fct, serviceId, variable)
+  local callback = {callback = fct, devNo = (luup or {}).device}    -- devNo is current context
+  if dev then
+    -- a specfic device
+    local srv = dev.services[serviceId]
+    if srv then
+      local var = srv.variables[variable] 
+      if var then                                 -- set the watch on the variable
+        var.watchers[#var.watchers+1] = callback
+      else                                        -- set the watch on the service
+        srv.watchers[#srv.watchers+1] = callback
+      end
+    else
+      dev.watchers[#dev.watchers+1] = callback     -- set the watch on the device
+    end
+  else
+    -- ALL devices
+    if serviceId then   -- can only watch specific service across all devices
+      sys_watchers[serviceId] = sys_watchers[serviceId] or {}
+      local srv = sys_watchers[serviceId]
+      local var = variable or "*"
+      srv[var] = srv[var] or {}
+      local watch = srv[var]
+      watch[#watch+1] = callback  -- set the watch on the variable or service
+    end
+  end
+end
+
 
 -----
 --
@@ -187,7 +233,7 @@ local function create (devNo, device_type, internal_id, description, upnp_file, 
   local version               -- set device version (used to flag changes for HTTP requests)
   local code                  -- the module containing the device implementation code
   local missing_action        -- an action callback to catch missing actions
-  
+  local watchers    = {}      -- list of watchers for any service or variable
   
   -- Checks whether a device has successfully completed its startup sequence. If so, is_ready returns true. 
   local function is_ready ()
@@ -195,13 +241,34 @@ local function create (devNo, device_type, internal_id, description, upnp_file, 
   end
  
   -- function: variable_set
-  -- parameters: service (string), variable (string), value (string)
+  -- parameters: service (string), variable (string), value (string), watch (boolean)
+  -- if watch is true, then invoke any watchers for this device/service/variable
   -- returns: the variable object 
-  local function variable_set (self, serviceId, name, value)
+  local function variable_set (self, serviceId, name, value, watch)
     local srv = services[serviceId] or service.new(serviceId, devNo)     -- create serviceId if missing
     services[serviceId] = srv
     local var = srv:variable_set (name, value)                    -- this updates the variable's data version
     version = dataversion.value                                   -- ...and now update the device version 
+    if watch then
+    -- note that this only _schedules_ the callbacks, they are not actually invoked _now_
+      local dev = self
+      local sys = sys_watchers[serviceId] or {}  
+      if sys["*"] then                -- flag as service value change to non-specific device watchers
+        scheduler.watch_callback {var = var, watchers = sys["*"]} 
+      end 
+      if sys[name] then               -- flag as variable value change to non-specific device watchers
+        scheduler.watch_callback {var = var, watchers = sys[name]} 
+      end 
+      if #dev.watchers > 0 then           -- flag as device value change to watchers
+        scheduler.watch_callback {var = var, watchers = watchers} 
+      end 
+      if #srv.watchers > 0 then       -- flag as service value change to watchers
+        scheduler.watch_callback {var = var, watchers = srv.watchers} 
+      end 
+      if #var.watchers > 0 then       -- flag as variable value change to watchers
+        scheduler.watch_callback {var = var, watchers = var.watchers} 
+      end 
+    end
     return var
   end
  
@@ -212,22 +279,7 @@ local function create (devNo, device_type, internal_id, description, upnp_file, 
     local var
     local srv = services[serviceId]
     if srv then var = srv:variable_get (name) end
-    return var
-  end
-  
-  -- function: variable_watch
-  -- parameters: function (function), service (string), variable (string or nil)
-  -- returns: the variable object
-  -- Adds the function to the list of watchers
-  -- If variable is nil, function will be called whenever any variable in the service is changed. [NOT IMPLEMENTED]
-  local function variable_watch (self, fct, serviceId, variable)
-    local var
-    local srv = services[serviceId]
-    if srv and srv.variables[variable] then
-      var = srv.variables[variable] 
-      var.watchers[#var.watchers+1] = {callback = fct, devNo = (luup or {}).device}
-    end
-    return var
+    return var, srv
   end
   
   -- function: supports_service
@@ -442,6 +494,7 @@ local function create (devNo, device_type, internal_id, description, upnp_file, 
         attributes          = attributes,
         environment         = code,
         services            = services,
+        watchers            = watchers,
         io                  = {
             incoming            = incoming_handler, 
          },             -- area for io related data (see luup.io)
@@ -454,7 +507,6 @@ local function create (devNo, device_type, internal_id, description, upnp_file, 
         supports_service    = supports_service,
         variable_set        = variable_set, 
         variable_get        = variable_get,
-        variable_watch      = variable_watch,
         version_get         = function () return version end,
         -- for debug only
         service_data        = service_data,
@@ -474,6 +526,7 @@ return {
   
   -- methods
   create                    = create,
+  variable_watch            = variable_watch,
   new_dataversion           = new_dataversion,
   new_userdata_dataversion  = new_userdata_dataversion,
 }

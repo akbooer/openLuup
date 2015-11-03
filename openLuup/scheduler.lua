@@ -1,5 +1,5 @@
 local _NAME = "openLuup.scheduler"
-local revisionDate = "2015.10.15"
+local revisionDate = "2015.11.03"
 local banner = "version " .. revisionDate .. "  @akbooer"
 
 --
@@ -370,15 +370,16 @@ local function luup_callbacks ()
 --  repeat
     N = N + 1
     local old_watch_list = watch_list
-    watch_list = {}                                   -- new list, because callbacks may change some variables!
-    for _, var in ipairs (old_watch_list) do
-      for _, watcher in ipairs (var.watchers) do              -- single variable may have multiple watchers
-        _log (("%d.%s.%s %s"): format(var.dev or 888, var.srv, var.name, tostring (watcher.callback)), 
+    watch_list = {}                       -- new list, because callbacks may change some variables!
+    for _, callback in ipairs (old_watch_list) do
+      for _, watcher in ipairs (callback.watchers) do   -- single variable may have multiple watchers
+        local var = callback.var
+        _log (("%s.%s.%s %s"): format(var.dev, var.srv, var.name, tostring (watcher.callback)), 
                   "luup.watch_callback") 
         local ok, msg = context_switch ( 
           watcher.devNo, watcher.callback, var.dev, var.srv, var.name, var.old, var.value) 
         if not ok then
-          _log (("%d.%s.%s ERROR %s %s"): format(var.dev or 888, var.srv, var.name, 
+          _log (("%s.%s.%s ERROR %s %s"): format(var.dev or '?', var.srv, var.name, 
                                               msg or '?', tostring (watcher.callback))) 
         end
       end

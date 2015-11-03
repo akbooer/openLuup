@@ -1,5 +1,5 @@
 local _NAME = "openLuup.luup"
-local revisionDate = "2015.11.01"
+local revisionDate = "2015.11.03"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -146,10 +146,10 @@ end
 -- function: variable_set
 -- parameters: service (string), variable (string), value (string), device (string or number), [startup (bool)]
 -- returns: nothing 
-local function variable_set (service, name, value, device)
+local function variable_set (service, name, value, device, startup)
   local msg
   local dev = devices[device]
-  if not dev then   -- better diagnostic
+  if not dev then 
     msg = ("No such device %s.%s.%s"): format (tostring(device or '?'),service or '?', name or '?')
     _log (msg, "luup.variable_set")
     return
@@ -157,12 +157,9 @@ local function variable_set (service, name, value, device)
   service = tostring (service)
   name = tostring(name)
   value = tostring (value)
-  local var = dev:variable_set (service, name, value) 
+  local var = dev:variable_set (service, name, value, not startup) 
   if var then
-    if #var.watchers > 0 then                              -- flag as variable value change to watchers
-      scheduler.watch_callback (var) 
-    end 
-    msg = ("%s.%s.%s was: %s now: %s #hooks:%d"): format (tostring(device),service, name, 
+    msg = ("%s.%s.%s was: %s now: %s #hooks:%d"): format (device,service, name, 
                 var.old or "MISSING", value, #var.watchers)
     _log (msg, "luup.variable_set")
     _log_altui_variable (var)              -- log for altUI to see
@@ -417,15 +414,22 @@ end
 -- which if a string is interpreted as a UDN [NOT IMPLEMENTED] 
 -- and if a number as a device ID, function_name will be called
 -- with parameters: device, service, variable, value_old, value_new.
--- If variable is nil, function_name will be called whenever any variable in the service is changed. [NOT IMPLEMENTED]
+-- If variable is nil, function_name will be called whenever any variable in the service is changed. 
+-- If device is nil see: http://forum.micasaverde.com/index.php/topic,34567.0.html
+-- thanks @vosmont for clarification of undocumented feature
 local function variable_watch (global_function_name, service, variable, device)
   local fct = entry_point (global_function_name, "luup.variable_watch")
-  if fct then
-    local var = (devices[device] or missing(device)):variable_watch (fct, service, variable)
-    local msg = ("callback=%s, watching=%d.%s.%s"): format (global_function_name, tonumber(device), service, variable)
-    _log (msg, "luup.variable_watch")
-    if not var then _log ("watch variable not found", "luup.variable_watch") end
+  if not fct then
+    _log ("callback function '" .. global_function_name .. "' not found", "luup.variable_watch")
+    return
   end
+  
+  local dev = devices[device or '']
+  devutil.variable_watch (dev, fct, service, variable)   -- deals with missing device/service/variable
+  
+  local fmt = "callback=%s, watching=%s.%s.%s"
+  local msg = fmt: format (global_function_name, (dev and device) or '*', service or '*', variable or '*')
+  _log (msg, "luup.variable_watch")
 end
 
 --------------

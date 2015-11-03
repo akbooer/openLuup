@@ -1,4 +1,4 @@
-local version = "XML  2015.10.21  @akbooer"
+local version = "XML  2015.11.03  @akbooer"
 
 --
 -- Routines to read Device / Service / Implementation XML files
@@ -6,10 +6,11 @@ local version = "XML  2015.10.21  @akbooer"
 -- general xml reader: this is just good enough to read device and implementation .xml files
 -- doesn't cope with XML attributes or empty elements: <tag />
 --
+-- DOES cope with comments (thanks @vosmont)
+
 -- TODO: proper XML parser rather than nasty hack?
 -- TODO: escape special characters in encode and decode
 --
--- gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
 
 -- XML:extract ("name", "subname", "subsubname", ...)
 -- return named part or empty list
@@ -61,7 +62,11 @@ local function xml_read (self, filename)
     local f = io.open (filename or self) 
     if f then 
       xml = f: read "*a"
-      f: close ()  
+      f: close () 
+      -- Thanks @vosmont
+      -- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
+      xml = xml: gsub ("<!%-%-.-%-%->", '') -- remove such like: <!-- This is a comment --> 
+-- TODO:     xml = xml: gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
       xml_cache[filename] = xml   -- save in cache
     end
   end
