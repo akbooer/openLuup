@@ -1,4 +1,4 @@
-local version = "openLuup.gateway    2015.11.01  @akbooer"
+local version = "openLuup.gateway    2015.11.04  @akbooer"
 
 -- HOME AUTOMATION GATEWAY
 --
@@ -20,6 +20,7 @@ local SID = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
 
 Device_0.services[SID] = 
 {
+  variables = {},
   actions = {
     
     --[[ action=CreateDevice
@@ -99,18 +100,23 @@ Device_0.services[SID] =
     
     --]]
     CreateDevice = {  -- run as a job so that the calling action returns success immediately
-      job = function (lul_device, p)
+      run = function (lul_device, p)
     -- luup.create_device (device_type, internal_id, description, upnp_file, upnp_impl, 
     --                  ip, mac, hidden, invisible, parent, room, pluginnum, statevariables...)
         local ip, mac, hidden, invisible, parent
         local devNo = luup.create_device ('', '', p.Description, p.UpnpDevFilename, p.UpnpImplFilename,
-                                        ip, mac, hidden, invisible, parent, p.RoomNum)
-        Device_0:variable_set (SID, DeviceNum, devNo)    -- for return variable
+                                        ip, mac, hidden, invisible, parent, tonumber(p.RoomNum))
+--        Device_0:variable_set (SID, "DeviceNum", devNo)    -- for return variable
+        Device_0.services[SID] ["DeviceNum"] = {value = devNo}    -- for return variable
+        return true  
+      end,
+      job = function (_, p)
         if p.Reload == '1' then
           luup.reload ()
         end
-        return devNo  
+
       end
+      
     },
     
     -- action=CreatePluginDevice&PluginNum=int 	

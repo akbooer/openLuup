@@ -10,6 +10,7 @@ local version = "XML  2015.11.03  @akbooer"
 
 -- TODO: proper XML parser rather than nasty hack?
 -- TODO: escape special characters in encode and decode
+-- TODO: xml = xml: gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
 --
 
 -- XML:extract ("name", "subname", "subsubname", ...)
@@ -66,7 +67,6 @@ local function xml_read (self, filename)
       -- Thanks @vosmont
       -- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
       xml = xml: gsub ("<!%-%-.-%-%->", '') -- remove such like: <!-- This is a comment --> 
--- TODO:     xml = xml: gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
       xml_cache[filename] = xml   -- save in cache
     end
   end

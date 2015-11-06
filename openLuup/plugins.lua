@@ -1,5 +1,5 @@
 local _NAME = "openLuup.plugins"
-local revisionDate = "2015.10.16"
+local revisionDate = "2015.11.06"
 local banner = "  version " .. revisionDate .. "  @akbooer"
 
 --
@@ -7,6 +7,10 @@ local banner = "  version " .. revisionDate .. "  @akbooer"
 --  
 
 local logs          = require "openLuup.logs"
+local lfs           = require "lfs"             -- for portable mkdir and dir
+
+local pathSeparator = package.config:sub(1,1)   -- thanks to @vosmont for this Windows/Unix discriminator
+                            -- although since lfs (luafilesystem) accepts '/' or '\', it's not necessary
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -15,8 +19,10 @@ _log (banner, _NAME)   -- for version control
 
 -- ALTUI
 
+local DEFAULT_ALTUI = 859
+
 -- invoked by
--- /data_request?id=action&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&action=CreatePlugin&PluginNum=8246&Version=29120&TracRev=794
+-- /data_request?id=action&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&action=CreatePlugin&PluginNum=8246&TracRev=859
 
 
 local InstalledPlugins2 = {}
@@ -97,8 +103,8 @@ local InstalledPlugins2 = {}
 },
 --]]
 
-local altui_downloads = "plugins/downloads/altui/"
-local altui_backup    = "plugins/backup/altui/"
+local altui_downloads = table.concat ({"plugins", "downloads", "altui", ''}, pathSeparator)
+local altui_backup    = table.concat ({"plugins", "backup"   , "altui", ''}, pathSeparator)
 
 local Vmajor, Vminor
 
@@ -162,14 +168,51 @@ local function get_from_trac (rev, subdir)
   return files
 end
 
+local function file_copy (source, dest)
+  local directory = "%.$"
+  if (source: match (directory)) or (dest: match (directory)) then
+    return nil, "filecopy: won't copy directory files!"
+  end
+  print (source, dest)
+  local f, msg, content
+  f, msg = io.open (source, 'r')
+  if f then
+    content = f: read "*a"
+    f: close ()
+    f, msg = io.open (dest, 'w+')
+    if f then
+      f: write (content)
+      f: close ()
+      print ('', "copied", #content)    -- TODO: remove
+    end
+  end
+  return not msg, msg  
+end
+
+local function mkdir_tree (path)
+  local i = 1
+  repeat -- work along path creating directories if necessary
+    local _,j = path: find ("%w+", i)
+    if j then
+      local dir = path:sub (1,j)
+      lfs.mkdir (dir)
+      i = j + 1
+    end
+  until not j
+end
+
 local function update_altui (p)
-  local rev =  tonumber (p.TracRev) or 808
-  _log "backing up ALUTI plugin"
-  os.execute ("mkdir -p " .. altui_backup)
-  os.execute ("cp -f *ALTUI* " .. altui_backup)
+  local rev =  tonumber (p.TracRev) or DEFAULT_ALTUI
+  _log "backing up AltUI plugin"
+  mkdir_tree (altui_backup)
+  for file in lfs.dir "." do
+    if file: match "ALTUI" then
+      file_copy (file, altui_backup .. file)
+    end
+  end
 
   _log ("downloading ALTUI rev " .. rev) 
-  os.execute ("mkdir -p " .. altui_downloads)
+  mkdir_tree (altui_downloads)
 
   -- get ALTUI and blockly sub-directory
   local afiles = get_from_trac (rev)
@@ -244,7 +287,13 @@ local function update_altui (p)
   
   
   _log "installing new version"
-  os.execute ("cp " .. altui_downloads .. "* .")
+  for file in lfs.dir (altui_downloads) do
+    if file: match "ALTUI" then
+      file_copy (altui_downloads .. file, file)
+    end
+  end
+
+
 --  update_installed_plugins (afiles, bfiles)   -- TODO: re-instate at some future time, perhaps?
   install_altui_if_missing ()
   luup.reload ()
@@ -259,7 +308,7 @@ local function create (p)
 end
 
 local function delete ()
-  _log "Can't delete ALTUI plugin"
+  _log "Can't delete plugin"
   return false
 end
 
@@ -268,6 +317,7 @@ local function installed (info)
   InstalledPlugins2 = info or InstalledPlugins2
   return InstalledPlugins2
 end
+
 
 return {
   create    = create,

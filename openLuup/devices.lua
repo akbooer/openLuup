@@ -237,7 +237,7 @@ local function create (devNo, device_type, internal_id, description, upnp_file, 
   
   -- Checks whether a device has successfully completed its startup sequence. If so, is_ready returns true. 
   local function is_ready ()
-    return true           -- TODO: wait on startup sequence when implemented
+    return true           -- TODO: wait on startup sequence 
   end
  
   -- function: variable_set
