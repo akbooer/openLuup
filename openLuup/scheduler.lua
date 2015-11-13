@@ -1,12 +1,13 @@
 local _NAME = "openLuup.scheduler"
-local revisionDate = "2015.11.03"
+local revisionDate = "2015.11.10"
 local banner = "version " .. revisionDate .. "  @akbooer"
 
 --
 -- openLuup job scheduler
 --
 -- The scheduler handles creation / running / deletion of jobs which run asynchronously.  
--- It is a cooperative scheduler so requires good behaviour in terms of client job run time.
+-- It is a non-preemptive (cooperative) scheduler, 
+-- so requires good behaviour in terms of client job run time.
 -- Included in asynchronous processing are: delays / timers / watch callbacks / actions / jobs...
 -- ...and incoming data for registered sockets
 -- Callbacks which use named global functions are resolved using the appropriate device context
@@ -15,6 +16,7 @@ local banner = "version " .. revisionDate .. "  @akbooer"
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"         -- socket library needed to access time in millisecond resolution
+local debug     = require "debug"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -22,6 +24,8 @@ _log (banner, _NAME)   -- for version control
 
 
 -- LOCAL variables
+
+--TODO: (an important one) move the current device context luup.device to here
 
 local exit_code     -- set to Unix process exit code to stop scheduler
 
@@ -65,7 +69,7 @@ end
 -- basically a pcall, which sets and restores luup.device to given devNo
 -- this should be the only pcall in the whole of openLuup
 -- if devNo is nil, the existing device context is retained
-local function context_switch (devNo, ...)
+local function context_switch (devNo, fct, ...)
   local l = luup or {}                    -- luup not present in testing, perhaps
   local old = l.device                    -- save current device context
   l.device = devNo or old
@@ -76,7 +80,7 @@ local function context_switch (devNo, ...)
     end
     return ok, msg, ... 
   end
-  return restore (pcall (...))
+  return restore (xpcall (fct, debug.traceback, ...))
 end
 
 
