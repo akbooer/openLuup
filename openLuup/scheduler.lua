@@ -351,7 +351,7 @@ local function socket_callbacks (timeout)
     local dev  = info.devNo
     local ok, msg = context_switch (dev, call, sock)    -- dispatch  
     if not ok then 
-      _log (tostring(schedule.callback) .. " ERROR: " .. (msg or '?'), "luup.incoming_callback") 
+      _log (tostring(info.callback) .. " ERROR: " .. (msg or '?'), "luup.incoming_callback") 
     end
   end
 end
