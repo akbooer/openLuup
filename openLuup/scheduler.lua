@@ -1,5 +1,5 @@
 local _NAME = "openLuup.scheduler"
-local revisionDate = "2015.11.12"
+local revisionDate = "2015.11.10"
 local banner = "version " .. revisionDate .. "  @akbooer"
 
 --
@@ -15,8 +15,8 @@ local banner = "version " .. revisionDate .. "  @akbooer"
 --
 
 local logs      = require "openLuup.logs"
-local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
-local debug     = require "debug"         -- for debug.traceback() in xpcall
+local socket    = require "socket"         -- socket library needed to access time in millisecond resolution
+local debug     = require "debug"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -83,15 +83,6 @@ local function context_switch (devNo, fct, ...)
   return restore (xpcall (fct, debug.traceback, ...))
 end
 
---local function context_switch (devNo, fct, ...)
---  local function restore (ok, msg, ...) 
---    if not ok then
---      _log (" ERROR: " .. (msg or '?'), "openLuup.context_switch") 
---    end
---    return ok, msg, ... 
---  end
---  return restore (xpcall (fct, debug.traceback, ...))
---end
 
 -- CONSTANTS
 
@@ -364,7 +355,7 @@ local function socket_callbacks (timeout)
     local dev  = info.devNo
     local ok, msg = context_switch (dev, call, sock)    -- dispatch  
     if not ok then 
-      _log (tostring(info.callback) .. " ERROR: " .. (msg or '?'), "luup.incoming_callback") 
+      _log (tostring(schedule.callback) .. " ERROR: " .. (msg or '?'), "luup.incoming_callback") 
     end
   end
 end
