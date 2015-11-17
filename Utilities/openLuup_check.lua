@@ -3,7 +3,7 @@
 -- 2015.11.17   @akbooer
 --
 
-local lfs = require "lfs"     -- now a fudamental part of openLuup (for transportability)
+local lfs = require "lfs"     -- now a fundamental part of openLuup (for transportability)
 
 local function module_check (name)
   local mod, msg = pcall (require, name)
@@ -22,7 +22,6 @@ module_check "socket"
 module_check "socket.http"
 module_check "ssl.https"
 module_check "ltn12"
-module_check "foo"
 
 
 local function exists (name)
