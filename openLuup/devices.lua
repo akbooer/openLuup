@@ -1,4 +1,4 @@
-local revisionDate = "2015.11.03"
+local revisionDate = "2015.11.16"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -413,6 +413,7 @@ local function create (devNo, device_type, internal_id, description, upnp_file, 
   end
  
   code = code or {}
+  code.lul_device = devNo
   -- go through actions and link into services
   local action_list = code._openLuup_ACTIONS_
   if action_list then
