@@ -349,7 +349,7 @@ local function new_client (sock)
   
   _log ("new client connection: " .. tostring(sock))
   expiry = socket.gettime () + CLOSE_SOCKET_AFTER        -- set initial socket expiry 
-  sock:settimeout(10)                                    -- this is a timeout on the HTTP read
+  sock:settimeout(nil)                                    -- this is a timeout on the HTTP read
 --  sock:setoption ("linger", {on = true, timeout = 1})  -- TODO: trying to fix timeout error on long strings
   scheduler.socket_watch (sock, incoming)                -- start listening for incoming
   local err, msg, jobNo = scheduler.run_job {job = job}
