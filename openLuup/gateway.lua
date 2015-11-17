@@ -1,18 +1,27 @@
-local version = "openLuup.gateway    2015.11.04  @akbooer"
+local version = "openLuup.gateway    2015.11.14  @akbooer"
 
 -- HOME AUTOMATION GATEWAY
 --
 -- this is the Lua implementation of the Home Automation Gateway device, aka. Device 0
 --
 
-local devutil     = require "openLuup.devices"
+local chdev       = require "openLuup.chdev"
 local plugins     = require "openLuup.plugins"
 local scenes      = require "openLuup.scenes"
-local userdata    = require "openLuup.userdata"
+local userdata    = require "openLuup.userdata"     -- for HouseMode
+local loader      = require "openLuup.loader"       -- for compile_lua
+
+local devutil = require "openLuup.devices"
 
 --- create the device!!
 
-local Device_0 = devutil.create (0, "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1")
+
+--local Device_0 = chdev.create {
+--    devNo = 0, 
+--    device_type = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
+--}
+
+local Device_0 = devutil.new (0)
 
 -- No need for an implementation file - we can define all the services right here
 
@@ -107,7 +116,6 @@ Device_0.services[SID] =
         local devNo = luup.create_device ('', '', p.Description, p.UpnpDevFilename, p.UpnpImplFilename,
                                         ip, mac, hidden, invisible, parent, tonumber(p.RoomNum))
 --        Device_0:variable_set (SID, "DeviceNum", devNo)    -- for return variable
-        Device_0.services[SID] ["DeviceNum"] = {value = devNo}    -- for return variable
         return true  
       end,
       job = function (_, p)
@@ -180,10 +188,10 @@ Device_0.services[SID] =
     -- error message should be plain text "ERROR: Code failed"
     RunLua = { 
       run = function (lul_device, lul_settings) 
-        local code = loadstring (lul_settings.Code or "return 'ERROR: code failed'")
-        -- ERROR: Code failed
-        if code then setfenv (code, scenes.environment) end   -- runs in scene/startup context
-        local ok, status = pcall (code)
+        local ok, status = loader.compile_lua (
+          lul_settings.Code or "return 'ERROR: code failed'",
+          "RunLua",
+          scenes.environment)   -- runs in scene/startup context
         return ok and (status ~= false)   
       end, 
     },   
@@ -202,7 +210,7 @@ Device_0.services[SID] =
     },
     
     -- action=SetHouseMode&Mode=...
-    -- TODO: mode change delay (easy to do with job or call_daley)
+    -- TODO: mode change delay (easy to do with job or call_delay)
     SetHouseMode = { 
       run = function (lul_device, lul_settings) 
         local valid = {

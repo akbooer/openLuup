@@ -1,4 +1,4 @@
-local version = "openLuup.logs    2015.10.15  @akbooer"
+local version = "openLuup.logs    2015.11.12  @akbooer"
 
 --
 -- log handling - basic at the moment
@@ -86,11 +86,11 @@ end
 
 --
 -- syslog
---
+--[[
 
 local syslog = {
   
-emergency, alert, critical, error, warning, notice, info, debug = 0,1,2,3,4,5,6,7,
+--emergency, alert, critical, error, warning, notice, info, debug = 0,1,2,3,4,5,6,7,
 
 
 server = function (ip_and_port, tag, hostname)
@@ -115,6 +115,7 @@ server = function (ip_and_port, tag, hostname)
 end
 
 }
+--]]
 
 --
 -- log message to luup.log file
@@ -163,12 +164,11 @@ local function openLuup_logger (info)
   end
 
   -- format and write log
-  local function send (msg, subsystem_or_number)
+  local function send (msg, subsystem_or_number, devNo)
     subsystem_or_number = subsystem_or_number or 50
     if type (subsystem_or_number) == "number" then subsystem_or_number = "luup_log" end
     local now = formatted_time "%Y-%m-%d %H:%M:%S"
-    local devNo = (luup or {}).device or ''
-    local message = table.concat {now, "   ",subsystem_or_number, ":", devNo, ": ", tostring(msg), '\n'}
+    local message = table.concat {now, "   ",subsystem_or_number, ":", devNo or '', ": ", tostring(msg), '\n'}
     write (message)
   end
 

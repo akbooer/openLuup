@@ -1,5 +1,5 @@
 local _NAME = "openLuup.luup"
-local revisionDate = "2015.11.03"
+local revisionDate = "2015.11.16"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -20,8 +20,16 @@ local loader        = require "openLuup.loader"   -- simply to access shared env
 local chdev         = require "openLuup.chdev"
 local io            = require "openLuup.io"    
 
+-- global log
+
+-- @param: what_to_log (string), log_level (optional, number)
+local function log (msg, level)
+  logs.send (msg, level, scheduler.current_context())
+end
+
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
+local function _log (msg, name) log (msg, name or _NAME) end
+
 _log (banner, _NAME)   -- for version control
 
 local _log_altui_variable  = logs.altui_variable
@@ -48,16 +56,11 @@ local scenes = {}
 
 local remotes = {}
 
---local ENV = _G        -- save our own local environment
-
 -----
 --
 -- GLOBAL functions: Luup API
 --
   
--- @param: what_to_log (string), log_level (optional, number)
-local log = logs.send
-
 
 local function set_failure (status)
   _log ("status = " .. tostring(status), "luup.set_failure")
@@ -112,25 +115,12 @@ end
 --  DEVICE related API
 --
 
--- catch-all function to handle any method call on a missing device
-local function missing (devNo)
-  local device
-  device = setmetatable ({}, {__index = 
-    function (_, method) 
-      return function (_, ...) 
-        _log (("NO SUCH DEVICE: %s"): format (tostring(devNo)), "luup." .. tostring(method)) 
-        local error_return = {         -- appropriate return values in case of error
-            is_ready = false,
-            call_action = -1,
-            services = {},
-          }
-        return error_return[method]
-      end 
-    end
-  })
-  return device
+-- log message for missing dev / srv/ var
+local function missing_dev_srv_name (dev, srv, name, tag)
+    local fmt = "No such device/serviceId/name %s.%s.%s"
+    local msg = fmt: format (tostring(dev or '?'),srv or '?', name or '?')
+    _log (msg, tag or _NAME)
 end
-
 
 -- function: is_ready
 -- parameters: device (string or number)
@@ -140,18 +130,18 @@ end
 -- If your device shouldn't process incoming data until the startup sequence is finished, 
 -- you may want to add a condition to the <incoming> block that only processes data if is_ready(lul_device) is true.
 local function is_ready (device)
-  return (devices[device] or missing(device)):is_ready() 
+  local dev = devices[device]
+  return dev and dev:is_ready() 
 end
 
 -- function: variable_set
 -- parameters: service (string), variable (string), value (string), device (string or number), [startup (bool)]
 -- returns: nothing 
 local function variable_set (service, name, value, device, startup)
-  local msg
+  device = device or scheduler.current_context()    -- undocumented luup feature!
   local dev = devices[device]
   if not dev then 
-    msg = ("No such device %s.%s.%s"): format (tostring(device or '?'),service or '?', name or '?')
-    _log (msg, "luup.variable_set")
+    missing_dev_srv_name (device, service, name, "luup.variable_set")
     return
   end
   service = tostring (service)
@@ -159,7 +149,7 @@ local function variable_set (service, name, value, device, startup)
   value = tostring (value)
   local var = dev:variable_set (service, name, value, not startup) 
   if var then
-    msg = ("%s.%s.%s was: %s now: %s #hooks:%d"): format (device,service, name, 
+    local msg = ("%s.%s.%s was: %s now: %s #hooks:%d"): format (device,service, name, 
                 var.old or "MISSING", value, #var.watchers)
     _log (msg, "luup.variable_set")
     _log_altui_variable (var)              -- log for altUI to see
@@ -170,10 +160,14 @@ end
 -- parameters: service (string), variable (string), device (string or number)
 -- returns: value (string) and Unix time stamp (number) of when the variable last changed
 local function variable_get (service, name, device)
-  local value, time
-  local var = (devices[device] or missing(device)):variable_get (service, name, value) or {}
-  value, time = var.value, var.time
-  return value, time
+  device = device or scheduler.current_context()    -- undocumented luup feature!
+  local dev = devices[device]
+  if not dev then 
+    missing_dev_srv_name (device, service, name, "luup.variable_get")
+    return
+  end
+  local var = dev:variable_get (service, name) or {}
+  return var.value, var.time
 end
 
 
@@ -187,7 +181,14 @@ end
 -- Setting UPnP variables is unrestricted and free form, 
 -- and the engine doesn't really know if a device actually uses it or does anything with it. 
 local function device_supports_service (serviceId, device)
-  return (devices[device] or missing(device)):supports_service (serviceId)
+  local support
+  local dev = devices[device]
+  if dev then
+    support = dev:supports_service (serviceId)
+  else
+    missing_dev_srv_name (device, serviceId, '', "luup.device_supports_service")
+  end
+  return support
 end
 
 -- function: devices_by_service   -- not well defined!!
@@ -222,8 +223,13 @@ local function attr_set (attribute, value, device)
       luup[special.name or attribute] = value or ''
     end 
   else
-    (devices[device] or missing(device)): attr_set (attribute, value)
-    _log (("%s.%s = %s"): format (tostring (device), attribute, value), "luup.attr_set")
+    local dev = devices[device]
+    if dev then
+      dev: attr_set (attribute, value)
+      _log (("%s.%s = %s"): format (tostring (device), attribute, value), "luup.attr_set")
+    else
+      missing_dev_srv_name (device, "ATTRIBUTE", attribute, "luup.attr_set")
+    end
   end
 end
 
@@ -241,7 +247,12 @@ local function attr_get (attribute, device)
   if device == 0 then
     attr = userdata.attributes [attribute]
   else
-    attr = (devices[device] or missing(device)): attr_get (attribute)
+    local dev = devices[device]
+    if dev then
+      attr = dev: attr_get (attribute)
+    else
+      missing_dev_srv_name (device, "ATTRIBUTE", attribute, "luup.attr_get")
+    end
   end
   return attr
 end
@@ -282,17 +293,13 @@ end
 -- CALLBACKS
 --
 
--- utility function to find the actual function given name and current context
+-- utility function to find the actual callback function given name and current context
 local function entry_point (name, subsystem)
-  local fct, env 
-  local l = luup or {devices = {}}
-  local devNo = l.device or ''
-  
+  local fct, env
   -- look in device environment, or startup, or globally
-  env = ((l.devices or {})[devNo] or {}).environment or {}
---  fct = env[name] or _G[name] or ENV[name]
-  fct = env[name] or loader.shared_environment[name] or _G[name] 
-  
+  local dev = devices[scheduler.current_context() or 0]
+  env = (dev and dev.environment) or {}
+  fct = env[name] or loader.shared_environment[name] or _G[name]   
   if not fct then
     local msg = "unknown global function name: " .. (name or '?')
     _log (msg, subsystem or "luup.callbacks")
@@ -316,7 +323,7 @@ end
 
 local function call_action (service, action, arguments, device)
   local function find_handler (dev) -- (recursively)
-    if dev.device_num_parent ~= 0 then        -- action may be handled by parent
+    if dev and dev.device_num_parent ~= 0 then        -- action may be handled by parent
       local parent = devices[dev.device_num_parent] or {}
       if parent.handle_children then     -- action IS handled by parent
         log ("action will be handled by parent: " .. dev.device_num_parent, "luup.call_action")
@@ -331,11 +338,16 @@ local function call_action (service, action, arguments, device)
   if devNo == 0 then
     return Device_0: call_action (service, action, arguments) 
   else
-    local target_device = devices[devNo] or missing(devNo)
---    local svc = target_device.services[service]             -- TODO: fix error on missing device access
+    local target_device = devices[devNo]
+    if not target_device then
+      missing_dev_srv_name (devNo, service, action, "luup.call_action")
+    end
     local dev = find_handler (target_device)
-       
-    return dev: call_action (service, action, arguments, devNo)  
+    if dev then   
+      return dev: call_action (service, action, arguments, devNo) 
+    else
+      missing_dev_srv_name (devNo, service, action, "luup.call_action")
+    end
   end
  end
 
@@ -425,7 +437,9 @@ local function variable_watch (global_function_name, service, variable, device)
   end
   
   local dev = devices[device or '']
-  devutil.variable_watch (dev, fct, service, variable)   -- deals with missing device/service/variable
+  -- NB: following call deals with missing device/service/variable,
+  --     so CAN'T use the dev:variable_watch (...) syntax, since dev may not be defined!
+  devutil.variable_watch (dev, fct, service, variable)
   
   local fmt = "callback=%s, watching=%s.%s.%s"
   local msg = fmt: format (global_function_name, (dev and device) or '*', service or '*', variable or '*')
@@ -441,55 +455,26 @@ end
 local inet = {
  -- Returns the contents of the URL you pass in the "url" argument. 
  -- Optionally append "user" and "pass" arguments for http authentication, 
- --and "timeout" to specify the maximum time to wait in seconds.
+ -- and "timeout" to specify the maximum time to wait in seconds.
   wget = function (URL, Timeout, Username, Password)
---  _log (URL, "luup.inet.wget")
   local status, result = server.wget (URL, Timeout, Username, Password)
---  _log (("status=%s, request completed (%d bytes)"):format (tostring(status), #(result or '')), 
---                  "luup.inet.wget")
   return status, result
   end
 }
 
-
-
---[[ 
-function: create_device
-parameters:
-
-    device_type (string)
-    internal_id (string)
-    description (string)
-    upnp_file (string)
-    upnp_impl (string)
-    ip (string)
-    mac (string)
-    hidden (boolean)
-    invisible (boolean)
-    parent (number)
-    room (number)
-    pluginnum (number)
-    statevariables (string)
-    pnpid (number)
-    nochildsync (string)
-    aeskey (string) 
-    reload (boolean)
-    nodupid (boolean) 
-
-returns: the device ID
-
-This creates the device with the parameters given, and returns the device ID. 
-]]
+ 
+-- function: create_device
+-- parameters:
+--      device_type, internal_id, description, upnp_file, upnp_impl, 
+--      ip, mac, hidden, invisible, parent, room, pluginnum, statevariables,
+--      pnpid, nochildsync, aeskey, reload, nodupid
+-- returns: the device ID
+--
+-- This creates the device with the parameters given, and returns the device ID. 
+--
 local function create_device (...)
-  local devNo = tonumber (userdata.attributes ["Device_Num_Next"])
-  userdata.attributes ["Device_Num_Next"] = devNo + 1
-  local dev = devutil.create (devNo, ...)       -- make it so
-  devices[devNo] = dev                          -- save it
-  local d = (dev.device_file ~= '') and dev.device_file
-  local dtype = d or dev.device_type or '?'
-  local itype = dev.attributes.impl_file or 'no-implementation-file'
-  local msg = ("[%d] %s / %s"): format (devNo, dtype, itype)
-  _log (msg, "luup.create_device" )
+  local devNo, dev = chdev.create_device (...)      -- make it so
+  devices[devNo] = dev                              -- save it in the device table
   return devNo
 end
 
@@ -521,10 +506,10 @@ local function reload (exit_status)
   if not exit_status then         -- we're going to reload
     exit_status = 42              -- special 'reload' exit status
     local fmt = "device %d '%s' requesting reload"
-    local devNo = luup.device or 0
-    local name = (luup.devices[devNo] or {}).description or "_system_"
+    local devNo = scheduler.current_context() or 0
+    local name = (devices[devNo] or {}).description or "_system_"
     local txt = fmt:format (devNo, name)
-    print (txt)
+    print (os.date "%c", txt)
     _log (txt)
   end
   
@@ -532,7 +517,7 @@ local function reload (exit_status)
   local ok, msg = userdata.save (luup)
   assert (ok, msg or "error writing user_data")
   
-  local shutdown = luup.attr_get "ShutdownCode"
+  local shutdown = attr_get "ShutdownCode"
   if shutdown and (shutdown ~= '') then
     compile_and_run (shutdown, "_openLuup_user_Shutdown_") 
   end
@@ -607,7 +592,7 @@ return {
     call_action         = call_action,  
     call_delay          = call_delay,
     call_timer          = call_timer,
-    chdev               = chdev,
+    chdev               = chdev.chdev,
     create_device       = create_device,    
     device_supports_service = device_supports_service,    
     devices_by_service  = devices_by_service,   

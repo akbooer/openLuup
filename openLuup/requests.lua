@@ -1,5 +1,5 @@
 local _NAME = "openLuup.requests"
-local revisionDate = "2015.10.30"
+local revisionDate = "2015.11.09"
 local banner = " version " .. revisionDate .. "  @akbooer"
 
 --
@@ -12,13 +12,14 @@ local server        = require "openLuup.server"
 local json          = require "openLuup.json"
 local xml           = require "openLuup.xml"
 local scheduler     = require "openLuup.scheduler"
-local devutil       = require "openLuup.devices"
+local devutil       = require "openLuup.devices"      -- for dataversion
 local logs          = require "openLuup.logs"
 local rooms         = require "openLuup.rooms"
 local scenes        = require "openLuup.scenes"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local plugins       = require "openLuup.plugins"
+local loader        = require "openLuup.loader"       -- for static_data and loadtime
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -179,7 +180,7 @@ local function sdata(r,p,f)
     dataversion = devutil.dataversion.value,
     devices = sdata_devices_table (),
     full = 1,       -- TODO: make full=0 for partial updates
-    loadtime =  timers.loadtime,
+    loadtime = timers.loadtime,
     mode = tonumber(luup.attr_get "Mode"),
     rooms = rooms_table(),
     scenes = sdata_scenes_table(),
@@ -273,7 +274,7 @@ local function status (r,p,f)
     alerts = {},
     TimeStamp = os.time(),
     Mode = tonumber(luup.attr_get "Mode"),       
-    LoadTime = devutil.loadtime,
+    LoadTime = timers.loadtime,
     DataVersion = devutil.dataversion.value,
     UserData_DataVersion = devutil.userdata_dataversion.value 
   }
@@ -373,7 +374,7 @@ local function user_data (r,p,f)
     or distance > 1000        -- ignore silly values
     then 
     local user_data2 = {
-      LoadTime = devutil.loadtime,
+      LoadTime = timers.loadtime,
       DataVersion = devutil.userdata_dataversion.value, -- NB: NOT the same as the status DataVersion
       InstalledPlugins2 = plugins.installed (),
       category_filter = category_filter,
@@ -388,7 +389,7 @@ local function user_data (r,p,f)
       user_data2[a] = b
     end
     local sd = {}
-    for _, data in pairs (devutil.static_data) do    -- bundle up the JSON data for all devices 
+    for _, data in pairs (loader.static_data) do    -- bundle up the JSON data for all devices 
       sd[#sd+1] = data
     end
     user_data2.static_data = sd

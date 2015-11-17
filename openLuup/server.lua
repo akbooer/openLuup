@@ -161,6 +161,7 @@ local function wget (URL, Timeout, Username, Password)
 end
 
 local function send (sock, data, ...)
+--    socket.sleep(0.001) -- TODO: REMOVE SLEEP !!!!
 --  socket.select (nil, {sock}, 5)    -- wait for it to be ready.  TODO: fixes timeout error on long strings?
   local ok, err, n = sock: send (data, ...)
   if not ok then
@@ -169,7 +170,7 @@ local function send (sock, data, ...)
   if n then
     _log (("...only %d bytes sent"): format (n))
   end
-  return ok, err, n
+  return ok, err
 end
 
 -- specific encoding for chunked messages (trying to avoid long string problem)
@@ -219,7 +220,8 @@ local function http_response (sock, response, type)
       crlf}, crlf)
   send (sock, headers)
   local ok, err, nc = send_chunked (sock, response, 16000)
-  return #(response or {}), nc
+--  local ok, err, nc = send (sock, response)
+  return #(response or {}), nc or 0
 end
   
 -- convert headers to table with name/value pairs
@@ -349,8 +351,9 @@ local function new_client (sock)
   
   _log ("new client connection: " .. tostring(sock))
   expiry = socket.gettime () + CLOSE_SOCKET_AFTER        -- set initial socket expiry 
-  sock:settimeout(10)                                    -- this is a timeout on the HTTP read
---  sock:setoption ("linger", {on = true, timeout = 1})  -- TODO: trying to fix timeout error on long strings
+  sock:settimeout(nil)                                    -- this is a timeout on the HTTP read
+--  sock:settimeout(10)                                    -- this is a timeout on the HTTP read
+  sock:setoption ("tcp-nodelay", true)            -- TODO: trying to fix timeout error on long strings
   scheduler.socket_watch (sock, incoming)                -- start listening for incoming
   local err, msg, jobNo = scheduler.run_job {job = job}
 

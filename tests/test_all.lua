@@ -15,6 +15,7 @@ require "tests.test_json"
 require "tests.test_xml"
 require "tests.test_io"
 require "tests.test_userdata"
+require "tests.test_chdev"
 
 
 t.LuaUnit.run "-v" 

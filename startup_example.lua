@@ -32,13 +32,13 @@ do -- ALTUI
 end
 
 do -- ARDUINO      
-  local dev = luup.create_device ('', "Arduino", "Arduino", "D_Arduino1.xml")        
-  luup.ip_set ("172.16.42.21", dev)       -- your Arduino gateway IP address  
+--   local dev = luup.create_device ('', "Arduino", "Arduino", "D_Arduino1.xml")        
+--   luup.ip_set ("172.16.42.21", dev)       -- your Arduino gateway IP address  
 end
 
 do -- the VERA BRIDGE !!
-  local dev = luup.create_device ('', "Vera", "Vera", "D_VeraBridge.xml")
-  luup.ip_set ("172.16.42.10", dev)         -- set remote Vera IP address
+--   local dev = luup.create_device ('', "Vera", "Vera", "D_VeraBridge.xml")
+--   luup.ip_set ("172.16.42.10", dev)         -- set remote Vera IP address
 end
 
 -- set up whatever Startup Lua code you normally need here

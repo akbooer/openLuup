@@ -2,11 +2,12 @@
 --
 -- copy relevant files from remote Vera
 --
--- 2015-10-11   @akbooer
+-- 2015-11-17   @akbooer
 --
 
-local luup = require "openLuup/luup"
-local url  = require "socket.url"
+local luup  = require "openLuup.luup"
+local url   = require "socket.url"
+local lfs   = require "lfs"
 
 local code = [[
 
@@ -74,12 +75,12 @@ local function get_files_from (path, dest, url_prefix)
 end
 
 -- device, service, lua, json, files...
-os.execute "mkdir -p files"
+lfs.mkdir "files"
 get_files_from ("/etc/cmh-ludl/", "files", ":3480/")
 get_files_from ("/etc/cmh-lu/", "files", ":3480/")
 
 -- icons
-os.execute "mkdir -p icons"
+lfs.mkdir "icons"
 get_files_from ("/www/cmh/skins/default/img/devices/device_states/", 
   "icons", "/cmh/skins/default/img/devices/device_states/")   -- UI7
 --get_files_from ("/www/cmh/skins/default/icons/", "icons", "/cmh/skins/default/icons/")   -- UI5
