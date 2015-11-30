@@ -144,7 +144,7 @@ local function get_from_trac (rev, subdir)
     local content
     ok, content = luup.inet.wget (b)
     if ok ~= 0 then return false end
-    _log (("%d %s"): format (#content, fname))
+    _log (("%-8d %s"): format (#content, fname))
     if fname == "L_ALTUI.lua" then
       Vmajor, Vminor = content: match [[local%s+version%s+=%s+%"%a+(%d+)%.(%d+)]]
       if Vminor then
@@ -173,7 +173,6 @@ local function file_copy (source, dest)
   if (source: match (directory)) or (dest: match (directory)) then
     return nil, "filecopy: won't copy directory files!"
   end
-  print (source, dest)
   local f, msg, content
   f, msg = io.open (source, 'r')
   if f then
@@ -183,10 +182,10 @@ local function file_copy (source, dest)
     if f then
       f: write (content)
       f: close ()
-      print ('', "copied", #content)    -- TODO: remove
     end
   end
-  return not msg, msg  
+  local bytes = content and #content or 0
+  return not msg, msg, bytes 
 end
 
 local function mkdir_tree (path)
@@ -289,7 +288,13 @@ local function update_altui (p)
   _log "installing new version"
   for file in lfs.dir (altui_downloads) do
     if file: match "ALTUI" then
-      file_copy (altui_downloads .. file, file)
+      local ok, msg, bytes = file_copy (altui_downloads .. file, file)
+      if ok then
+        msg = ("%-8d %s"):format (bytes, file)
+        _log (msg)
+      else
+        _log ("ERROR installing " .. file)
+      end
     end
   end
 

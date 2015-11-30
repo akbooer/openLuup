@@ -1,5 +1,5 @@
 _NAME = "VeraBridge"
-_VERSION = "2015.11.01"
+_VERSION = "2015.11.12"
 _DESCRIPTION = "VeraBridge plugin for openLuup!!"
 _AUTHOR = "@akbooer"
 
@@ -11,10 +11,13 @@ _AUTHOR = "@akbooer"
 
 -- 2015-08-24   openLuup-specific code to action ANY serviceId/action request
 -- 2015-11-01   change device numbering scheme
+-- 2015-11-12   create links to remote scenes
+-- TODO: revert to original Vera altid (needed for Zwave devices) and clone device 1.
 
 local devNo                      -- our device number
 
 local json    = require "openLuup.json"
+local scenes  = require "openLuup.scenes"
 local url     = require "socket.url"
 
 local ip                          -- remote machine ip address
@@ -31,6 +34,7 @@ local SID = {
 -- mapping between remote and local device IDs
 
 local OFFSET                      -- offset to base of new device numbering scheme
+local BLOCKSIZE = 10000           -- size of each block of device and scene IDs allocated
 
 local function local_by_remote_id (id) 
   return id + OFFSET
@@ -68,7 +72,6 @@ end
 -- create a child device for each remote one
 -- we cheat standard luup here by manipulating the top-level attribute Device_Num_Next
 -- in advance of calling chdev.append so that we can force a specific device number.
--- this devices table is from the "user_data" request
 local function create_children (devices, new_room)
   local remote_attr = {}      -- important attibutes, indexed by remote dev.id
   
@@ -78,7 +81,7 @@ local function create_children (devices, new_room)
   local invisible = false
   
   local n = 0
-  for _, dev in ipairs (devices) do
+  for _, dev in ipairs (devices) do   -- this devices table is from the "user_data" request
     if not (dev.invisible == "1") then
       n = n + 1
       local remote_id = tonumber (dev.id) 
@@ -87,7 +90,15 @@ local function create_children (devices, new_room)
       local variables = create_variables (dev.states)
       local impl_file = 'X'  -- override device file's implementation definition... musn't run here!
       luup.attr_set ("Device_Num_Next", cloneId)    -- set this, in case next call creates new device
-      luup.chdev.append (devNo, childDevices, dev.id, dev.name, 
+      -- changed altids to enable plugins which manipulate Zwave devices directly...
+      -- and expect altids to be the Zwave node number...
+      local altid = cloneId
+      if tonumber(dev.id_parent) == 1 then    -- it's a Zwave device, use its altid (Zwave node #)
+        altid = dev.altid
+      end
+      -- ... but note that this must be unique within our child devices
+      -- ... Zwave node numbers can't be more than about 250, so this should be OK
+      luup.chdev.append (devNo, childDevices, altid, dev.name, 
         dev.device_type, dev.device_file, impl_file, 
         variables, embedded, invisible, new_room)
     end
@@ -100,9 +111,53 @@ local function create_children (devices, new_room)
   return n
 end
 
+-- remove old scenes within our allocated block
+local function remove_old_scenes ()
+  local min, max = OFFSET, OFFSET + BLOCKSIZE
+  for n in pairs (luup.scenes) do
+    if (min < n) and (n < max) then
+      luup.scenes[n] = nil            -- nuke it!
+    end
+  end
+end
+
+-- create a link to remote scenes
+local function create_scenes (remote_scenes, room)
+  local N,M = 0,0
+--  remove_old_scenes ()
+  luup.log "linking to remote scenes..."
+  
+  local action = "RunScene"
+  local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+  local wget = 'luup.inet.wget "http://%s:3480/data_request?id=action&serviceId=%s&action=%s&SceneNum=%d"' 
+  
+  for _, s in pairs (remote_scenes) do
+    local id = s.id + OFFSET             -- retain old number, but just offset it
+    if not s.notification_only then
+      if luup.scenes[id] then  -- don't overwrite existing
+        M = M + 1
+      else
+        local new = {
+          id = id,
+          name = s.name,
+          room = room,
+          lua = wget:format (ip, sid, action, s.id)   -- trigger the remote scene
+          }
+        luup.scenes[new.id] = scenes.create (new)
+        luup.log (("scene [%d] %s"): format (new.id, new.name))
+        N = N + 1
+      end
+    end
+  end
+  
+  local msg = "scenes: existing= %d, new= %d" 
+  luup.log (msg:format (M,N))
+  return N+M
+end
+
 local function GetUserData ()
   local Vera    -- (actually, 'remote' Vera!)
-  local Ndev = 0
+  local Ndev, Nscn = 0, 0
   local url = table.concat {"http://", ip, ":3480/data_request?id=user_data&output_format=json"}
   local status, j = luup.inet.wget (url)
   if status == 0 then Vera = json.decode (j) end
@@ -119,10 +174,12 @@ local function GetUserData ()
   
       Ndev = #Vera.devices
       luup.log ("number of remote devices = " .. Ndev)
-      Ndev = create_children (Vera.devices or {}, local_room_index[new_room_name] or 0)
+      local roomNo = local_room_index[new_room_name] or 0
+      Ndev = create_children (Vera.devices or {}, roomNo)
+      Nscn = create_scenes (Vera.scenes, roomNo)
     end
   end
-  return Ndev
+  return Ndev, Nscn
 end
 
 -- MONITOR variables
@@ -131,6 +188,7 @@ end
 -- this devices table is from the "status" request
 local function UpdateVariables(devices)
   for _, dev in pairs (devices) do
+    if tonumber (dev.id) == 1 then luup.log "Zwave data update ignored for device 1" end
     local i = local_by_remote_id(dev.id)
     if i and luup.devices[i] and (type (dev.states) == "table") then
       for _, v in ipairs (dev.states) do
@@ -163,9 +221,10 @@ end
 -- find other bridges in order to establish base device number for cloned devices
 local function findOffset ()
   local offset
+  local my_type = luup.devices[devNo].device_type
   local bridges = {}      -- devNos of ALL bridges
   for d, dev in pairs (luup.devices) do
-    if dev.device_type == "VeraBridge" then
+    if dev.device_type == my_type then
       bridges[#bridges + 1] = d
     end
   end
@@ -173,7 +232,7 @@ local function findOffset ()
   for d, n in ipairs (bridges) do
     if n == devNo then offset = d end
   end
-  return offset * 10000   -- every remote machine starts in a new block of 10,000 devices
+  return offset * BLOCKSIZE   -- every remote machine starts in a new block of devices
 end
 
 -- logged request
@@ -217,24 +276,23 @@ end
 
 -- plugin startup
 function init (lul_device)
-  luup.log ("VeraBridge")
-  luup.log (_VERSION)
   luup.log (_NAME)
+  luup.log (_VERSION)
     
   devNo = lul_device
   OFFSET = findOffset ()
   luup.log ("device clone numbering starts at " .. OFFSET)
 
-  local catch = luup.devices[devNo].action_callback    -- catch all undefined action calls
-  if catch then catch (generic_action) end
+  luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
   
   ip = luup.attr_get ("ip", devNo)
   luup.log (ip)
   
-  local Ndev = GetUserData ()
+  local Ndev, Nscn = GetUserData ()
   luup.variable_set (SID.gateway, "Devices", Ndev, devNo)
+  luup.variable_set (SID.gateway, "Scenes",  Nscn, devNo)
   luup.variable_set (SID.gateway, "Version", _VERSION, devNo)
-  luup.variable_set (SID.altui, "DisplayLine1", Ndev.." devices", devNo)
+  luup.variable_set (SID.altui, "DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", devNo)
   luup.variable_set (SID.altui, "DisplayLine2", ip, devNo)
 
   VeraBridge_delay_callback ()

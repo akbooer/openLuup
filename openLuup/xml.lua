@@ -1,4 +1,4 @@
-local version = "XML  2015.11.03  @akbooer"
+local version = "XML  2015.11.12  @akbooer"
 
 --
 -- Routines to read Device / Service / Implementation XML files
@@ -10,7 +10,6 @@ local version = "XML  2015.11.03  @akbooer"
 
 -- TODO: proper XML parser rather than nasty hack?
 -- TODO: escape special characters in encode and decode
--- TODO: xml = xml: gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
 --
 
 -- XML:extract ("name", "subname", "subsubname", ...)
@@ -37,6 +36,7 @@ local function xml2Lua (info)
     local x,y = xml2Lua (b)                               -- get the value of the contents
     xml[a] = xml[a] or {}                                 -- if this tag doesn't exist, start a list of values
     xml[a][#xml[a]+1] = x or y   -- add new value to the list (might be table x, or just text y)
+-- TODO: y: gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
     result = xml
   end 
   if type (result) == "table" then
@@ -112,12 +112,25 @@ end
 
 
 return {
+  -- performance data
+  performance = function () 
+    return {
+      hits    = hits,
+      reads   = reads,
+      cache   = xml_cache,
+    }
+  end,
+  
+  -- constants
+  version = version,
+  
+  -- methods
+  
   extract = extract,
   xml2Lua = xml2Lua, 
   decode  = xml2Lua, 
   read    = xml_read, 
   Lua2xml = Lua2xml,
   encode  = Lua2xml,
-  version = version,
 }
 

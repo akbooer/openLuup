@@ -40,5 +40,5 @@
 			"Function": "advanced_device"
 		},
 	],
-	"DeviceType": "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
+	"DeviceType": "VeraBridge"
 }

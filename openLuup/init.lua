@@ -1,5 +1,5 @@
 local _NAME = "openLuup.init"
-local revisionDate = "2015.11.01"
+local revisionDate = "2015.11.12"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -24,7 +24,7 @@ local timers        = require "openLuup.timers"
 local rooms         = require "openLuup.rooms"
 local scenes        = require "openLuup.scenes"
 local userdata      = require "openLuup.userdata"
-local devutil       = require "openLuup.devices"
+local chdev         = require "openLuup.chdev"
 local plugins       = require "openLuup.plugins"
 
 -- save user_data (persistence for scenes and rooms)
@@ -66,27 +66,41 @@ local function load_user_data (user_data_json)
         v[i] = table.concat {s.service, ',', s.variable, '=', s.value}
       end
       local vars = table.concat (v, '\n')
-      -- create (devNo, device_type, internal_id, description, upnp_file, upnp_impl, 
-      --                  ip, mac, hidden, invisible, parent, room, pluginnum, statevariables...)
-      _log  (("[%d] '%s', %s"): format (d.id, d.name, d.device_type))
-      local dev = devutil.create (d.id, d.device_type, d.altid, d.name, d.device_file, d.impl_file or '',
-                d.ip, d.mac, nil, d.invisible == "1", d.id_parent, tonumber (d.room), d.plugin, vars)
+      local dev = chdev.create {      -- the variation in naming within luup is appalling
+          devNo = d.id, 
+          device_type     = d.device_type, 
+          internal_id     = d.altid,
+          description     = d.name, 
+          upnp_file       = d.device_file, 
+          upnp_impl       = d.impl_file or '',
+          json_file       = d.device_json or '',
+          ip              = d.ip, 
+          mac             = d.mac, 
+          hidden          = nil, 
+          invisible       = d.invisible == "1",
+          parent          = d.id_parent,
+          room            = tonumber (d.room), 
+          pluginnum       = d.plugin,
+          statevariables  = vars,
+        }
       dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
       luup.devices[d.id] = dev                          -- save it
     end 
   
     -- SCENES 
     _log "loading scenes..."
-    local scs = {}
+    local Nscn = 0
     for _, scene in ipairs (user_data.scenes or {}) do
       local new, msg = scenes.create (scene)
-      scs[#scs + 1] = new
-      if not new then
+      if new and scene.id then
+        Nscn = Nscn + 1
+        luup.scenes[scene.id] = new
+        _log (("[%s] %s"): format (scene.id or '?', scene.name))
+      else
         _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
       end
     end
-    luup.scenes = scs
-    _log ("number of scenes = " .. #luup.scenes)
+    _log ("number of scenes = " .. Nscn)
     
     for i,n in ipairs (luup.scenes) do _log (("scene#%d '%s'"):format (i,n.description)) end
     _log "...scene loading completed"
@@ -186,14 +200,16 @@ do -- STARTUP
   else
     _log "init file not found"
   end
-  _log "startup completed"
+  _log "init phase completed"
 end
  
 local status
 
 do -- SERVER and SCHEDULER
   local s = server.start "3480"                 -- start the port 3480 Web server
-  if not s then error "openLuup - no server socket" end
+  if not s then 
+    error "openLuup - is another copy already running?  Unable to start port 3480 server" 
+  end
 
   -- start the heartbeat
   timers.call_delay(openLuupPulse, 6 * 60)      -- it's alive! it's alive!!
