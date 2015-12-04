@@ -1,4 +1,4 @@
-local version = "openLuup.loader  2015.10.30  @akbooer"
+local version = "openLuup.loader  2015.11.12  @akbooer"
 
 --
 -- Loader for Device, Implementation, and JSON files
@@ -8,21 +8,22 @@ local version = "openLuup.loader  2015.10.30  @akbooer"
 -- the reading/parsing are separate functions for easy unit testing.
 --
 
+
 ------------------
 --
 -- save a pristine environment for new device contexts and scene/startup code
 --
 
+local function shallow_copy (a)
+  local b = {}
+  for i,j in pairs (a) do 
+      b[i] = j 
+  end
+  return b
+end
+
 local function _pristine_environment ()
   local ENV
-
-  local function shallow_copy (a)
-    local b = {}
-    for i,j in pairs (a) do 
-        b[i] = j 
-    end
-    return b
-  end
 
   local function new_environment (name)
     local new = shallow_copy (ENV)
@@ -41,10 +42,61 @@ local new_environment = _pristine_environment ()
 
 local shared_environment  = new_environment "openLuup_startup_and_scenes"
 
+local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
+
+local static_data = {}          -- cache for decoded static JSON data, indexed by filename
+
 ------------------
 
 local xml  = require "openLuup.xml"
 local json = require "openLuup.json"
+
+
+----
+--
+-- CONSTANTS
+--
+
+local mcv  = "urn:schemas-micasaverde-com:device:"
+local upnp = "urn:schemas-upnp-org:device:"
+
+local categories_lookup =             -- info about device types and categories
+  {
+      {id =  1, name = "Interface",          type = mcv  .. "HomeAutomationGateway:1"},
+      {id =  2, name = "Dimmable Switch",    type = upnp .. "DimmableLight:1"},  
+      {id =  3, name = "On/Off Switch",      type = upnp .. "BinaryLight:1"},
+      {id =  4, name = "Sensor",             type = mcv  .. "DoorSensor:1"},
+      {id =  5, name = "HVAC",               type = upnp .. "HVAC_ZoneThermostat:1"}, 
+      {id =  6, name = "Camera",             type = upnp .. "DigitalSecurityCamera:1"},  
+      {id =  6, name = "Camera",             type = upnp .. "DigitalSecurityCamera:2"},  
+      {id =  7, name = "Door Lock",          type = mcv  .. "DoorLock:1"},
+      {id =  8, name = "Window Covering",    type = mcv  .. "WindowCovering:1"},
+      {id =  9, name = "Remote Control",     type = mcv  .. "RemoteControl:1"}, 
+      {id = 10, name = "IR Transmitter",     type = mcv  .. "IrTransmitter:1"}, 
+      {id = 11, name = "Generic I/O",        type = mcv  .. "GenericIO:1"},
+      {id = 12, name = "Generic Sensor",     type = mcv  .. "GenericSensor:1"},
+      {id = 13, name = "Serial Port",        type =         "urn:micasaverde-org:device:SerialPort:1"},  -- yes, it really IS different       
+      {id = 14, name = "Scene Controller",   type = mcv  .. "SceneController:1"},
+      {id = 15, name = "A/V",                type = mcv  .. "avmisc:1"},
+      {id = 16, name = "Humidity Sensor",    type = mcv  .. "HumiditySensor:1"},
+      {id = 17, name = "Temperature Sensor", type = mcv  .. "TemperatureSensor:1"},
+      {id = 18, name = "Light Sensor",       type = mcv  .. "LightSensor:1"},
+      {id = 19, name = "Z-Wave Interface",   type = mcv  .. "ZWaveNetwork:1"},
+      {id = 20, name = "Insteon Interface",  type = mcv  .. "InsteonNetwork:1"},
+      {id = 21, name = "Power Meter",        type = mcv  .. "PowerMeter:1"},
+      {id = 22, name = "Alarm Panel",        type = mcv  .. "AlarmPanel:1"},
+      {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:1"},
+      {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:2"},
+      {id = 24, name = "Siren",              type = mcv  .. "Siren:1"},
+  }
+
+local cat_by_dev = {}                         -- category number lookup by device type
+local cat_name_by_dev = {}                    -- category  name  lookup by device type
+for _,cat in ipairs (categories_lookup) do
+  cat_by_dev[cat.type] = cat.id 
+  cat_name_by_dev[cat.type] = cat.name 
+end
+
 
 -- parse device file, or empty table if error
 local function parse_device_xml (device_xml)
@@ -64,12 +116,16 @@ local function parse_device_xml (device_xml)
     service_list = URLs
   end
   return {
+    -- notice the name inconsistencies in some of these entries,
+    -- that's why we re-write the whole thing, rather than just pass the read device object
     category_num    = d.category_num,
     device_type     = d.deviceType, 
     impl_file       = (d.implementationList or {}).implementationFile, 
     json_file       = d.staticJson, 
     friendly_name   = d.friendlyName,
     handle_children = d.handleChildren, 
+    manufacturer    = d.manufacturer,
+    modelName       = d.modelName,
     service_list    = service_list,
     subcategory_num = d.subcategory_num,
   }
@@ -213,18 +269,14 @@ end
 
 -- compile the code
 -- essentially a wrapper for the loadstring function to apply the correct environment
--- optional 'globals' parameter is table of name/value pairs to place into the global environment
-local function compile_lua (source_code, name, old, globals)  
+local function compile_lua (source_code, name, old)  
   local a, error_msg = loadstring (source_code, name)    -- load it
   local env
   if a then
     env = old or new_environment (name)  -- use existing environment if supplied
-    env.luup = luup                      -- add global luup table
-    if globals then
-      for a,b in pairs (globals) do
-        env[a] = b
-      end
-    end
+--    env.luup = luup                      -- add the global luup table
+    env.luup = shallow_copy (luup)       -- add a COPY of the global luup table
+    -- ... so that luup.device can be unique for each environment
     setfenv (a, env)                     -- Lua 5.1 specific function environment handling
     a, error_msg = pcall(a)              -- instantiate it
     if not a then env = nil end          -- erase if in error
@@ -232,58 +284,104 @@ local function compile_lua (source_code, name, old, globals)
   return env, error_msg
 end
 
--- user_data
 
-local function load_user_data (filename)
-  local user_data, message, err
-  local f = io.open (filename or "user_data.json", 'r')
-  if f then 
-    local user_data_json = f:read "*a"
-    f:close ()
-    user_data, err = json.decode (user_data_json)
-    if not user_data then
-      message = "error in user_data: " .. err
-    end
-  else
-    user_data = {}
-    message = "cannot open user_data file"    -- not an error, _per se_, there may just be no file
+-- the definition of a device with UPnP xml files is a complete mess.  
+-- The functional definition is sprayed over a variety of files with various inter-dependencies.
+-- This function attempts to wrap the assembly into one place.
+-- defined filename parameters override the definitions embedded in other files.
+local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_impl, json_file)
+  
+  -- returns non-blank contents of x or nil
+  local function non_blank (x) 
+    return x and x: match "%S+"
   end
-  return user_data, message
-end
-
-
-local function save_user_data (luup, filename)
-  local result, message
-  local f = io.open (filename or "user_data.json", 'w')
-  if not f then
-    message =  "error writing user_data"
-  else
-    -- scenes
-    local scenes = {}
-    for _, s in pairs (luup.scenes or {}) do
-      scenes[#scenes+1] = s:user_table ()
+    
+  -- read device file, if present  
+  local d = read_device (upnp_file)                
+  d.device_type = non_blank (d.device_type) or device_type      --  file overrides parameter
+  -- read service files, if referenced, and save service_data
+  if d.service_list then
+    for _,x in ipairs (d.service_list) do
+      local stype = x.serviceType 
+      if stype then
+        if not service_data[stype] then                       -- if not previously stored
+          local sfile = x.SCPDURL
+          service_data[stype] = read_service (sfile)    -- save the serviceType details
+        end
+        local sid = x.serviceId
+        if sid then
+          service_data[sid] = service_data[stype]             -- point the serviceId to the same
+        end
+      end
     end
-    -- rooms
-    local rooms = {}
-    for i, name in pairs (luup.rooms or {}) do 
-      rooms[#rooms+1] = {id = i, name = name}
+  end
+
+  -- read JSON file, if present and not already cached, and save it in static_data structure
+  local file = non_blank (json_file) or d.json_file     -- parameter overrides file
+  d.json_file = file                                    -- update file actually used 
+  if file and not static_data[file] then
+    local json = read_json (file)  
+    if json then
+      json.device_json = file       -- insert possibly missing info (for ALTUI icons - thanks @amg0!)
     end
-    --
-    local j, msg = json.encode {scenes = scenes, rooms = rooms}
-    if j then
-      f:write (j)
-      result = true
+    static_data [file] = json  
+  end
+  
+  -- read implementation file, if present  
+  file = non_blank(upnp_impl) or d.impl_file          -- parameter overrides file
+  d.impl_file = file                                  -- update file actually used
+  local i = {}
+  if file then 
+    i = read_impl (file) 
+  end
+  
+  -- load and compile the amalgamated code from <files>, <functions>, <actions>, and <startup> tags
+  local code
+  if i.source_code then
+    local error_msg
+    local name = ("[%d] %s"): format (devNo, file or '?')
+    code, error_msg = compile_lua (i.source_code, name)  -- load, compile, instantiate    
+    if code then 
+      code.luup.device = devNo        -- TODO: luup.device OK ??
+      code.lul_device  = devNo        -- make lul_device in scope for the whole module
     else
-      message = "syntax error in user_data: " .. (msg or '?')
+      print ("Compile Lua error:",error_msg) 
     end
-    f:close ()
+    i.source_code = nil   -- free up for garbage collection
   end
-  return result, message
+  
+  -- set up code environment (for context switching)
+  code = code or {}
+  d.environment     = code  
+  
+  -- add category information  
+  d.category_num    = tonumber (d.category_num) or cat_by_dev[device_type] or 0
+  d.category_name   = cat_name_by_dev [device_type]
+  
+  -- dereference code entry point
+  d.entry_point = code[i.startup or ''] 
+  
+  -- dereference action list 
+  d.action_list     = code._openLuup_ACTIONS_
+  code._openLuup_ACTIONS_ = nil             -- remove from code name space
+  
+  -- dereference incoming asynchronous I/O callback
+  d.incoming = code._openLuup_INCOMING_
+  code._openLuup_INCOMING_ = nil             -- remove from code name space
+
+  return  d
 end
+
 
 return {
+    -- tables
+    service_data        = service_data,
+    shared_environment  = shared_environment,
+    static_data         = static_data,  
+    
+    -- methods
+    assemble_device     = assemble_device_from_files,
     compile_lua         = compile_lua,
---    compile_and_run     = compile_and_run,
     new_environment     = new_environment,
     parse_service_xml   = parse_service_xml,
     parse_device_xml    = parse_device_xml,
@@ -292,8 +390,5 @@ return {
     read_device         = read_device,
     read_impl           = read_impl,
     read_json           = read_json,
-    shared_environment  = shared_environment,
---    load_user_data    = load_user_data,
---    save_user_data    = save_user_data,
     version             = version,
   }

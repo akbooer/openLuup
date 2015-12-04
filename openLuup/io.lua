@@ -9,7 +9,6 @@ local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket o
 
 local socket    = require "socket"
 local logs      = require "openLuup.logs"
-local devutil   = require "openLuup.devices"
 local scheduler = require "openLuup.scheduler"
 
 --  local log
@@ -19,7 +18,7 @@ _log (banner, _NAME)   -- for version control
 -- utility function
 
 local function get_dev_and_socket (device)
-  local devNo = tonumber (device or luup.device)
+  local devNo = tonumber (device) or scheduler.current_device()
   local dev = devNo and luup.devices [devNo] 
   return dev, (dev or {io = {}}).io.socket, devNo
 end

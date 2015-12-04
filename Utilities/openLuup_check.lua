@@ -1,8 +1,29 @@
 --
--- openLuup - Release 5 - check installation
--- 2015.10.15   @akbooer
+-- openLuup - Release 6 - check installation
+-- 2015.11.17   @akbooer
 --
-   
+
+local lfs = require "lfs"     -- now a fundamental part of openLuup (for transportability)
+
+local function module_check (name)
+  local mod, msg = pcall (require, name)
+  if mod then 
+    print (("module '%s'"): format (name))
+  else
+    print "-----------------------"
+    print (msg: match "^(.-)%c")
+    print "-----------------------"
+  end
+end
+
+-- check first for all AltUI required modules
+module_check "mime"
+module_check "socket"
+module_check "socket.http"
+module_check "ssl.https"
+module_check "ltn12"
+
+
 local function exists (name)
   local f = io.open (name, 'rb')
   if f then 

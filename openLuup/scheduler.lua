@@ -1,12 +1,13 @@
 local _NAME = "openLuup.scheduler"
-local revisionDate = "2015.11.03"
+local revisionDate = "2015.11.15"
 local banner = "version " .. revisionDate .. "  @akbooer"
 
 --
 -- openLuup job scheduler
 --
 -- The scheduler handles creation / running / deletion of jobs which run asynchronously.  
--- It is a cooperative scheduler so requires good behaviour in terms of client job run time.
+-- It is a non-preemptive (cooperative) scheduler, 
+-- so requires good behaviour in terms of client job run time.
 -- Included in asynchronous processing are: delays / timers / watch callbacks / actions / jobs...
 -- ...and incoming data for registered sockets
 -- Callbacks which use named global functions are resolved using the appropriate device context
@@ -14,7 +15,7 @@ local banner = "version " .. revisionDate .. "  @akbooer"
 --
 
 local logs      = require "openLuup.logs"
-local socket    = require "socket"         -- socket library needed to access time in millisecond resolution
+local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -22,6 +23,8 @@ _log (banner, _NAME)   -- for version control
 
 
 -- LOCAL variables
+
+local current_device = 0 -- 2015-11-14   moved the current device context luup.device to here
 
 local exit_code     -- set to Unix process exit code to stop scheduler
 
@@ -31,10 +34,10 @@ local socket_list = {}                -- table of socket watch callbacks (for in
 
 -- adds a function to the delay list
 -- note optional final parameters which defines device context in which to run
-local function add_to_delay_list (fct, seconds, data, devNo)
+local function add_to_delay_list (fct, seconds, data, devNo)  
   delay_list[#delay_list+1] = {
     callback = fct,
-    devNo = devNo or (luup or {}).device,
+    devNo = devNo or current_device,
     time = socket.gettime() + seconds, 
     parameter = data, 
   }
@@ -51,7 +54,7 @@ end
 local function socket_watch (sock, action)  
   socket_list[sock] = {
     callback = action,
-    devNo = (luup or {}).device,
+    devNo = current_device,
   }
 end
 
@@ -62,21 +65,20 @@ end
 
 -- context_switch (devNo, fct, parameters, ...)
 -- system-wide routine to pass control to different device code
--- basically a pcall, which sets and restores luup.device to given devNo
--- this should be the only pcall in the whole of openLuup
+-- basically a pcall, which sets and restores current_context to given devNo
+-- this should be the only (x)pcall in the whole of openLuup
 -- if devNo is nil, the existing device context is retained
-local function context_switch (devNo, ...)
-  local l = luup or {}                    -- luup not present in testing, perhaps
-  local old = l.device                    -- save current device context
-  l.device = devNo or old
+local function context_switch (devNo, fct, ...)
+  local old = current_device                    -- save current device context
+  current_device = devNo or old
   local function restore (ok, msg, ...) 
-    l.device = old                        -- restore old device context
+    current_device = old                        -- restore old device context
     if not ok then
       _log (" ERROR: " .. (msg or '?'), "openLuup.context_switch") 
     end
     return ok, msg, ... 
   end
-  return restore (pcall (...))
+  return restore (pcall (fct, ...))
 end
 
 
@@ -260,9 +262,10 @@ end
 local function device_start (entry_point, devNo)
   -- job wrapper for device initialisation
   local function startup_job ()       -- note that user code is run in protected mode
-    _log "device startup"
+    local label = ("[%s] device startup"): format (tostring(devNo))
+    _log (label)
     local a,b,c = entry_point (devNo)       -- call the startup code 
-    _log (("device startup completed: status=%s, msg=%s, name=%s" ): format (tostring(a),tostring(b), tostring(c)))
+    _log (("%s completed: status=%s, msg=%s, name=%s" ): format (label, tostring(a),tostring(b), tostring(c)))
     return state.Done, 0  
   end
   
@@ -299,11 +302,12 @@ local function task_callbacks ()
     local njn = next_job_number
   
     local local_job_list = {}
-    
-    for jobNo, job in pairs (job_list) do 
-      local_job_list[jobNo] = job  -- make local copy: list might be changed by jobs spawning
+    do
+      for jobNo, job in pairs (job_list) do 
+        local_job_list[jobNo] = job  -- make local copy: list might be changed by jobs spawning
+      end
     end
-    
+  
     for jobNo, job in pairs (local_job_list) do 
       
       job.now = socket.gettime ()
@@ -433,6 +437,8 @@ return {
     job_list          = job_list,
     --methods
     add_to_delay_list = add_to_delay_list,
+    current_context   = function() return current_device end, -- TODO: deprecated
+    current_device    = function() return current_device end, 
     context_switch    = context_switch,
     device_start      = device_start,
     run_job           = run_job,

@@ -1,5 +1,5 @@
 local _NAME = "openLuup.scenes"
-local revisionDate = "2015.10.26"
+local revisionDate = "2015.11.12"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 
@@ -94,7 +94,7 @@ local function create (scene_json)
         t.next_run = next_time                  -- only non-nil for timers
         runner = (t.name ~= '' and t.name) or '?'
       end
-      local msg = ("running scene %d, %s, initiated by %s"): format (scene.id, scene.name, runner)
+      local msg = ("scene %d, %s, initiated by %s"): format (scene.id, scene.name, runner)
       _log (msg, "luup.scenes")
       _log_altui_scene (scene)                  -- log for altUI to see
       for _, group in ipairs (scene.groups) do  -- schedule the various delay groups
@@ -134,7 +134,7 @@ local function create (scene_json)
   end
   if not scn then return nil, err end
   
-  lua_code, err = load_lua_code (scn.lua, scn.id or math.random(1e6))   -- load the Lua
+  lua_code, err = load_lua_code (scn.lua, scn.id or (#luup.scenes + 1))   -- load the Lua
   if err then return nil, err end
   
 --[[
@@ -154,7 +154,7 @@ local function create (scene_json)
     Timestamp   = scn.Timestamp or os.time(),    -- creation time stamp
     favorite    = scn.favorite or false,
     groups      = scn.groups or {},
-    id          = tonumber (scn.id) or os.time(), -- have to choose something
+    id          = tonumber (scn.id) or (#luup.scenes + 1),  -- given id or next one available
     modeStatus  = scn.modeStatus or "0",          -- comma separated list of enabled modes ("0" = all)
     lua         = scn.lua,
     name        = scn.name,

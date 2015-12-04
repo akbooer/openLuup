@@ -1,35 +1,61 @@
 
 local t = require "tests.luaunit"
 
--- openLuup.device TESTS
+-- openLuup.chdev TESTS
 
 --
 -- DEVICE CREATE
 --
-local d = require "openLuup.devices"
+local d = require "openLuup.chdev"
 
-TestDevice = {}     -- low-level device tests
+TestChdevDevice = {}     -- low-level device tests
 
-function TestDevice:setUp ()
-  self.d0 = d.new (0)
-  self.d0:variable_set ("myServiceId","Variable", "Value")
-  self.d0:variable_set ("anotherSvId","MoreVars", "pi")
+function TestChdevDevice:setUp ()
+  local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
+  self.devType = devType
+  self.d0 = d.create {
+    devNo = 0, 
+    device_type = devType, 
+    statevariables =
+      [[
+        myServiceId,Variable=Value
+        anotherSvId,MoreVars=pi
+      ]]
+    }
 end
 
-function TestDevice:tearDown ()
+function TestChdevDevice:tearDown ()
   self.d0 = nil
 end
 
-function TestDevice:test_new ()
+function TestChdevDevice:test_create ()
   t.assertEquals (type (self.d0), "table")
+  t.assertEquals (self.d0.device_type, self.devType)
   local d = self.d0
- 
+  
+  -- check the values
+  t.assertIsNumber  (d.category_num)
+  t.assertIsString  (d.description) 
+  t.assertIsNumber  (d.device_num_parent)
+  t.assertIsString  (d.device_type) 
+  t.assertIsBoolean (d.embedded)
+  t.assertIsBoolean (d.hidden)
+  t.assertIsString  (d.id)
+  t.assertIsBoolean (d.invisible) 
+  t.assertIsString  (d.ip)
+  t.assertIsString  (d.mac)
+  t.assertIsString  (d.pass)
+  t.assertIsNumber  (d.room_num)
+  t.assertIsNumber  (d.subcategory_num)
+  t.assertIsNil     (d.udn)               -- we don't do UDNs
+  t.assertIsString  (d.user)    
+
   -- check all the methods are present:
   t.assertIsFunction (d.attr_get)
   t.assertIsFunction (d.attr_set)
-  
-  t.assertIsFunction (d.action_set)
   t.assertIsFunction (d.call_action)
+  t.assertIsFunction (d.is_ready)
+  t.assertIsFunction (d.supports_service)
   t.assertIsFunction (d.variable_set)
   t.assertIsFunction (d.variable_get)
   t.assertIsFunction (d.version_get)
@@ -39,8 +65,17 @@ function TestDevice:test_new ()
   t.assertIsTable (d.services)
 end
 
+function TestChdevDevice:test_create_with_file ()
+  local x = d.create {
+      devNo = 42, 
+      description = "Test", 
+      upnp_file = "D_Test.xml",
+    }
+  t.assertIsTable (x)
+end
 
-function TestDevice:test_created_get ()    -- see if the ones defined initially are there
+function TestChdevDevice:test_created_get ()    -- see if the ones defined initially are there
+  --       "myServiceId,Variable=Value \n anotherSvId,MoreVars=pi"
   local a = self.d0:variable_get ("myServiceId", "Variable")
   local b = self.d0:variable_get ("anotherSvId", "MoreVars")
   t.assertEquals (a.value, "Value")
@@ -51,26 +86,29 @@ end
 -- ATTRIBUTES
 --
 
-TestAttributes = {}
+TestChdevAttributes = {}
 
-function TestAttributes:setUp ()
+function TestChdevAttributes:setUp ()
   local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
   self.devType = devType
-  self.d0 = d.new (0)
+  self.d0 = d.create {
+      devNo = 0, 
+      device_type = devType
+    }
 end
 
-function TestAttributes:tearDown ()
+function TestChdevAttributes:tearDown ()
   self.d0 = nil
 end
 
-function TestAttributes:test_nil_get ()
+function TestChdevAttributes:test_nil_get ()
   t.assertEquals (type (self.d0), "table")
   local a = self.d0:attr_get "foo"
   t.assertIsNil (a)
 end
 
 
-function TestAttributes:test_set_get ()
+function TestChdevAttributes:test_set_get ()
   local val = "42"
   local name = "attr1"
   self.d0:attr_set (name, val)
@@ -78,7 +116,7 @@ function TestAttributes:test_set_get ()
   t.assertEquals (a, val)
 end
 
-function TestAttributes:test_multiple_set ()
+function TestChdevAttributes:test_multiple_set ()
   local val1 = "42"
   local val2 = "BBB"
   local name1 = "attr1"
@@ -96,22 +134,27 @@ end
 -- VARIABLES
 --
 
-TestVariables = {}
+TestChdevVariables = {}
 
-function TestVariables:setUp ()
-  self.d0 = d.new (0)
+function TestChdevVariables:setUp ()
+  local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
+  self.devType = devType
+  self.d0 = d.create {
+      devNo = 0, 
+      device_type = devType
+    }
 end
 
-function TestVariables:tearDown ()
+function TestChdevVariables:tearDown ()
   self.d0 = nil
 end
 
-function TestVariables:test_nil_get ()
+function TestChdevVariables:test_nil_get ()
   local a = self.d0:variable_get ("srv", "name")
   t.assertIsNil (a)
 end
 
-function TestVariables:test_set_get ()
+function TestChdevVariables:test_set_get ()
   local val = "42"
   local srv = "myService"
   local name = "var1"
@@ -127,43 +170,38 @@ function TestVariables:test_set_get ()
 end
 
 
-function TestVariables:test_watch ()
-  local val = "42"
-  local srv = "myService"
-  local name = "var1"
-  self.d0:variable_set (srv, name, val)
-  local v = d.variable_watch (self.d0, my_watch, srv, name) 
-  local a = self.d0:variable_get (srv, name)
-  t.assertEquals (a.value, val)
-  t.assertEquals (a.name, name)
-  t.assertEquals (a.old, "EMPTY")
-  t.assertNotNil (a.version)
-  t.assertNotNil (a.time)
-  local v = d.variable_watch (self.d0, my_watch, srv, "foo")   -- wrong variable
-  t.assertNil (v)
-  local v = d.variable_watch (self.d0, my_watch, "foo", name)  -- wrong service
-  t.assertNil (v)
-end
-
-function my_watch ()
-  -- won't actually be called since scheduler is not running
-end
-
 --
 -- OTHER METHODS
 --
 
-TestOtherMethods = {}
+TestChdevOtherMethods = {}
 
-function TestOtherMethods:setUp ()
-  self.d0 = d.new (0)
+function TestChdevOtherMethods:setUp ()
+  local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
+  self.devType = devType
+  self.d0 = d.create {
+      devNo = 0, 
+      device_type = devType
+    }
 end
 
-function TestOtherMethods:tearDown ()
+function TestChdevOtherMethods:tearDown ()
   self.d0 = nil
 end
 
-function TestOtherMethods:test_version ()
+function TestChdevOtherMethods:test_is_ready ()
+  t.assertTrue (self.d0:is_ready())
+end
+
+function TestChdevOtherMethods:test_supports_service ()
+  local srv = "aService"
+  local var = "varname"
+  self.d0:variable_set (srv, name, val)
+  t.assertTrue  (self.d0:supports_service (srv))
+  t.assertFalse (self.d0:supports_service "foo")
+end
+
+function TestChdevOtherMethods:test_version ()
   local v1 = self.d0:version_get ()
   t.assertIsNumber (v1)
   local val = "42"
@@ -175,7 +213,7 @@ function TestOtherMethods:test_version ()
   t.assertEquals (var.version, v2)                    -- and that variable has same version
  end
 
-function TestOtherMethods:test_call_action ()
+function TestChdevOtherMethods:test_call_action ()
   local srv = "testService"
   self.d0.services[srv] = {
     actions = {
@@ -204,7 +242,7 @@ function TestOtherMethods:test_call_action ()
   t.assertIsTable (return_arguments)
 end
 
-function TestOtherMethods:test_missing_action ()
+function TestChdevOtherMethods:test_missing_action ()
   local result
   local function missing ()
     return { 
@@ -221,7 +259,7 @@ function TestOtherMethods:test_missing_action ()
   t.assertEquals (result, 12345)
 end
 
-function TestOtherMethods:test_ ()
+function TestChdevOtherMethods:test_ ()
 end
 
 --------------------
