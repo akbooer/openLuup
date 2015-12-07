@@ -39,6 +39,7 @@ print "openLuup_getfiles - utility to get device and icon files from remote Vera
 
 io.write "Remote Vera IP: "
 local ip = io.read ()
+assert (ip: match "^%d+%.%d+%.%d+%.%d+$", "invalid IP address syntax")
 
 local function get_directory (path)
   local template = "http://%s:3480/data_request?id=action" ..

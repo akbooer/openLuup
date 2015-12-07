@@ -8,7 +8,7 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 
 local socket    = require "socket"
 local url       = require "socket.url"
-local http      = require "openLuup.http"
+local http      = require "socket.http"
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"    -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
