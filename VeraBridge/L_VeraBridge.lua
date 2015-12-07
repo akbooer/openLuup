@@ -1,5 +1,5 @@
 _NAME = "VeraBridge"
-_VERSION = "2015.11.12"
+_VERSION = "2015.12.04"
 _DESCRIPTION = "VeraBridge plugin for openLuup!!"
 _AUTHOR = "@akbooer"
 
@@ -16,9 +16,10 @@ _AUTHOR = "@akbooer"
 
 local devNo                      -- our device number
 
-local json    = require "openLuup.json"
-local scenes  = require "openLuup.scenes"
-local url     = require "socket.url"
+local json      = require "openLuup.json"
+local scenes    = require "openLuup.scenes"
+local userdata  = require "openLuup.userdata"
+local url       = require "socket.url"
 
 local ip                          -- remote machine ip address
 local POLL_DELAY = 5              -- number of seconds between remote polls
@@ -159,12 +160,15 @@ local function GetUserData ()
   local Vera    -- (actually, 'remote' Vera!)
   local Ndev, Nscn = 0, 0
   local url = table.concat {"http://", ip, ":3480/data_request?id=user_data&output_format=json"}
+  local atr = url:match "=(%a+)"
   local status, j = luup.inet.wget (url)
   if status == 0 then Vera = json.decode (j) end
   if Vera then 
     luup.log "Vera info received!"
+    local t = ("%ss"): format (atr)
     if Vera.devices then
       local new_room_name = "MiOS-" .. (Vera.PK_AccessPoint: gsub ("%c",''))  -- stray control chars removed!!
+      if Vera[t] then userdata.attributes [t] = Vera[t] end
       luup.log (new_room_name)
       create_room (new_room_name)
   
@@ -263,7 +267,7 @@ local function generic_action (serviceId, name)
     local request = {basic_request, "DeviceNum=" .. devNo }
     for a,b in pairs (lul_settings) do
       if a ~= "DeviceNum" then        -- thanks to @CudaNet for finding this bug!
-        request[#request+1] = table.concat {a, '=', url.escape(b) or ''}  -- TODO: check with @CudaNet
+        request[#request+1] = table.concat {a, '=', url.escape(b) or ''} 
       end
     end
     local url = table.concat (request, '&')
