@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2015.11.01"
+local revisionDate = "2015.11.28"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -8,7 +8,7 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 
 local socket    = require "socket"
 local url       = require "socket.url"
-local http      = require "socket.http"         -- appears to create global variable TIMEOUT
+local http      = require "openLuup.http"
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"    -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
@@ -125,7 +125,7 @@ end
 local function http_dispatch_request (URL)    
   local dispatch
 -- see: http://forum.micasaverde.com/index.php/topic,34465.msg254637.html#msg254637
-  if URL.query and URL.path == "/data_request" then     -- Thanks @vosmont 
+  if URL.query and URL.path:match "/data_request" then     -- Thanks @vosmont 
     dispatch = http_query 
   else
     dispatch = http_file 
@@ -175,6 +175,8 @@ end
 
 -- specific encoding for chunked messages (trying to avoid long string problem)
 local function send_chunked (sock, x, n)
+  x = tostring(x) -- Thanks @CudaNet
+  -- see: http://forum.micasaverde.com/index.php/topic,34939.msg259460.html#msg259460
   local N = #x
   n = n or N
   local ok, err = true
