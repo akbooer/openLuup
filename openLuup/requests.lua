@@ -383,7 +383,6 @@ local function user_data (r,p,f)
       rooms = rooms_table(),
       scenes = user_scenes_table(),
       sections = sections_table(),
-      
     }
     for a,b in pairs (userdata.attributes) do      -- add all the top-level attributes
       user_data2[a] = b

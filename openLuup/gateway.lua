@@ -1,11 +1,10 @@
-local version = "openLuup.gateway    2015.11.14  @akbooer"
+local version = "openLuup.gateway    2015.11.19  @akbooer"
 
 -- HOME AUTOMATION GATEWAY
 --
 -- this is the Lua implementation of the Home Automation Gateway device, aka. Device 0
 --
 
-local chdev       = require "openLuup.chdev"
 local plugins     = require "openLuup.plugins"
 local scenes      = require "openLuup.scenes"
 local userdata    = require "openLuup.userdata"     -- for HouseMode
@@ -27,136 +26,93 @@ local Device_0 = devutil.new (0)
 
 local SID = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
 
-Device_0.services[SID] = 
-{
-  variables = {},
-  actions = {
-    
-    --[[ action=CreateDevice
-    Create a device using the given parameters.
+-- create a variable for CreateDevice return info
+-- ...and, incidentally, the whole service also, which gets extended below...
+Device_0: variable_set (SID, "DeviceNum", '')
 
-    deviceType is the UPnP device type.
-    internalID is the specific ID (also known as altid) of the device; 
-    Description is the device name, which is shown to the user on the dashboard.
-    UpnpDevFilename is the UPnP device description file name.
-    UpnpImplFilename is the implementation file to use.
-    IpAddress is the IP address and port of the device.
-    DeviceNumParent is the device number of the parent device.
-    RoomNum is the number of the room the device will be in.
-    PluginNum tells the device which plugin to use. 
-    The plugin will be installed automatically if it's not already installed.
-    StateVariables is a string containing the variables you want set when the device is created. 
-    You can specify multiple variables by separating them with a line feed ('\n'), and use ',
-    ' and '=' to separate service, variable and value, like this: 
-      service,variable=value\nservice,variable=value\n...
-    If Reload is 1, the Luup engine will be restarted after the device is created. 
+
+--[[ action=CreateDevice
+Create a device using the given parameters.
+
+deviceType is the UPnP device type.
+internalID is the specific ID (also known as altid) of the device; 
+Description is the device name, which is shown to the user on the dashboard.
+UpnpDevFilename is the UPnP device description file name.
+UpnpImplFilename is the implementation file to use.
+IpAddress is the IP address and port of the device.
+DeviceNumParent is the device number of the parent device.
+RoomNum is the number of the room the device will be in.
+PluginNum tells the device which plugin to use. 
+The plugin will be installed automatically if it's not already installed.
+StateVariables is a string containing the variables you want set when the device is created. 
+You can specify multiple variables by separating them with a line feed ('\n'), and use ',
+' and '=' to separate service, variable and value, like this: 
+  service,variable=value\nservice,variable=value\n...
+If Reload is 1, the Luup engine will be restarted after the device is created. 
+
+--]]
+
+local function CreateDevice (_, p)
+-- luup.create_device (device_type, internal_id, description, upnp_file, upnp_impl, 
+--                  ip, mac, hidden, invisible, parent, room, pluginnum, statevariables...)
+  local hidden, invisible, pluginnum
+  local devNo = luup.create_device (
+    p.deviceType or '', p.internalId or '', p.Description, 
+    p.UpnpDevFilename, p.UpnpImplFilename,
+    p.IpAddress, p.MacAddress, 
+    hidden, invisible, 
+    p.DeviceNumParent, tonumber(p.RoomNum),
+    pluginnum, p.StateVariables)
     
-           <name>DeviceNum</name>
-          <direction>out</direction>
-          <retval/>
-          <relatedStateVariable>DeviceNum</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>deviceType</name>
-          <direction>in</direction>
-          <relatedStateVariable>UDN</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>internalID</name>
-          <direction>in</direction>
-          <relatedStateVariable>UDN</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>Description</name>
-          <direction>in</direction>
-          <relatedStateVariable>UDN</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>UpnpDevFilename</name>
-          <direction>in</direction>
-          <relatedStateVariable>UDN</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>UpnpImplFilename</name>
-          <direction>in</direction>
-          <relatedStateVariable>UDN</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>IpAddress</name>
-          <direction>in</direction>
-          <relatedStateVariable>UDN</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>MacAddress</name>
-          <direction>in</direction>
-          <relatedStateVariable>UDN</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>DeviceNumParent</name>
-          <direction>in</direction>
-          <relatedStateVariable>DeviceNum</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>RoomNum</name>
-          <direction>in</direction>
-          <relatedStateVariable>DeviceNum</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>StateVariables</name>
-          <direction>in</direction>
-          <relatedStateVariable>UDN</relatedStateVariable>
-        </argument>
+    Device_0:variable_set (SID, "DeviceNum", devNo)    -- for return variable
+  return true  
+end
+
+-- action=CreatePluginDevice&PluginNum=int 	
+-- Creates a device for plugin #PluginNum.
+-- StateVariables 	string 
+local function CreatePluginDevice (_, p) 
+  return plugins.create (p.PluginNum) 
+end
+
+-- action=CreatePlugin&PluginNum=int 	
+-- Create a plugin with the PluginNum number and Version version. 
+-- StateVariables are the variables that will be set when the device is created. 
+-- For more information look at the description of the CreateDevice action above. 
+local function CreatePlugin (_, p)
+  return plugins.create (p)
+end
+
+
+-- action=DeleteDevice&DeviceNum=...
+local function DeleteDevice ()
+  return
+end
+
+
+-- build the action list
+
+Device_0.services[SID].actions = 
+  {
     
-    --]]
-    CreateDevice = {  -- run as a job so that the calling action returns success immediately
-      run = function (lul_device, p)
-    -- luup.create_device (device_type, internal_id, description, upnp_file, upnp_impl, 
-    --                  ip, mac, hidden, invisible, parent, room, pluginnum, statevariables...)
-        local ip, mac, hidden, invisible, parent
-        local devNo = luup.create_device ('', '', p.Description, p.UpnpDevFilename, p.UpnpImplFilename,
-                                        ip, mac, hidden, invisible, parent, tonumber(p.RoomNum))
---        Device_0:variable_set (SID, "DeviceNum", devNo)    -- for return variable
-        return true  
+    CreateDevice = {  -- run creates device, returning job number, reload (if any) deferred to job
+      run = CreateDevice,
+      job = function (_, p) 
+        if p.Reload == '1' then luup.reload () end
       end,
-      job = function (_, p)
-        if p.Reload == '1' then
-          luup.reload ()
-        end
-
-      end
-      
+      name = "CreateDevice",
+      returns = {DeviceNum = "DeviceNum"},
+      serviceId = SID,
     },
     
-    -- action=CreatePluginDevice&PluginNum=int 	
-    -- Creates a device for plugin #PluginNum.
-    -- StateVariables 	string 
-    CreatePluginDevice = {
-      run = function (lul_device, lul_settings)
-        return plugins.create (lul_settings.PluginNum)
-      end
-    },
-
-    -- action=CreatePlugin&PluginNum=int 	
-    -- Create a plugin with the PluginNum number and Version version. 
-    -- StateVariables are the variables that will be set when the device is created. 
-    -- For more information look at the description of the CreateDevice action above. 
-    CreatePlugin = {
-      run = function (lul_device, lul_settings)
-        return plugins.create (lul_settings)
-      end
-    },
-    
-    
-    -- action=DeleteDevice&DeviceNum=...
-    
-    DeleteDevice = {
-      
-    },
+    CreatePluginDevice  = {run = CreatePluginDevice},
+    CreatePlugin        = {run = CreatePlugin},
+    DeleteDevice        = {run = DeleteDevice},
     
     -- DeletePlugin 	PluginNum 	int 	Uninstall the given plugin. 
     DeletePlugin = {
-      run = function (lul_device, lul_settings)
-        plugins.delete (lul_settings)
+      run = function (_, p)
+        plugins.delete (p)
         luup.reload ()    
       end
     },
@@ -187,9 +143,9 @@ Device_0.services[SID] =
     -- action=RunLua&Code=...
     -- error message should be plain text "ERROR: Code failed"
     RunLua = { 
-      run = function (lul_device, lul_settings) 
+      run = function (_, p) 
         local ok, status = loader.compile_lua (
-          lul_settings.Code or "return 'ERROR: code failed'",
+          p.Code or "return 'ERROR: code failed'",
           "RunLua",
           scenes.environment)   -- runs in scene/startup context
         return ok and (status ~= false)   
@@ -199,8 +155,8 @@ Device_0.services[SID] =
     -- action=RunScene&SceneNum=...
     -- Run the given scene. 
     RunScene = {
-      run = function (lul_device, lul_settings)
-        local scene_num = tonumber (lul_settings.SceneNum)
+      run = function (_, p)
+        local scene_num = tonumber (p.SceneNum)
         local scene = luup.scenes[scene_num or '']
         if scene then
           scene.run ()
@@ -212,14 +168,14 @@ Device_0.services[SID] =
     -- action=SetHouseMode&Mode=...
     -- TODO: mode change delay (easy to do with job or call_delay)
     SetHouseMode = { 
-      run = function (lul_device, lul_settings) 
+      run = function (_, p) 
         local valid = {
             ["1"] = "1",    -- "home"
             ["2"] = "2",    -- "away"
             ["3"] = "3",    -- "night"
             ["4"] = "4",    -- "vacation"
           }
-        local new = valid[lul_settings.Mode or ''] or "1"
+        local new = valid[p.Mode or ''] or "1"
         userdata.attributes.Mode = new
         userdata.attributes.mode_change_time = os.time()
         userdata.attributes.mode_change_mode = new
@@ -238,7 +194,6 @@ Device_0.services[SID] =
       
     }
   } 
-} 
 
 return Device_0
 

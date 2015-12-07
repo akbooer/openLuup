@@ -161,7 +161,7 @@ local function save_user_data (luup, filename)
     local data = {rooms = {}, scenes = {}}
     -- scalar attributes
     for a,b in pairs (attributes) do
-      data[a] = b
+      if type(b) ~= "table" then data[a] = b end
     end
     -- devices
     data.devices = devices_table (luup.devices or {})
