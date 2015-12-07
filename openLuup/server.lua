@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2015.11.28"
+local revisionDate = "2015.12.05"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
