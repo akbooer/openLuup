@@ -81,6 +81,10 @@ local function create (scene_json)
       _log (scene.name .. " does not run in current House Mode")
       return 
     end
+    if luup_scene.paused then 
+      _log (scene.name .. " is currently paused")
+      return 
+    end
     if t and tonumber (t.enabled) ~= 1  then 
       _log "timer disabled"
       return 
@@ -173,7 +177,7 @@ local function create (scene_json)
   luup_scene = {
       description = scene.name,
       hidden = false,
-      page = 0,           -- TODO: discover what page / paused / remote are for
+      page = 0,           -- TODO: discover what page and remote are for
       paused = false,
       remote = 0,
       room_num = scene.room,

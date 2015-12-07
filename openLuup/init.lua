@@ -1,5 +1,5 @@
 local _NAME = "openLuup.init"
-local revisionDate = "2015.11.12"
+local revisionDate = "2015.11.27"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -26,6 +26,8 @@ local scenes        = require "openLuup.scenes"
 local userdata      = require "openLuup.userdata"
 local chdev         = require "openLuup.chdev"
 local plugins       = require "openLuup.plugins"
+
+--  scheduler.sandbox ()   -- protect any changes from affecting all devices
 
 -- save user_data (persistence for scenes and rooms)
 local function save_user_data () 

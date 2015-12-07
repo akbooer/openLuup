@@ -1,4 +1,4 @@
-local version = "openLuup.loader  2015.11.12  @akbooer"
+local version = "openLuup.loader  2015.11.27  @akbooer"
 
 --
 -- Loader for Device, Implementation, and JSON files
@@ -342,7 +342,7 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
     local name = ("[%d] %s"): format (devNo, file or '?')
     code, error_msg = compile_lua (i.source_code, name)  -- load, compile, instantiate    
     if code then 
-      code.luup.device = devNo        -- TODO: luup.device OK ??
+      code.luup.device = devNo        -- set local value for luup.device
       code.lul_device  = devNo        -- make lul_device in scope for the whole module
     else
       print ("Compile Lua error:",error_msg) 

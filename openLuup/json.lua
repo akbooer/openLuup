@@ -2,10 +2,11 @@
 -- now does pretty-printing of encoded JSON strings.
 -- (c) 2013,2014,2015  AK Booer
 
-  local version    = "2015.04.11 @akbooer"   
+  local version    = "2015.11.29 @akbooer"   
   
--- 2015.04.10 allow comma before closing '}' or ']'
-  
+-- 2015.04.10   allow comma before closing '}' or ']'
+-- 2015.11.29   improve formatting of nested objects, cache encoded strings
+
   local default   = 
     {
       huge = "8.88e888",          -- representation for JSON infinity (looks like infinity symbols on their side)
@@ -52,10 +53,15 @@
       return replace [old] or ("\\u%04x"): format (old: byte () ) 
     end
     
-    local function string  (x)                -- deal with escapes, etc. 
-      local control_chars   = "%z\001-\031"   -- whole range of control characters
-      local old = '[' .. '"' .. '/' .. '\\' .. control_chars .. ']'
-      return '"' .. x:gsub (old, new) .. '"'
+    local str_cache  = {}                         -- cache storage for encoded strings
+    local ctrl_chars = "%z\001-\031"              -- whole range of control characters
+    local old = '[' .. '"' .. '/' .. '\\' .. ctrl_chars .. ']'
+        
+    local function string (x)
+      if not str_cache[x] then
+        str_cache[x] =  '"' .. x:gsub (old, new) .. '"'        -- deal with escapes, etc. 
+      end
+      return str_cache[x]
     end
     
     local function array (x, index)
@@ -72,15 +78,16 @@
     end
      
     local function object (x, index)  
-      local items, crlf = {}, ''
+      local function nl (d) return '\n'..('  '):rep (d), '\n'..('  '):rep (d-1) end
+      local items, nl1, nl2 = {}, '', ''
       table.sort (index)                -- nice ordering, string indices guaranteed 
-      if #index > 1 then crlf = '\n'.. ('  '):rep(depth) end
+      if #index > 1 then nl1, nl2 = nl(depth) end
       depth = depth + 1
       for i,j in ipairs (index) do
         items[i] = string(j) ..':'.. value (x[j])
       end
       depth = depth - 1
-      return table.concat {'{', crlf, table.concat (items, ','..crlf), '}'}
+      return table.concat {'{', nl1, table.concat (items, ','..nl1), nl2, '}'}
     end
   
     local function object_or_array (x)
@@ -103,7 +110,7 @@
     end
 
     local lua_type  = {           -- dispatch table for different types
-          table = object_or_array,
+          table   = object_or_array,
           string  = string,
           number  = number,
           boolean = boolean,
@@ -273,6 +280,12 @@
     return Lua, message
 
   end  -- decode ()
-
   
-return {encode = encode, decode = decode, version = version, default = default}
+return {
+    decode = decode, 
+    default = default,
+    encode = encode, 
+    version = version, 
+  
+    _VERSION = version,   
+}

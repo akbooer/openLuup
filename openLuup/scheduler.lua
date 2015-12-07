@@ -1,5 +1,5 @@
 local _NAME = "openLuup.scheduler"
-local revisionDate = "2015.11.15"
+local revisionDate = "2015.11.27"
 local banner = "version " .. revisionDate .. "  @akbooer"
 
 --
@@ -79,6 +79,48 @@ local function context_switch (devNo, fct, ...)
     return ok, msg, ... 
   end
   return restore (pcall (fct, ...))
+end
+
+-------
+--
+-- SANDBOX - protect the top-level global libraries...
+-- allow modification individually by device, but report the change
+--
+
+local meta = {}  -- 3-dimensional sandbox [deviceNo][table][index]
+
+local sys_index = {}
+
+local function metamethod (table, index, value)
+  local devNo = current_device or '?'
+  meta[devNo] = meta[devNo] or {}
+  local meta  = meta[devNo]
+  meta[table] = meta[table] or {}
+  meta        = meta[table]
+  if value then
+    meta[index] = value
+    _log (("device %s modifying library '%s' with %s = %s"): 
+      format (devNo, sys_index[table] or '?', index, tostring(value)), "WARNING")
+  end
+  return meta[index]
+end
+
+local function sandbox (table)
+  return setmetatable (table, {__index = metamethod, __newindex = metamethod})
+end
+
+local function sandbox_system_libraries ()
+  local idx = {}
+  for a in pairs (_G) do idx[#idx+1] = a end
+  table.sort (idx)                -- just to be neat
+  for _,a in ipairs (idx) do
+    local b = _G[a]
+    if type (b) == "table" and b ~= _G then 
+      sys_index[b] = a
+      _log (a, "openLuup.sandbox")
+      sandbox (b)
+    end
+  end
 end
 
 
@@ -444,6 +486,7 @@ return {
     run_job           = run_job,
     status            = status,   
     watch_callback    = watch_callback,
+    sandbox           = sandbox_system_libraries,
     socket_watch      = socket_watch,
     socket_unwatch    = socket_unwatch,
     start             = start,
