@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2015.12.05"
+local revisionDate = "2015.12.09"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -12,6 +12,7 @@ local http      = require "socket.http"
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"    -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
+local json      = require "openLuup.json"       -- only for non-string response error message
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -87,7 +88,7 @@ local function http_query (URL)
   local parameters = URL.query_parameters
   local request = parameters.id or ''
   local handler = http_handler[request]
-  if (URL.path: match "/data_request") and handler and handler.callback then 
+  if handler and handler.callback then 
     local format = parameters.output_format
     parameters.id = nil               -- don't pass on request id to user...
     parameters.output_format = nil    -- ...or output format in parameters
@@ -125,7 +126,8 @@ end
 local function http_dispatch_request (URL)    
   local dispatch
 -- see: http://forum.micasaverde.com/index.php/topic,34465.msg254637.html#msg254637
-  if URL.query and URL.path:match "/data_request" then     -- Thanks @vosmont 
+-- and: http://forum.micasaverde.com/index.php/topic,34465.msg254650.html#msg254650
+  if URL.query and URL.path:match "/data_request$" then     -- Thanks @vosmont 
     dispatch = http_query 
   else
     dispatch = http_file 
@@ -175,8 +177,6 @@ end
 
 -- specific encoding for chunked messages (trying to avoid long string problem)
 local function send_chunked (sock, x, n)
-  x = tostring(x) -- Thanks @CudaNet
-  -- see: http://forum.micasaverde.com/index.php/topic,34939.msg259460.html#msg259460
   local N = #x
   n = n or N
   local ok, err = true
@@ -197,6 +197,14 @@ end
 
 
 local function http_response (sock, response, type)
+  response = response or ''
+  local t = _G.type(response)
+  if t ~= "string" then -- Thanks @CudaNet
+    -- see: http://forum.micasaverde.com/index.php/topic,34939.msg259460.html#msg259460
+    _log ("WARNING - HTTP response is of type " .. t)
+    response = json.encode (response)
+    _log ("HTTP response: " .. response)
+  end
   if not type then                                          -- guess missing type
     if response and response: match "^%s*<!DOCTYPE html" 
       then type = "text/html"
