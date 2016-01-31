@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2015.12.09"
+local revisionDate = "2016.01.28"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -116,7 +116,7 @@ local function http_file (URL)
 --    _log ("file length = "..#info, "openLuup.HTTP.FILE")
     f: close ()
   else
-    _log ("file not found:" .. path, "openLuup.HTTP.FILE")    
+    _log ("file not found:" .. path, "openLuup.HTTP.FILE")  
   end
  return info, MIME (path)
 end
@@ -144,6 +144,7 @@ local function wget (URL, Timeout, Username, Password)
   local self_reference = {
     ["localhost"] = true,
     ["127.0.0.1"] = true, 
+    ["0.0.0.0"] = true, 
     [myIP] = true,
   }
   URL = http_parse_request (URL)                            -- break it up into bits  
@@ -219,7 +220,8 @@ local function http_response (sock, response, type)
   local crlf = "\r\n"
   local headers =  table.concat({
       "HTTP/1.1 " .. status,
-      "Allow: GET",               -- added 2015.10.06
+      "Accept-Encoding: Identity",        -- added 2015.12.19 to stop chunked responses
+      "Allow: GET",                       -- added 2015.10.06
       "Access-Control-Allow-Origin: *",   -- @d55m14 
       -- see: http://forum.micasaverde.com/index.php/topic,31078.msg248418.html#msg248418
       "Server: openLuup/" .. revisionDate,

@@ -1,5 +1,5 @@
 local _NAME = "openLuup.plugins"
-local revisionDate = "2015.11.06"
+local revisionDate = "2015.12.22"
 local banner = "  version " .. revisionDate .. "  @akbooer"
 
 --
@@ -19,7 +19,7 @@ _log (banner, _NAME)   -- for version control
 
 -- ALTUI
 
-local DEFAULT_ALTUI = 859
+local DEFAULT_ALTUI = 1163
 
 -- invoked by
 -- /data_request?id=action&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&action=CreatePlugin&PluginNum=8246&TracRev=859
@@ -143,7 +143,7 @@ local function get_from_trac (rev, subdir)
     local b = root .. fname
     local content
     ok, content = luup.inet.wget (b)
-    if ok ~= 0 then return false end
+    if ok ~= 0 then _log ("ERROR - HTTP code: " .. (ok or '?')) return false end
     _log (("%-8d %s"): format (#content, fname))
     if fname == "L_ALTUI.lua" then
       Vmajor, Vminor = content: match [[local%s+version%s+=%s+%"%a+(%d+)%.(%d+)]]

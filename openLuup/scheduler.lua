@@ -51,10 +51,12 @@ end
 
 
 -- socket_watch (socket, action_with_incoming_tag),  add socket to list watched for incoming
-local function socket_watch (sock, action)  
+-- optional io parameter is pointer to a device's I/O table with an intercept flag
+local function socket_watch (sock, action, io)  
   socket_list[sock] = {
     callback = action,
     devNo = current_device,
+    io = io or {intercept = false},  -- assume no intercepts: incoming data is passed to handler
   }
 end
 
@@ -387,8 +389,10 @@ end
 
 local function socket_callbacks (timeout)
   local list = {}
-  for sock in pairs (socket_list) do
-    list[#list + 1] = sock
+  for sock, io in pairs (socket_list) do
+    if not io.intercept then    -- io.intercept will stop the incoming handler from receiving data
+      list[#list + 1] = sock
+    end
   end  
   local recvt = socket.select (list, nil, timeout)  -- wait for something to happen (but not for too long)
   for _,sock in ipairs (recvt) do
