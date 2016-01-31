@@ -1,21 +1,52 @@
 local _NAME = "openLuup.io"
-local revisionDate = "2015.10.15"
+local revisionDate = "2016.01.31"
 local banner = "       version " .. revisionDate .. "  @akbooer"
 
 --
 -- openLuupIO - I/O module for plugins
 -- 
+-- The Vera/MiOS I/O model is particularly arcane.  Some documentation ...
+-- here: http://wiki.micasaverde.com/index.php/Luup_Lua_extensions#Module:_io
+-- and here: http://wiki.micasaverde.com/index.php/Luup_Plugins_ByHand#.3Cprotocol.3E
+--
+-- thanks to @cybrmage for pointing out some implementation problems here.
+-- see: http://forum.micasaverde.com/index.php/topic,35972.msg266490.html#msg266490
+-- and: http://forum.micasaverde.com/index.php/topic,35983.msg266858.html#msg266858
+-- 2016.01.26 fix for protocol = cr, crlf, raw
+-- 2016.01.28 @cybrmage fix for read timeout
+-- 2016.01.30 @cybrmage log fix for device number
+-- 2016.01.31 socket.select() timeouts, 0 mapped to nil for infinite wait
+
+
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
+local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
 
 local socket    = require "socket"
 local logs      = require "openLuup.logs"
 local scheduler = require "openLuup.scheduler"
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
+--local function _log (msg, name) logs.send (msg, name or _NAME) end
+local function _log (msg, name) logs.send (msg, name or _NAME, scheduler.current_device()) end
 _log (banner, _NAME)   -- for version control
 
--- utility function
+--[[
+ <protocol>
+
+Is the protocol to use to talk to the device if you'll be sending data over the network or a serial port. The protocol tag tells Luup what's considered a single chunk of data. By using a format, from the supported list below, you avoid byte-by-byte processing on input streams as the Luup engine will chunk the data to you and pass it to your Lua code handling <incoming> requests. Lua code is much cleaner when it handles data in chunks. If you have a protocol that's not natively supported, and is likely to be used by other devices, let us know and we'll add it to the Luup engine so you don't need to mess with it.
+
+Valid values for this tag are:
+
+    cr - all incoming commands are terminated with a carriage return+line character, and all outgoing data should have a cr appended. Incoming data will have the cr stripped off.
+    crlf - all incoming commands are terminated with a carriage return+line feed character, and all outgoing data should have a cr+lf appended. Incoming data will have the cr/lf stripped off.
+    stxetx - all incoming commands are surrounded by STX and ETX characters. If you send the string "test" the framework will add the STX before and the ETX at the end, and if the string "<stx>test<etx>" is received, the framework will strip the STX and ETX and pass the string "test" to your incoming data handler.
+    raw - makes no modifications to outgoing data, and calls your incoming data callback for each byte received. This adds more overhead since the engine needs to call your Luup function for every character, and makes your code complex. So, generally avoid using 'raw' and let us add support for your protocol if you have a new one we don't yet support. 
+
+Caution: the <protocol> tag can be either in the I_xxxx file or the D_xxxx file or both. If the latter, they must be identical.
+
+--]]
+
+-- utility functions
 
 local function get_dev_and_socket (device)
   local devNo = tonumber (device) or scheduler.current_device()
@@ -23,6 +54,29 @@ local function get_dev_and_socket (device)
   return dev, (dev or {io = {}}).io.socket, devNo
 end
 
+local function receive (sock, protocol)
+  local data, err
+  if protocol == "raw" then                   -- TODO: 'stxetx' mode for read NOT currently supported
+    data, err = sock: receive (1)             -- single byte only
+  else 
+    -- From the LuaSocket documentation: 
+    -- The line is terminated by a LF character (ASCII 10), optionally preceded by a CR character (ASCII 13). 
+    -- The CR and LF characters are not included in the returned line. 
+    -- In fact, all CR characters are ignored by the pattern. 
+    data, err = sock: receive "*l"
+  end
+  return data, err
+end
+
+local function send (sock, data, protocol)
+  local eol = {cr = "\r", crlf = "\r\n"}      -- TODO: 'stxetx' mode for write NOT currently supported
+  local fmt = "message length: %s, bytes sent: %d, status: %s %s"
+  if eol[protocol] then data = data .. eol[protocol] end
+  local status, msg, last = sock: send (data)             -- send the message
+  _log (fmt: format (#data, status or last-1, msg or "OK", tostring(sock)), "luup.io.write") 
+  return status
+end
+  
 -- function: open
 -- parameters: device (string or number), ip (string), port (as number or string),
 -- returns: nothing
@@ -33,20 +87,25 @@ end
 -- So the actual opening of the socket occurs asynchronously and this function returns nothing. 
 -- You will know that the socket opening failed if your subsequent call to write fails.
 --
--- Generally you do not need to call the open function because the socket is usually started automatically when the Luup engine starts. 
--- This is because the user typically either (a) associates a device with the destination io device, such as selecting an RS232 port for an alarm panel, 
--- where the RS232 is proxied by a socket, or (b) because the configuration settings for the device already include an IP address and port.
+-- Generally you do not need to call the open function 
+-- because the socket is usually started automatically when the Luup engine starts. 
+-- This is because the user typically either 
+--  (a) associates a device with the destination io device, 
+--      such as selecting an RS232 port for an alarm panel, where the RS232 is proxied by a socket, or 
+--  (b) because the configuration settings for the device already include an IP address and port.
 --
 -- There is no 'function: close'.
 
 local function open (device, ip, port)
   local dev, sock, devNo = get_dev_and_socket (device)  
+  local protocol = dev.io.protocol
   
   local function incoming (sock)
-    local data, err = sock: receive "*l"        -- get data
+    local data, err = receive (sock, protocol)        -- get data
     if data then
-      _log (("bytes received: %d, status: %s"): format ((#data or 0), err or "OK"), "luup.io.incoming")
+      _log (("bytes received: %d, status: %s %s"): format ((#data or 0), err or "OK", tostring(sock)), "luup.io.incoming")
       local ok, msg = scheduler.context_switch (devNo, dev.io.incoming, devNo, data) 
+      if not ok then _log(msg) end
     else
       if err == "closed" then 
         sock: close ()            -- close our end
@@ -63,15 +122,17 @@ local function open (device, ip, port)
     sock, msg = socket.tcp ()
     if sock then
       sock:settimeout (OPEN_SOCKET_TIMEOUT)
+      sock:setoption ("tcp-nodelay", true)    -- so that alternate read/write works as expected (no buffering)
       ok, msg = sock:connect (ip, port) 
     end
-    _log ("connecting to " .. ip .. ':' .. port, "luup.io.open")
+    local fmt = "connecting to %s:%s, using %s protocol %s"
+    _log (fmt: format (ip, port,dev.io.protocol or "unknown", tostring(sock) ), "luup.io.open")
     if ok then
-      if dev.io.incoming and not dev.io.intercept then
-        _log "connect OK"
-        scheduler.socket_watch (sock, incoming)
-      end
+      _log "connect OK"
       dev.io.socket = sock 
+      if dev.io.incoming then
+        scheduler.socket_watch (sock, incoming, dev.io)   -- pass the device io table containing intercept flag
+      end
     else
       _log ("connect FAIL: " .. (msg or '?'))
     end
@@ -79,7 +140,8 @@ local function open (device, ip, port)
   end
 
   if dev and not sock then
-    local _,_, jobNo = scheduler.run_job ({run = connect}, nil, devNo)   -- schedule for later 
+    scheduler.run_job ({run = connect}, nil, devNo)   -- run now 
+--    local _,_, jobNo = scheduler.run_job ({job = connect}, nil, devNo)   -- ...or, schedule for later 
 --    _log (("starting job #%d to connect to %s:%s"): format (jobNo or 0, ip, tostring(port)), "luup.io.open")
   end
 end
@@ -94,15 +156,15 @@ end
 -- Result is 'true' if the data was sent successfully, and is 'false' or nil if an error occurred.
 
 local function write (data, device)
-  local status, msg 
+  local status 
   local dev, sock = get_dev_and_socket (device)  
   if dev and sock then
-    local _, tx, err = socket.select (nil, {sock}, 5)         -- 5 second timeout if not ready
+    local _, _, err = socket.select (nil, {sock}, 5)         -- 5 second timeout if not ready for writing
     if err then 
-      _log ("error: " .. err, "luup.io.write") 
+      local fmt = "error: %s %s"
+      _log (fmt:format (err or '?', tostring(sock)), "luup.io.write") 
     else
-      status, msg = sock: send (data..'\n')        -- send the message
-      _log (("bytes sent: %d, status: %s"): format (status or 0, msg or "OK"), "luup.io.write") 
+      status = send (sock, data, dev.io.protocol)        -- send the message
     end
   end
   return not not status               -- just return true or false (not the returned byte count)
@@ -132,10 +194,11 @@ If so, you can manually pass the response packet to the incoming data handler.
 
 --]]
 
-local function intercept (device)
-  local dev, sock = get_dev_and_socket (device)  
-  if sock then scheduler.socket_unwatch (sock) end    -- bypass <incoming> processing
-  dev.io.intercept = true
+local function intercept (device) 
+  local dev = get_dev_and_socket (device)  
+  if dev then
+    dev.io.intercept = true      -- bypass <incoming> processing, FOR ONE READ ONLY
+  end
 end
 
 -- function: read
@@ -147,11 +210,25 @@ end
 
 local function read (timeout, device)
   local data, msg
+  if timeout == 0 then timeout = nil end                    -- 0 means no timeout in luup
   local dev, sock = get_dev_and_socket (device)  
   if dev and sock and dev.io.intercept then
-    sock: settimeout (timeout)
-    data, msg = sock: receive ()        -- get data
-    if not data then _log ("error: " .. (msg or '?'), "luup.io.read") end
+    local _,_,msg1 = socket.select ({sock}, nil, timeout)   -- use select to implement reliable timeout 
+    if not msg1 then
+      data, msg = receive (sock, dev.io.protocol)           -- get data
+    end
+    local msg = msg or msg1
+    if not data then 
+      local fmt = "error: %s %s"
+      local text = fmt: format (msg or '?', tostring(sock))
+      _log (text, "luup.io.read")
+    else
+      local fmt = "bytes received: %d, status: %s %s"
+      local text = fmt: format ((#data or 0), msg or "OK", tostring(sock))
+      _log (text, "luup.io.read")
+    end
+    dev.io.intercept = false                      -- turn off intercept now this read is done
+    sock:settimeout (READ_SOCKET_TIMEOUT)         -- revert to incoming timeout
   end
   return data
 end

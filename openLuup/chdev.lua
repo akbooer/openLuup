@@ -1,10 +1,12 @@
 local _NAME = "openLuup.chdev"
-local revisionDate = "2015.11.09"
+local revisionDate = "2016.01.28"
 local banner = "    version " .. revisionDate .. "  @akbooer"
 
 -- This file not only contains the luup.chdev submodule, 
 -- but also the luup-level facility for creating a device
 -- after all, in the end, every device is a child device.
+
+-- 2016.01.28  added 'disabled' attribute for devices - thanks @cybrmage
 
 local logs      = require "openLuup.logs"
 
@@ -33,7 +35,7 @@ local function create (x)
   local dev = devutil.new (x.devNo)   -- create the proto-device
   local services = dev.services
   
-  local ok, d = pcall (loader.assemble_device, x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
+  local ok, d, err = pcall (loader.assemble_device, x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
 
   if not ok then
     local fmt = "ERROR [%d] %s / %s / %s : %s"
@@ -42,6 +44,7 @@ local function create (x)
     _log (msg, "luup.create_device")
     return
   end
+  if err then _log (err) end
   local fmt = "[%d] %s / %s / %s"
   local msg = fmt: format (x.devNo, x.upnp_file or d.device_type or '', d.impl_file or '', d.json_file or '')
   _log (msg, "luup.create_device")
@@ -69,7 +72,12 @@ local function create (x)
 
   -- schedule device startup code
   if d.entry_point then 
-    scheduler.device_start (d.entry_point, x.devNo)         -- schedule startup in device context
+    if tonumber (x.disabled) ~= 1 then
+      scheduler.device_start (d.entry_point, x.devNo)         -- schedule startup in device context
+    else
+      local fmt = "[%d] is DISABLED"
+      _log (fmt: format (x.devNo), "luup.create_device")
+    end
   end
   
   -- set known attributes
@@ -77,10 +85,11 @@ local function create (x)
   dev:attr_set {
     id              = x.devNo,                        -- device id
     altid           = x.internal_id or '',            -- altid (called id in luup.devices, confusing, yes?)
+    category_num    = d.category_num,
     device_type     = d.device_type or '',
     device_file     = x.upnp_file,
     device_json     = d.json_file,
-    category_num    = d.category_num,
+    disabled        = tonumber (x.disabled) or 0,
     id_parent       = tonumber (x.parent) or 0,
     impl_file       = d.impl_file,
     invisible       = x.invisible and "1" or "0",   -- convert true/false to "1"/"0"
@@ -121,7 +130,11 @@ local function create (x)
   dev.handle_children     = d.handle_children == "1"
   dev.serviceList         = d.service_list
   dev.environment         = d.environment               -- the global environment (_G) for this device
-  dev.io                  = {incoming = d.incoming}     -- area for io related data (see luup.io)
+  dev.io                  = {                           -- area for io related data (see luup.io)
+                              incoming = d.incoming,
+                              protocol = d.protocol,
+                              -- other fields created on open include socket and intercept
+                            }
   -- note that all the following methods should be called with device:function() syntax...
   dev.is_ready            = function () return true end          -- TODO: wait on startup sequence 
   dev.supports_service    = function (self, service) return not not services[service] end

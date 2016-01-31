@@ -1,5 +1,5 @@
 local _NAME = "openLuup.init"
-local revisionDate = "2015.11.27"
+local revisionDate = "2016.01.28"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -84,6 +84,7 @@ local function load_user_data (user_data_json)
           room            = tonumber (d.room), 
           pluginnum       = d.plugin,
           statevariables  = vars,
+          disabled        = d.disabled,
         }
       dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
       luup.devices[d.id] = dev                          -- save it

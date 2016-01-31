@@ -118,6 +118,7 @@ local function parse_device_xml (device_xml)
   return {
     -- notice the name inconsistencies in some of these entries,
     -- that's why we re-write the whole thing, rather than just pass the read device object
+    -- NOTE: every parameter in the file of interest MUST be declared here or will not be visible
     category_num    = d.category_num,
     device_type     = d.deviceType, 
     impl_file       = (d.implementationList or {}).implementationFile, 
@@ -126,6 +127,7 @@ local function parse_device_xml (device_xml)
     handle_children = d.handleChildren, 
     manufacturer    = d.manufacturer,
     modelName       = d.modelName,
+    protocol        = d.protocol,
     service_list    = service_list,
     subcategory_num = d.subcategory_num,
   }
@@ -203,6 +205,7 @@ local function parse_impl_xml (impl_xml)
   local gsub = {lt = '<', gt = '>', amp = '&'}
   source_code = source_code: gsub ("&(%w+);", gsub)     -- fix all XML quoted characters
   return {
+    protocol    = i.settings and i.settings.protocol,   -- may be defined here, but more normally in device file
     source_code = source_code,
     startup     = i.startup,
   }
@@ -336,19 +339,19 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   end
   
   -- load and compile the amalgamated code from <files>, <functions>, <actions>, and <startup> tags
-  local code
+  local code, error_msg
   if i.source_code then
-    local error_msg
     local name = ("[%d] %s"): format (devNo, file or '?')
     code, error_msg = compile_lua (i.source_code, name)  -- load, compile, instantiate    
     if code then 
       code.luup.device = devNo        -- set local value for luup.device
       code.lul_device  = devNo        -- make lul_device in scope for the whole module
-    else
-      print ("Compile Lua error:",error_msg) 
     end
     i.source_code = nil   -- free up for garbage collection
   end
+  
+  -- look for protocol in both device and implementation files 
+  d.protocol = d.protocol or i.protocol
   
   -- set up code environment (for context switching)
   code = code or {}
@@ -369,7 +372,7 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   d.incoming = code._openLuup_INCOMING_
   code._openLuup_INCOMING_ = nil             -- remove from code name space
 
-  return  d
+  return d, error_msg
 end
 
 
