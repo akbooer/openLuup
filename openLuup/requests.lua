@@ -497,8 +497,9 @@ end
 -- If you leave off the DeviceNum and serviceID, then this sets a top-level json tag called "Variable" with the value.
 local function variableset (r,p,f)
   local devNo = tonumber (p.DeviceNum) or 0
-  if devNo == 0 and not p.serviceId and p.Variable then
-    luup.attr_set (p.Variable, p.Value)
+--  if devNo == 0 and not p.serviceId and p.Variable then
+  if (not p.serviceId) and p.Variable then
+    luup.attr_set (p.Variable, p.Value, devNo)
   else
     luup.variable_set (p.serviceId, p.Variable, p.Value or '', devNo) 
   end
