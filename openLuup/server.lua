@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2016.01.28"
+local revisionDate = "2016.02.10"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -51,9 +51,11 @@ end
 
 -- add callbacks to the HTTP handler dispatch list  
 -- and remember the device context in which it's called
-local function add_callback_handlers (handlers)
+-- fixed callback context - thanks @reneboer
+-- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
+local function add_callback_handlers (handlers, devNo)
   for name, proc in pairs (handlers) do     
-    http_handler[name] = {callback = proc, devNo = (luup or {}).device}
+    http_handler[name] = {callback = proc, devNo = devNo}
   end
 end
 
@@ -92,7 +94,10 @@ local function http_query (URL)
     local format = parameters.output_format
     parameters.id = nil               -- don't pass on request id to user...
     parameters.output_format = nil    -- ...or output format in parameters
-    ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request, parameters, format)
+    -- fixed callback request name - thanks @reneboer
+    -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
+    local request_name = request: gsub ("^lr_", '')     -- remove leading "lr_"
+    ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request_name, parameters, format)
     if not ok then _log ("error in callback: " .. request .. ", error is " .. (response or 'nil')) end
   else 
     response = "No handler"

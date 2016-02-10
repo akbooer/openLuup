@@ -1,5 +1,5 @@
 local _NAME = "openLuup.luup"
-local revisionDate = "2015.11.16"
+local revisionDate = "2016.02.10"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -408,12 +408,15 @@ end
 -- function_name will be called and whatever string and content_type it returns will be returned.
 --
 -- The request is made with the URL: data_request?id=lr_[the registered name] on port 3480. 
+
 local function register_handler (global_function_name, request_name)
   local fct = entry_point (global_function_name, "luup.register_handler")
   if fct then
-    local msg = ("global_function_name=%s, request=lr_%s"): format (global_function_name, request_name)
+    -- fixed callback context - thanks @reneboer
+    -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
+    local msg = ("global_function_name=%s, request=%s"): format (global_function_name, request_name)
     _log (msg, "luup.register_handler")
-    server.add_callback_handlers {["lr_"..request_name] = fct}
+    server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_context())
   end
 end
 
