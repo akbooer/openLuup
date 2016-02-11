@@ -87,6 +87,12 @@ local function load_user_data (user_data_json)
           disabled        = d.disabled,
         }
       dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
+      -- set other device attributes
+      for a,v in pairs (d) do
+        if type(v) ~= "table" and not dev.attributes[a] then
+          dev:attr_set (a, v)
+        end
+      end
       luup.devices[d.id] = dev                          -- save it
     end 
   
