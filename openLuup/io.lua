@@ -1,5 +1,5 @@
 local _NAME = "openLuup.io"
-local revisionDate = "2016.01.31"
+local revisionDate = "2016.02.15"
 local banner = "       version " .. revisionDate .. "  @akbooer"
 
 --
@@ -16,7 +16,7 @@ local banner = "       version " .. revisionDate .. "  @akbooer"
 -- 2016.01.28 @cybrmage fix for read timeout
 -- 2016.01.30 @cybrmage log fix for device number
 -- 2016.01.31 socket.select() timeouts, 0 mapped to nil for infinite wait
-
+-- 2016.02.15 'keepalive' option for socket - thanks to @martynwendon for testing the solution
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
@@ -123,6 +123,7 @@ local function open (device, ip, port)
     if sock then
       sock:settimeout (OPEN_SOCKET_TIMEOUT)
       sock:setoption ("tcp-nodelay", true)    -- so that alternate read/write works as expected (no buffering)
+      sock:setoption ("keepalive", true)      -- keepalive, thanks to @martynwendon for testing this solution
       ok, msg = sock:connect (ip, port) 
     end
     local fmt = "connecting to %s:%s, using %s protocol %s"
