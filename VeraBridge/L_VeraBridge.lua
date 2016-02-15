@@ -1,5 +1,5 @@
 _NAME = "VeraBridge"
-_VERSION = "2015.12.04"
+_VERSION = "2016.02.15"
 _DESCRIPTION = "VeraBridge plugin for openLuup!!"
 _AUTHOR = "@akbooer"
 
@@ -12,6 +12,8 @@ _AUTHOR = "@akbooer"
 -- 2015-08-24   openLuup-specific code to action ANY serviceId/action request
 -- 2015-11-01   change device numbering scheme
 -- 2015-11-12   create links to remote scenes
+-- 2016-02-15   use string altid (not number), thanks @cybrmage
+
 -- TODO: revert to original Vera altid (needed for Zwave devices) and clone device 1.
 
 local devNo                      -- our device number
@@ -92,10 +94,10 @@ local function create_children (devices, new_room)
       local impl_file = 'X'  -- override device file's implementation definition... musn't run here!
       luup.attr_set ("Device_Num_Next", cloneId)    -- set this, in case next call creates new device
       -- changed altids to enable plugins which manipulate Zwave devices directly...
-      -- and expect altids to be the Zwave node number...
-      local altid = cloneId
+      -- and expect altids to be the Zwave node number... (although in string form)
+      local altid = tostring(cloneId)
       if tonumber(dev.id_parent) == 1 then    -- it's a Zwave device, use its altid (Zwave node #)
-        altid = dev.altid
+        altid = tostring(dev.altid)
       end
       -- ... but note that this must be unique within our child devices
       -- ... Zwave node numbers can't be more than about 250, so this should be OK
