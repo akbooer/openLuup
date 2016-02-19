@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2016.02.10"
+local revisionDate = "2016.02.19"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -13,6 +13,7 @@ local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"    -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
 local json      = require "openLuup.json"       -- only for non-string response error message
+local wsapi     = require "openLuup.wsapi"      -- for POST processing
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -128,16 +129,24 @@ end
 
 -- dispatch to appropriate handler depending on whether query or not
 -- URL parameter is parsed table of URL structure (see url.parse)
-local function http_dispatch_request (URL)    
+
+local is_cgi = {["cgi"] = true, ["cgi-bin"] = true}       -- root locations of CGI directories
+
+local function http_dispatch_request (URL, headers, post_content)    
   local dispatch
 -- see: http://forum.micasaverde.com/index.php/topic,34465.msg254637.html#msg254637
 -- and: http://forum.micasaverde.com/index.php/topic,34465.msg254650.html#msg254650
   if URL.query and URL.path:match "/data_request$" then     -- Thanks @vosmont 
-    dispatch = http_query 
+    dispatch = http_query       
   else
-    dispatch = http_file 
+    local url_parts = url.parse_path (URL.path)    
+    if is_cgi[url_parts[1]] then       -- deal with CGI calls through WSAPI
+      dispatch = wsapi.cgi
+    else
+      dispatch = http_file 
+    end
   end
-  return dispatch (URL) 
+  return dispatch (URL, headers or {}, post_content or '') 
 end
 
 -- issue a GET request, handling local ones without going over HTTP
@@ -259,12 +268,15 @@ end
  
 ---------
 --
--- handle client requests by running an asynchronous job
+-- handle each client request by running an asynchronous job
 --
 
 -- if MinimumTime specified, then make initial delay
 local function client_request (sock)
   local URL           -- URL table structure with named components (see url.parse in LuaSocket)
+  local headers       -- the request headers
+  local post_content  -- content of POST (if any)
+  
   local Timeout       -- (s)  query line parameter 
   local MinimumDelay  -- (ms) ditto
   local DataVersion   -- ditto
@@ -277,30 +289,36 @@ local function client_request (sock)
     if not err then  
       method, path, major, minor = line: match "^(%u+)%s+(.-)%s+HTTP/(%d)%.(%d)%s*$"
       _log ((path or line) .. ' ' .. tostring(sock))
-      if method == "GET" and minor then
-        URL = http_parse_request (path)           -- ...and break it up into bits  
-        if URL.query then                   -- some query parameters have special significance
+      URL = http_parse_request (path)           -- ...and break it up into bits  
+      headers, err = http_read_headers (sock)
+      --_log ("HTTP request headers : " .. json.encode(headers))
+      if method == "GET" and minor then         -- non-nil 'minor' ensures that request line was correctly parsed
+        if URL.query then                       -- some query parameters have special significance
           local p = URL.query_parameters
           Timeout      = tonumber (p.Timeout)
           MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3
           DataVersion  = tonumber (p.DataVersion)
         end
-        http_read_headers (sock)
+      elseif method == "POST" then
+        if not err then
+          local content_type = headers["Content-Type"]
+          local length = tonumber(headers["Content-Length"]) or 0
+          post_content, err = sock:receive(length)
+        end
+--        _log ("HTTP POST context : " .. json.encode(post_content))
       else
         -- TODO: error response to client
         _log ("Unsupported HTTP request:" .. method)
       end
     else
-      sock: close () -- TODO: is this close() ok ?
---      if err ~= "closed" then
-        _log (("receive error: %s %s"): format (err or '?', tostring (sock)))
---      end
+      sock: close ()
+      _log (("receive error: %s %s"): format (err or '?', tostring (sock)))
     end
     return err
   end
   
   local function exec_request ()
-    local response, type = http_dispatch_request (URL) 
+    local response, type = http_dispatch_request (URL, headers, post_content) 
     local n, nc = http_response (sock, response, type)
     local t = math.floor (1000*(socket.gettime() - start_time))
     _log (("request completed (%d bytes, %d chunks, %d ms) %s"):format (n, nc, t, tostring(sock)))
