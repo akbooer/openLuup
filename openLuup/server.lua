@@ -6,6 +6,9 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 -- openLuup SERVER - HTTP GET request server and client
 --
 
+-- 2016.02.20   add "index.html" for file requests ending with '/
+--
+
 local socket    = require "socket"
 local url       = require "socket.url"
 local http      = require "socket.http"
@@ -13,7 +16,7 @@ local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"    -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
 local json      = require "openLuup.json"       -- only for non-string response error message
-local wsapi     = require "openLuup.wsapi"      -- for POST processing
+local wsapi     = require "openLuup.wsapi"      -- for CGI processing
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -143,6 +146,7 @@ local function http_dispatch_request (URL, headers, post_content)
     if is_cgi[url_parts[1]] then       -- deal with CGI calls through WSAPI
       dispatch = wsapi.cgi
     else
+      if URL.path: match "/$" then URL.path = URL.path .. "index.html" end   -- 2016.02.20
       dispatch = http_file 
     end
   end

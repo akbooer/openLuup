@@ -28,7 +28,6 @@ The connectors are careful to treat errors gracefully: if they occur before send
 
 --]]
 
-local url     = require "socket.url"
 local loader  = require "openLuup.loader"
 local logs    = require "openLuup.logs"
 
@@ -43,9 +42,10 @@ _log (banner, _NAME)   -- for version control
 
 -- return a dummy WSAPI app with error code and message
 local function dummy_app (status, message)
-  local function iterator ()
-    local x
-     x,message = message,nil return x     -- one-shot iterator, returns message, then nil
+  local function iterator ()     -- one-shot iterator, returns message, then nil
+    local x = message
+    message = nil 
+    return x
   end
   local function run ()   -- dummy app entry point
     return 
@@ -53,6 +53,7 @@ local function dummy_app (status, message)
         { ["Content-Type"] = "text/plain" },
         iterator
   end
+  _log (message)
   return run    -- return the entry point
 end
 
@@ -76,7 +77,6 @@ local function build (script)
   -- compile and load
   local a, error_msg = loadstring (code, script)    -- load it
   if not a or error_msg then
-    print ("ERROR", error_msg)
     return dummy_app (500, error_msg)               -- 'internal server error'
   end
   local lua_env = loader.new_environment (script)   -- use new environment
@@ -144,8 +144,15 @@ local function cgi (URL, headers, post_content)
     __index = function () return '' end;  -- return the empty string instead of nil for undefined metavariables
   }
   
+  local ptr = 1
   local input = {
-    read = function (n) return post_content end;   -- TODO: implement input.read(n)
+    read =  
+      function (n) 
+        n = n or #post_content
+        local start, finish = ptr, ptr + n - 1
+        ptr = ptr + n
+        return post_content:sub (start, finish)
+      end
   }
   
   local error = {
