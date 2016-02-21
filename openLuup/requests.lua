@@ -8,6 +8,8 @@ local banner = " version " .. revisionDate .. "  @akbooer"
 -- These are all implemented as standard luup.register_handler callbacks with the usual three parameters
 --
 
+-- 2016.02.21  correct sdata scenes table - thanks @ronluna
+
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
 local xml           = require "openLuup.xml"
@@ -158,13 +160,12 @@ end
 
 local function sdata_scenes_table ()
   local info = {}
-  for _, s in pairs (luup.scenes) do    -- TODO: actually, should only return changed ones
+  for id, s in pairs (luup.scenes) do    -- TODO: actually, should only return changed ones
     info[#info + 1] = {
-      id = s.id,
-      room = s.room,
-      name = s.name,
-      state = -1,
-      active = 1,
+      id = id,
+      room = s.room_num,
+      name = s.description,
+      active = 0,
     }
   end
   return info
