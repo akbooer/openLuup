@@ -1,4 +1,4 @@
-local version = "XML  2015.11.12  @akbooer"
+local version = "XML  2016.02.22  @akbooer"
 
 --
 -- Routines to read Device / Service / Implementation XML files
@@ -11,6 +11,8 @@ local version = "XML  2015.11.12  @akbooer"
 -- TODO: proper XML parser rather than nasty hack?
 -- TODO: escape special characters in encode and decode
 --
+
+-- 2016.02.22  skip XML attributes but still parse element
 
 -- XML:extract ("name", "subname", "subsubname", ...)
 -- return named part or empty list
@@ -32,7 +34,7 @@ local function xml2Lua (info)
   local msg
   local xml = {}
   local result = info
-  for a,b in (info or ''): gmatch "<(%a+)>(.-)</%1>" do   -- find matching opening and closing tags
+  for a,b in (info or ''): gmatch "<(%a+).->(.-)</%1>" do   -- find matching opening and closing tags
     local x,y = xml2Lua (b)                               -- get the value of the contents
     xml[a] = xml[a] or {}                                 -- if this tag doesn't exist, start a list of values
     xml[a][#xml[a]+1] = x or y   -- add new value to the list (might be table x, or just text y)

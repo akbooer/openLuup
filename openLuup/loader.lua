@@ -1,4 +1,4 @@
-local version = "openLuup.loader  2015.11.27  @akbooer"
+local version = "openLuup.loader  2016.02.22  @akbooer"
 
 --
 -- Loader for Device, Implementation, and JSON files
@@ -8,6 +8,8 @@ local version = "openLuup.loader  2015.11.27  @akbooer"
 -- the reading/parsing are separate functions for easy unit testing.
 --
 
+-- 2016.02.22  add root tag in devices, scpd tag in services,
+--             create index of short_codes in service files (for use by sdata)
 
 ------------------
 --
@@ -101,7 +103,9 @@ end
 -- parse device file, or empty table if error
 local function parse_device_xml (device_xml)
   local d, service_list
-  if type(device_xml) == "table" then d = device_xml.device end   -- find relevant part
+  if type(device_xml) == "table" and device_xml.root then -- 2016.02.22, added 'root' nesting
+    d = device_xml.root.device    -- find relevant part
+  end
   local x = d or {}                                               -- ensure there's something there  
   d = {}
   for a,b in pairs (x) do
@@ -220,8 +224,8 @@ end
 
 -- parse service files
 local function parse_service_xml (service_xml)
-  local actions   = xml.extract (service_xml, "actionList", "action")
-  local variables = xml.extract (service_xml, "serviceStateTable", "stateVariable")
+  local actions   = xml.extract (service_xml, "scpd", "actionList", "action")   -- 2016.02.22 added "scpd" nesting
+  local variables = xml.extract (service_xml, "scpd", "serviceStateTable", "stateVariable") -- ditto
   -- now build the return argument list  {returnName = RelatedStateVariable, ...}
   -- indexed by action name
   local returns = {}
@@ -235,10 +239,17 @@ local function parse_service_xml (service_xml)
     end
     returns[a.name] = list
   end
+  -- now build lookup table of short_codes (for use by sdata request)
+  local short_codes = {}
+  for _,v in ipairs (variables) do
+    short_codes[v.name] = v.shortCode
+  end
+  
   return {
-    actions   = actions,
-    returns   = returns,
-    variables = variables,
+    actions     = actions,
+    returns     = returns,
+    short_codes = short_codes,
+    variables   = variables,
   }
 end 
  
