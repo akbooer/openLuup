@@ -1,5 +1,5 @@
 local _NAME = "openLuup.chdev"
-local revisionDate = "2016.01.28"
+local revisionDate = "2016.02.15"
 local banner = "    version " .. revisionDate .. "  @akbooer"
 
 -- This file not only contains the luup.chdev submodule, 
@@ -7,6 +7,7 @@ local banner = "    version " .. revisionDate .. "  @akbooer"
 -- after all, in the end, every device is a child device.
 
 -- 2016.01.28  added 'disabled' attribute for devices - thanks @cybrmage
+-- 2016.02.15  ensure that altid is a string (thanks cybrmage)
 
 local logs      = require "openLuup.logs"
 
@@ -83,8 +84,8 @@ local function create (x)
   -- set known attributes
 
   dev:attr_set {
-    id              = x.devNo,                        -- device id
-    altid           = x.internal_id or '',            -- altid (called id in luup.devices, confusing, yes?)
+    id              = x.devNo,                                          -- device id
+    altid           = x.internal_id and tostring(x.internal_id) or '',  -- altid (called id in luup.devices, confusing, yes?)
     category_num    = d.category_num,
     device_type     = d.device_type or '',
     device_file     = x.upnp_file,
