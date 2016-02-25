@@ -101,6 +101,9 @@ local D2 = [[
 local I = [[
 <?xml version="1.0"?>
 <implementation>
+    <settings>
+        <protocol>cr</protocol>
+    </settings>
   <functions>
   function defined_in_tag () end
   </functions>
@@ -428,7 +431,7 @@ local S = [[
 TestDeviceFile = {}
 
 function TestDeviceFile:test_upnp_file ()
-  local dev_xml = xml.xml2Lua (D)
+  local dev_xml = xml.decode (D)
   local d = loader.parse_device_xml (dev_xml) 
   t.assertEquals (d.device_type, "urn:schemas-upnp-org:device:altui:1")
   t.assertEquals (d.json_file, "D_ALTUI.json")
@@ -443,11 +446,12 @@ end
 
 
 function TestDeviceFile:test_upnp_file2 ()
-  local dev_xml = xml.xml2Lua (D2)
+  local dev_xml = xml.decode (D2)
   local d = loader.parse_device_xml (dev_xml) 
   t.assertEquals (d.device_type, "urn:schemas-upnp-org:device:altui:1")
   t.assertEquals (d.json_file, "D_ALTUI.json")
   t.assertEquals (d.impl_file, "I_ALTUI.xml")
+  t.assertEquals (d.protocol, "cr")
   t.assertEquals (d.handle_children, "1")
   t.assertIsTable (d.service_list)
   t.assertEquals (#d.service_list, 2)
@@ -463,7 +467,7 @@ end
 TestImplementationFile = {}
 
 function TestImplementationFile:test_impl_file ()
-  local impl_xml = xml.xml2Lua (I)
+  local impl_xml = xml.decode (I)
   local i = loader.parse_impl_xml (impl_xml) 
   t.assertEquals (i.startup, "initstatus")      
   local a, error_msg = loadstring (i.source_code, i.module_name)  -- load it
@@ -482,6 +486,7 @@ function TestImplementationFile:test_impl_file ()
   t.assertEquals (acts[3].name, "test")
   t.assertEquals (acts[3].serviceId, "service")
   t.assertEquals (acts[3].run(), 42)
+  t.assertEquals (i.protocol, "cr")
   t.assertIsFunction (code._openLuup_INCOMING_)
   t.assertEquals (code._openLuup_INCOMING_ (), "INCOMING!!")
 end
@@ -504,10 +509,10 @@ function TestImplementationFile:test_impl_2 ()
   t.assertIsFunction (code[i.startup])   
 end
 
-function TestImplementationFile:test_impl_DataYours ()
-  local i = loader.read_impl "I_DataYours7.xml"
+function TestImplementationFile:test_impl_AltUI ()
+  local i = loader.read_impl "I_ALTUI.xml"
   t.assertIsString (i.startup)
-  t.assertEquals (i.startup, "Startup")
+  t.assertEquals (i.startup, "initstatus")
   local a, error_msg = loadstring (i.source_code, i.module_name)  -- load it
   t.assertIsFunction (a)
   t.assertIsNil (error_msg)
@@ -521,11 +526,16 @@ end
 TestServiceFile = {}
 
 function TestServiceFile:test_srv_file ()
-  local svc_xml = xml.xml2Lua (S)
+  local svc_xml = xml.decode (S)
   local s = loader.parse_service_xml (svc_xml) 
   t.assertIsTable (s.actions)      
   t.assertIsTable (s.returns)      
   t.assertIsTable (s.variables)   
+  t.assertIsTable (s.short_codes) 
+  t.assertTrue (#s.actions > 0)
+  t.assertTrue (#s.returns == 0)
+  t.assertTrue (#s.variables > 0)
+  t.assertTrue (#s.short_codes == 0)
   -- actions
   for i,a in ipairs (s.actions) do
     local argument = xml.extract (a, "argumentList", "argument")
@@ -586,12 +596,18 @@ t.LuaUnit.run "-v"
 
 local pretty = require "pretty"
 
-local s = loader.read_service "S_SwitchPower1.xml"
---s = df.parse_service_xml (xml.xml2Lua (S))
+--local s = loader.read_service "S_SwitchPower1.xml"
+local s = loader.read_service "S_AstronomicalPosition1.xml"
+--s = df.parse_service_xml (xml.decode (S))
+--print(pretty(s))
 
 print "--------"
 
 print(pretty(s.returns))
+
+print "--------"
+
+print(pretty(s.short_codes))
 
 print "--------"
 

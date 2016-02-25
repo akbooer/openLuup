@@ -1,4 +1,4 @@
-local version = "openLuup.loader  2016.02.22  @akbooer"
+local version = "openLuup.loader  2016.02.25  @akbooer"
 
 --
 -- Loader for Device, Implementation, and JSON files
@@ -10,6 +10,8 @@ local version = "openLuup.loader  2016.02.22  @akbooer"
 
 -- 2016.02.22  add root tag in devices, scpd tag in services,
 --             create index of short_codes in service files (for use by sdata)
+-- 2016.02.23  memoize file reader
+-- 2016.02.24  don't attempt to read implementation file 'X'
 
 ------------------
 --
@@ -100,6 +102,36 @@ for _,cat in ipairs (categories_lookup) do
 end
 
 
+--  utilities
+
+-- memoize: return new function which caches its previously computed results
+local function memoize (fct)
+  local cache = setmetatable ({}, {__mode = "kv"})
+  return function (x)
+--    if cache[x] then print ("HIT", x) else print ('',"MISS",x) end
+    cache[x] = cache[x] or fct(x)
+    return cache[x]
+  end
+end
+
+
+local function raw_read (filename)
+  local f = io.open (filename) 
+  if not f then f = io.open ("../cmh-lu/" .. filename) end    -- look in 'cmh-lu/' directory
+  if f then 
+    local data = f: read "*a"
+    f: close () 
+    return data
+  end
+end
+
+local cached_read = memoize (raw_read)    -- 2016.02.23
+
+local function xml_read (filename)
+  local info = cached_read (filename) 
+  return xml.decode(info)
+end
+
 -- parse device file, or empty table if error
 local function parse_device_xml (device_xml)
   local d, service_list
@@ -140,7 +172,7 @@ end
 -- read and parse device file, if present
 local function read_device (upnp_file)
   local info = {}
-  if upnp_file then info =  parse_device_xml (xml:read (upnp_file)) end
+  if upnp_file then info =  parse_device_xml (xml_read (upnp_file)) end
   return info
 end
 
@@ -194,20 +226,15 @@ local function parse_impl_xml (impl_xml)
   local loadList = {}   
   if i.files then 
     for fname in i.files:gmatch "[%w%_%-%.%/%\\]+" do
-      local f = io.open (fname)
-      if f then
-        local code = f:read "*a"
-        f:close ()
-        loadList[#loadList+1] = code
-      end
+      loadList[#loadList+1] = raw_read (fname)          -- 2016.02.23 not much point in caching .lua files
     end
   end   
   loadList[#loadList+1] = i.functions                   -- append any xml file functions
   loadList[#loadList+1] = actions                       -- append the actions for jobs
   loadList[#loadList+1] = incoming                      -- append the incoming data handler
   local source_code = table.concat (loadList, '\n')     -- concatenate the code
-  local gsub = {lt = '<', gt = '>', amp = '&'}
-  source_code = source_code: gsub ("&(%w+);", gsub)     -- fix all XML quoted characters
+--  local gsub = {lt = '<', gt = '>', amp = '&'}
+--  source_code = source_code: gsub ("&(%w+);", gsub)     -- fix all XML quoted characters
   return {
     protocol    = i.settings and i.settings.protocol,   -- may be defined here, but more normally in device file
     source_code = source_code,
@@ -218,7 +245,7 @@ end
 -- read and parse implementation file, if present
 local function read_impl (impl_file)
   local info = {}
-  if impl_file then info =  parse_impl_xml (xml:read (impl_file)) end
+  if impl_file and impl_file ~= 'X' then info =  parse_impl_xml (xml_read (impl_file)) end
   return info
 end
 
@@ -258,23 +285,41 @@ end
 -- the 'relatedStateVariable' tells what data to return for 'out' arguments
 local function read_service (service_file)
   local info = {}
-  if service_file then info =  parse_service_xml (xml:read (service_file)) end
+  if service_file then info =  parse_service_xml (xml_read (service_file)) end
   return info
 end
 
+local icon_path      -- redirect path set by function below (if called at all)
 
- 
+-- called with new path for icon access, eg "http://172.16.42.151:3480/icons/"
+local function icon_redirect (path)
+  icon_path = json.encode (path): sub (1,-2)    -- strip off trailing double quote character
+end
+
+-- force port 3480 access for all icons
+local function rewrite_icon_path (j)
+  return (j: gsub ('"[^"]+%.png"', 
+    function (x)
+      if x: match '"http' then return x end
+      return icon_path .. x: match '[^"/=]+%.png"'
+    end
+    ))
+end
+
+
 -- read JSON file, if present.
 -- openLuup doesn't use the json files, except to put into the static_data structure
 -- which is passed on to any UI through the /data_request?id=user_Data HTTP request.
 local function read_json (json_file)
   local data, msg
-  local f 
-  if json_file then f = io.open (json_file, 'r') end
-  if f then
-    local j = f: read "*a"
-    if j then data, msg = json.decode (j) end
-    f: close ()
+  if json_file then 
+    local j = raw_read (json_file)        -- 2016.02.23, no point in caching since Lua structure itself is cached below
+    if j then 
+      if icon_path then                   -- 2016.02.23
+        j = rewrite_icon_path (j)
+      end
+      data, msg = json.decode (j) 
+    end
   end
   return data, msg
 end
@@ -396,6 +441,7 @@ return {
     -- methods
     assemble_device     = assemble_device_from_files,
     compile_lua         = compile_lua,
+    icon_redirect       = icon_redirect,
     new_environment     = new_environment,
     parse_service_xml   = parse_service_xml,
     parse_device_xml    = parse_device_xml,

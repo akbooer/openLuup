@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2016.02.19"
+local revisionDate = "2016.02.25"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -7,7 +7,8 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 --
 
 -- 2016.02.20   add "index.html" for file requests ending with '/
---
+-- 2016.02.24   also look for files in /cmh-lu/
+-- 2016.02.25   make myIP global (used for rewriting icon urls)
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -16,7 +17,7 @@ local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"    -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
 local json      = require "openLuup.json"       -- only for non-string response error message
-local wsapi     = require "openLuup.wsapi"      -- for CGI processing
+local wsapi     = require "openLuup.wsapi"      -- WSAPI connector for CGI processing
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -63,8 +64,6 @@ local function add_callback_handlers (handlers, devNo)
   end
 end
 
--- local functions
-
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
 local myIP = (
   function ()    
@@ -74,6 +73,8 @@ local myIP = (
     mySocket: close()
     return ip or "127.0.0.1"
   end) ()
+
+-- local functions
 
 -- convert HTTP request string into parsed URL with parameter table
 local function http_parse_request (request)
@@ -120,6 +121,7 @@ local function http_file (URL)
   path = path: gsub ("luvd/", '')                   -- no idea how this is handled in Luup, just remove it!
   local info
   local f = io.open(path,'r')
+  if not f then f = io.open ("../cmh-lu/" .. path, 'r') end    -- 2016.02.24  also look in /etc/cmh-lu/
   if f then 
     info = (f: read "*a") or ''                   -- should perhaps buffer long files
 --    _log ("file length = "..#info, "openLuup.HTTP.FILE")
@@ -433,6 +435,8 @@ end
 
 return {
     -- constants
+    myIP = myIP,
+    
     -- variables
     iprequests = iprequests,
     

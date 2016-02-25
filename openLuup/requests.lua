@@ -158,9 +158,9 @@ local function sdata_devices_table (devices)
       -- add the additional information from short_code variables indexed in the service_data
       local sd = loader.service_data
       for svc, s in pairs (d.services) do
-        for var, v in pairs(s.variables) do
-          local known_service = sd[svc]
-          if known_service then
+        local known_service = sd[svc]
+        if known_service then
+          for var, v in pairs(s.variables) do
             local short = known_service.short_codes[var]
             if short then info[short] = v.value end
           end

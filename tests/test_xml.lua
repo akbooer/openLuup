@@ -103,13 +103,14 @@ end
 TestDecodeValid = {}
 
 function TestDecodeValid:test_decode ()
-  valid ("<foo>garp</foo>",  {foo="garp"})
+  valid ('<foo a="b">garp</foo>',  {foo="garp"})
   valid ([[
     <foo>
       <garp>bung1</garp>
       <garp>bung2</garp>
     </foo>
     ]],  {foo={garp= {"bung1","bung2"}}})
+  valid ('<a>&lt;&gt;&quot;&apos;&amp;</a>', {a = [[<>"'&]]})
 end
 
 
@@ -199,6 +200,8 @@ TestEncodeDecode = {}
 function TestEncodeDecode:test_round_trip ()
   round_trip_ok (I)
   round_trip_ok (D)
+  round_trip_ok "<a>&lt;&gt;&quot;&apos;&amp;</a>"
+
 end
 -------------------
 
@@ -212,8 +215,17 @@ print ("TOTAL number of tests run = ", N)
 
 -- visual round-trip test 
   
-print "----- Lua2xml -----"
+print "----- encode(decode(...)) -----"
 print "Round-trip XML:"
-print ((X.Lua2xml(X.decode(I))))
+print ((X.encode(X.decode(I))))
+
+print "-----------"
+local a = [[<>"'&]]
+local b = X.encode {a = a}
+local c = X.decode (b)
+
+print (a)
+print (b)
+print (c.a)
 
 print 'done'

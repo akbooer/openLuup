@@ -1,8 +1,9 @@
 local _NAME = "openLuup.wsapi"
-local revisionDate = "2016.02.19"
+local revisionDate = "2016.02.20"
 local banner = "    version " .. revisionDate .. "  @akbooer"
 
--- This module uses the syntax and semantics of WSAPI, although is a separate implementation.
+-- This module implements a WSAPI application connector for the openLuup port 3480 server.
+--
 -- see: http://keplerproject.github.io/wsapi/
 -- and: http://keplerproject.github.io/wsapi/license.html
 -- and: https://github.com/keplerproject/wsapi
@@ -16,15 +17,28 @@ local banner = "    version " .. revisionDate .. "  @akbooer"
 
 Writing WSAPI connectors
 
-A WSAPI connector builds the environment from information passed by the web server and calls a WSAPI application, sending the response back to the web server. The first thing a connector needs is a way to specify which application to run, and this is highly connector specific. Most connectors receive the application entry point as a parameter (but WSAPI provides special applications called generic launchers as a convenience).
+A WSAPI connector builds the environment from information passed by the web server and calls a WSAPI application,
+sending the response back to the web server. The first thing a connector needs is a way to specify which application to run,
+and this is highly connector specific. Most connectors receive the application entry point as a parameter 
+(but WSAPI provides special applications called generic launchers as a convenience).
 
-The environment is a Lua table containing the CGI metavariables (at minimum the RFC3875 ones) plus any server-specific metainformation. It also contains an input field, a stream for the request's data, and an error field, a stream for the server's error log. The input field answers to the read([n]) method, where n is the number of bytes you want to read (or nil if you want the whole input). The error field answers to the write(...) method.
+The environment is a Lua table containing the CGI metavariables (at minimum the RFC3875 ones) plus any server-specific 
+metainformation. It also contains an input field, a stream for the request's data, and an error field, a stream for the 
+server's error log. The input field answers to the read([n]) method, where n is the number of bytes you want to read 
+(or nil if you want the whole input). The error field answers to the write(...) method.
 
-The environment should return the empty string instead of nil for undefined metavariables, and the PATH_INFO variable should return "/" even if the path is empty. Behavior among the connectors should be uniform: SCRIPT_NAME should hold the URI up to the part where you identify which application you are serving, if applicable (again, this is highly connector specific), while PATH_INFO should hold the rest of the URL.
+The environment should return the empty string instead of nil for undefined metavariables, and the PATH_INFO variable should
+return "/" even if the path is empty. Behavior among the connectors should be uniform: SCRIPT_NAME should hold the URI up
+to the part where you identify which application you are serving, if applicable (again, this is highly connector specific),
+while PATH_INFO should hold the rest of the URL.
 
-After building the environment the connector calls the application passing the environment to it, and collecting three return values: the HTTP status code, a table with headers, and the output iterator. The connector sends the status and headers right away to the server, as WSAPI does not guarantee any buffering itself. After that it begins calling the iterator and sending output to the server until it returns nil.
+After building the environment the connector calls the application passing the environment to it, and collecting three
+return values: the HTTP status code, a table with headers, and the output iterator. The connector sends the status and 
+headers right away to the server, as WSAPI does not guarantee any buffering itself. After that it begins calling the
+iterator and sending output to the server until it returns nil.
 
-The connectors are careful to treat errors gracefully: if they occur before sending the status and headers they return an "Error 500" page instead, if they occur while iterating over the response they append the error message to the response.
+The connectors are careful to treat errors gracefully: if they occur before sending the status and headers they return an 
+"Error 500" page instead, if they occur while iterating over the response they append the error message to the response.
 
 --]]
 
@@ -136,10 +150,10 @@ end
                        "SERVER_SOFTWARE" | scheme |
                        protocol-var-name | extension-var-name
 --]]
-
+local pretty = require "pretty"
 -- cgi is called by the server when it receives a CGI request
 local function cgi (URL, headers, post_content) 
-  
+  print (pretty{URL = URL, headers = headers, post = post_content})
   local meta = {
     __index = function () return '' end;  -- return the empty string instead of nil for undefined metavariables
   }
@@ -164,6 +178,7 @@ local function cgi (URL, headers, post_content)
   local env = {   -- the WSAPI standard (and CGI) is upper case for these metavariables
     ["CONTENT_LENGTH"]  = #post_content,
     ["CONTENT_TYPE"]    = headers["Content-Type"] or '',
+    ["REMOTE_HOST"]     = headers ["Host"],
     ["SCRIPT_NAME"]     = URL.path,
     ["PATH_INFO"]       = '/',
     ["QUERY_STRING"]    = URL.query,

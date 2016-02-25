@@ -78,6 +78,15 @@ function TestAttributes:test_set_get ()
   t.assertEquals (a, val)
 end
 
+function TestAttributes:test_numeric_set_get ()
+  local val = 1234
+  local name = "attr1"
+  self.d0:attr_set (name, val)
+  local a = self.d0:attr_get (name)
+  t.assertEquals (type(a), "number")
+  t.assertEquals (a, val)
+end
+
 function TestAttributes:test_multiple_set ()
   local val1 = "42"
   local val2 = "BBB"
