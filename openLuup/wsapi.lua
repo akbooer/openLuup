@@ -1,5 +1,5 @@
 local _NAME = "openLuup.wsapi"
-local revisionDate = "2016.02.20"
+local revisionDate = "2016.02.25"
 local banner = "    version " .. revisionDate .. "  @akbooer"
 
 -- This module implements a WSAPI application connector for the openLuup port 3480 server.
@@ -150,10 +150,8 @@ end
                        "SERVER_SOFTWARE" | scheme |
                        protocol-var-name | extension-var-name
 --]]
-local pretty = require "pretty"
 -- cgi is called by the server when it receives a CGI request
 local function cgi (URL, headers, post_content) 
-  print (pretty{URL = URL, headers = headers, post = post_content})
   local meta = {
     __index = function () return '' end;  -- return the empty string instead of nil for undefined metavariables
   }
