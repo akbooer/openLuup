@@ -12,6 +12,7 @@ local version = "openLuup.loader  2016.02.25  @akbooer"
 --             create index of short_codes in service files (for use by sdata)
 -- 2016.02.23  memoize file reader
 -- 2016.02.24  don't attempt to read implementation file 'X'
+-- 2016.02.25  handle both .png and .swf icons (thanks @reneboer, and @vosmont)
 
 ------------------
 --
@@ -298,10 +299,10 @@ end
 
 -- force port 3480 access for all icons
 local function rewrite_icon_path (j)
-  return (j: gsub ('"[^"]+%.png"', 
+  return (j: gsub ('"[^"]+%.[ps][nw][gf]"', 
     function (x)
       if x: match '"http' then return x end
-      return icon_path .. x: match '[^"/=]+%.png"'
+      return icon_path .. x: match '[^"/=]+%.%a+"'
     end
     ))
 end
