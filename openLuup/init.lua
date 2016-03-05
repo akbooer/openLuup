@@ -169,7 +169,8 @@ end
 do -- change search paths for Lua require and icon urls
   local cmh_lu = ";../cmh-lu/?.lua"
   package.path = package.path .. cmh_lu                               -- add /etc/cmh-lu/ to search path
-  loader.icon_redirect ("http://" .. server.myIP .. ":3480/icons/")   -- use port 3480 access for icons
+--  loader.icon_redirect ("http://" .. server.myIP .. ":3480/icons/")   -- use port 3480 access for icons
+--  loader.icon_redirect ("/icons/")   -- use icons/ for icons
 end
 
 do -- Devices 1 and 2 are the Vera standard ones

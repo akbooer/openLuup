@@ -302,7 +302,9 @@ local function rewrite_icon_path (j)
   return (j: gsub ('"[^"]+%.[ps][nw][gf]"', 
     function (x)
       if x: match '"http' then return x end
-      return icon_path .. x: match '[^"/=]+%.%a+"'
+      local new = icon_path .. x: match '[^"/=]+%.%a+"'
+--      print ("icon: ", x, new)
+      return new
     end
     ))
 end

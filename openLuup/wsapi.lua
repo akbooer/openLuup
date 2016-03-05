@@ -1,5 +1,5 @@
 local _NAME = "openLuup.wsapi"
-local revisionDate = "2016.02.25"
+local revisionDate = "2016.02.26"
 local banner = "    version " .. revisionDate .. "  @akbooer"
 
 -- This module implements a WSAPI application connector for the openLuup port 3480 server.
@@ -12,6 +12,9 @@ local banner = "    version " .. revisionDate .. "  @akbooer"
 -- The use of WSAPI concepts for handling openLuup CGI requests was itself inspired by @vosmont,
 -- see: http://forum.micasaverde.com/index.php/topic,36189.0.html
 -- 2016.02.18
+
+--2016.02.26  add self parameter to input.read(), seems to be called from wsapi.request with colon syntax
+--            ...also util.lua shows that the same is true for the error.write(...) function.
 
 --[[
 
@@ -159,8 +162,8 @@ local function cgi (URL, headers, post_content)
   local ptr = 1
   local input = {
     read =  
-      function (n) 
-        n = n or #post_content
+      function (self, n) 
+        n = tonumber (n) or #post_content
         local start, finish = ptr, ptr + n - 1
         ptr = ptr + n
         return post_content:sub (start, finish)
@@ -168,8 +171,10 @@ local function cgi (URL, headers, post_content)
   }
   
   local error = {
-    write = function (...) 
-      _log (table.concat ({URL.path or '?', ':', ...}, ' '), "openLuup.wsapi.cgi") 
+    write = function (self, ...) 
+      local msg = {URL.path or '?', ':', ...}
+      for i, m in msg do msg[i] = tostring(m) end             -- ensure everything is a string
+      _log (table.concat (msg, ' '), "openLuup.wsapi.cgi") 
     end;
   }
   

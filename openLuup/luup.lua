@@ -1,5 +1,5 @@
 local _NAME = "openLuup.luup"
-local revisionDate = "2016.02.10"
+local revisionDate = "2016.03.01"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -379,7 +379,11 @@ local function call_timer (global_function_name, timer_type, time, days, ...)
   local fct = entry_point (global_function_name, "luup.call_timer")
   if fct then
     _log (msg, "luup.call_timer")
-    return timers.call_timer(fct, timer_type, time, days, ...) 
+    local e,_,j = timers.call_timer(fct, timer_type, time, days, ...)      -- 2016.03.01   
+    if j and scheduler.job_list[j] then
+      scheduler.job_list[j].notes = "Timer: " .. msg
+    end
+    return e
   end
 end
 

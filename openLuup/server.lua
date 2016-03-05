@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2016.02.25"
+local revisionDate = "2016.02.29"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -9,6 +9,7 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 -- 2016.02.20   add "index.html" for file requests ending with '/
 -- 2016.02.24   also look for files in /cmh-lu/
 -- 2016.02.25   make myIP global (used for rewriting icon urls)
+-- 2016.02.29   redirect file requests for UI5 and UI7 icons
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -119,6 +120,8 @@ local function http_file (URL)
   path = path: gsub ("%.%.", '')                    -- ban attempt to move up directory tree
   path = path: gsub ("^/", '')                      -- remove filesystem root from path
   path = path: gsub ("luvd/", '')                   -- no idea how this is handled in Luup, just remove it!
+  path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
+  path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
   local info
   local f = io.open(path,'r')
   if not f then f = io.open ("../cmh-lu/" .. path, 'r') end    -- 2016.02.24  also look in /etc/cmh-lu/
@@ -355,7 +358,10 @@ local function client_request (sock)
   iprequests [ip] = {ip = ip, date = os.time(), mac = "00:00:00:00:00:00"} --TODO: real MAC address?
   local err = receive ()
   if not err then
-    scheduler.run_job ({job = job}, {}, nil)  -- nil device number
+    local err, msg, jobNo = scheduler.run_job ({job = job}, {}, nil)  -- nil device number
+    if jobNo and scheduler.job_list[jobNo] then
+      scheduler.job_list[jobNo].notes = "HTTP request from " .. tostring(ip)
+    end
   end
   return err
 end
@@ -397,7 +403,9 @@ local function new_client (sock)
   sock:setoption ("tcp-nodelay", true)            -- TODO: trying to fix timeout error on long strings
   scheduler.socket_watch (sock, incoming)                -- start listening for incoming
   local err, msg, jobNo = scheduler.run_job {job = job}
-
+  if jobNo and scheduler.job_list[jobNo] then
+    scheduler.job_list[jobNo].notes = "HTTP new " .. tostring(sock)
+  end
 end
 
 ----
