@@ -10,6 +10,7 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 -- 2016.02.24   also look for files in /cmh-lu/
 -- 2016.02.25   make myIP global (used for rewriting icon urls)
 -- 2016.02.29   redirect file requests for UI5 and UI7 icons
+-- 2016.03.05  io.open with 'rb' for Windows, thanks @vosmont
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -123,8 +124,8 @@ local function http_file (URL)
   path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
   path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
   local info
-  local f = io.open(path,'r')
-  if not f then f = io.open ("../cmh-lu/" .. path, 'r') end    -- 2016.02.24  also look in /etc/cmh-lu/
+  local f = io.open(path,'rb')                                  -- 2016.03.05  'b' for Windows, thanks @vosmont
+  if not f then f = io.open ("../cmh-lu/" .. path, 'rb') end    -- 2016.02.24  also look in /etc/cmh-lu/
   if f then 
     info = (f: read "*a") or ''                   -- should perhaps buffer long files
 --    _log ("file length = "..#info, "openLuup.HTTP.FILE")
