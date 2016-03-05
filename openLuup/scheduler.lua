@@ -1,5 +1,5 @@
 local _NAME = "openLuup.scheduler"
-local revisionDate = "2015.11.27"
+local revisionDate = "2016.03.01"
 local banner = "version " .. revisionDate .. "  @akbooer"
 
 --
@@ -169,7 +169,7 @@ local next_job_number = 1
 local job_list = setmetatable ( 
     {},      -- jobs indexed by job number
     {__index = function (_, idx)
-        return {status = state.NoJob, notes = "no such job #" .. idx}
+        return {status = state.NoJob, notes = "no such job #" .. tostring(idx)}   -- 2016.02.01  add 'tostring'
       end,
     } 
   )
@@ -229,7 +229,7 @@ local function create_job (action, arguments, devNo, target_device)
       arguments   = {},
       devNo       = devNo,              -- system jobs may have no device number
       status      = state.WaitingToStart,
-      notes       =  '',                -- TODO: find out what job 'notes' are _really_ for
+      notes       =  '',                -- TODO: find out what job 'notes' are _really_ for - think it's 'comments'?
       timeout     = 0,
       type        = nil,                -- used in request id=status, and possibly elsewhere
       expiry      = socket.gettime (),                 -- time to go

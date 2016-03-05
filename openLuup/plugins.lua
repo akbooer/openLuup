@@ -19,10 +19,10 @@ _log (banner, _NAME)   -- for version control
 
 -- ALTUI
 
-local DEFAULT_ALTUI = 1163
+local DEFAULT_ALTUI = 1233
 
 -- invoked by
--- /data_request?id=action&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&action=CreatePlugin&PluginNum=8246&TracRev=859
+-- /data_request?id=action&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&action=CreatePlugin&PluginNum=8246&TracRev=1233
 
 
 local InstalledPlugins2 = {}

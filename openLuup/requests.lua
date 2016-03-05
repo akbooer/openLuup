@@ -1,5 +1,5 @@
 local _NAME = "openLuup.requests"
-local revisionDate = "2015.11.09"
+local revisionDate = "2016.02.22"
 local banner = " version " .. revisionDate .. "  @akbooer"
 
 --
@@ -9,6 +9,7 @@ local banner = " version " .. revisionDate .. "  @akbooer"
 --
 
 -- 2016.02.21  correct sdata scenes table - thanks @ronluna
+-- 2016.02.22  add short_codes to sdata device table - thanks @ronluna
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -21,7 +22,7 @@ local scenes        = require "openLuup.scenes"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local plugins       = require "openLuup.plugins"
-local loader        = require "openLuup.loader"       -- for static_data and loadtime
+local loader        = require "openLuup.loader"       -- for static_data, service_data, and loadtime
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or _NAME) end
@@ -144,7 +145,7 @@ local function sdata_devices_table (devices)
   local dev = {}
   for i,d in pairs (devices or luup.devices) do
     if not d.invisible then
-      dev[#dev+1] = {
+      local info = {
         name = d.description,
         altid = d.id,
         id = i,
@@ -152,7 +153,20 @@ local function sdata_devices_table (devices)
         subcategory = d.subcategory_num,
         room = d.room_num,
         parent = d.device_num_parent,
+        state = -1,                       -- TODO: reflect true state from job status
       }
+      -- add the additional information from short_code variables indexed in the service_data
+      local sd = loader.service_data
+      for svc, s in pairs (d.services) do
+        local known_service = sd[svc]
+        if known_service then
+          for var, v in pairs(s.variables) do
+            local short = known_service.short_codes[var]
+            if short then info[short] = v.value end
+          end
+        end
+      end
+      dev[#dev+1] = info
     end
   end
   return dev

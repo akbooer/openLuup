@@ -1,4 +1,4 @@
-local version = "XML  2015.11.12  @akbooer"
+local version = "XML  2016.02.24  @akbooer"
 
 --
 -- Routines to read Device / Service / Implementation XML files
@@ -9,8 +9,12 @@ local version = "XML  2015.11.12  @akbooer"
 -- DOES cope with comments (thanks @vosmont)
 
 -- TODO: proper XML parser rather than nasty hack?
--- TODO: escape special characters in encode and decode
 --
+
+-- 2016.02.22  skip XML attributes but still parse element
+-- 2016.02.23  remove reader and caching, rename encode/decode 
+-- 2016.02.24  escape special characters in encode and decode
+
 
 -- XML:extract ("name", "subname", "subsubname", ...)
 -- return named part or empty list
@@ -28,15 +32,18 @@ local function extract (self, name, name2, ...)
 end
 
 
-local function xml2Lua (info)
+local function decode (info)
   local msg
   local xml = {}
+  -- remove such like: <!-- This is a comment -->,  thanks @vosmont
+  -- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
+  if info then info = info: gsub ("<!%-%-.-%-%->", '') end
+  --
   local result = info
-  for a,b in (info or ''): gmatch "<(%a+)>(.-)</%1>" do   -- find matching opening and closing tags
-    local x,y = xml2Lua (b)                               -- get the value of the contents
+  for a,b in (info or ''): gmatch "<(%a+).->(.-)</%1>" do -- find matching opening and closing tags
+    local x,y = decode (b)                                -- get the value of the contents
     xml[a] = xml[a] or {}                                 -- if this tag doesn't exist, start a list of values
     xml[a][#xml[a]+1] = x or y   -- add new value to the list (might be table x, or just text y)
--- TODO: y: gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
     result = xml
   end 
   if type (result) == "table" then
@@ -44,37 +51,16 @@ local function xml2Lua (info)
       if #b == 1 then result[a] = b[1] end        -- collapse one-element lists to simple items
     end
   else
-    msg = result    -- in case of failure, simply return whole string as 'error message'
+    if result then   -- in case of failure, simply return whole string as 'error message'
+      msg = result: gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
+    end
     result = nil    -- ...and nil for xml result
   end
   return result, msg
 end
 
-local xml_cache = setmetatable ({}, {__mode = 'kv'})    -- "weak" table
-local reads, hits = 0,0
 
-local function xml_read (self, filename)
-  filename = filename or self     -- allow dot or colon syntax
-  local xml = xml_cache[filename]
-  reads = reads + 1
-  hits = hits + 1
-  if not xml then
-    hits = hits - 1
-    local f = io.open (filename or self) 
-    if f then 
-      xml = f: read "*a"
-      f: close () 
-      -- Thanks @vosmont
-      -- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
-      xml = xml: gsub ("<!%-%-.-%-%->", '') -- remove such like: <!-- This is a comment --> 
-      xml_cache[filename] = xml   -- save in cache
-    end
-  end
---  print ("xml", filename, hits, reads)
-  return xml2Lua(xml)
-end
-
-local function Lua2xml (Lua, wrapper)
+local function encode (Lua, wrapper)
   local xml = {}        -- or perhaps    {'<?xml version="1.0"?>\n'}
   local function p(x)
     if type (x) ~= "table" then x = {x} end
@@ -82,10 +68,11 @@ local function Lua2xml (Lua, wrapper)
   end
   
   local function value (x, name, depth)
+    local gsub = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
     local function spc ()  p ((' '):rep (2*depth)) end
     local function atag () spc() ; p {'<', name,'>'} end
     local function ztag () p {'</',name:match "^[^%s]+",'>\n'} end
-    local function str (x) atag() ; p(tostring(x): gsub("%s+", ' ')) ; ztag() end
+    local function str (x) atag() ; p(tostring(x): gsub("%s+", ' '): gsub ([=[[<>"'&]]=], gsub)) ; ztag() end
     local function err (x) error ("xml: unsupported data type "..type (x)) end
     local function tbl (x)
       local y
@@ -112,14 +99,6 @@ end
 
 
 return {
-  -- performance data
-  performance = function () 
-    return {
-      hits    = hits,
-      reads   = reads,
-      cache   = xml_cache,
-    }
-  end,
   
   -- constants
   version = version,
@@ -127,10 +106,7 @@ return {
   -- methods
   
   extract = extract,
-  xml2Lua = xml2Lua, 
-  decode  = xml2Lua, 
-  read    = xml_read, 
-  Lua2xml = Lua2xml,
-  encode  = Lua2xml,
+  decode  = decode, 
+  encode  = encode,
 }
 

@@ -1,9 +1,11 @@
-local revisionDate = "2015.11.09"
+local revisionDate = "2016.03.01"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
 -- openLuup.devices
 --
+
+-- 2016.03.01  added notes to action jobs
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 
@@ -236,8 +238,12 @@ local function new (devNo)
       -- dynamically link to the supplied action handler
       act = missing_action (serviceId, action)
     end
-    if act then     
-      return scheduler.run_job (act, arguments, devNo, target_device or devNo)
+    if act then   
+      local e,m,j,a = scheduler.run_job (act, arguments, devNo, target_device or devNo)
+      if j and scheduler.job_list[j] then
+        scheduler.job_list[j].notes = table.concat ({"Action", serviceId or '?', action or '?'}, ' ') -- 2016.03.01
+      end
+      return e,m,j,a
     else
       return -1, "no such service"
     end

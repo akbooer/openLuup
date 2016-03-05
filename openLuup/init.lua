@@ -1,5 +1,5 @@
 local _NAME = "openLuup.init"
-local revisionDate = "2016.01.28"
+local revisionDate = "2016.02.25"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -166,6 +166,13 @@ end
 -- INIT STARTS HERE
 --
 
+do -- change search paths for Lua require and icon urls
+  local cmh_lu = ";../cmh-lu/?.lua"
+  package.path = package.path .. cmh_lu                               -- add /etc/cmh-lu/ to search path
+--  loader.icon_redirect ("http://" .. server.myIP .. ":3480/icons/")   -- use port 3480 access for icons
+--  loader.icon_redirect ("/icons/")   -- use icons/ for icons
+end
+
 do -- Devices 1 and 2 are the Vera standard ones
   local invisible = true
   luup.attr_set ("Device_Num_Next", 1)  -- this may get overwritten by a subsequent user_data load
@@ -177,7 +184,7 @@ do -- Devices 1 and 2 are the Vera standard ones
                       "_SceneController", "D_SceneController1.xml", nil, nil, nil, nil, invisible, 1)
 end
 
-do  -- CALLBACK HANDLERS
+do -- CALLBACK HANDLERS
   -- Register lu_* style (ie. luup system, not luup user) callbacks with HTTP server
   local extendedList = {}
   for name, proc in pairs (requests) do 
