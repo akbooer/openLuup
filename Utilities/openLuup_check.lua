@@ -1,6 +1,6 @@
 --
--- openLuup - Release 6 - check installation
--- 2015.11.17   @akbooer
+-- openLuup - Release 7 - check installation
+-- 2016.03.07   @akbooer
 --
 
 local lfs = require "lfs"     -- now a fundamental part of openLuup (for transportability)
@@ -22,6 +22,7 @@ module_check "socket"
 module_check "socket.http"
 module_check "ssl.https"
 module_check "ltn12"
+module_check "dkjson"   -- AltUI needs this now.
 
 
 local function exists (name)
@@ -43,7 +44,7 @@ assert (exists "openLuup", "openLuup/ directory is missing")
 local lua_files = {
     "chdev", "devices", "gateway", "init", "io", "json", 
     "loader", "logs", "luup", "plugins", "requests", "rooms", "scenes", 
-    "scheduler", "server", "timers", "userdata", "xml",
+    "scheduler", "server", "timers", "userdata", "wsapi", "xml",
   }
 
 local ok = true
