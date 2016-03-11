@@ -1,5 +1,5 @@
 local _NAME = "openLuup.scenes"
-local revisionDate = "2015.11.12"
+local revisionDate = "2016.03.11"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 
@@ -8,6 +8,8 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 --
 -- all scene-related functions 
 -- see: http://wiki.micasaverde.com/index.php/Scene_Syntax for stored scene syntax
+--
+-- 2016.103.11   verify that scenes don't reference non-existent devices.  Thanks @delle
 --
 
 --local socket    = require "socket"         -- socket library needed to access time in millisecond resolution
@@ -50,6 +52,12 @@ local function load_lua_code (lua, id)
     scene_lua = (code or {}) [scene_name]
   end
   return scene_lua, error_msg
+end
+
+local function verify_all()
+  for _,s in pairs(luup.scenes) do
+    s.verify()
+  end
 end
 
 -- run all the actions in one delay group
@@ -129,6 +137,20 @@ local function create (scene_json)
     return scene
   end
 
+  -- delete any actions which refer to non-existent devices
+  local function verify ()
+    for _, g in ipairs (scene.groups or {}) do
+      local actions = g.actions or {}
+      local n = #actions 
+      for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
+        local a = actions[i]
+        if not luup.devices[tonumber(a.device)] then
+          table.remove (actions,i)
+        end
+      end
+    end
+  end
+
   --create ()
   local scn, err
   if type(scene_json) == "table" then         -- it's not actually JSON
@@ -166,12 +188,15 @@ local function create (scene_json)
     timers      = scn.timers or {},
     triggers    = {},                             -- expunge these
   }
-   
+  
+  verify()   -- check that non-existent devices are not referenced
+  
   local methods = {
     rename      = scene_rename,
     run         = scene_runner,
     stop        = scene_stopper,
     user_table  = user_table,
+    verify      = verify,
   }
   
   luup_scene = {
@@ -206,4 +231,5 @@ return {
     -- variables
     -- methods
     create        = create,
+    verify_all    = verify_all,
   }

@@ -1,5 +1,5 @@
 local _NAME = "openLuup.requests"
-local revisionDate = "2016.02.22"
+local revisionDate = "2016.03.11"
 local banner = " version " .. revisionDate .. "  @akbooer"
 
 --
@@ -10,6 +10,7 @@ local banner = " version " .. revisionDate .. "  @akbooer"
 
 -- 2016.02.21  correct sdata scenes table - thanks @ronluna
 -- 2016.02.22  add short_codes to sdata device table - thanks @ronluna
+-- 2016.03.11  ensure that device delete removes any relevant scene actions
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -102,6 +103,8 @@ local function device (_,p)
   end
   local function delete ()
     luup.devices[devNo] = nil
+    scenes.verify_all()       -- 2016.03.11 ensure there are no references to this device in scene actions
+                              -- AltUI variable watch triggers will have to take care of themselves!
     luup.reload ()
   end
   local function noop () end
