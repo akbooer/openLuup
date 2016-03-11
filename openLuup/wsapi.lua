@@ -1,5 +1,5 @@
 local _NAME = "openLuup.wsapi"
-local revisionDate = "2016.02.26"
+local revisionDate = "2016.03.05"
 local banner = "    version " .. revisionDate .. "  @akbooer"
 
 -- This module implements a WSAPI application connector for the openLuup port 3480 server.
@@ -173,7 +173,7 @@ local function cgi (URL, headers, post_content)
   local error = {
     write = function (self, ...) 
       local msg = {URL.path or '?', ':', ...}
-      for i, m in msg do msg[i] = tostring(m) end             -- ensure everything is a string
+      for i, m in ipairs(msg) do msg[i] = tostring(m) end             -- ensure everything is a string
       _log (table.concat (msg, ' '), "openLuup.wsapi.cgi") 
     end;
   }

@@ -1,5 +1,5 @@
 local _NAME = "openLuup.plugins"
-local revisionDate = "2015.12.22"
+local revisionDate = "2016.03.05"
 local banner = "  version " .. revisionDate .. "  @akbooer"
 
 --
