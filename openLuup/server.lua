@@ -10,7 +10,8 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 -- 2016.02.24   also look for files in /cmh-lu/
 -- 2016.02.25   make myIP global (used for rewriting icon urls)
 -- 2016.02.29   redirect file requests for UI5 and UI7 icons
--- 2016.03.05  io.open with 'rb' for Windows, thanks @vosmont
+-- 2016.03.05   io.open with 'rb' for Windows, thanks @vosmont
+-- 2016.03.16   wget now checks port number when intercepting local traffic, thanks @reneboer
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -171,8 +172,9 @@ local function wget (URL, Timeout, Username, Password)
     ["0.0.0.0"] = true, 
     [myIP] = true,
   }
-  URL = http_parse_request (URL)                            -- break it up into bits  
-  if self_reference [URL.host] then                   -- INTERNAL request
+  URL = http_parse_request (URL)                      -- break it up into bits  
+  if ((URL.port or '') == "3480")                     -- 2016-03-16 check for port #, thanks @reneboer
+  and self_reference [URL.host] then                  -- INTERNAL request
     result = http_dispatch_request (URL)
     if result then status = 0 else status = -1 end    -- assume success
   else                                                -- EXTERNAL request   
