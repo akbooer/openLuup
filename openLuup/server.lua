@@ -1,5 +1,5 @@
 local _NAME = "openLuup.server"
-local revisionDate = "2016.02.29"
+local revisionDate = "2016.03.20"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -12,10 +12,12 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 -- 2016.02.29   redirect file requests for UI5 and UI7 icons
 -- 2016.03.05   io.open with 'rb' for Windows, thanks @vosmont
 -- 2016.03.16   wget now checks port number when intercepting local traffic, thanks @reneboer
+-- 2016.03.20   added svg to mime types and https support to wget, thanks @cybrmage
 
 local socket    = require "socket"
 local url       = require "socket.url"
 local http      = require "socket.http"
+local https     = require "ssl.https"
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"    -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
@@ -45,6 +47,7 @@ local mime = {
   json = "application/json",
   txt  = "text/plain",
   png  = "image/png",
+  svg  = "image/svg+xml",     -- thanks @cybrmage
   xml  = "application/xml",
 }
 
@@ -178,12 +181,14 @@ local function wget (URL, Timeout, Username, Password)
     result = http_dispatch_request (URL)
     if result then status = 0 else status = -1 end    -- assume success
   else                                                -- EXTERNAL request   
-    http.TIMEOUT = Timeout or 5
+    local scheme = http
     URL.scheme = URL.scheme or "http"                 -- assumed undefined is http request
+    if URL.scheme == "https" then scheme = https end  -- 2016.03.20
     URL.user = Username                               -- add authorization credentials
     URL.password = Password
     URL= url.build (URL)                              -- reconstruct request for external use
-    result, status = http.request (URL)
+    scheme.TIMEOUT = Timeout or 5
+    result, status = scheme.request (URL)
     if result and status == 200 then status = 0 end   -- wget has a strange return code
   end
   return status, result or ''                         -- note reversal of parameter order
