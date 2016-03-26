@@ -1,5 +1,26 @@
 <?xml version="1.0"?>
 <implementation>
-<files>L_VeraBridge.lua</files>
-<startup>init</startup>
+  <files>L_VeraBridge.lua</files>
+  <startup>init</startup>
+  <actionList>
+
+    <action>
+      <serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+      <name>CreateMirrorDevice</name>
+      <run>
+        return CreateMirrorDevice(lul_device,lul_settings)
+      </run>
+      <jobname>CreateMirrorDevice</jobname>
+    </action>
+
+    <action>
+      <serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+      <name>DeleteMirrorDevice</name>
+      <run>
+        return DeleteMirrorDevice(lul_device,lul_settings)
+      </run>
+      <jobname>DeleteMirrorDevice</jobname>
+    </action>
+
+  </actionList>
 </implementation>
