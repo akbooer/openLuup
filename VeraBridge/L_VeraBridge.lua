@@ -17,6 +17,7 @@ _AUTHOR = "@akbooer"
 --                retention of parent/child structure
 --                mirroring of selected local openLuup devices on remote Vera
 --                set LastUpdate variable to indicate active link, thanks @reneboer
+-- 2016.03.27   fix for device 1 and 2 on non-primary bridges (clone all hidden devices)
 
 local devNo                      -- our device number
 
@@ -148,7 +149,6 @@ local function create_children (devices, room)
   local current = existing_children (devNo)
   for i, dev in ipairs (devices) do   -- this 'devices' table is from the 'user_data' request
     dev.id = tonumber(dev.id)
-    if not (dev.invisible == "1") or Zwave[dev.id] then
       N = N + 1
       local cloneId = local_by_remote_id (dev.id)
       if not current[cloneId] then 
@@ -157,9 +157,6 @@ local function create_children (devices, room)
         list[#list+1] = cloneId
       end
       current[cloneId] = nil
-    else
-      devices[i] = nil    -- remove from consideration
-    end
   end
   if #list > 0 then luup.log ("creating device numbers: " .. json.encode(list)) end
   
