@@ -1,5 +1,5 @@
 local _NAME = "openLuup.init"
-local revisionDate = "2016.02.25"
+local revisionDate = "2016.04.03"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -85,6 +85,7 @@ local function load_user_data (user_data_json)
           pluginnum       = d.plugin,
           statevariables  = vars,
           disabled        = d.disabled,
+          udn             = d.local_udn,
         }
       dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
       -- set other device attributes
@@ -168,9 +169,8 @@ end
 
 do -- change search paths for Lua require and icon urls
   local cmh_lu = ";../cmh-lu/?.lua"
-  package.path = package.path .. cmh_lu                               -- add /etc/cmh-lu/ to search path
---  loader.icon_redirect ("http://" .. server.myIP .. ":3480/icons/")   -- use port 3480 access for icons
---  loader.icon_redirect ("/icons/")   -- use icons/ for icons
+  package.path = package.path .. cmh_lu                   -- add /etc/cmh-lu/ to search path
+--  loader.icon_redirect ''                                 -- remove all prefix paths for icons
 end
 
 do -- Devices 1 and 2 are the Vera standard ones
