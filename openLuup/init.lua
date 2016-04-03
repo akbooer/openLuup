@@ -85,7 +85,6 @@ local function load_user_data (user_data_json)
           pluginnum       = d.plugin,
           statevariables  = vars,
           disabled        = d.disabled,
-          udn             = d.local_udn,
         }
       dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
       -- set other device attributes

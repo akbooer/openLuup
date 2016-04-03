@@ -8,7 +8,7 @@ local banner = "    version " .. revisionDate .. "  @akbooer"
 
 -- 2016.01.28  added 'disabled' attribute for devices - thanks @cybrmage
 -- 2016.02.15  ensure that altid is a string (thanks cybrmage)
--- 2016.04.03  add UUIDs (for Sonos, and perhaps other plugins)
+-- 2016.04.03  add UUID (for Sonos, and perhaps other plugins)
 
 local logs      = require "openLuup.logs"
 
@@ -29,16 +29,19 @@ _log (banner, _NAME)   -- for version control
 -- A UUID is simply a 128-bit value. The meaning of each bit is defined by any of several variants.
 -- For human-readable display, many systems use a canonical format using hexadecimal text with inserted hyphen characters. -- For example:    de305d54-75b4-431b-adb2-eb6b9e546014 
 --
-local function create_uuid ()
+
+local UUID = (function ()
+  local seed = luup and tonumber (luup.pk_accesspoint)
+  if seed then math.randomseed (seed) end
   local fmt = "%02x"
-  local uuid = {}
+  local uuid = {"uuid:"}
   local dash = {[4]='-', [6]='-', [8]='-', [10]='-'}
   for i = 1,16 do
     uuid[#uuid+1] = fmt:format(math.random(0,255))
     uuid[#uuid+1] = dash[i]
   end
   return table.concat (uuid)
-end
+end) ()
 
 
 -- 
@@ -113,7 +116,7 @@ local function create (x)
     id_parent       = tonumber (x.parent) or 0,
     impl_file       = d.impl_file,
     invisible       = x.invisible and "1" or "0",   -- convert true/false to "1"/"0"
-    local_udn       = x.udn or "uuid:" .. create_uuid (),
+    local_udn       = UUID,
     manufacturer    = d.manufacturer or '',
     model           = d.modelName or '',
     name            = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?')), 
