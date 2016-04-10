@@ -1,5 +1,5 @@
 local _NAME = "openLuup.scenes"
-local revisionDate = "2016.03.11"
+local revisionDate = "2016.04.10"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 
@@ -9,7 +9,8 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 -- all scene-related functions 
 -- see: http://wiki.micasaverde.com/index.php/Scene_Syntax for stored scene syntax
 --
--- 2016.103.11   verify that scenes don't reference non-existent devices.  Thanks @delle
+-- 2016.03.11   verify that scenes don't reference non-existent devices.  Thanks @delle
+-- 2016.04.10   add 'running' flag for status and sdata "active" and "status" info.   Thanks @ronluna
 --
 
 --local socket    = require "socket"         -- socket library needed to access time in millisecond resolution
@@ -62,13 +63,16 @@ end
 
 -- run all the actions in one delay group
 local function group_runner (actions)
+  local jobs = {}
   for _, a in ipairs (actions) do
     local args = {}
     for _, arg in pairs(a.arguments) do   -- fix parameters handling.  Thanks @delle !
       args[arg.name] = arg.value
     end
-    luup.call_action (a.service, a.action, args, tonumber (a.device))
+    local _, _, job = luup.call_action (a.service, a.action, args, tonumber (a.device))
+    jobs[#jobs] = job
   end
+  return jobs     -- return list of jobs created
 end
 
 -- return true if scene can run in current house mode
@@ -83,6 +87,13 @@ end
 -- scene.create() - returns compiled scene object given json string containing group / timers / lua / ...
 local function create (scene_json)
   local scene, lua_code, luup_scene
+  
+  local function scene_finisher (started)         -- called at end of scene
+    if scene.last_run == started then 
+      luup_scene.running = false                  -- clear running flag only if we set it
+      luup_scene.jobs = {}                        -- clear list of running jobs
+    end
+  end
   
   local function scene_runner (t, next_time)              -- called by timer, trigger, or manual run
     if not runs_in_current_mode (scene) then 
@@ -100,6 +111,7 @@ local function create (scene_json)
     local ok = not lua_code or lua_code ()
     if ok ~= false then
       scene.last_run = os.time()                -- scene run time
+      luup_scene.running = true
       local runner = "command"
       if t then
         t.last_run = scene.last_run             -- timer or trigger specific run time
@@ -109,9 +121,13 @@ local function create (scene_json)
       local msg = ("scene %d, %s, initiated by %s"): format (scene.id, scene.name, runner)
       _log (msg, "luup.scenes")
       _log_altui_scene (scene)                  -- log for altUI to see
+      local max_delay = 0
       for _, group in ipairs (scene.groups) do  -- schedule the various delay groups
-        timers.call_delay (group_runner, tonumber (group.delay) or 0, group.actions)
+        local delay = tonumber (group.delay) or 0
+        if delay > max_delay then max_delay = delay end
+        timers.call_delay (group_runner, delay, group.actions)
       end
+      timers.call_delay (scene_finisher, max_delay + 30, scene.last_run)    -- say we're finished
     end
   end
   
@@ -191,7 +207,11 @@ local function create (scene_json)
   
   verify()   -- check that non-existent devices are not referenced
   
-  local methods = {
+  local meta = {
+    -- variables
+    running     = false,    -- set to true when run and reset 30 seconds after last action
+    jobs        = {},       -- list of jobs that scene is running
+    -- methods
     rename      = scene_rename,
     run         = scene_runner,
     stop        = scene_stopper,
@@ -217,7 +237,7 @@ local function create (scene_json)
 
 -- luup.scenes contains all the scenes in the system as a table indexed by the scene number. 
   return setmetatable (luup_scene, {
-      __index = methods, 
+      __index = meta, 
       __tostring = function () return json.encode (user_table()) or '?' end,
     })
 end

@@ -1,5 +1,5 @@
 local _NAME = "openLuup.requests"
-local revisionDate = "2016.03.11"
+local revisionDate = "2016.04.10"
 local banner = " version " .. revisionDate .. "  @akbooer"
 
 --
@@ -10,7 +10,9 @@ local banner = " version " .. revisionDate .. "  @akbooer"
 
 -- 2016.02.21  correct sdata scenes table - thanks @ronluna
 -- 2016.02.22  add short_codes to sdata device table - thanks @ronluna
--- 2016.03.11  ensure that device delete removes any relevant scene actions
+-- 2016.03.11  ensure that device delete removes all children and any relevant scene actions
+-- 2016.03.15  add update for openLuup version downloads
+-- 2016.04.10  add scene sctive and status flags in sdata and status reports
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -22,6 +24,7 @@ local rooms         = require "openLuup.rooms"
 local scenes        = require "openLuup.scenes"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
+local update        = require "openLuup.update"
 local plugins       = require "openLuup.plugins"
 local loader        = require "openLuup.loader"       -- for static_data, service_data, and loadtime
 
@@ -102,9 +105,19 @@ local function device (_,p)
     end
   end
   local function delete ()
-    luup.devices[devNo] = nil
-    scenes.verify_all()       -- 2016.03.11 ensure there are no references to this device in scene actions
-                              -- AltUI variable watch triggers will have to take care of themselves!
+    local tag = {}                -- list of devices to delete
+    local function tag_children (n)
+      tag[#tag+1] = n 
+      for i,d in pairs (luup.devices) do
+        if d.device_num_parent == n then tag_children (i) end
+      end
+    end
+    tag_children(devNo)           -- find all the children, grand-children, etc...
+    for _,j in pairs (tag) do
+      luup.devices[j] = nil
+    end    
+    scenes.verify_all()           -- 2016.03.11 ensure there are no references to these devices in scene actions
+                                  -- AltUI variable watch triggers will have to take care of themselves!
     luup.reload ()
   end
   local function noop () end
@@ -178,11 +191,13 @@ end
 local function sdata_scenes_table ()
   local info = {}
   for id, s in pairs (luup.scenes) do    -- TODO: actually, should only return changed ones
+    local running = s.running
     info[#info + 1] = {
       id = id,
       room = s.room_num,
       name = s.description,
-      active = 0,
+      active = running and "1" or "0",
+      state  = running and 4 or -1,
     }
   end
   return info
@@ -247,12 +262,13 @@ end
 
 local function status_scenes_table ()
   local info = {}
-  for _, s in pairs (luup.scenes) do    -- TODO: actually, should only return changed scenes ?
+  for id, s in pairs (luup.scenes) do    -- TODO: actually, should only return changed scenes ?
+    local running = s.running
     info[#info + 1] = {
-      id = s.id,
-      Jobs = {},
-      status = -1,
-      active = false,
+      id = id,
+      Jobs = s.jobs or {},
+      active = running,
+      status = running and 4 or -1,
     }
   end
   return info
@@ -656,6 +672,8 @@ local function file (_,p) return server.http_file (p.parameters or '') end      
 
 local function altui (_,p) plugins.create {PluginNum = 8246, TracRev=tonumber(p.rev)} end    -- install ALTUI
 
+local function latest (_,p) return update.get_latest (p) end   -- update openLuup
+
 --
 -- export all Luup requests
 --
@@ -684,6 +702,7 @@ local function altui (_,p) plugins.create {PluginNum = 8246, TracRev=tonumber(p.
       altui               = altui,        
       debug               = debug,
       exit                = exit,
+      update              = latest,
     }
   
 
