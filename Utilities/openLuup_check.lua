@@ -1,7 +1,12 @@
 --
--- openLuup - Release 7 - check installation
--- 2016.03.07   @akbooer
+-- openLuup - check installation
+local version =  "openLuup_check   2016.04.12   @akbooer"
+
+print (version)
 --
+-- change search paths for Lua require and icon urls
+  local cmh_lu = ";../cmh-lu/?.lua"
+  package.path = package.path .. cmh_lu                               -- add /etc/cmh-lu/ to search path
 
 local lfs = require "lfs"     -- now a fundamental part of openLuup (for transportability)
 
@@ -42,7 +47,7 @@ end
 assert (exists "openLuup", "openLuup/ directory is missing")
 
 local lua_files = {
-    "chdev", "devices", "gateway", "init", "io", "json", 
+    "chdev", "devices", "gateway", "http", "init", "io", "json", 
     "loader", "logs", "luup", "plugins", "requests", "rooms", "scenes", 
     "scheduler", "server", "timers", "userdata", "wsapi", "xml",
   }
@@ -51,11 +56,9 @@ local ok = true
 for _,file in ipairs (lua_files) do ok = exists ("openLuup/" .. file .. ".lua") and ok end
 assert (ok, "... some required installation files are missing from openLuup/ sub-directory")
 
-warning ("/var/log/cmh",  "... ALTUI will not be able to access variable and scene history")
+warning ("icons", "...icons/ directory not found")
 
-warning ("/www", "... port 80 HTTP server may not work properly")
-warning ("/www/cmh/skins/default/icons", "... UI5 icon directory missing")
-warning ("/www/cmh/skins/default/img/devices/device_states", "... UI7 icon directory missing")
+warning ("/var/log/cmh",  "... ALTUI will not be able to access variable and scene history")
 
 warning ("user_data.json", "... no user_data configuration file")
 
