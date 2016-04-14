@@ -1,5 +1,5 @@
 _NAME = "VeraBridge"
-_VERSION = "2016.03.19"
+_VERSION = "2016.04.14"
 _DESCRIPTION = "VeraBridge plugin for openLuup!!"
 _AUTHOR = "@akbooer"
 
@@ -18,6 +18,7 @@ _AUTHOR = "@akbooer"
 --                mirroring of selected local openLuup devices on remote Vera
 --                set LastUpdate variable to indicate active link, thanks @reneboer
 -- 2016.03.27   fix for device 1 and 2 on non-primary bridges (clone all hidden devices)
+-- 2016.04.14   fix for missing device #2
 
 local devNo                      -- our device number
 
@@ -62,7 +63,7 @@ local function set_parent (devNo, newParent)
     local meta = getmetatable(dev).__index
     luup.log ("device[" .. devNo .. "] parent set to " .. newParent)
     meta.handle_children = true                   -- handle Zwave actions
-    meta.device_num_parent = newParent            -- parent resides in two places under different names !!
+    dev.device_num_parent = newParent             -- parent resides in two places under different names !!
     dev.attributes.id_parent = newParent
   end
 end
@@ -379,11 +380,12 @@ function init (lul_device)
   OFFSET = findOffset ()
   luup.log ("device clone numbering starts at " .. OFFSET)
 
-  -- map Zwave and Scene controller devices if we are the primary VeraBridge 
+  -- map remote Zwave controller device if we are the primary VeraBridge 
   if OFFSET == BLOCKSIZE then 
-    Zwave = {1,2}                 -- device ID's for mapping (same value on local and remote)
-    set_parent (1, devNo)         -- ensure Zwave controller is an existing child (device 2 it its child)
-    luup.log "VeraBridge maps remote Zwave and Scene controllers"
+    Zwave = {1}                   -- device IDs for mapping (same value on local and remote)
+    set_parent (1, devNo)         -- ensure Zwave controller is an existing child 
+    set_parent (2, 0)             -- unhook local scene controller (remote will have its own)
+    luup.log "VeraBridge maps remote Zwave controller"
   end
 
   luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
