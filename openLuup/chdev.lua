@@ -9,6 +9,8 @@ local banner = "    version " .. revisionDate .. "  @akbooer"
 -- 2016.01.28  added 'disabled' attribute for devices - thanks @cybrmage
 -- 2016.02.15  ensure that altid is a string (thanks cybrmage)
 -- 2016.04.03  add UUID (for Sonos, and perhaps other plugins)
+-- 2016.04.15  change the way device variables are handled in chdev.create - thanks @explorer!
+--
 
 local logs      = require "openLuup.logs"
 
@@ -43,14 +45,26 @@ local UUID = (function ()
   return table.concat (uuid)
 end) ()
 
+-- convert string statevariable definition into Lua table of device variables
+local function variable_explorer (statevariables)   -- TODO: thanks @explorer, for this temporary fix
+  -- syntax is: "serviceId,variable=value" separated by new lines
+  -- @explorer: separate the state variables by form feed because values can have new lines
+  local svars = '\n' .. statevariables
+  svars = svars: gsub( "\n([%w%.%-:]+),([%w%._]+)=", "\f\n%1,%2=" )     
+  local vars = {}
+  for srv, var, val in svars: gmatch "\n([%w%.%-:]+),([%w%._]+)=([^\f]*)" do
+    vars[#vars+1] = {service = srv, variable = var, value = val}
+  end
+  return vars
+end
+
 
 -- 
 -- function: create (x)
 -- parameters: see below
 --
 -- This creates the device with the parameters given, and returns the device object 
--- You can specify multiple variables by separating them with a line feed (\n) and use a, 
--- and = to separate service, variable and value, like this: service,variable=value\nservice..
+-- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
 --
 local function create (x)
   -- {devNo, device_type, internal_id, description, upnp_file, upnp_impl, 
@@ -87,10 +101,10 @@ local function create (x)
   end
   
   -- go through the variables and set them
-  -- syntax is: "serviceId,variable=value" separated by new lines
-  if type(x.statevariables) == "string" then
-    for srv, var, val in x.statevariables: gmatch "%s*([^,]+),([^=]+)=([^%c]*)" do
-      dev:variable_set (srv, var, val)
+  -- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
+  if type(x.statevariables) == "table" then
+    for _,v in ipairs(x.statevariables) do
+      dev:variable_set (v.service, v.variable, v.value)
     end
   end
 
@@ -193,7 +207,7 @@ local function create_device (
     parent = parent,                    -- (number)
     room = room,                        -- (number)
     pluginnum = pluginnum,              -- (number)
-    statevariables = statevariables,    -- (string)   "service,variable=value\nservice..."
+    statevariables = variable_explorer (statevariables or ''),    -- (string)   "service,variable=value\nservice..."
     pnpid = pnpid,                      -- (number)   no idea (perhaps uuid??)
     nochildsync = nochildsync,          -- (string)   no idea
     aeskey = aeskey,                    -- (string)   no idea

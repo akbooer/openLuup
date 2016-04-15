@@ -1,5 +1,5 @@
 local _NAME = "openLuup.init"
-local revisionDate = "2016.04.03"
+local revisionDate = "2016.04.15"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -62,12 +62,6 @@ local function load_user_data (user_data_json)
     -- DEVICES  
     _log "loading devices..."    
     for _, d in ipairs (user_data.devices or {}) do
-      local v = {}
-      -- states : table {id, service, variable, value}
-      for i, s in ipairs (d.states) do
-        v[i] = table.concat {s.service, ',', s.variable, '=', s.value}
-      end
-      local vars = table.concat (v, '\n')
       local dev = chdev.create {      -- the variation in naming within luup is appalling
           devNo = d.id, 
           device_type     = d.device_type, 
@@ -83,7 +77,7 @@ local function load_user_data (user_data_json)
           parent          = d.id_parent,
           room            = tonumber (d.room), 
           pluginnum       = d.plugin,
-          statevariables  = vars,
+          statevariables  = d.states,      -- states : table {id, service, variable, value}
           disabled        = d.disabled,
         }
       dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current

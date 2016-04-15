@@ -1,5 +1,5 @@
 _NAME = "VeraBridge"
-_VERSION = "2016.04.14"
+_VERSION = "2016.04.15"
 _DESCRIPTION = "VeraBridge plugin for openLuup!!"
 _AUTHOR = "@akbooer"
 
@@ -19,6 +19,8 @@ _AUTHOR = "@akbooer"
 --                set LastUpdate variable to indicate active link, thanks @reneboer
 -- 2016.03.27   fix for device 1 and 2 on non-primary bridges (clone all hidden devices)
 -- 2016.04.14   fix for missing device #2
+-- 2016.04.15   don't convert device states table into string (thanks @explorer)
+--
 
 local devNo                      -- our device number
 
@@ -67,15 +69,6 @@ local function set_parent (devNo, newParent)
     dev.attributes.id_parent = newParent
   end
 end
-
---create a variable list for each remote device from given states table
-local function create_variables (states)
-  local v = {}
-  for i, s in ipairs (states) do
-      v[i] = table.concat {s.service, ',', s.variable, '=', s.value}
-  end
-  return table.concat (v, '\n')
-end
  
 -- create bi-directional indices of rooms: room name <--> room number
 local function index_rooms (rooms)
@@ -111,7 +104,6 @@ end
 
 -- create a new device, cloning the remote one
 local function create_new (cloneId, dev, room)
-  local variables = create_variables (dev.states)
   local d = chdev.create {
     devNo = cloneId, 
     device_type = dev.device_type,
@@ -122,7 +114,7 @@ local function create_new (cloneId, dev, room)
     upnp_impl = 'X',              -- override device file's implementation definition... musn't run here!
     parent = devNo,
     room = room, 
-    statevariables = variables,
+    statevariables = dev.states,
   }  
   luup.devices[cloneId] = d   -- remember to put into the devices table! (chdev.create doesn't do that)
 end
@@ -148,7 +140,7 @@ local function create_children (devices, room)
   local list = {}           -- list of created or deleted devices (for logging)
   local something_changed = false
   local current = existing_children (devNo)
-  for i, dev in ipairs (devices) do   -- this 'devices' table is from the 'user_data' request
+  for _, dev in ipairs (devices) do   -- this 'devices' table is from the 'user_data' request
     dev.id = tonumber(dev.id)
       N = N + 1
       local cloneId = local_by_remote_id (dev.id)

@@ -1,4 +1,4 @@
-local version = "openLuup.loader  2016.02.25  @akbooer"
+local version = "openLuup.loader  2016.04.15  @akbooer"
 
 --
 -- Loader for Device, Implementation, and JSON files
@@ -13,6 +13,10 @@ local version = "openLuup.loader  2016.02.25  @akbooer"
 -- 2016.02.23  memoize file reader
 -- 2016.02.24  don't attempt to read implementation file 'X'
 -- 2016.02.25  handle both .png and .swf icons (thanks @reneboer, and @vosmont)
+-- 2016.03.19  honour order of <files> and <functions> in implementation files (thanks @logread and @cybrmage)
+-- 2016.04.14  @explorer added device category name lookup by category number. 
+--             ... added fallback code to look for device in the device_xml table if the root is not found. 
+-- 2016.04.15  update device_xml.root logic
 
 ------------------
 --
@@ -97,9 +101,11 @@ local categories_lookup =             -- info about device types and categories
 
 local cat_by_dev = {}                         -- category number lookup by device type
 local cat_name_by_dev = {}                    -- category  name  lookup by device type
+local cat_name_by_num = {}                    -- category  name  lookup by category num
 for _,cat in ipairs (categories_lookup) do
   cat_by_dev[cat.type] = cat.id 
   cat_name_by_dev[cat.type] = cat.name 
+  cat_name_by_num[cat.id] = cat.name 
 end
 
 
@@ -109,7 +115,6 @@ end
 local function memoize (fct)
   local cache = setmetatable ({}, {__mode = "kv"})
   return function (x)
---    if cache[x] then print ("HIT", x) else print ('',"MISS",x) end
     cache[x] = cache[x] or fct(x)
     return cache[x]
   end
@@ -129,17 +134,17 @@ end
 local cached_read = memoize (raw_read)    -- 2016.02.23
 
 local function xml_read (filename)
-  local info = cached_read (filename) 
-  return xml.decode(info)
+  local raw_xml = cached_read (filename) 
+  return xml.decode(raw_xml), raw_xml   -- 2016.03.19   return raw_xml for order-sensitive processing
 end
 
 -- parse device file, or empty table if error
 local function parse_device_xml (device_xml)
   local d, service_list
-  if type(device_xml) == "table" and device_xml.root then -- 2016.02.22, added 'root' nesting
-    d = device_xml.root.device    -- find relevant part
+  if type(device_xml) == "table" then
+      d = (device_xml.root or device_xml).device        -- 2016.04.15  root may, or may not, be present
   end
-  local x = d or {}                                               -- ensure there's something there  
+  local x = d or {}                                     -- ensure there's something there  
   d = {}
   for a,b in pairs (x) do
     d[a] = b              -- retain original capitalisation...
@@ -162,6 +167,7 @@ local function parse_device_xml (device_xml)
     json_file       = d.staticJson, 
     friendly_name   = d.friendlyName,
     handle_children = d.handleChildren, 
+    local_udn       = d.local_udn,
     manufacturer    = d.manufacturer,
     modelName       = d.modelName,
     protocol        = d.protocol,
@@ -210,7 +216,7 @@ local function build_incoming (lua)
 end
 
 -- read implementation file, if present, and build actions, files, and code.
-local function parse_impl_xml (impl_xml)
+local function parse_impl_xml (impl_xml, raw_xml)
   local i, actions, incoming
   if type (impl_xml) == "table" then i = impl_xml.implementation end    -- find relevant part
   i = i or {}                                                           -- ensure there's something there 
@@ -223,19 +229,24 @@ local function parse_impl_xml (impl_xml)
   if i.incoming and i.incoming.lua then
     incoming = build_incoming (i.incoming.lua)
   end
+  -- 2016.03.19  determine the order of <files> and <functions> tags
+  raw_xml = raw_xml or ''
+  local file_pos = raw_xml:find "<files>" or 0
+  local func_pos = raw_xml:find "<functions>" or 0
+  local files_first = file_pos < func_pos   
   -- load 
   local loadList = {}   
+  if not files_first then loadList[#loadList+1] = i.functions end   -- append any xml file functions
   if i.files then 
-    for fname in i.files:gmatch "[%w%_%-%.%/%\\]+" do
+    for fname in (i.files or ''):gmatch "[%w%_%-%.%/%\\]+" do
       loadList[#loadList+1] = raw_read (fname)          -- 2016.02.23 not much point in caching .lua files
     end
   end   
-  loadList[#loadList+1] = i.functions                   -- append any xml file functions
-  loadList[#loadList+1] = actions                       -- append the actions for jobs
-  loadList[#loadList+1] = incoming                      -- append the incoming data handler
-  local source_code = table.concat (loadList, '\n')     -- concatenate the code
---  local gsub = {lt = '<', gt = '>', amp = '&'}
---  source_code = source_code: gsub ("&(%w+);", gsub)     -- fix all XML quoted characters
+  if files_first then loadList[#loadList+1] = i.functions end   -- append any xml file functions
+  loadList[#loadList+1] = actions                               -- append the actions for jobs
+  loadList[#loadList+1] = incoming                              -- append the incoming data handler
+  local source_code = table.concat (loadList, '\n')             -- concatenate the code
+  
   return {
     protocol    = i.settings and i.settings.protocol,   -- may be defined here, but more normally in device file
     source_code = source_code,
@@ -246,6 +257,7 @@ end
 -- read and parse implementation file, if present
 local function read_impl (impl_file)
   local info = {}
+  -- 2016.03.19  NOTE: that xml_read returns TWO parameters: a table structure AND the raw xml text
   if impl_file and impl_file ~= 'X' then info =  parse_impl_xml (xml_read (impl_file)) end
   return info
 end
@@ -418,7 +430,7 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   
   -- add category information  
   d.category_num    = tonumber (d.category_num) or cat_by_dev[device_type] or 0
-  d.category_name   = cat_name_by_dev [device_type]
+  d.category_name   = cat_name_by_dev [device_type] or cat_name_by_num[d.category_num]
   
   -- dereference code entry point
   d.entry_point = code[i.startup or ''] 

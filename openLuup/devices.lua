@@ -1,4 +1,4 @@
-local revisionDate = "2016.03.01"
+local revisionDate = "2016.04.15"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
@@ -6,6 +6,7 @@ local banner = "     version " .. revisionDate .. "  @akbooer"
 --
 
 -- 2016.03.01  added notes to action jobs
+-- 2016.04.15  added per-device variable numbering (thanks @explorer)
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 
@@ -38,21 +39,24 @@ local sys_watchers = {}         -- list of system-wide (ie. non-device-specific)
 -- Note that there is no "get" function, object variables can be read directly (but setting should use the method)
 --
 
-local variable = { VarID = 0 }            -- unique variable number incremented for each new instance
-  
+local variable = {}
+
 function variable.new (name, serviceId, devNo)    -- factory for new variables
-  variable.VarID = variable.VarID + 1
+  local device = device_list[devNo] or {}
+  local vars = device.variables or {}
+  local varID = #vars + 1
   new_userdata_dataversion ()                     -- say structure has changed
-  return {
+  vars[varID] = {
       -- variables
       dev       = devNo,
-      id        = variable.VarID,                 -- unique ID
+      id        = varID,                          -- unique ID
       name      = name,                           -- name (unique within service)
       srv       = serviceId,
       watchers  = {},                             -- callback hooks
       -- methods
       set       = variable.set,
     }
+  return vars[varID]
 end
   
 function variable:set (value)
@@ -282,9 +286,11 @@ local function new (devNo)
    
   device_list[devNo] =  {
       -- data structures
+      
       attributes          = attributes,
       services            = services,
       watchers            = watchers,
+      variables           = {},            -- 2016.04.15  complete list of device variables by ID
       
       -- note that these methods should be called with device:function() syntax...
       call_action         = call_action,

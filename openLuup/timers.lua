@@ -1,7 +1,9 @@
-local version = "openLuup.timers   2015.10.31  @akbooer"
+local version = "openLuup.timers   2016.04.14  @akbooer"
 
 
 -- openLuup TIMERS modules
+
+-- 2016.04.14  @explorer: Added timezone offset to the rise_set return value 
 
 --
 -- TIMER related API
@@ -46,6 +48,11 @@ local function sleep (milliseconds)
   socket.sleep ((tonumber (milliseconds) or 0)/1000)      -- wait a bit
 end
 
+-- returns timezone offset in seconds
+local function time_zone()
+  local now = os.time()
+  return os.difftime(now, os.time(os.date("!*t", now)))
+end
 
 -- sunrise, sunset times given date (and lat + long as globals)
 -- see: http://aa.usno.navy.mil/faq/docs/SunApprox.php
@@ -96,7 +103,9 @@ local function rise_set (date)
     rise = noon - hour_angle
     set  = noon + hour_angle 
   end
-  return rise, set, noon
+  
+  local tz = time_zone()
+  return rise + tz, set + tz, noon + tz
 end
 
 -- function: sunset / sunrise

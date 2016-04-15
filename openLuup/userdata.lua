@@ -115,15 +115,13 @@ local function devices_table (device_list)
   local serviceNo = 0
   for _,d in pairs (device_list) do 
     local states = {}
-      for serviceId, srv in pairs(d.services) do
-        for name,item in pairs(srv.variables) do
-          states[#states+1] = {
-          id = item.id, 
-          service = serviceId,
-          variable = name,
-          value = item.value,
-        }
-      end
+    for i,item in ipairs(d.variables) do
+      states[i] = {
+        id = item.id, 
+        service = item.srv,
+        variable = item.name,
+        value = item.value,
+      }
     end
     local curls 
     if d.serviceList then         -- add the ControlURLs
