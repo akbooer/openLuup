@@ -6,6 +6,8 @@ local banner = "     version " .. revisionDate .. "  @akbooer"
 -- openLuup - Initialize Luup engine
 --  
 
+-- 2016.04.18  add username and password to attributes (for cameras)
+
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
 local logs          = require "openLuup.logs"
@@ -58,7 +60,7 @@ local function load_user_data (user_data_json)
       _log (("room#%d '%s'"): format (x.id,x.name)) 
     end
     _log "...room loading completed"
-
+    
     -- DEVICES  
     _log "loading devices..."    
     for _, d in ipairs (user_data.devices or {}) do
@@ -79,6 +81,8 @@ local function load_user_data (user_data_json)
           pluginnum       = d.plugin,
           statevariables  = d.states,      -- states : table {id, service, variable, value}
           disabled        = d.disabled,
+          username        = d.username,
+          password        = d.password,
         }
       dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
       -- set other device attributes

@@ -1,5 +1,5 @@
 local _NAME = "openLuup.chdev"
-local revisionDate = "2016.04.03"
+local revisionDate = "2016.04.18"
 local banner = "    version " .. revisionDate .. "  @akbooer"
 
 -- This file not only contains the luup.chdev submodule, 
@@ -10,7 +10,7 @@ local banner = "    version " .. revisionDate .. "  @akbooer"
 -- 2016.02.15  ensure that altid is a string (thanks cybrmage)
 -- 2016.04.03  add UUID (for Sonos, and perhaps other plugins)
 -- 2016.04.15  change the way device variables are handled in chdev.create - thanks @explorer!
---
+-- 2016.04.18  add username and password to attributes (for cameras)
 
 local logs      = require "openLuup.logs"
 
@@ -57,7 +57,6 @@ local function variable_explorer (statevariables)   -- TODO: thanks @explorer, f
   end
   return vars
 end
-
 
 -- 
 -- function: create (x)
@@ -135,9 +134,11 @@ local function create (x)
     model           = d.modelName or '',
     name            = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?')), 
 --    plugin          = tostring(pluginnum),      -- TODO: set plugin number
+    password        = x.password,
     room            = tostring(tonumber (x.room or 0)),   -- why it's a string, I have no idea
     subcategory_num = tonumber (d.subcategory_num) or 0,
     time_created    = os.time(), 
+    username        = x.username,
     ip              = x.ip or '',
     mac             = x.mac or '',
   }
@@ -156,11 +157,11 @@ local function create (x)
       invisible           = x.invisible or false,     -- if invisible, it's 'for internal use only'
       ip                  = a.ip,
       mac                 = a.mac,
-      pass                = '',
+      pass                = a.password or '',
       room_num            = tonumber (a.room),
       subcategory_num     = tonumber (a.subcategory_num),
       udn                 = a.local_udn,
-      user                = '',    
+      user                = a.username or '',    
     }
   
   -- fill out extra data in the proto-device

@@ -1,5 +1,5 @@
 _NAME = "VeraBridge"
-_VERSION = "2016.04.15"
+_VERSION = "2016.04.18"
 _DESCRIPTION = "VeraBridge plugin for openLuup!!"
 _AUTHOR = "@akbooer"
 
@@ -20,7 +20,8 @@ _AUTHOR = "@akbooer"
 -- 2016.03.27   fix for device 1 and 2 on non-primary bridges (clone all hidden devices)
 -- 2016.04.14   fix for missing device #2
 -- 2016.04.15   don't convert device states table into string (thanks @explorer)
---
+-- 2016.04.17   chdev.create devices each time to ensure cloning of all attributes and variables
+-- 2016.04.18   add username, password, ip, mac, json_file to attributes in chdev.create
 
 local devNo                      -- our device number
 
@@ -104,17 +105,28 @@ end
 
 -- create a new device, cloning the remote one
 local function create_new (cloneId, dev, room)
+--[[
+          hidden          = nil, 
+          pluginnum       = d.plugin,
+          disabled        = d.disabled,
+
+--]]
   local d = chdev.create {
     devNo = cloneId, 
     device_type = dev.device_type,
     internal_id = tostring(dev.altid),
-    invisible = dev.invisible == "1",   -- might be invisible, eg. Zwave and Scene controllers
+    invisible   = dev.invisible == "1",   -- might be invisible, eg. Zwave and Scene controllers
+    json_file   = dev.device_json,
     description = dev.name,
-    upnp_file = dev.device_file,
-    upnp_impl = 'X',              -- override device file's implementation definition... musn't run here!
-    parent = devNo,
-    room = room, 
+    upnp_file   = dev.device_file,
+    upnp_impl   = 'X',              -- override device file's implementation definition... musn't run here!
+    parent      = devNo,
+    password    = dev.password,
+    room        = room, 
     statevariables = dev.states,
+    username    = dev.username,
+    ip          = dev.ip, 
+    mac         = dev.mac, 
   }  
   luup.devices[cloneId] = d   -- remember to put into the devices table! (chdev.create doesn't do that)
 end
@@ -145,11 +157,12 @@ local function create_children (devices, room)
       N = N + 1
       local cloneId = local_by_remote_id (dev.id)
       if not current[cloneId] then 
-        create_new (cloneId, dev, room) 
         something_changed = true
-        list[#list+1] = cloneId
       end
+      create_new (cloneId, dev, room) -- recreate the device anyway to set current attributes and variables
+      list[#list+1] = cloneId
       current[cloneId] = nil
+      -- TODO: update existing child device variables and attributes??
   end
   if #list > 0 then luup.log ("creating device numbers: " .. json.encode(list)) end
   
