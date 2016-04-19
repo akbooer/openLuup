@@ -1,5 +1,5 @@
 _NAME = "VeraBridge"
-_VERSION = "2016.04.18"
+_VERSION = "2016.04.19"
 _DESCRIPTION = "VeraBridge plugin for openLuup!!"
 _AUTHOR = "@akbooer"
 
@@ -22,6 +22,7 @@ _AUTHOR = "@akbooer"
 -- 2016.04.15   don't convert device states table into string (thanks @explorer)
 -- 2016.04.17   chdev.create devices each time to ensure cloning of all attributes and variables
 -- 2016.04.18   add username, password, ip, mac, json_file to attributes in chdev.create
+-- 2016.04.19   fix action redirects for multiple controllers
 
 local devNo                      -- our device number
 
@@ -136,7 +137,7 @@ local function build_families (devices)
   for _, dev in pairs (devices) do   -- once again, this 'devices' table is from the 'user_data' request
     local cloneId  = local_by_remote_id (dev.id)
     local parentId = local_by_remote_id (tonumber (dev.id_parent) or 0)
-    if parentId == BLOCKSIZE then parentId = devNo end      -- the bridge is the "device 0" surrogate
+    if parentId == OFFSET then parentId = devNo end      -- the bridge is the "device 0" surrogate
     local clone  = luup.devices[cloneId]
     local parent = luup.devices[parentId]
     if clone and parent then
