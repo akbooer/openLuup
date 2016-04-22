@@ -1,5 +1,5 @@
 _NAME = "VeraBridge"
-_VERSION = "2016.04.19"
+_VERSION = "2016.04.22"
 _DESCRIPTION = "VeraBridge plugin for openLuup!!"
 _AUTHOR = "@akbooer"
 
@@ -23,6 +23,7 @@ _AUTHOR = "@akbooer"
 -- 2016.04.17   chdev.create devices each time to ensure cloning of all attributes and variables
 -- 2016.04.18   add username, password, ip, mac, json_file to attributes in chdev.create
 -- 2016.04.19   fix action redirects for multiple controllers
+-- 2016.04.22   fix old room allocations
 
 local devNo                      -- our device number
 
@@ -159,11 +160,13 @@ local function create_children (devices, room)
       local cloneId = local_by_remote_id (dev.id)
       if not current[cloneId] then 
         something_changed = true
+      else
+        local old_room = luup.devices[cloneId].room_num
+        room = (old_room ~= 0) and old_room or room   -- use room number
       end
       create_new (cloneId, dev, room) -- recreate the device anyway to set current attributes and variables
       list[#list+1] = cloneId
       current[cloneId] = nil
-      -- TODO: update existing child device variables and attributes??
   end
   if #list > 0 then luup.log ("creating device numbers: " .. json.encode(list)) end
   
