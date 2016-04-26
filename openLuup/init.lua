@@ -1,12 +1,12 @@
 local _NAME = "openLuup.init"
-local revisionDate = "2016.04.15"
+local revisionDate = "2016.04.18"
 local banner = "     version " .. revisionDate .. "  @akbooer"
 
 --
 -- openLuup - Initialize Luup engine
 --  
 
--- 2016.04.18  add username and password to attributes (for cameras)
+-- 2016.04.18   add username and password to attributes (for cameras)
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -114,7 +114,7 @@ local function load_user_data (user_data_json)
   
     -- PLUGINS
     _log "loading installed plugin info..."
-    user_data.InstalledPlugins2 = plugins.installed (user_data.InstalledPlugins2)
+    user_data.InstalledPlugins2 = plugins.installed (user_data.InstalledPlugins2, loader.shared_environment)
     for _, plugin in ipairs (user_data.InstalledPlugins2) do
       _log (table.concat {"id: ", plugin.id, ", name: ", plugin.Title, 
                           ", installed: ", os.date ("%c", plugin.timestamp)})
