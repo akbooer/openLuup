@@ -1,5 +1,5 @@
 local _NAME = "openLuup.plugins"
-local revisionDate = "2016.03.05"
+local revisionDate = "2016.04.27"
 local banner = "  version " .. revisionDate .. "  @akbooer"
 
 --
@@ -211,8 +211,9 @@ end
 -- AltUI
 --
 
-local altui_downloads = table.concat ({"plugins", "downloads", "altui", ''}, pathSeparator)
-local altui_backup    = table.concat ({"plugins", "backup"   , "altui", ''}, pathSeparator)
+local altui_downloads   = ("plugins/downloads/altui/"):         gsub ("/", pathSeparator)
+local blockly_downloads = ("plugins/downloads/altui/blockly/"): gsub ("/", pathSeparator)
+local altui_backup      = ("plugins/backup/altui/"):            gsub ("/", pathSeparator)
 
 local function install_altui_if_missing ()
   
@@ -241,16 +242,11 @@ local function update_altui (p)
   local rev =  tonumber (p.TracRev) or "master"
   _log "backing up AltUI plugin"
   mkdir_tree (altui_backup)
-  for file in lfs.dir "." do
-    if file: match "ALTUI" then
-      file_copy (file, altui_backup .. file)
-    end
-  end
+  batch_copy ('.' .. pathSeparator, altui_backup, "ALTUI")
 
-  _log ("downloading ALTUI rev " .. rev) 
--- TODO: UNCOMMENT
---  local ok = update.AltUI.get_version (rev)   -- update files from GitHub
---  if not ok then return "AltUI download failed" end
+  _log ("downloading ALTUI rev " .. rev)
+  local ok = update.AltUI.get_version (rev)   -- update files from GitHub
+  if not ok then return "AltUI download failed" end
   
   do -- patch the revision number...
     local fname = altui_downloads .. "J_ALTUI_uimgr.js"
@@ -263,7 +259,7 @@ local function update_altui (p)
 
   _log "installing new version"
   batch_copy (altui_downloads, '', "ALTUI")
-  batch_copy (table.concat {altui_downloads, "blockly", pathSeparator}, '', "ALTUI")
+  batch_copy (blockly_downloads, '', "ALTUI")
   
   install_altui_if_missing ()
   luup.reload ()

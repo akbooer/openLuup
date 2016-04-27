@@ -5,7 +5,6 @@ local version = "openLuup.user_data  2015.10.30  @akbooer"
 
 local json = require "openLuup.json"
 
-local plugins = require "openLuup.plugins"
 
 --
 -- Here a complete list of top-level (scalar) attributes taken from an actual Vera user_data2 request
@@ -192,7 +191,7 @@ end
 return {
   attributes      = attributes,
   devices_table   = devices_table, 
-  load            = load_user_data,
+--  load            = load_user_data,
   parse           = parse_user_data,
   save            = save_user_data,
   version         = version,
