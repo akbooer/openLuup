@@ -1,5 +1,5 @@
 local _NAME = "openLuup.update"
-local revisionDate = "2016.04.25"
+local revisionDate = "2016.04.28"
 local banner = "   version " .. revisionDate .. "  @akbooer"
 
 --
@@ -9,7 +9,7 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 -- they don't copy them to the /etc/cmh-ludl/ directory.
 
 -- 2016.03.15  created
--- 2016.04.25  make generic form for use with openLuup / AltUI / anything else
+-- 2016.04.25  make generic, for use with openLuup / AltUI / anything else
 
 local https     = require "ssl.https"
 local ltn12     = require "ltn12"
@@ -185,83 +185,11 @@ local function new (archive, target)
   }
 end
 
---
--------------------------
-
-----------------
---
--- specific updaters
---
-
--- openLuup
-
-local openLuup_updater = new ("akbooer/openLuup", "plugins/downloads/openLuup")
-
-
--- load specified (or latest) version 
-function openLuup_updater.get_version (v)
-  v  = v or "master"
-  local subdirectories = {    -- these are the bits of the repository that we want
-    "/openLuup",
-    "/openLuupExtensions",
-    "/Utilities",
-    "/VeraBridge",
-  }
-  local ok = openLuup_updater.get_release (v, subdirectories)
---  local ok = openLuup_updater.get_release (v, subdirectories, "xml.lua")    -- TODO: remove
-  if ok then 
-    set_attr {GitHubVersion = v}
-    return v 
-  end
-end
-
--- AltUI
-
-local AltUI_updater = new ("amg0/ALTUI", "plugins/downloads/altui")
-
--- load specified (or latest) version 
-function AltUI_updater.get_version (v)
-  local subdirectories = {    -- these are the bits of the repository that we want
-    '',           -- root
-    "/blockly",
-  }
-  local ok = AltUI_updater.get_release (v, subdirectories, "ALTUI")
---  local ok = AltUI_updater.get_release (v, subdirectories, "D_ALTUI.json")    -- TODO: remove
-  if ok then 
-    return v 
-  end
-end
-
-
-----------------
---
--- TEST
---
---_log = print
-
--- test openLuup access
-
---local ov = openLuup_updater.latest_version ()
---local ow = openLuup_updater.get_version ()
---print (ov, ow)
-
----- test AltUI access
-
---local av = AltUI_updater.latest_version ()
---local aw = AltUI_updater.get_version (av)
---print (av,aw)
---AltUI_updater.get_latest_tarfile ()
-
 -----
 
 return {
   new = new,                -- factory function
   set_attr = set_attr,      -- utility function
-  
-  -- pre-defined updaters
-  
-  openLuup = openLuup_updater,
-  AltUI = AltUI_updater,  
 }
 
 -----

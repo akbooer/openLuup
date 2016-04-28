@@ -1,5 +1,5 @@
 local _NAME = "openLuup.requests"
-local revisionDate = "2016.04.10"
+local revisionDate = "2016.04.28"
 local banner = " version " .. revisionDate .. "  @akbooer"
 
 --
@@ -12,7 +12,8 @@ local banner = " version " .. revisionDate .. "  @akbooer"
 -- 2016.02.22  add short_codes to sdata device table - thanks @ronluna
 -- 2016.03.11  ensure that device delete removes all children and any relevant scene actions
 -- 2016.03.15  add update for openLuup version downloads
--- 2016.04.10  add scene sctive and status flags in sdata and status reports
+-- 2016.04.10  add scene active and status flags in sdata and status reports
+-- 2016.04.25  openLuup update changes
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -24,7 +25,6 @@ local rooms         = require "openLuup.rooms"
 local scenes        = require "openLuup.scenes"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
-local update        = require "openLuup.update"
 local plugins       = require "openLuup.plugins"
 local loader        = require "openLuup.loader"       -- for static_data, service_data, and loadtime
 
@@ -670,9 +670,9 @@ local function reload () luup.reload () end     -- reload openLuup
 
 local function file (_,p) return server.http_file (p.parameters or '') end                 -- file access
 
-local function altui (_,p) plugins.create {PluginNum = 8246, TracRev=tonumber(p.rev)} end    -- install ALTUI
+local function altui (_,p) return plugins.create {PluginNum = 8246, TracRev=tonumber(p.rev)} end    -- install/update ALTUI
 
-local function latest (_,p) return update.get_latest (p) end   -- update openLuup
+local function latest (_,p) return plugins.create {PluginNum = 0, Tag = p.rev} end   -- update openLuup
 
 --
 -- export all Luup requests

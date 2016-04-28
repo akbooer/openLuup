@@ -1,5 +1,5 @@
 local _NAME = "openLuup.plugins"
-local revisionDate = "2016.04.27"
+local revisionDate = "2016.04.28"
 local banner = "  version " .. revisionDate .. "  @akbooer"
 
 --
@@ -153,10 +153,10 @@ local InstalledPlugins2 = {}
 --]]
 
 
-local function file_patch (source, dest, filter)
+local function file_copy (source, dest)
   local attr = lfs.attributes (source)
   if attr and attr.mode ~= "file" then
-    return nil, "filecopy: won't copy directory files!"
+    return nil, "filecopy: won't copy directory files!", 0
   end
   local f, msg, content
   f, msg = io.open (source, 'r')
@@ -165,7 +165,6 @@ local function file_patch (source, dest, filter)
     f: close ()
     f, msg = io.open (dest, 'w+')
     if f then
-      if filter then content = filter (content) end
       f: write (content)
       f: close ()
     end
@@ -174,16 +173,17 @@ local function file_patch (source, dest, filter)
   return not msg, msg, bytes 
 end
 
-local function file_copy(source, dest)      -- just convenience naming.
-  return file_patch (source, dest)
-end
-
 local function batch_copy (source, destination, pattern)
+  local total = 0
   for file in lfs.dir (source) do
+    local source_path = source .. file
 --    _log (table.concat {"source: ", source, ", file: ", file})
-    if file: match (pattern or '^%.') and lfs.attributes (file).mode == "file" then
-      local ok, msg, bytes = file_copy (source..file, destination..file)
+    if file: match (pattern or '.') 
+    and lfs.attributes (source_path).mode == "file" 
+    and not file: match "^%." then            -- ignore hidden files
+      local ok, msg, bytes = file_copy (source_path, destination..file)
       if ok then
+        total = total + bytes
         msg = ("%-8d %s"):format (bytes, file)
         _log (msg)
       else
@@ -191,6 +191,8 @@ local function batch_copy (source, destination, pattern)
       end
     end
   end
+  _log (table.concat {"Total size: ", total, " bytes"})
+  return total
 end
 
 local function mkdir_tree (path)
@@ -210,10 +212,18 @@ end
 --
 -- AltUI
 --
+-- invoked by:
+-- /data_request?id=action&
+--    serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&
+--     action=CreatePlugin&PluginNum=8246&TracRev=1237
+-- OR
+-- /data_request?id=altui&TracRev=1237
 
+local altui_backup      = ("plugins/backup/altui/"):            gsub ("/", pathSeparator)
 local altui_downloads   = ("plugins/downloads/altui/"):         gsub ("/", pathSeparator)
 local blockly_downloads = ("plugins/downloads/altui/blockly/"): gsub ("/", pathSeparator)
-local altui_backup      = ("plugins/backup/altui/"):            gsub ("/", pathSeparator)
+
+local AltUI_updater = update.new ("amg0/ALTUI", "plugins/downloads/altui")
 
 local function install_altui_if_missing ()
   
@@ -240,28 +250,29 @@ end
 
 local function update_altui (p)
   local rev =  tonumber (p.TracRev) or "master"
+  
   _log "backing up AltUI plugin"
   mkdir_tree (altui_backup)
   batch_copy ('.' .. pathSeparator, altui_backup, "ALTUI")
 
-  _log ("downloading ALTUI rev " .. rev)
-  local ok = update.AltUI.get_version (rev)   -- update files from GitHub
+  _log ("downloading ALTUI rev " .. rev)  
+  local subdirectories = {    -- these are the bits of the repository that we want
+    '',           -- root
+    "/blockly",   -- blockly editor
+  }
+  
+  local ok = AltUI_updater.get_release (rev, subdirectories, "ALTUI")
   if not ok then return "AltUI download failed" end
-  
-  do -- patch the revision number...
-    local fname = altui_downloads .. "J_ALTUI_uimgr.js"
-    file_patch (fname, fname, 
-      function (code)
-        _log ("patching revision number in J_ALTUI_uimgr.js to " .. rev)
-        return code: gsub ("%$Revision%$", "$Revision: " .. rev .. " $")
-      end)
-  end  
 
-  _log "installing new version"
-  batch_copy (altui_downloads, '', "ALTUI")
-  batch_copy (blockly_downloads, '', "ALTUI")
-  
+  _log "installing new AltUI version"
+  local s1 = batch_copy (altui_downloads, '', "ALTUI")
+  local s2 = batch_copy (blockly_downloads, '', "ALTUI")
+  _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
+
   install_altui_if_missing ()
+  
+  local msg = "AltUI installed version: " .. rev
+  _log (msg)
   luup.reload ()
 end
 
@@ -269,14 +280,60 @@ end
 --
 -- openLuup
 --
+-- invoked by:
+-- /data_request?id=action&
+--    serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&
+--     action=CreatePlugin&PluginNum=0&Tag=0.7.0
+--OR
+-- /data_request?id=update&Tag=0.7.0
+
+local function path (x) return x: gsub ("/", pathSeparator) end
+
+local openLuup_backup       = path "plugins/backup/openLuup/openLuup/"
+local extensions_backup     = path "plugins/backup/openLuup/openLuupExtensions/"
+local bridge_backup         = path "plugins/backup/openLuup/VeraBridge/"
+local openLuup_downloads    = path "plugins/downloads/openLuup/openLuup/"
+local bridge_downloads      = path "plugins/downloads/openLuup/VeraBridge/"
+
+local openLuup_updater = update.new ("akbooer/openLuup", "plugins/downloads/openLuup")
+
 local function set_attr(x) update.set_attr(nil, x: gsub ("(%C)(%C)","%2%1")) end
 
 local function update_openLuup (p)
---    if latest then
---      set_attr {GitHubLatest = latest}
---    end
+  local rev = p.Tag or "master"
   
-  return "Not yet implemented", "text/plain"
+  _log "backing up openLuup"
+  mkdir_tree (openLuup_backup)
+  mkdir_tree (bridge_backup)
+  local s1 = batch_copy ('openLuup' .. pathSeparator, openLuup_backup)        -- /etc/cmh-ludl/openLuup folder
+  local s2 = batch_copy ('.' .. pathSeparator, bridge_backup, "VeraBridge")   -- VeraBridge from /etc/cmh-ludl/
+  -- TODO: more to go here?
+  _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
+  
+  _log ("downloading openLuup rev " .. rev)  
+  local subdirectories = {    -- these are the bits of the repository that we want
+    "/openLuup",
+    "/VeraBridge",
+  }
+  
+  local ok = openLuup_updater.get_release (rev, subdirectories) 
+  if not ok then return "openLuup download failed" end
+ 
+  local cmh_ludl = ''
+--  cmh_ludl = "CMH_LUDL_TEST/"       -- TODO: testing only
+  mkdir_tree (cmh_ludl)
+  
+  _log "installing new openLuup version"
+  s1 = batch_copy (openLuup_downloads, cmh_ludl)
+  s2 = batch_copy (bridge_downloads, cmh_ludl)
+  _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
+
+  update.set_attr {GitHubVersion = rev}
+--  set_attr {GitHubLatest = latest}    -- TODO: perhaps move to Extensions plugin
+  
+  local msg = "openLuup installed version: " .. rev
+  _log (msg)
+  luup.reload ()
 end
 
 
@@ -288,7 +345,11 @@ end
 -- return true if successful, false if not.
 local function create (p)
   local PluginNum = tonumber (p.PluginNum) or 0
-  local function none () _log ("no such plugin: " .. PluginNum) return false end
+  local function none () 
+    local msg = "no such plugin: " .. PluginNum
+    _log (msg) 
+    return msg, "text/plain" 
+  end
   local dispatch = {
     [0]     = update_openLuup, 
     [8246]  = update_altui,
@@ -310,10 +371,13 @@ local function installed (info, env)
 return InstalledPlugins2
 end
 
+-----
 
 return {
   create    = create,
   delete    = delete,
   installed = installed,
 }
+
+-----
 
