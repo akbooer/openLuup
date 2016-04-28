@@ -1,4 +1,4 @@
-local version = "openLuup.user_data  2015.10.30  @akbooer"
+local version = "openLuup.user_data  2016.04.28  @akbooer"
 
 -- user_data
 -- saving and loading, plus utility functions used by HTTP requests id=user_data, etc.
@@ -80,6 +80,8 @@ local attributes = {
 
 -- openLuup specials
 
+  GitHubVersion = "unknown",
+  GitHubLatest  = "unknown",
   ShutdownCode = '',
 
 }
