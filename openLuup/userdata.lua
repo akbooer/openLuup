@@ -1,10 +1,15 @@
-local version = "openLuup.user_data  2016.04.28  @akbooer"
+ABOUT = {
+  NAME          = "openLuup.userdata",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
+  AUTHOR        = "@akbooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- user_data
 -- saving and loading, plus utility functions used by HTTP requests id=user_data, etc.
 
 local json = require "openLuup.json"
-
 
 --
 -- Here a complete list of top-level (scalar) attributes taken from an actual Vera user_data2 request
@@ -138,9 +143,12 @@ local function devices_table (device_list)
       end
     end
     
+    local status = d:status_get() or -1      -- 2016.04.29
+--    if status == -1 then status = nil end     -- don't report 'normal' status ???
     local tbl = {     
       ControlURLs     = curls,                              
       states          = states,
+      status          = status,
     }
     for a,b in pairs (d.attributes) do tbl[a] = b end
     info[#info+1] = tbl
@@ -151,7 +159,8 @@ end
 -- save ()
 -- top-level attributes and key tables: devices, rooms, scenes
 -- TODO: [, sections, users, weatherSettings]
-local function save_user_data (luup, filename)
+local function save_user_data (localLuup, filename)
+  local luup = localLuup or luup
   local result, message
   local f = io.open (filename or "user_data.json", 'w')
   if not f then
@@ -191,11 +200,11 @@ local function save_user_data (luup, filename)
 end
 
 return {
+  ABOUT           = ABOUT,
   attributes      = attributes,
   devices_table   = devices_table, 
 --  load            = load_user_data,
   parse           = parse_user_data,
   save            = save_user_data,
-  version         = version,
 }
 
