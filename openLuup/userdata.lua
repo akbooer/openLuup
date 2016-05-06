@@ -160,43 +160,44 @@ end
 -- save ()
 -- top-level attributes and key tables: devices, rooms, scenes
 -- TODO: [, sections, users, weatherSettings]
-local function save_user_data (localLuup, filename)
+local function save_user_data (localLuup, filename)   -- refactored thanks to @explorer
   local luup = localLuup or luup
   local result, message
-  local f = io.open (filename or "user_data.json", 'w')
-  if not f then
-    message =  "error writing user_data"
+  local data = {rooms = {}, scenes = {}}
+  -- scalar attributes
+  for a,b in pairs (attributes) do
+    if type(b) ~= "table" then data[a] = b end
+  end
+  -- devices
+  data.devices = devices_table (luup.devices or {})
+  -- plugins
+  data.InstalledPlugins2 = {}   -- TODO: replace with plugins.installed()
+  -- rooms
+  local rooms = data.rooms
+  for i, name in pairs (luup.rooms or {}) do 
+    rooms[#rooms+1] = {id = i, name = name}
+  end
+  -- scenes
+  local scenes = data.scenes
+  for _, s in pairs (luup.scenes or {}) do
+    scenes[#scenes+1] = s: user_table ()
+  end    
+  --
+  local j, msg = json.encode (data)
+  if not j then
+    message = "syntax error in user_data: " .. (msg or '?')
   else
-    local data = {rooms = {}, scenes = {}}
-    -- scalar attributes
-    for a,b in pairs (attributes) do
-      if type(b) ~= "table" then data[a] = b end
-    end
-    -- devices
-    data.devices = devices_table (luup.devices or {})
-    -- plugins
-    data.InstalledPlugins2 = {}   -- TODO: replace with plugins.installed()
-    -- rooms
-    local rooms = data.rooms
-    for i, name in pairs (luup.rooms or {}) do 
-      rooms[#rooms+1] = {id = i, name = name}
-    end
-    -- scenes
-    local scenes = data.scenes
-    for _, s in pairs (luup.scenes or {}) do
-      scenes[#scenes+1] = s: user_table ()
-    end    
-    --
-    local j, msg = json.encode (data)
-    if j then
+    local f, err = io.open (filename or "user_data.json", 'w')
+    if not f then
+      message =  "error writing user_data: " .. (err or '?')
+    else
       f:write (j)
       f:write '\n'
+      f:close ()
       result = true
-    else
-      message = "syntax error in user_data: " .. (msg or '?')
     end
-    f:close ()
   end
+
   return result, message
 end
 
