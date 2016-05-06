@@ -1,8 +1,13 @@
-local version = "openLuup.logs    2015.11.12  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.logs",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "basic log file handling, including versioning",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
---
 -- log handling - basic at the moment
--- TODO: syslog
 
 local socket = require "socket"
 
@@ -142,7 +147,7 @@ local function openLuup_logger (info)
   -- rename old files
   local function rotate_logs ()
     for i = versions-1,1,-1 do
-      local x,y = os.rename (logfile_name..'.'..(i), logfile_name..'.'..(i+1))
+      os.rename (logfile_name..'.'..(i), logfile_name..'.'..(i+1))
     end
     os.rename (logfile_name, logfile_name..'.'..(1))
   end
@@ -171,7 +176,7 @@ local function openLuup_logger (info)
     local message = table.concat {now, "   ",subsystem_or_number, ":", devNo or '', ": ", tostring(msg), '\n'}
     write (message)
   end
-
+  
   -- logfile init
   rotate_logs ()       -- save the old ones
   f = open_log ()      -- start anew
@@ -291,13 +296,18 @@ local normal = openLuup_logger {name = "LuaUPnP.log", versions = 5, lines =2000}
 -- note that altui reads from /var/log/cmh/LuaUPnP.log
 local altui  = altui_logger {name = "/var/log/cmh/LuaUPnP.log", lines = 5000}
 
-
--- local syslog = syslog.server ("172.16.42.112:514", "openLuup", "BeagleBoneBlack")
-
+-- display module banner
+local function banner (ABOUT)
+  local msg = ("%" .. 25-#ABOUT.NAME .. "s %s  @akbooer"): format ("version", ABOUT.VERSION)
+  normal.send (msg, ABOUT.NAME, '')
+end
 
 -- export methods
 
 return {
+  ABOUT = ABOUT,
+  
+  banner          = banner,
   send            = normal.send,
   altui_variable  = altui.variable,
   altui_scene     = altui.scene,
@@ -305,6 +315,5 @@ return {
   openLuup_logger = openLuup_logger,
   altui_logger    = altui_logger,
   }
-
 
 ----

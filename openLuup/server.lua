@@ -1,6 +1,11 @@
-local _NAME = "openLuup.server"
-local revisionDate = "2016.04.28"
-local banner = "   version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.server",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "HTTP/HTTPS GET/PUT requests server and luup.inet.wget client",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- openLuup SERVER - HTTP GET request server and client
@@ -30,8 +35,9 @@ local wsapi     = require "openLuup.wsapi"      -- WSAPI connector for CGI proce
 local mime      = require "openLuup.mimetypes"
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 -- CONSTANTS
 
@@ -271,7 +277,7 @@ local function http_response (sock, response, type, chunked, response_headers)
     chunked = true
     response_headers["Transfer-Encoding"] = "Chunked"
   end
-  response_headers["Server"] = "openLuup/" .. revisionDate
+  response_headers["Server"] = "openLuup/" .. ABOUT.VERSION
 
   local crlf = "\r\n"
   local headers = "HTTP/1.1 " .. status .. crlf
@@ -471,6 +477,8 @@ end
 --- return module variables and methods
 
 return {
+    ABOUT = ABOUT,
+    
     -- constants
     myIP = myIP,
     

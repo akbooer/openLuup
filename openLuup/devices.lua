@@ -1,5 +1,11 @@
-local revisionDate = "2016.04.15"
-local banner = "     version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.devices",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "low-level device/service/variable objects",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- openLuup.devices
@@ -7,6 +13,7 @@ local banner = "     version " .. revisionDate .. "  @akbooer"
 
 -- 2016.03.01  added notes to action jobs
 -- 2016.04.15  added per-device variable numbering (thanks @explorer)
+-- 2016.04.29  added device status
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 
@@ -165,7 +172,21 @@ local function new (devNo)
   local version               -- set device version (used to flag changes)
   local missing_action        -- an action callback to catch missing actions
   local watchers    = {}      -- list of watchers for any service or variable
- 
+  local status      = -1      -- device status
+  
+  local function status_get (self)            -- 2016.04.29
+    return status
+  end
+  
+  local function status_set (self, value)     -- 2016.04.29
+    if status ~= value then
+--      new_dataversion ()
+      new_userdata_dataversion ()
+      status = value
+    end
+  end
+  
+  
   -- function: variable_set
   -- parameters: service (string), variable (string), value (string), watch (boolean)
   -- if watch is true, then invoke any watchers for this device/service/variable
@@ -300,6 +321,9 @@ local function new (devNo)
       attr_get            = attr_get,
       attr_set            = attr_set,
       
+      status_get          = status_get,
+      status_set          = status_set,
+      
       variable_set        = variable_set, 
       variable_get        = variable_get,
       version_get         = function () return version end,
@@ -313,11 +337,12 @@ end
 -- export variables and methods
 
 return {
+  ABOUT = ABOUT,
+  
   -- variables
   dataversion           = dataversion,
   device_list           = device_list,
   userdata_dataversion  = userdata_dataversion,
-  version               = banner,           -- this is the module software version
   
   -- methods
   new                       = new,

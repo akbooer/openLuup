@@ -1,8 +1,15 @@
+local ABOUT = {
+  NAME          = "openLuup.json",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "JSON encode/decode with unicode escapes to UTF-8 encoding and pretty-printing",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
+
 -- JSON encode/decode with full functionality including unicode escapes to UTF-8 encoding.
 -- now does pretty-printing of encoded JSON strings.
 -- (c) 2013,2014,2015  AK Booer
-
-  local version    = "2015.11.29 @akbooer"   
   
 -- 2015.04.10   allow comma before closing '}' or ']'
 -- 2015.11.29   improve formatting of nested objects, cache encoded strings
@@ -28,7 +35,7 @@
     local depth = 1           -- for pretty printing
     local encoding = {}       -- set of tables currently being encoded (to avoid infinite self reference loop)
     
-    local function null    (x)   return "null"    end       --  nil
+    local function null    ()    return "null"    end         --  nil
     local function boolean (x)   return tostring(x) end       --  true or false
     
     local function number  (x)
@@ -125,7 +132,7 @@
     
     -- encode()
     
-    local ok, message, json = pcall (function () return nil, value(Lua) end)
+    local _, message, json = pcall (function () return nil, value(Lua) end)
     return json, message
     
   end -- encode ()
@@ -276,16 +283,15 @@
     
     -- decode ()
 
-    local ok, message, Lua = pcall (parse_json, 1)
+    local _, message, Lua = pcall (parse_json, 1)
     return Lua, message
 
   end  -- decode ()
   
 return {
+    ABOUT = ABOUT,
+    
     decode = decode, 
     default = default,
     encode = encode, 
-    version = version, 
-  
-    _VERSION = version,   
-}
+  }

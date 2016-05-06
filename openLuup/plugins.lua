@@ -1,6 +1,11 @@
-local _NAME = "openLuup.plugins"
-local revisionDate = "2016.04.28"
-local banner = "  version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.plugins",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "create/delete plugins",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- create/delete plugins
@@ -16,8 +21,9 @@ local pathSeparator = package.config:sub(1,1)   -- thanks to @vosmont for this W
                             -- although since lfs (luafilesystem) accepts '/' or '\', it's not necessary
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 
 -- invoked by:
@@ -293,6 +299,7 @@ local openLuup_backup       = path "plugins/backup/openLuup/openLuup/"
 local extensions_backup     = path "plugins/backup/openLuup/openLuupExtensions/"
 local bridge_backup         = path "plugins/backup/openLuup/VeraBridge/"
 local openLuup_downloads    = path "plugins/downloads/openLuup/openLuup/"
+local extensions_downloads  = path "plugins/downloads/openLuup/openLuupExtensions/"
 local bridge_downloads      = path "plugins/downloads/openLuup/VeraBridge/"
 
 local openLuup_updater = update.new ("akbooer/openLuup", "plugins/downloads/openLuup")
@@ -305,15 +312,17 @@ local function update_openLuup (p)
   _log "backing up openLuup"
   mkdir_tree (openLuup_backup)
   mkdir_tree (bridge_backup)
+  mkdir_tree (extensions_backup)
   local s1 = batch_copy ('openLuup' .. pathSeparator, openLuup_backup)        -- /etc/cmh-ludl/openLuup folder
   local s2 = batch_copy ('.' .. pathSeparator, bridge_backup, "VeraBridge")   -- VeraBridge from /etc/cmh-ludl/
-  -- TODO: more to go here?
-  _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
+  local s3 = batch_copy ('.' .. pathSeparator, extensions_backup, "openLuupExtensions")   -- VeraBridge from /etc/cmh-ludl/
+  _log (table.concat {"Grand Total size: ", s1 + s2 + s3, " bytes"})
   
   _log ("downloading openLuup rev " .. rev)  
   local subdirectories = {    -- these are the bits of the repository that we want
     "/openLuup",
     "/VeraBridge",
+    "/openLuupExtensions",
   }
   
   local ok = openLuup_updater.get_release (rev, subdirectories) 
@@ -326,7 +335,8 @@ local function update_openLuup (p)
   _log "installing new openLuup version"
   s1 = batch_copy (openLuup_downloads, cmh_ludl)
   s2 = batch_copy (bridge_downloads, cmh_ludl)
-  _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
+  s3 = batch_copy (extensions_downloads, cmh_ludl)
+  _log (table.concat {"Grand Total size: ", s1 + s2 + s3, " bytes"})
 
   update.set_attr {GitHubVersion = rev}
 --  set_attr {GitHubLatest = latest}    -- TODO: perhaps move to Extensions plugin
@@ -374,6 +384,8 @@ end
 -----
 
 return {
+  ABOUT     = ABOUT,
+  
   create    = create,
   delete    = delete,
   installed = installed,

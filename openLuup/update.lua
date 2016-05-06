@@ -1,6 +1,11 @@
-local _NAME = "openLuup.update"
-local revisionDate = "2016.04.28"
-local banner = "   version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.update",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "update plugins from GitHub repository",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- update plugins from GitHub repository
@@ -21,8 +26,9 @@ local json      = require "openLuup.json"
 local logs      = require "openLuup.logs"
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 https.TIMEOUT = 5
 
@@ -188,6 +194,8 @@ end
 -----
 
 return {
+  ABOUT = ABOUT,
+  
   new = new,                -- factory function
   set_attr = set_attr,      -- utility function
 }

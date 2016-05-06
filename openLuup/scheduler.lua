@@ -1,6 +1,11 @@
-local _NAME = "openLuup.scheduler"
-local revisionDate = "2016.03.01"
-local banner = "version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.scheduler",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "openLuup job scheduler",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- openLuup job scheduler
@@ -18,8 +23,9 @@ local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 
 -- LOCAL variables
@@ -476,6 +482,9 @@ end
 ---- export variables and methods
 
 return {
+    ABOUT = ABOUT,
+    TEST = {step = task_callbacks},      -- for testing only
+    
     -- constants
     state             = state,
     version           = banner,
@@ -495,7 +504,6 @@ return {
     socket_unwatch    = socket_unwatch,
     start             = start,
     stop              = stop,
-    step              = task_callbacks,      -- for testing only
 }
 
 ------------

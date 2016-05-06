@@ -1,8 +1,9 @@
-ABOUT = {
+local ABOUT = {
   NAME          = "openLuup.userdata",
   VERSION       = "2016.04.30",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
 }
 
@@ -201,6 +202,7 @@ end
 
 return {
   ABOUT           = ABOUT,
+  
   attributes      = attributes,
   devices_table   = devices_table, 
 --  load            = load_user_data,

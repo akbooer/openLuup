@@ -1,4 +1,11 @@
-local version = "XML  2016.04.15  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.xml",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "read Device / Service / Implementation XML files",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- Routines to read Device / Service / Implementation XML files
@@ -41,7 +48,7 @@ local function decode (info)
   if info then info = info: gsub ("<!%-%-.-%-%->", '') end
   --
   local result = info
-  for a,b in (info or ''): gmatch "<([%w_]+).->(.-)</%1>" do   -- find matching opening and closing tags
+  for a,b in (info or ''): gmatch "<([%w_]+).->(.-)</%1>" do -- find matching opening and closing tags, ignore attributes
     local x,y = decode (b)                                -- get the value of the contents
     xml[a] = xml[a] or {}                                 -- if this tag doesn't exist, start a list of values
     xml[a][#xml[a]+1] = x or y   -- add new value to the list (might be table x, or just text y)
@@ -100,9 +107,7 @@ end
 
 
 return {
-  
-  -- constants
-  version = version,
+  ABOUT = ABOUT,
   
   -- methods
   

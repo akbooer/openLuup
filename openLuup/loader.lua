@@ -1,9 +1,15 @@
-local version = "openLuup.loader  2016.04.15  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.loader",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- Loader for Device, Implementation, and JSON files
 -- including Lua code compilation for implementations and scenes
--- and also load/save for user_data (scene and room persistence)
 --
 -- the reading/parsing are separate functions for easy unit testing.
 --
@@ -15,8 +21,7 @@ local version = "openLuup.loader  2016.04.15  @akbooer"
 -- 2016.02.25  handle both .png and .swf icons (thanks @reneboer, and @vosmont)
 -- 2016.03.19  honour order of <files> and <functions> in implementation files (thanks @logread and @cybrmage)
 -- 2016.04.14  @explorer added device category name lookup by category number. 
---             ... added fallback code to look for device in the device_xml table if the root is not found. 
--- 2016.04.15  update device_xml.root logic
+-- 2016.04.16  tidy up some previous edits
 
 ------------------
 --
@@ -43,6 +48,7 @@ local function _pristine_environment ()
 
   ENV = shallow_copy (_G)           -- copy the original _G environment
   ENV.arg = nil                     -- don't want to expose command line arguments
+  ENV.ABOUT = nil                   -- or this module's ABOUT!
   ENV.module = function () end      -- module is noop
   return new_environment
 end
@@ -140,17 +146,17 @@ end
 
 -- parse device file, or empty table if error
 local function parse_device_xml (device_xml)
-  local d, service_list
-  if type(device_xml) == "table" then
-      d = (device_xml.root or device_xml).device        -- 2016.04.15  root may, or may not, be present
+  local x
+  if type(device_xml) == "table" and device_xml.root then -- 2016.02.22, added 'root' nesting
+    x = device_xml.root.device    -- find relevant part
   end
-  local x = d or {}                                     -- ensure there's something there  
-  d = {}
-  for a,b in pairs (x) do
+  local d = {}
+  for a,b in pairs (x or {}) do
     d[a] = b              -- retain original capitalisation...
     d[a:lower()] = b      -- ... and fold to lower case
   end
   -- save service list
+  local service_list
   local URLs = d.serviceList
   if URLs and URLs.service then
     URLs = URLs.service
@@ -448,6 +454,8 @@ end
 
 
 return {
+    ABOUT = ABOUT,
+    
     -- tables
     service_data        = service_data,
     shared_environment  = shared_environment,
@@ -465,5 +473,4 @@ return {
     read_device         = read_device,
     read_impl           = read_impl,
     read_json           = read_json,
-    version             = version,
   }

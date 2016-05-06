@@ -1,6 +1,11 @@
-local _NAME = "openLuup.chdev"
-local revisionDate = "2016.04.18"
-local banner = "    version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.chdev",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "device creation and luup.chdev submodule",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- This file not only contains the luup.chdev submodule, 
 -- but also the luup-level facility for creating a device
@@ -11,6 +16,7 @@ local banner = "    version " .. revisionDate .. "  @akbooer"
 -- 2016.04.03  add UUID (for Sonos, and perhaps other plugins)
 -- 2016.04.15  change the way device variables are handled in chdev.create - thanks @explorer!
 -- 2016.04.18  add username and password to attributes (for cameras)
+-- 2016.04.29  add device status
 
 local logs      = require "openLuup.logs"
 
@@ -20,8 +26,9 @@ local loader    = require "openLuup.loader"
 local scheduler = require "openLuup.scheduler"
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 -- utilities
 
@@ -176,6 +183,7 @@ local function create (x)
                             }
   -- note that all the following methods should be called with device:function() syntax...
   dev.is_ready            = function () return true end          -- TODO: wait on startup sequence 
+  dev.status              = -1                                   -- 2016.04.29  add device status
   dev.supports_service    = function (self, service) return not not services[service] end
 
   return setmetatable (luup_device, {__index = dev} )   --TODO:    __metatable = "access denied"
@@ -312,6 +320,8 @@ end
 -- return the methods
 
 return {
+  ABOUT = ABOUT,
+  
   create = create,
   create_device = create_device,
   

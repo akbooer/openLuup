@@ -1,14 +1,18 @@
-local version = "openLuup.timers   2016.04.14  @akbooer"
-
+local ABOUT = {
+  NAME          = "openLuup.timers",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- openLuup TIMERS modules
+-- TIMER related API
+-- all time-related functions (aside from the scheduler itself)
 
 -- 2016.04.14  @explorer: Added timezone offset to the rise_set return value 
 
---
--- TIMER related API
--- all time-related functions (aside from the scheduler itself)
---
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
@@ -340,6 +344,8 @@ end
 ---- return methods
 
 return {
+  ABOUT = ABOUT,
+  
   cpu_clock   = cpu_clock,
   sleep       = sleep,
   sunrise     = sunrise,
@@ -350,7 +356,6 @@ return {
   call_timer  = call_timer,
   -- constants
   loadtime    = loadtime,
-  version     = version,
 }
 
 ----

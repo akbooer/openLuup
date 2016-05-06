@@ -1,7 +1,11 @@
-local _NAME = "openLuup.scenes"
-local revisionDate = "2016.04.10"
-local banner = "   version " .. revisionDate .. "  @akbooer"
-
+local ABOUT = {
+  NAME          = "openLuup.scenes",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "openLuup SCENES",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- openLuup SCENES module
 
@@ -11,7 +15,7 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 --
 -- 2016.03.11   verify that scenes don't reference non-existent devices.  Thanks @delle
 -- 2016.04.10   add 'running' flag for status and sdata "active" and "status" info.   Thanks @ronluna
---
+-- 2016.04.20   make pause work
 
 --local socket    = require "socket"         -- socket library needed to access time in millisecond resolution
 local logs      = require "openLuup.logs"
@@ -20,9 +24,10 @@ local timers    = require "openLuup.timers"
 local loader    = require "openLuup.loader"
 
 --  local logs
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 local _log_altui_scene  = logs.altui_scene
+
+logs.banner (ABOUT)   -- for version control
 
 --[[
 
@@ -189,6 +194,7 @@ local function create (scene_json)
       triggers  = {...},
       timers    = {...},
       lua       = "....",
+      paused    = "0",        -- also this! "1" == paused
     }
 --]]
 
@@ -200,6 +206,7 @@ local function create (scene_json)
     modeStatus  = scn.modeStatus or "0",          -- comma separated list of enabled modes ("0" = all)
     lua         = scn.lua,
     name        = scn.name,
+    paused      = scn.paused or "0",              -- 2016.04.30
     room        = tonumber (scn.room) or 0,       -- TODO: ensure room number valid
     timers      = scn.timers or {},
     triggers    = {},                             -- expunge these
@@ -223,7 +230,7 @@ local function create (scene_json)
       description = scene.name,
       hidden = false,
       page = 0,           -- TODO: discover what page and remote are for
-      paused = false,
+      paused = tonumber (scene.paused) == 1,     -- 2016.04.30 
       remote = 0,
       room_num = scene.room,
     }
@@ -245,6 +252,8 @@ end
 ---- export variables and methods
 
 return {
+    ABOUT = ABOUT,
+    
     -- constants
     version       = banner,
     environment   = scene_environment,      -- to be shared with startup code

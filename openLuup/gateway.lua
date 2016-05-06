@@ -1,4 +1,11 @@
-local version = "openLuup.gateway    2015.11.19  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.gateway",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- HOME AUTOMATION GATEWAY
 --

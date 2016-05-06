@@ -1,6 +1,11 @@
-local _NAME = "openLuup.init"
-local revisionDate = "2016.04.18"
-local banner = "     version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.init",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- openLuup - Initialize Luup engine
@@ -13,9 +18,11 @@ local loader = require "openLuup.loader" -- keep this first... it prototypes the
 local logs          = require "openLuup.logs"
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
 _log ('',":: openLuup STARTUP ")
-_log (banner, _NAME)   -- for version control
+
+logs.banner (ABOUT)   -- for version control
 
 luup = require "openLuup.luup"       -- here's the GLOBAL luup environment
 

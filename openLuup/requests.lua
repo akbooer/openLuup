@@ -1,9 +1,14 @@
-local _NAME = "openLuup.requests"
-local revisionDate = "2016.04.28"
-local banner = " version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.requests",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
--- openLuupREQUESTS - Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests
+-- openLuup.requests - Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests
 --
 -- These are all implemented as standard luup.register_handler callbacks with the usual three parameters
 --
@@ -14,6 +19,7 @@ local banner = " version " .. revisionDate .. "  @akbooer"
 -- 2016.03.15  add update for openLuup version downloads
 -- 2016.04.10  add scene active and status flags in sdata and status reports
 -- 2016.04.25  openLuup update changes
+-- 2016.04.29  add actual device status to status response 
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -29,8 +35,9 @@ local plugins       = require "openLuup.plugins"
 local loader        = require "openLuup.loader"       -- for static_data, service_data, and loadtime
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 local build_version = '*' .. luup.version .. '*'  -- needed in sdata and user_data
 
@@ -89,7 +96,7 @@ end
 local function device (_,p)
   local devNo = tonumber (p.device)
   local dev = luup.devices[devNo]
-  
+
   local function rename ()
     if p.name then
       dev.description = p.name
@@ -117,11 +124,11 @@ local function device (_,p)
       luup.devices[j] = nil
     end    
     scenes.verify_all()           -- 2016.03.11 ensure there are no references to these devices in scene actions
-                                  -- AltUI variable watch triggers will have to take care of themselves!
+    -- AltUI variable watch triggers will have to take care of themselves!
     luup.reload ()
   end
   local function noop () end
-  
+
   if dev then
     local valid = {rename = rename, delete = delete};
     (valid[p.action or ''] or noop) ()
@@ -236,7 +243,7 @@ local function status_devices_table (device_list, data_version)
   for i,d in pairs (device_list) do 
 --    dev_dv = d:version_get() or 0
     local debug = {device_ver = d:version_get()}
-    if not d.invisible and d:version_get() > dv then
+    if d:version_get() > dv then
       info = info or {}         -- create table if not present
       local states = {}
       for serviceId, srv in pairs(d.services) do
@@ -245,7 +252,7 @@ local function status_devices_table (device_list, data_version)
 --          debug[name] = ver
 --          if item.version > dv then
           do
-              states[#states+1] = {
+            states[#states+1] = {
               id = item.id, 
               service = serviceId,
               variable = name,
@@ -254,7 +261,16 @@ local function status_devices_table (device_list, data_version)
           end
         end
       end
-      info[#info+1] = {id = i, status = -1, Jobs = {}, PendingJobs = 0, states = states}
+      -- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
+      local status = {
+        id = i, 
+        status = d:status_get() or -1,      -- 2016.04.29
+        tooltip = {display = "0"},
+        Jobs = {}, 
+        PendingJobs = 0, 
+        states = states
+      }
+      info[#info+1] = status
     end
   end
   return info
@@ -277,8 +293,8 @@ end
 local function status_startup_table ()
   local tasks = {}
   local startup = {tasks = tasks}
-   -- TODO: startup tasks:
-    --[[
+  -- TODO: startup tasks:
+  --[[
     startup": {
       "tasks": [
         {
@@ -316,24 +332,24 @@ local function status (r,p,f)
   local x = os.date ("%Y-%m-%d %H:%M:%S")   -- LocalTime = "2015-07-26 14:23:50 D" (daylight savings)
   status.LocalTime = (x .. (({[true] = " D"})[d.isdst] or ''))
   local dv = tonumber(p.DataVersion)
-    local device_list = luup.devices
-    local DeviceNum = tonumber(p.DeviceNum)
-    if DeviceNum then                                     -- specific device
-      if not luup.devices[DeviceNum] then return "Bad Device" end
-      device_list = {[DeviceNum] = luup.devices[DeviceNum]} 
-    else                                                  -- ALL devices
-    end
-    local info = status_devices_table (device_list, dv)
-    if DeviceNum then 
+  local device_list = luup.devices
+  local DeviceNum = tonumber(p.DeviceNum)
+  if DeviceNum then                                     -- specific device
+    if not luup.devices[DeviceNum] then return "Bad Device" end
+    device_list = {[DeviceNum] = luup.devices[DeviceNum]} 
+  else                                                  -- ALL devices
+  end
+  local info = status_devices_table (device_list, dv)
+  if DeviceNum then 
 --        (info[1].id or _) = nil    
-        status["Device_Num_"..DeviceNum] = (info or {})[1]
-    else 
-        status.devices = info
-        status.startup = {tasks = {}}
-        status.scenes  = status_scenes_table ()
-        status.startup = status_startup_table () 
-    end
-     --TODO: status.visible_devices = ?
+    status["Device_Num_"..DeviceNum] = (info or {})[1]
+  else 
+    status.devices = info
+    status.startup = {tasks = {}}
+    status.scenes  = status_scenes_table ()
+    status.startup = status_startup_table () 
+  end
+  --TODO: status.visible_devices = ?
   return json.encode (status) or 'error in status', "application/json"
 end
 
@@ -342,49 +358,49 @@ end
 --
 
 local category_filter = {
-    {
-      Label = {
-        lang_tag = "ui7_all",
-        text = "All"},
-      categories = {},
-      id = 1},
-    {
-      Label = {
-        lang_tag = "ui7_av_devices",
-        text = "Audio/Video"},
-      categories = {"15"},
-      id = 2},
-    {
-      Label = {
-        lang_tag = "ui7_lights",
-        text = "Lights"},
-      categories = {"2","3"},
-      id = 3},
-    {
-      Label = {
-        lang_tag = "ui7_cameras",
-        text = "Cameras"},
-      categories = {"6"},
-      id = 4},
-    {
-      Label = {
-        lang_tag = "ui7_door_locks",
-        text = "Door locks"},
-      categories = {"7"},
-      id = 5},
-    {
-      Label = {
-        lang_tag = "ui7_sensors",
-        text = "Sensors"},
-      categories = {"4","12","16","17","18"},
-      id = 6},
-    {
-      Label = {
-        lang_tag = "ui7_thermostats",
-        text = "Thermostats"},
-      categories = {"5"},
-      id = 7}
-    }
+  {
+    Label = {
+      lang_tag = "ui7_all",
+      text = "All"},
+    categories = {},
+    id = 1},
+  {
+    Label = {
+      lang_tag = "ui7_av_devices",
+      text = "Audio/Video"},
+    categories = {"15"},
+    id = 2},
+  {
+    Label = {
+      lang_tag = "ui7_lights",
+      text = "Lights"},
+    categories = {"2","3"},
+    id = 3},
+  {
+    Label = {
+      lang_tag = "ui7_cameras",
+      text = "Cameras"},
+    categories = {"6"},
+    id = 4},
+  {
+    Label = {
+      lang_tag = "ui7_door_locks",
+      text = "Door locks"},
+    categories = {"7"},
+    id = 5},
+  {
+    Label = {
+      lang_tag = "ui7_sensors",
+      text = "Sensors"},
+    categories = {"4","12","16","17","18"},
+    id = 6},
+  {
+    Label = {
+      lang_tag = "ui7_thermostats",
+      text = "Thermostats"},
+    categories = {"5"},
+    id = 7}
+}
 
 
 local function user_scenes_table()
@@ -404,9 +420,9 @@ local function user_data (r,p,f)
   local dv = tonumber(p.DataVersion)
   local distance = math.abs (devutil.dataversion.value - (dv or 0))
   if not dv 
-    or (dv < devutil.dataversion.value) 
-    or distance > 1000        -- ignore silly values
-    then 
+  or (dv < devutil.dataversion.value) 
+  or distance > 1000        -- ignore silly values
+  then 
     local user_data2 = {
       LoadTime = timers.loadtime,
       DataVersion = devutil.userdata_dataversion.value, -- NB: NOT the same as the status DataVersion
@@ -444,12 +460,12 @@ end
 local function room (r,p,f)
   local name = (p.name ~= '') and p.name
   local number = tonumber (p.room)
-  
+
   local function create () rooms.create (name) end
   local function rename () rooms.rename (number, name) end
   local function delete () rooms.delete (number) end
   local function noop () end
-  
+
   do -- room ()
     local valid = {create = create, rename = rename, delete = delete};
     (valid[p.action or ''] or noop) ()
@@ -518,7 +534,7 @@ local function scene (r,p,f)
     return "ERROR"
   end
   local function noop () return "ERROR" end
-  
+
   do -- scene ()
     local valid = {create = create, rename = rename, delete = delete, list = list}
     response = (valid[p.action or ''] or noop) (luup.scenes[number or ''])
@@ -678,33 +694,36 @@ local function latest (_,p) return plugins.create {PluginNum = 0, Tag = p.rev} e
 -- export all Luup requests
 --
 
-  return {
-      action              = action, 
-      alive               = alive,
-      device              = device,
-      file                = file,
-      iprequests          = iprequests,
-      invoke              = invoke,
-      jobstatus           = jobstatus,
-      live_energy_usage   = live_energy_usage,
-      reload              = reload,
-      request_image       = request_image,
-      room                = room,
-      scene               = scene,
-      sdata               = sdata, 
-      status              = status, 
-      status2             = status, 
-      user_data           = user_data, 
-      user_data2          = user_data,
-      variableget         = variableget, 
-      variableset         = variableset,
-      -- openLuup specials
-      altui               = altui,        
-      debug               = debug,
-      exit                = exit,
-      update              = latest,
-    }
+return {
+  ABOUT = ABOUT,
   
+  action              = action, 
+  alive               = alive,
+  device              = device,
+  file                = file,
+  iprequests          = iprequests,
+  invoke              = invoke,
+  jobstatus           = jobstatus,
+  live_energy_usage   = live_energy_usage,
+  reload              = reload,
+  request_image       = request_image,
+  room                = room,
+  scene               = scene,
+  sdata               = sdata, 
+  status              = status, 
+  status2             = status, 
+  user_data           = user_data, 
+  user_data2          = user_data,
+  variableget         = variableget, 
+  variableset         = variableset,
+  
+  -- openLuup specials
+  altui               = altui,              -- download AltUI version from GitHub
+  debug               = debug,              -- toggle debug flag
+  exit                = exit,               -- shutdown
+  update              = latest,             -- download openLuup version from GitHub
+}
+
 
 ------------
 
