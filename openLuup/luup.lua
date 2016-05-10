@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.10",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -10,6 +10,8 @@ local ABOUT = {
 --
 -- openLuup - an emulation of Luup calls to allow some Vera plugins to run on a non-Vera machine
 --  
+
+-- 2016.05.10  update userdata_dataversion when top-level attribute set
 
 local logs          = require "openLuup.logs"
 
@@ -239,6 +241,7 @@ local function attr_set (attribute, value, device)
       if special.number then value = tonumber(value) end
       luup[special.name or attribute] = value or ''
     end 
+    devutil.new_userdata_dataversion ()     -- 2016.05.10  update userdata_dataversion when top-level attribute set
   else
     local dev = devices[device]
     if dev then

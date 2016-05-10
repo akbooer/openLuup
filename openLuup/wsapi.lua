@@ -18,8 +18,9 @@ local ABOUT = {
 -- see: http://forum.micasaverde.com/index.php/topic,36189.0.html
 -- 2016.02.18
 
---2016.02.26  add self parameter to input.read(), seems to be called from wsapi.request with colon syntax
---            ...also util.lua shows that the same is true for the error.write(...) function.
+-- 2016.02.26  add self parameter to input.read(), seems to be called from wsapi.request with colon syntax
+--             ...also util.lua shows that the same is true for the error.write(...) function.
+-- 2016.05.10  add ".lua" extension to CGI filename if not initially found
 
 --[[
 
@@ -83,7 +84,7 @@ end
 -- build makes an application function for the connector
 local function build (script)
   local file = script: match ".(.+)"      -- ignore leading '/'
-  local f = io.open (file) 
+  local f = io.open (file) or io.open (file..".lua")  -- 2016.05.10  add ".lua" extension if not initially found
   if not f then 
     return dummy_app (404, "file not found: " .. (script or '?')) 
   end

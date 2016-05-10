@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.10",
   DESCRIPTION   = "read Device / Service / Implementation XML files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -23,6 +23,8 @@ local ABOUT = {
 -- 2016.02.24  escape special characters in encode and decode
 -- 2016.04.14  @explorer expanded tags to alpha-numerics and underscores
 -- 2016.04.15  fix attribute skipping (got lost in previous edit)
+-- 2016.05.10  allow ':' as part of tag name
+
 
 -- XML:extract ("name", "subname", "subsubname", ...)
 -- return named part or empty list
@@ -48,7 +50,7 @@ local function decode (info)
   if info then info = info: gsub ("<!%-%-.-%-%->", '') end
   --
   local result = info
-  for a,b in (info or ''): gmatch "<([%w_]+).->(.-)</%1>" do -- find matching opening and closing tags, ignore attributes
+  for a,b in (info or ''): gmatch "<([%w:_]+).->(.-)</%1>" do -- find matching opening and closing tags, ignore attributes
     local x,y = decode (b)                                -- get the value of the contents
     xml[a] = xml[a] or {}                                 -- if this tag doesn't exist, start a list of values
     xml[a][#xml[a]+1] = x or y   -- add new value to the list (might be table x, or just text y)
