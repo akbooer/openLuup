@@ -20,25 +20,21 @@
       <serviceId>openLuup</serviceId>
       <name>GetStats</name>
       <run>
+      -- note that there's no code, but the action has return parameters (see service file)
       </run>
     </action>
 
     <action>
       <serviceId>openLuup</serviceId>
-      <name>SetStartupCode</name>
+      <name>openLuupUpdate</name>
       <run>
-        luup.attr_set ("StartupCode", lul_settings.StartupCode or '')
-        luup.log "Startup code updated"
+        -- lul_settings.Tag
       </run>
-    </action>
-
-    <action>
-      <serviceId>openLuup</serviceId>
-      <name>SetShutdownCode</name>
-      <run>
-        luup.attr_set ("ShutdownCode", lul_settings.ShutdownCode or '')  
-        luup.log "Shutdown code updated"
-      </run>
+      <job>
+        luup.inet.wget "http::/127.0.0.1:3480/data_request=update"
+        return 4,0 
+      </job>
+      <jobname>openLuupUpdate</jobname>
     </action>
 
   </actionList>

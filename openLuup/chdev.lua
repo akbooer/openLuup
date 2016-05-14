@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.12",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -17,11 +17,11 @@ local ABOUT = {
 -- 2016.04.15  change the way device variables are handled in chdev.create - thanks @explorer!
 -- 2016.04.18  add username and password to attributes (for cameras)
 -- 2016.04.29  add device status
+-- 2016.05.12  use luup.attr_get and set, rather than a dependenceon openLuup.userdata
 
 local logs      = require "openLuup.logs"
 
 local devutil   = require "openLuup.devices"
-local userdata  = require "openLuup.userdata"     -- for Device_Num_Next
 local loader    = require "openLuup.loader"
 local scheduler = require "openLuup.scheduler"
 
@@ -200,8 +200,8 @@ local function create_device (
       ip, mac, hidden, invisible, parent, room, pluginnum, statevariables,
       pnpid, nochildsync, aeskey, reload, nodupid  
   )
-  local devNo = tonumber (userdata.attributes ["Device_Num_Next"])
-  userdata.attributes ["Device_Num_Next"] = devNo + 1
+  local devNo = tonumber (luup.attr_get "Device_Num_Next")
+  luup.attr_set ("Device_Num_Next", devNo + 1)
   local dev = create {
     devNo = devNo,                      -- (number)   (req)  *** NB: extra parameter cf. luup.create ***
     device_type = device_type,          -- (string)

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.update",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.11",
   DESCRIPTION   = "update plugins from GitHub repository",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -18,10 +18,8 @@ local ABOUT = {
 
 local https     = require "ssl.https"
 local ltn12     = require "ltn12"
-local mime      = require "mime"
 local lfs       = require "lfs"
 
-local userdata  = require "openLuup.userdata"
 local json      = require "openLuup.json"
 local logs      = require "openLuup.logs"
 
@@ -41,15 +39,6 @@ local pathSeparator = package.config:sub(1,1)   -- thanks to @vosmont for this W
 local function imap(x,f) 
   for _,y in ipairs (x) do f(y) end
   return x 
-end
-
--- set attributes, possibly decoding if required
-local function set_attr (ver, info)
-  if info then
-    local u = mime.unb64(info)  
-    ver = json.decode(u) or {} 
-  end
-  for i,j in pairs (ver) do userdata.attributes[i] = j end
 end
 
 -- get and decode GitHub url
@@ -197,7 +186,6 @@ return {
   ABOUT = ABOUT,
   
   new = new,                -- factory function
-  set_attr = set_attr,      -- utility function
 }
 
 -----

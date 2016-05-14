@@ -22,6 +22,7 @@ local ABOUT = {
 -- 2016.03.19  honour order of <files> and <functions> in implementation files (thanks @logread and @cybrmage)
 -- 2016.04.14  @explorer added device category name lookup by category number. 
 -- 2016.04.16  tidy up some previous edits
+-- 2016.05.12  pre-load openLuup static data
 
 ------------------
 --
@@ -59,7 +60,12 @@ local shared_environment  = new_environment "openLuup_startup_and_scenes"
 
 local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
 
-local static_data = {}          -- cache for decoded static JSON data, indexed by filename
+local static_data = {          -- cache for decoded static JSON data, indexed by filename
+  openLuup = {
+	  default_icon = "https://avatars.githubusercontent.com/u/4962913",
+	  DeviceType = "openLuup"
+  }
+}
 
 ------------------
 

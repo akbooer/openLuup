@@ -4,8 +4,8 @@
 
 local ABOUT = {
   NAME          = "upnp.control.hag",
-  VERSION       = "2016.05.10",
-  DESCRIPTION   = "a handler for redirected port  /upnp/control/hag requests",
+  VERSION       = "2016.05.14",
+  DESCRIPTION   = "a handler for redirected port_49451 /upnp/control/hag requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
@@ -16,7 +16,6 @@ local ABOUT = {
 local xml       = require "openLuup.xml"
 local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
-local userdata  = require "openLuup.userdata"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -25,13 +24,14 @@ The request is a POST with xml
   CONTENT_LENGTH = 681,
   CONTENT_TYPE = "text/xml;charset=UTF-8",
 
-{["s:Envelope"] = 
-  {["s:Body"] = 
-    {["u:ModifyUserData"] = 
-      {
-        DataFormat = "json",
-        inUserData = "...some JSON structure..."
-      }}}}
+<s:envelope s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+	<s:body>	
+    <u:modifyuserdata xmlns:u="urn:schemas-micasaverde-org:service:HomeAutomationGateway:1">		
+      <inuserdata>{...some JSON structure...}</inuserdata>
+      <DataFormat>json</DataFormat>
+    </u:modifyuserdata>
+	</s:body>
+</s:envelope>
 
 JSON structure contains:
 {

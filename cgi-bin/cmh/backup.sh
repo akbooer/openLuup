@@ -4,9 +4,10 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "backup.sh",
-  VERSION       = "2016.05.02",
+  VERSION       = "2016.05.09",
   DESCRIPTION   = "user_data backup script /etc/cmh-ludl/cgi-bin/cmh/backup.sh",
   AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
 }
 
@@ -53,7 +54,7 @@ function run (wsapi_env)
   
   local status, return_content
   if ok then 
-    status, return_content = 200, "backup completed"
+    status, return_content = 200, "backup completed: " .. ok .. " bytes"
   else
     status, return_content = 500, "backup failed: " .. msg
   end

@@ -12,6 +12,7 @@ local ABOUT = {
 --  
 
 -- 2016.05.10  update userdata_dataversion when top-level attribute set
+-- 2016.05.15  change set_failure logic per discussion here: http://forum.micasaverde.com/index.php/topic,37672.0.html
 
 local logs          = require "openLuup.logs"
 
@@ -77,11 +78,11 @@ local remotes = {}
 -- and 2 if the device is reachable but there's an authentication error. 
 -- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
 local function set_failure (status, device)
-  local map = {[0] = -1}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
+  local map = {[0] = -1, 2,2}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
   _log ("status = " .. tostring(status), "luup.set_failure")
   local devNo = device or scheduler.current_device()
   local dev = devices[devNo]
-  if dev then dev:status_set (map[tonumber(status) or 0] or status) end
+  if dev then dev:status_set (map[tonumber(status) or 0] or -1) end -- 2016.05.15  
 end
 
 --[[

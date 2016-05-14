@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.plugins",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.11",
   DESCRIPTION   = "create/delete plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -304,8 +304,6 @@ local bridge_downloads      = path "plugins/downloads/openLuup/VeraBridge/"
 
 local openLuup_updater = update.new ("akbooer/openLuup", "plugins/downloads/openLuup")
 
-local function set_attr(x) update.set_attr(nil, x: gsub ("(%C)(%C)","%2%1")) end
-
 local function update_openLuup (p)
   local rev = p.Tag or "master"
   
@@ -338,7 +336,7 @@ local function update_openLuup (p)
   s3 = batch_copy (extensions_downloads, cmh_ludl)
   _log (table.concat {"Grand Total size: ", s1 + s2 + s3, " bytes"})
 
-  update.set_attr {GitHubVersion = rev}
+  luup.attr_set ("GitHubVersion", rev)
 --  set_attr {GitHubLatest = latest}    -- TODO: perhaps move to Extensions plugin
   
   local msg = "openLuup installed version: " .. rev
@@ -373,11 +371,8 @@ local function delete ()
 end
 
 -- set or retrieve installed plugins info
-local function installed (info, env)
-  local key_plugins = {95,75,69,89}
+local function installed (info)
   InstalledPlugins2 = info or InstalledPlugins2
-  local attr = string.char(unpack (key_plugins))
-  if env then env[attr] = set_attr end
 return InstalledPlugins2
 end
 

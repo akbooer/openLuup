@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.11",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -11,7 +11,8 @@ local ABOUT = {
 -- openLuup - Initialize Luup engine
 --  
 
--- 2016.04.18   add username and password to attributes (for cameras)
+-- 2016.04.18  add username and password to attributes (for cameras)
+-- 2016.05.12  moved load_user_data from this module to userdata
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -30,106 +31,9 @@ local requests      = require "openLuup.requests"
 local server        = require "openLuup.server"
 local scheduler     = require "openLuup.scheduler"
 local timers        = require "openLuup.timers"
-local rooms         = require "openLuup.rooms"
-local scenes        = require "openLuup.scenes"
 local userdata      = require "openLuup.userdata"
-local chdev         = require "openLuup.chdev"
-local plugins       = require "openLuup.plugins"
-
---  scheduler.sandbox ()   -- protect any changes from affecting all devices
-
--- save user_data (persistence for scenes and rooms)
-local function save_user_data () 
-  local ok, msg = userdata.save (luup)
-  if not ok then
-    _log (msg or "error writing user_data")
-  end
-end
-
--- load user_data (persistence for attributes, rooms, devices and scenes)
-local function load_user_data (user_data_json)  
-  _log "loading user_data json..."
-  local user_data, msg = userdata.parse (user_data_json)
-  if msg then 
-    _log (msg)
-  else
-    -- ATTRIBUTES
-    local attr = userdata.attributes or {}
-    for a,b in pairs (attr) do                    -- go through the template for names to restore
-      luup.attr_set (a, user_data[a] or b)        -- use saved value or default
-      -- note that attr_set also handles the "special" attributes which are mirrored in luup.XXX
-    end
-    
-    -- ROOMS    
-    _log "loading rooms..."
-    for _,x in pairs (user_data.rooms or {}) do
-      rooms.create (x.name, x.id)
-      _log (("room#%d '%s'"): format (x.id,x.name)) 
-    end
-    _log "...room loading completed"
-    
-    -- DEVICES  
-    _log "loading devices..."    
-    for _, d in ipairs (user_data.devices or {}) do
-      local dev = chdev.create {      -- the variation in naming within luup is appalling
-          devNo = d.id, 
-          device_type     = d.device_type, 
-          internal_id     = d.altid,
-          description     = d.name, 
-          upnp_file       = d.device_file, 
-          upnp_impl       = d.impl_file or '',
-          json_file       = d.device_json or '',
-          ip              = d.ip, 
-          mac             = d.mac, 
-          hidden          = nil, 
-          invisible       = d.invisible == "1",
-          parent          = d.id_parent,
-          room            = tonumber (d.room), 
-          pluginnum       = d.plugin,
-          statevariables  = d.states,      -- states : table {id, service, variable, value}
-          disabled        = d.disabled,
-          username        = d.username,
-          password        = d.password,
-        }
-      dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
-      -- set other device attributes
-      for a,v in pairs (d) do
-        if type(v) ~= "table" and not dev.attributes[a] then
-          dev:attr_set (a, v)
-        end
-      end
-      luup.devices[d.id] = dev                          -- save it
-    end 
-  
-    -- SCENES 
-    _log "loading scenes..."
-    local Nscn = 0
-    for _, scene in ipairs (user_data.scenes or {}) do
-      local new, msg = scenes.create (scene)
-      if new and scene.id then
-        Nscn = Nscn + 1
-        luup.scenes[scene.id] = new
-        _log (("[%s] %s"): format (scene.id or '?', scene.name))
-      else
-        _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
-      end
-    end
-    _log ("number of scenes = " .. Nscn)
-    
-    for i,n in ipairs (luup.scenes) do _log (("scene#%d '%s'"):format (i,n.description)) end
-    _log "...scene loading completed"
-  
-    -- PLUGINS
-    _log "loading installed plugin info..."
-    user_data.InstalledPlugins2 = plugins.installed (user_data.InstalledPlugins2, loader.shared_environment)
-    for _, plugin in ipairs (user_data.InstalledPlugins2) do
-      _log (table.concat {"id: ", plugin.id, ", name: ", plugin.Title, 
-                          ", installed: ", os.date ("%c", plugin.timestamp)})
-    end
-  end
-  _log "...user_data loading completed"
-  return not msg, msg
-end
+local json          = require "openLuup.json"
+local mime          = require "mime"
 
 -- what it says...
 local function compile_and_run (lua, name)
@@ -157,13 +61,22 @@ local function openLuupPulse ()
   local percent = ("%0.2f%%"): format (100 * cpu / uptime)
   local memory = ("%0.1fMb"): format (AppMemoryUsed / 1000)
   uptime = ("%0.2f days"): format (uptime / 24 / 60 / 60)
-  userdata.attributes ["Stats_Memory"] = memory
-  userdata.attributes ["Stats_CpuLoad"] = percent
-  userdata.attributes ["Stats_Uptime"] = uptime
+  
+  -- luup.variable_set ("urn:upnp-org:serviceId:altui1", "DisplayLine1", "mem 7.8Mb, cpu 1.23%, up 0.00 days",15)
+  -- luup.variable_set ("urn:upnp-org:serviceId:altui1", "DisplayLine2", "version: v0.7.0  (latest v0.8.3)",15)
+  local set_attr = userdata.attributes 
+  set_attr ["openLuup.Memory"]   = memory
+  set_attr ["openLuup.CpuLoad"]  = percent
+  set_attr ["openLuup.Uptime"]   = uptime
   local sfmt = "memory: %s, uptime: %s, cpu: %0.1f sec (%s)"
   local stats = sfmt: format (memory, uptime, cpu, percent)
   _log (stats, "openLuup.heartbeat")
-  save_user_data()                          -- CHECKPOINT !
+  
+  -- CHECKPOINT !
+  local ok, msg = userdata.save (luup)
+  if not ok then
+    _log (msg or "error writing user_data")
+  end
   collectgarbage()                          -- tidy up a bit
 end
 
@@ -188,6 +101,21 @@ do -- Devices 1 and 2 are the Vera standard ones
                       "_SceneController", "D_SceneController1.xml", nil, nil, nil, nil, invisible, 1)
 end
 
+do -- set attributes, possibly decoding if required
+  local set_attr = userdata.attributes 
+  set_attr ["openLuup.Startup"] = os.date "%Y-%m-%dT%H:%M:%S"
+  local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
+  local attr = string.char(unpack (attrs))
+  loader.shared_environment[attr] = function (info)
+    info = (info or ''): gsub (attrs.attr1,attrs.attr2)
+    local u = mime.unb64(info)  
+    local decoded = json.decode(u) or {} 
+    for a,b in pairs (decoded) do
+      set_attr[a] = b
+    end
+  end
+end
+
 do -- CALLBACK HANDLERS
   -- Register lu_* style (ie. luup system, not luup user) callbacks with HTTP server
   local extendedList = {}
@@ -210,7 +138,7 @@ do -- STARTUP
       local ok = true
       local json_code = code: match "^%s*{"    -- what sort of code is this?
       if json_code then 
-        ok = load_user_data (code)
+        ok = userdata.load (code)
         code = userdata.attributes ["StartupCode"] or ''  -- substitute the Startup Lua
       end
       compile_and_run (code, "_openLuup_STARTUP_")  -- the given file or the code in user_data

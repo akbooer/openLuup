@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.11",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -10,7 +10,20 @@ local ABOUT = {
 -- user_data
 -- saving and loading, plus utility functions used by HTTP requests id=user_data, etc.
 
-local json = require "openLuup.json"
+-- 2016.05.09 return length of user_data.json file on successful save
+-- 2016.05.12 moved load_user_data to this module from init
+
+local json    = require "openLuup.json"
+local rooms   = require "openLuup.rooms"
+local logs    = require "openLuup.logs"
+local scenes  = require "openLuup.scenes"
+local plugins = require "openLuup.plugins"
+local chdev   = require "openLuup.chdev"
+
+--  local log
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 --
 -- Here a complete list of top-level (scalar) attributes taken from an actual Vera user_data2 request
@@ -97,21 +110,90 @@ local function parse_user_data (user_data_json)
 end
 
 
-local function load_user_data (filename)
-  local user_data, message, err
-  local f = io.open (filename or "user_data.json", 'r')
-  if f then 
-    local user_data_json = f:read "*a"
-    f:close ()
-    user_data, err = parse_user_data (user_data_json)
-    if not user_data then
-      message = "error in user_data: " .. err
-    end
+
+-- load user_data (persistence for attributes, rooms, devices and scenes)
+local function load_user_data (user_data_json)  
+  _log "loading user_data json..."
+  local user_data, msg = parse_user_data (user_data_json)
+  if msg then 
+    _log (msg)
   else
-    user_data = {}
-    message = "cannot open user_data file"    -- not an error, _per se_, there may just be no file
+    -- ATTRIBUTES
+    local attr = attributes or {}
+    for a,b in pairs (attr) do                    -- go through the template for names to restore
+      luup.attr_set (a, user_data[a] or b)        -- use saved value or default
+      -- note that attr_set also handles the "special" attributes which are mirrored in luup.XXX
+    end
+    
+    -- ROOMS    
+    _log "loading rooms..."
+    for _,x in pairs (user_data.rooms or {}) do
+      rooms.create (x.name, x.id)
+      _log (("room#%d '%s'"): format (x.id,x.name)) 
+    end
+    _log "...room loading completed"
+    
+    -- DEVICES  
+    _log "loading devices..."    
+    for _, d in ipairs (user_data.devices or {}) do
+      local dev = chdev.create {      -- the variation in naming within luup is appalling
+          devNo = d.id, 
+          device_type     = d.device_type, 
+          internal_id     = d.altid,
+          description     = d.name, 
+          upnp_file       = d.device_file, 
+          upnp_impl       = d.impl_file or '',
+          json_file       = d.device_json or '',
+          ip              = d.ip, 
+          mac             = d.mac, 
+          hidden          = nil, 
+          invisible       = d.invisible == "1",
+          parent          = d.id_parent,
+          room            = tonumber (d.room), 
+          pluginnum       = d.plugin,
+          statevariables  = d.states,      -- states : table {id, service, variable, value}
+          disabled        = d.disabled,
+          username        = d.username,
+          password        = d.password,
+        }
+      dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
+      -- set other device attributes
+      for a,v in pairs (d) do
+        if type(v) ~= "table" and not dev.attributes[a] then
+          dev:attr_set (a, v)
+        end
+      end
+      luup.devices[d.id] = dev                          -- save it
+    end 
+  
+    -- SCENES 
+    _log "loading scenes..."
+    local Nscn = 0
+    for _, scene in ipairs (user_data.scenes or {}) do
+      local new, msg = scenes.create (scene)
+      if new and scene.id then
+        Nscn = Nscn + 1
+        luup.scenes[scene.id] = new
+        _log (("[%s] %s"): format (scene.id or '?', scene.name))
+      else
+        _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
+      end
+    end
+    _log ("number of scenes = " .. Nscn)
+    
+    for i,n in ipairs (luup.scenes) do _log (("scene#%d '%s'"):format (i,n.description)) end
+    _log "...scene loading completed"
+  
+    -- PLUGINS
+    _log "loading installed plugin info..."
+    user_data.InstalledPlugins2 = plugins.installed (user_data.InstalledPlugins2)
+    for _, plugin in ipairs (user_data.InstalledPlugins2) do
+      _log (table.concat {"id: ", plugin.id, ", name: ", plugin.Title, 
+                          ", installed: ", os.date ("%c", plugin.timestamp)})
+    end
   end
-  return user_data, message
+  _log "...user_data loading completed"
+  return not msg, msg
 end
 
 --
@@ -194,7 +276,7 @@ local function save_user_data (localLuup, filename)   -- refactored thanks to @e
       f:write (j)
       f:write '\n'
       f:close ()
-      result = true
+      result = #j   -- 2016.05.09 return length of user_data.json file
     end
   end
 
@@ -206,7 +288,7 @@ return {
   
   attributes      = attributes,
   devices_table   = devices_table, 
---  load            = load_user_data,
+  load            = load_user_data,
   parse           = parse_user_data,
   save            = save_user_data,
 }
