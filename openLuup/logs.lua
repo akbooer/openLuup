@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.14",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -8,6 +8,8 @@ local ABOUT = {
 }
 
 -- log handling - basic at the moment
+--
+-- 2016.05.14   add logging for AltUI workflows
 
 local socket = require "socket"
 
@@ -133,6 +135,7 @@ local function openLuup_logger (info)
   local logfile_name, versions, maxLines = info.name, info.versions or 0, info.lines or 2000
   local N = 0                                 -- current line number
   local formatted_time = formatted_time
+  local altui = info.altui
   
   -- open log  
   local function open_log ()
@@ -170,6 +173,9 @@ local function openLuup_logger (info)
 
   -- format and write log
   local function send (msg, subsystem_or_number, devNo)
+    if msg: match "Wkflow %- Workflow: %d+%-%d+," then    -- copy AltUI Workflow message to altui log
+      altui.workflow (msg, subsystem_or_number, devNo)
+    end
     subsystem_or_number = subsystem_or_number or 50
     if type (subsystem_or_number) == "number" then subsystem_or_number = "luup_log" end
     local now = formatted_time "%Y-%m-%d %H:%M:%S"
@@ -226,7 +232,16 @@ this:
 with:
   "%d*\t(%d*/%d*%/%d*%s%d*:%d*:%d*.%d*).*was: (.*) now: (.*) #.*"
 
+for workflows:
 
+the pattern string I am looking for is like that where {0} is a altuiid so something 0-nn
+
+"cat /var/log/cmh/LuaUPnP.log | grep '[0123456789]: ALTUI: Wkflow - Workflow: {0}, Valid Transition found'".format(altuiid);
+
+Here are a couple of examples
+
+luup_log:216: ALTUI: Wkflow - Workflow: 0-2, Valid Transition found:Timer:Retour, Active State:Thingspeak=>Idle <0x7454e520>
+luup_log:216: ALTUI: Wkflow - Workflow: 0-3, Valid Transition found:Timer:5s, Active State:Auto Close=>Auto Mode <0x7454e520>
 
 --]]
 
@@ -276,6 +291,14 @@ local function altui_logger (info)
     return msg    -- for testing
   end
   
+  local function workflow (wrk, level, dev)
+    local now = formatted_time "%m/%d/%y %H:%M:%S"
+    local sfmt = "%02d\t%s\tluup_log:%d: %s <%s>\n"
+    local msg = sfmt: format (level or 50, now, dev or 0, wrk or '?', "0x0")
+    write (msg)
+    return msg    -- for testing
+  end
+  
   -- altui_logger init ()
   
   rotate_logs ()       -- save the old ones
@@ -283,22 +306,23 @@ local function altui_logger (info)
   return {
     scene     = scene,
     variable  = variable,
+    workflow  = workflow,
   }
 end
 
 
 -- INIT
 
--- openLuup log
-local normal = openLuup_logger {name = "LuaUPnP.log", versions = 5, lines =2000}
-
 -- altui log (for variable and scene history)
 -- note that altui reads from /var/log/cmh/LuaUPnP.log
 local altui  = altui_logger {name = "/var/log/cmh/LuaUPnP.log", lines = 5000}
 
+-- openLuup log
+local normal = openLuup_logger {name = "LuaUPnP.log", versions = 5, lines =2000, altui = altui}
+
 -- display module banner
 local function banner (ABOUT)
-  local msg = ("%" .. 25-#ABOUT.NAME .. "s %s  @akbooer"): format ("version", ABOUT.VERSION)
+  local msg = ("%" .. 27-#ABOUT.NAME .. "s %s  @akbooer"): format ("version", ABOUT.VERSION)
   normal.send (msg, ABOUT.NAME, '')
 end
 
