@@ -5,23 +5,5 @@
     <minor>0</minor>
   </specVersion>
   <actionList>
-    <action>
-    <name>CreateMirrorDevice</name>
-      <argumentList>
-        <argument>
-          <name>LocalDeviceNum</name>
-          <direction>in</direction>
-        </argument>
-      </argumentList>
-    </action>
-    <action>
-    <name>DeleteMirrorDevice</name>
-      <argumentList>
-        <argument>
-          <name>LocalDeviceNum</name>
-          <direction>in</direction>
-        </argument>
-      </argumentList>
-    </action>
   </actionList>
 </scpd>
