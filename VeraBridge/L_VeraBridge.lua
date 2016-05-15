@@ -32,6 +32,7 @@ ABOUT = {
 -- 2016.04.30   initial implementation of mirror devices (thanks @logread for design discussions & prototyping)
 -- 2016.05.08   @explorer options for bridged devices
 -- 2016.05.14   settled on implementation of mirror devices using top-level openLuup.mirrors attribute
+-- 2016.05.15   HouseMode variable to reflect status of bridged Vera
 
 local devNo                      -- our device number
 
@@ -366,6 +367,7 @@ function VeraBridge_delay_callback (DataVersion)
   local status, j = luup.inet.wget (url)
   if status == 0 then s = json.decode (j) end
   if s and s.devices then
+    setVar ("HouseMode", tonumber (s.Mode) or 1)   -- 2016.05.15, thanks @logread!
     UpdateVariables (s.devices)
     DataVersion = s.DataVersion
     luup.devices[devNo]:variable_set (SID.gateway, "LastUpdate", os.time(), true) -- 2016.03.20 set without log entry
@@ -404,7 +406,7 @@ end
 -- MIRRORS
 --
 
--- openLuup.mirrors, syntax is:
+-- openLuup.mirrors syntax is:
 -- <VeraIP>
 -- <VeraDeviceId> = <openLuupDeviceId>.<serviceId>.<variableName>
 -- ...
