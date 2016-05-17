@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.05.10",
+  VERSION       = "2016.05.17",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -13,6 +13,7 @@ local ABOUT = {
 
 -- 2016.05.10  update userdata_dataversion when top-level attribute set
 -- 2016.05.15  change set_failure logic per discussion here: http://forum.micasaverde.com/index.php/topic,37672.0.html
+-- 2016.05.17  set_failure sets urn:micasaverde-com:serviceId:HaDevice1 / CommFailure variable in device
 
 local logs          = require "openLuup.logs"
 
@@ -68,23 +69,7 @@ local remotes = {}
 --
 -- GLOBAL functions: Luup API
 --
-  
--- function: set_failure
--- parameters: value (int), device (string or number)
--- returns:
---
--- Luup maintains a 'failure' flag for every device to indicate if it is not functioning. 
--- You can set the flag to 1 if the device is failing, 0 if it's working, 
--- and 2 if the device is reachable but there's an authentication error. 
--- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
-local function set_failure (status, device)
-  local map = {[0] = -1, 2,2}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
-  _log ("status = " .. tostring(status), "luup.set_failure")
-  local devNo = device or scheduler.current_device()
-  local dev = devices[devNo]
-  if dev then dev:status_set (map[tonumber(status) or 0] or -1) end -- 2016.05.15  
-end
-
+ 
 --[[
 startup": {
 
@@ -309,6 +294,29 @@ local function mac_set (value, device)
   end
 end
 
+ 
+-- function: set_failure
+-- parameters: value (int), device (string or number)
+-- returns:
+--
+-- Luup maintains a 'failure' flag for every device to indicate if it is not functioning. 
+-- You can set the flag to 1 if the device is failing, 0 if it's working, 
+-- and 2 if the device is reachable but there's an authentication error. 
+-- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
+local function set_failure (status, device)
+  local map = {[0] = -1, 2,2}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
+  _log ("status = " .. tostring(status), "luup.set_failure")
+  local devNo = device or scheduler.current_device()
+  local dev = devices[devNo]
+  if dev then 
+    dev:status_set (map[tonumber(status) or 0] or -1)  -- 2016.05.15
+    local time = 0
+    if status ~= 0 then time = os.time() end
+    local HaSID = "urn:micasaverde-com:serviceId:HaDevice1"
+    variable_set (HaSID, "CommFailure", status)     -- 2016.05.17
+    variable_set (HaSID, "CommFailureTime", time)
+  end  
+end
 
 --
 -- CALLBACKS
