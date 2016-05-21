@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <implementation>
   <functions></functions>
-  <files>L_openLuupExtensions.lua"</files>
+  <files>L_openLuupExtensions.lua</files>
   <startup>init</startup>
 
   <actionList>

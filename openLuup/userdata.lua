@@ -10,14 +10,14 @@ local ABOUT = {
 -- user_data
 -- saving and loading, plus utility functions used by HTTP requests id=user_data, etc.
 
--- 2016.05.09 return length of user_data.json file on successful save
--- 2016.05.12 moved load_user_data to this module from init
+-- 2016.05.09   return length of user_data.json file on successful save
+-- 2016.05.12   moved load_user_data to this module from init
+-- 2016.05.15   use InstalledPlugins2 list
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
 local logs    = require "openLuup.logs"
 local scenes  = require "openLuup.scenes"
-local plugins = require "openLuup.plugins"
 local chdev   = require "openLuup.chdev"
 
 --  local log
@@ -105,6 +105,107 @@ local attributes = {
 
 }
 
+--
+-- preset plug data
+--
+
+local InstalledPlugins2 = {}
+
+  InstalledPlugins2[1] =      -- we'll always put openLuup in pole position!
+    {
+      AllowMultiple   = "0",
+      Title           = "openLuup",
+      Icon            = "https://avatars.githubusercontent.com/u/4962913",
+      Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
+      AutoUpdate      = "0",
+      VersionMajor    = "GitHub",
+      VersionMinor    = '?',
+      id              = "openLuup",
+      Repository      = {          
+          backup            = "plugins/backup/altui/",
+          downloads         = "plugins/downloads/altui/",
+          blockly_downloads = "plugins/downloads/altui/blockly/",
+        },
+      Files           = {},
+    }
+
+
+  InstalledPlugins2[2] =      -- Sorry, relegated to #2 position!
+    {
+      AllowMultiple   = "0",
+      Title           = "Alternate UI",
+      Icon            = "plugins/icons/8246.png",  -- usage: http://apps.mios.com/icons/8246.png
+      Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
+      AutoUpdate      = "1",
+      VersionMajor    = "GitHub",
+      VersionMinor    = '?',
+      id              = 8246,
+      timestamp       = os.time(),
+      Files           = {},
+    }
+
+  InstalledPlugins2[3] =  
+    {
+      AllowMultiple   = "1",
+      Title           = "VeraBridge",
+      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
+      Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
+--        Hidden          = "0",
+      AutoUpdate      = "0",
+--      Version         = 28706,
+      VersionMajor    = "GitHub",
+      VersionMinor    = '?',
+--      "SupportedPlatforms": null,
+--      "MinimumVersion": null,
+--      "DevStatus": null,
+--      "Approved": "0",
+      id              = "VeraBridge",
+--      "TargetVersion": "28706",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {},
+      Directories     = {
+        backup        = "",
+        download      = "",
+        install       = "",
+        repository    = ""
+      },
+    }
+
+
+--  InstalledPlugins2[4] =  
+--    {
+--      AllowMultiple   = "0",
+--      Title           = "DataYours",
+--      Icon            = "https://raw.githubusercontent.com/akbooer/DataYours/master/icons/DataYours.png",
+--      Instructions    = "https://github.com/akbooer/DataYours/tree/master/Documentation",
+--      AutoUpdate      = "0",
+----      Version         = 28706,
+--      VersionMajor    = "not",
+--      VersionMinor    = 'installed',
+--      id              = 8211,
+----      "TargetVersion": "28706",
+--      timestamp       = os.time(),
+--      Files           = {},
+--    }
+
+
+--  InstalledPlugins2[5] = 
+--    {
+--      AllowMultiple   = "0",
+--      Title           = "Generic",
+--      Icon            = "images/plugin.png", 
+--      Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
+--      Hidden          = "0",
+--      AutoUpdate      = "0",
+--      VersionMajor    = "MiOS_Trac",
+--      VersionMinor    = '?',
+--      id              = "Test",
+--      timestamp       = os.time(),
+--      Files           = {},
+--    }
+
+
 local function parse_user_data (user_data_json)
   return json.decode (user_data_json)
 end
@@ -186,10 +287,10 @@ local function load_user_data (user_data_json)
   
     -- PLUGINS
     _log "loading installed plugin info..."
-    user_data.InstalledPlugins2 = plugins.installed (user_data.InstalledPlugins2)
-    for _, plugin in ipairs (user_data.InstalledPlugins2) do
-      _log (table.concat {"id: ", plugin.id, ", name: ", plugin.Title, 
-                          ", installed: ", os.date ("%c", plugin.timestamp)})
+    local plugins = user_data.InstalledPlugins2 or InstalledPlugins2
+    attr.InstalledPlugins2 = plugins
+    for _, plugin in ipairs (plugins) do
+      _log (table.concat {"id: ", plugin.id, ", name: ", plugin.Title})
     end
   end
   _log "...user_data loading completed"
@@ -253,7 +354,7 @@ local function save_user_data (localLuup, filename)   -- refactored thanks to @e
   -- devices
   data.devices = devices_table (luup.devices or {})
   -- plugins
-  data.InstalledPlugins2 = {}   -- TODO: replace with plugins.installed()
+  data.InstalledPlugins2 = attributes.InstalledPlugins2   -- 2016.05.15
   -- rooms
   local rooms = data.rooms
   for i, name in pairs (luup.rooms or {}) do 
@@ -289,7 +390,7 @@ return {
   attributes      = attributes,
   devices_table   = devices_table, 
   load            = load_user_data,
-  parse           = parse_user_data,
+--  parse           = parse_user_data,
   save            = save_user_data,
 }
 

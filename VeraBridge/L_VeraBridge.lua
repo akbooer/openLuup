@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.05.14",
+  VERSION       = "2016.05.21",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -32,7 +32,8 @@ ABOUT = {
 -- 2016.04.30   initial implementation of mirror devices (thanks @logread for design discussions & prototyping)
 -- 2016.05.08   @explorer options for bridged devices
 -- 2016.05.14   settled on implementation of mirror devices using top-level openLuup.mirrors attribute
--- 2016.05.15   HouseMode variable to reflect status of bridged Vera
+-- 2016.05.15   HouseMode variable to reflect status of bridged Vera (thanks @logread)
+-- 2016.05.21   @explorer fix for missing Zwave device children when ZWaveOnly selected
 
 local devNo                      -- our device number
 
@@ -176,7 +177,7 @@ local function create_new (cloneId, dev, room)
   local d = chdev.create {
     devNo = cloneId, 
     device_type = dev.device_type,
-    internal_id = tostring(dev.altid),
+    internal_id = tostring(dev.altid or ''),
     invisible   = dev.invisible == "1",   -- might be invisible, eg. Zwave and Scene controllers
     json_file   = dev.device_json,
     description = dev.name,
@@ -212,6 +213,24 @@ end
 -- note: these are REMOTE devices from the Vera status request
 -- consider: ZWaveOnly, Included, Excluded (...takes precedence over the first two)
 -- and Mirrored, a sequence of "remote = local" device IDs for 'reverse bridging'
+
+-- plus @explorer modification
+-- see: http://forum.micasaverde.com/index.php/topic,37753.msg282098.html#msg282098
+
+local function is_to_be_cloned (dev)
+  local d = tonumber (dev.id)
+  local p = tonumber (dev.id_parent)
+  local zwave = p == 1 or d == 1
+  if ZWaveOnly and p then -- see if it's a child of the remote zwave device
+      local i = local_by_remote_id(p)
+      if i and luup.devices[i] then zwave = true end
+  end
+  return  not (Excluded[d] or Mirrored[d])
+          and (Included[d] or (not ZWaveOnly) or (ZWaveOnly and zwave) )
+end
+
+--[[
+-- original
 local function is_to_be_cloned (dev)
   local d = tonumber (dev.id)
   local p = tonumber (dev.id_parent)
@@ -219,6 +238,7 @@ local function is_to_be_cloned (dev)
   return  not (Excluded[d] or Mirrored[d])
           and (Included[d] or (not ZWaveOnly) or (ZWaveOnly and zwave) )
 end
+--]]
 
 -- create the child devices managed by the bridge
 local function create_children (devices, room)

@@ -17,7 +17,7 @@ local ABOUT = {
 -- 2016.04.15  change the way device variables are handled in chdev.create - thanks @explorer!
 -- 2016.04.18  add username and password to attributes (for cameras)
 -- 2016.04.29  add device status
--- 2016.05.12  use luup.attr_get and set, rather than a dependenceon openLuup.userdata
+-- 2016.05.12  use luup.attr_get and set, rather than a dependence on openLuup.userdata
 
 local logs      = require "openLuup.logs"
 
@@ -140,7 +140,7 @@ local function create (x)
     manufacturer    = d.manufacturer or '',
     model           = d.modelName or '',
     name            = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?')), 
---    plugin          = tostring(pluginnum),      -- TODO: set plugin number
+    plugin          = tostring(x.pluginnum),
     password        = x.password,
     room            = tostring(tonumber (x.room or 0)),   -- why it's a string, I have no idea
     subcategory_num = tonumber (d.subcategory_num) or 0,

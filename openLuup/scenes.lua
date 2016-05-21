@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.19",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -16,8 +16,9 @@ local ABOUT = {
 -- 2016.03.11   verify that scenes don't reference non-existent devices.  Thanks @delle
 -- 2016.04.10   add 'running' flag for status and sdata "active" and "status" info.   Thanks @ronluna
 -- 2016.04.20   make pause work
-
---local socket    = require "socket"         -- socket library needed to access time in millisecond resolution
+-- 2016.05.19   allow trigger data to be stored (for PLEG / RTS)
+--              see: http://forum.micasaverde.com/index.php/topic,34476.msg282148.html#msg282148
+                
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
 local timers    = require "openLuup.timers"
@@ -38,6 +39,8 @@ The goal would be to have an interface like HomeSeer, with extremely intuitive s
 Sept 2015 - ALTUI now provides this functionality through its own variable watch callback 
 which then triggers scenes if some Lua boolean expression is true
 ALTUI also provides a great editor interface with the blockly module.
+
+Apr 2016 - AltUI now provides workflow too.
 
 --]]
 
@@ -198,19 +201,17 @@ local function create (scene_json)
     }
 --]]
 
-  scene = {
-    Timestamp   = scn.Timestamp or os.time(),    -- creation time stamp
-    favorite    = scn.favorite or false,
-    groups      = scn.groups or {},
-    id          = tonumber (scn.id) or (#luup.scenes + 1),  -- given id or next one available
-    modeStatus  = scn.modeStatus or "0",          -- comma separated list of enabled modes ("0" = all)
-    lua         = scn.lua,
-    name        = scn.name,
-    paused      = scn.paused or "0",              -- 2016.04.30
-    room        = tonumber (scn.room) or 0,       -- TODO: ensure room number valid
-    timers      = scn.timers or {},
-    triggers    = {},                             -- expunge these
-  }
+  scene = scn   -- there may be other data there than that which is possibly modified below...
+  
+  scene.Timestamp   = scn.Timestamp or os.time()   -- creation time stamp
+  scene.favorite    = scn.favorite or false
+  scene.groups      = scn.groups or {}
+  scene.id          = tonumber (scn.id) or (#luup.scenes + 1)  -- given id or next one available
+  scene.modeStatus  = scn.modeStatus or "0"          -- comma separated list of enabled modes ("0" = all)
+  scene.paused      = scn.paused or "0"              -- 2016.04.30
+  scene.room        = tonumber (scn.room) or 0       -- TODO: ensure room number valid
+  scene.timers      = scn.timers or {}
+  scene.triggers    = scn.triggers or {},            -- 2016.05.19
   
   verify()   -- check that non-existent devices are not referenced
   
@@ -255,7 +256,6 @@ return {
     ABOUT = ABOUT,
     
     -- constants
-    version       = banner,
     environment   = scene_environment,      -- to be shared with startup code
     -- variables
     -- methods

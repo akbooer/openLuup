@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.21",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -20,6 +20,7 @@ local ABOUT = {
 -- 2016.04.10  add scene active and status flags in sdata and status reports
 -- 2016.04.25  openLuup update changes
 -- 2016.04.29  add actual device status to status response 
+-- 2016.05.18  generic update_plugin request for latest version
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -426,7 +427,7 @@ local function user_data (r,p,f)
     local user_data2 = {
       LoadTime = timers.loadtime,
       DataVersion = devutil.userdata_dataversion.value, -- NB: NOT the same as the status DataVersion
-      InstalledPlugins2 = plugins.installed (),
+      InstalledPlugins2 = userdata.attributes.InstalledPlugins2,
       category_filter = category_filter,
       devices = userdata.devices_table (luup.devices),
       ip_requests = iprequests_table(),
@@ -688,7 +689,9 @@ local function file (_,p) return server.http_file (p.parameters or '') end      
 
 local function altui (_,p) return plugins.create {PluginNum = 8246, TracRev=tonumber(p.rev)} end    -- install/update ALTUI
 
-local function latest (_,p) return plugins.create {PluginNum = 0, Tag = p.rev} end   -- update openLuup
+local function update (_,p) return plugins.create {PluginNum = "openLuup", Tag = p.rev} end   -- update openLuup
+
+local function update_plugin (_,p) plugins.create (p) end -- 2016.05.18  generic update_plugin request
 
 --
 -- export all Luup requests
@@ -714,6 +717,7 @@ return {
   status2             = status, 
   user_data           = user_data, 
   user_data2          = user_data,
+  update_plugin       = update_plugin,      -- download latest plugin version
   variableget         = variableget, 
   variableset         = variableset,
   
@@ -721,7 +725,7 @@ return {
   altui               = altui,              -- download AltUI version from GitHub
   debug               = debug,              -- toggle debug flag
   exit                = exit,               -- shutdown
-  update              = latest,             -- download openLuup version from GitHub
+  update              = update,             -- download openLuup version from GitHub
 }
 
 

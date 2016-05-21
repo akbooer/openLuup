@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.05.11",
+  VERSION       = "2016.05.21",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -16,13 +16,11 @@ local ABOUT = {
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
-local logs          = require "openLuup.logs"
+local logs = require "openLuup.logs"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
 _log ('',":: openLuup STARTUP ")
-
 logs.banner (ABOUT)   -- for version control
 
 luup = require "openLuup.luup"       -- here's the GLOBAL luup environment
@@ -103,7 +101,6 @@ end
 
 do -- set attributes, possibly decoding if required
   local set_attr = userdata.attributes 
-  set_attr ["openLuup.Startup"] = os.date "%Y-%m-%dT%H:%M:%S"
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
   local attr = string.char(unpack (attrs))
   loader.shared_environment[attr] = function (info)
@@ -114,6 +111,7 @@ do -- set attributes, possibly decoding if required
       set_attr[a] = b
     end
   end
+  set_attr ["openLuup.Startup"] = os.date "%Y-%m-%dT%H:%M:%S"
 end
 
 do -- CALLBACK HANDLERS

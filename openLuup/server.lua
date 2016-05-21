@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.17",
   DESCRIPTION   = "HTTP/HTTPS GET/PUT requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -23,6 +23,7 @@ local ABOUT = {
 -- 2016.04.15   @explorer: Added a few common MIME types such as css, mp3 (@akbooer moved to external file)
 -- 2016.04.28   @akbooer, change Sonos file fix to apply to ALL .mp3 files
 -- 2016.05.10   handle upnp/control/hag requests (AltUI redirects from port 49451) through WSAPI
+-- 2016.05.17   log "No handler" responses
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -111,7 +112,8 @@ local function http_query (URL)
     ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request_name, parameters, format)
     if not ok then _log ("error in callback: " .. request .. ", error is " .. (response or 'nil')) end
   else 
-    response = "No handler"
+    response = "No handler for id=" .. request     -- 2016.05.17   log "No handler" responses
+    _log (response)
   end
   return (response or 'not a data request'), mtype
 end
