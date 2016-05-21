@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.05.11",
+  VERSION       = "2016.05.21",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -13,6 +13,7 @@ local ABOUT = {
 -- 2016.05.09   return length of user_data.json file on successful save
 -- 2016.05.12   moved load_user_data to this module from init
 -- 2016.05.15   use InstalledPlugins2 list
+-- 2016.05.21   handle empty InstalledPlugins2 in user_data file on loading
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -287,7 +288,9 @@ local function load_user_data (user_data_json)
   
     -- PLUGINS
     _log "loading installed plugin info..."
-    local plugins = user_data.InstalledPlugins2 or InstalledPlugins2
+    local i = user_data.InstalledPlugins2
+    local plugins = InstalledPlugins2
+    if i and next(i) then plugins = i end
     attr.InstalledPlugins2 = plugins
     for _, plugin in ipairs (plugins) do
       _log (table.concat {"id: ", plugin.id, ", name: ", plugin.Title})
