@@ -1,4 +1,11 @@
-local version = "XML  2016.02.24  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.xml",
+  VERSION       = "2016.05.10",
+  DESCRIPTION   = "read Device / Service / Implementation XML files",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- Routines to read Device / Service / Implementation XML files
@@ -14,6 +21,9 @@ local version = "XML  2016.02.24  @akbooer"
 -- 2016.02.22  skip XML attributes but still parse element
 -- 2016.02.23  remove reader and caching, rename encode/decode 
 -- 2016.02.24  escape special characters in encode and decode
+-- 2016.04.14  @explorer expanded tags to alpha-numerics and underscores
+-- 2016.04.15  fix attribute skipping (got lost in previous edit)
+-- 2016.05.10  allow ':' as part of tag name
 
 
 -- XML:extract ("name", "subname", "subsubname", ...)
@@ -40,7 +50,7 @@ local function decode (info)
   if info then info = info: gsub ("<!%-%-.-%-%->", '') end
   --
   local result = info
-  for a,b in (info or ''): gmatch "<(%a+).->(.-)</%1>" do -- find matching opening and closing tags
+  for a,b in (info or ''): gmatch "<([%w:_]+).->(.-)</%1>" do -- find matching opening and closing tags, ignore attributes
     local x,y = decode (b)                                -- get the value of the contents
     xml[a] = xml[a] or {}                                 -- if this tag doesn't exist, start a list of values
     xml[a][#xml[a]+1] = x or y   -- add new value to the list (might be table x, or just text y)
@@ -99,9 +109,7 @@ end
 
 
 return {
-  
-  -- constants
-  version = version,
+  ABOUT = ABOUT,
   
   -- methods
   

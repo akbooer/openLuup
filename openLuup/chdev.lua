@@ -1,6 +1,11 @@
-local _NAME = "openLuup.chdev"
-local revisionDate = "2016.02.15"
-local banner = "    version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.chdev",
+  VERSION       = "2016.05.12",
+  DESCRIPTION   = "device creation and luup.chdev submodule",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- This file not only contains the luup.chdev submodule, 
 -- but also the luup-level facility for creating a device
@@ -8,26 +13,64 @@ local banner = "    version " .. revisionDate .. "  @akbooer"
 
 -- 2016.01.28  added 'disabled' attribute for devices - thanks @cybrmage
 -- 2016.02.15  ensure that altid is a string (thanks cybrmage)
+-- 2016.04.03  add UUID (for Sonos, and perhaps other plugins)
+-- 2016.04.15  change the way device variables are handled in chdev.create - thanks @explorer!
+-- 2016.04.18  add username and password to attributes (for cameras)
+-- 2016.04.29  add device status
+-- 2016.05.12  use luup.attr_get and set, rather than a dependence on openLuup.userdata
 
 local logs      = require "openLuup.logs"
 
 local devutil   = require "openLuup.devices"
-local userdata  = require "openLuup.userdata"     -- for Device_Num_Next
 local loader    = require "openLuup.loader"
 local scheduler = require "openLuup.scheduler"
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 
+logs.banner (ABOUT)   -- for version control
+
+-- utilities
+
+-- generate a (fairly) unique UDN
+-- see: https://en.wikipedia.org/wiki/Universally_unique_identifier
+--
+-- A UUID is simply a 128-bit value. The meaning of each bit is defined by any of several variants.
+-- For human-readable display, many systems use a canonical format using hexadecimal text with inserted hyphen characters. -- For example:    de305d54-75b4-431b-adb2-eb6b9e546014 
+--
+
+local UUID = (function ()
+  local seed = luup and tonumber (luup.pk_accesspoint)
+  if seed then math.randomseed (seed) end
+  local fmt = "%02x"
+  local uuid = {"uuid:"}
+  local dash = {[4]='-', [6]='-', [8]='-', [10]='-'}
+  for i = 1,16 do
+    uuid[#uuid+1] = fmt:format(math.random(0,255))
+    uuid[#uuid+1] = dash[i]
+  end
+  return table.concat (uuid)
+end) ()
+
+-- convert string statevariable definition into Lua table of device variables
+local function variable_explorer (statevariables)   -- TODO: thanks @explorer, for this temporary fix
+  -- syntax is: "serviceId,variable=value" separated by new lines
+  -- @explorer: separate the state variables by form feed because values can have new lines
+  local svars = '\n' .. statevariables
+  svars = svars: gsub( "\n([%w%.%-:]+),([%w%._]+)=", "\f\n%1,%2=" )     
+  local vars = {}
+  for srv, var, val in svars: gmatch "\n([%w%.%-:]+),([%w%._]+)=([^\f]*)" do
+    vars[#vars+1] = {service = srv, variable = var, value = val}
+  end
+  return vars
+end
 
 -- 
 -- function: create (x)
 -- parameters: see below
 --
 -- This creates the device with the parameters given, and returns the device object 
--- You can specify multiple variables by separating them with a line feed (\n) and use a, 
--- and = to separate service, variable and value, like this: service,variable=value\nservice..
+-- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
 --
 local function create (x)
   -- {devNo, device_type, internal_id, description, upnp_file, upnp_impl, 
@@ -64,10 +107,10 @@ local function create (x)
   end
   
   -- go through the variables and set them
-  -- syntax is: "serviceId,variable=value" separated by new lines
-  if type(x.statevariables) == "string" then
-    for srv, var, val in x.statevariables: gmatch "%s*([^,]+),([^=]+)=([^%c]*)" do
-      dev:variable_set (srv, var, val)
+  -- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
+  if type(x.statevariables) == "table" then
+    for _,v in ipairs(x.statevariables) do
+      dev:variable_set (v.service, v.variable, v.value)
     end
   end
 
@@ -82,7 +125,6 @@ local function create (x)
   end
   
   -- set known attributes
-
   dev:attr_set {
     id              = x.devNo,                                          -- device id
     altid           = x.internal_id and tostring(x.internal_id) or '',  -- altid (called id in luup.devices, confusing, yes?)
@@ -94,13 +136,16 @@ local function create (x)
     id_parent       = tonumber (x.parent) or 0,
     impl_file       = d.impl_file,
     invisible       = x.invisible and "1" or "0",   -- convert true/false to "1"/"0"
+    local_udn       = UUID,
     manufacturer    = d.manufacturer or '',
     model           = d.modelName or '',
     name            = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?')), 
---    plugin          = tostring(pluginnum),      -- TODO: set plugin number
+    plugin          = tostring(x.pluginnum),
+    password        = x.password,
     room            = tostring(tonumber (x.room or 0)),   -- why it's a string, I have no idea
     subcategory_num = tonumber (d.subcategory_num) or 0,
     time_created    = os.time(), 
+    username        = x.username,
     ip              = x.ip or '',
     mac             = x.mac or '',
   }
@@ -119,11 +164,11 @@ local function create (x)
       invisible           = x.invisible or false,     -- if invisible, it's 'for internal use only'
       ip                  = a.ip,
       mac                 = a.mac,
-      pass                = '',
+      pass                = a.password or '',
       room_num            = tonumber (a.room),
       subcategory_num     = tonumber (a.subcategory_num),
---      udn                 = "uuid:4d494342-5342-5645-0003-000002b03069",     -- we don't do UDNs
-      user                = '',    
+      udn                 = a.local_udn,
+      user                = a.username or '',    
     }
   
   -- fill out extra data in the proto-device
@@ -138,6 +183,7 @@ local function create (x)
                             }
   -- note that all the following methods should be called with device:function() syntax...
   dev.is_ready            = function () return true end          -- TODO: wait on startup sequence 
+  dev.status              = -1                                   -- 2016.04.29  add device status
   dev.supports_service    = function (self, service) return not not services[service] end
 
   return setmetatable (luup_device, {__index = dev} )   --TODO:    __metatable = "access denied"
@@ -154,8 +200,8 @@ local function create_device (
       ip, mac, hidden, invisible, parent, room, pluginnum, statevariables,
       pnpid, nochildsync, aeskey, reload, nodupid  
   )
-  local devNo = tonumber (userdata.attributes ["Device_Num_Next"])
-  userdata.attributes ["Device_Num_Next"] = devNo + 1
+  local devNo = tonumber (luup.attr_get "Device_Num_Next")
+  luup.attr_set ("Device_Num_Next", devNo + 1)
   local dev = create {
     devNo = devNo,                      -- (number)   (req)  *** NB: extra parameter cf. luup.create ***
     device_type = device_type,          -- (string)
@@ -170,7 +216,7 @@ local function create_device (
     parent = parent,                    -- (number)
     room = room,                        -- (number)
     pluginnum = pluginnum,              -- (number)
-    statevariables = statevariables,    -- (string)   "service,variable=value\nservice..."
+    statevariables = variable_explorer (statevariables or ''),    -- (string)   "service,variable=value\nservice..."
     pnpid = pnpid,                      -- (number)   no idea (perhaps uuid??)
     nochildsync = nochildsync,          -- (string)   no idea
     aeskey = aeskey,                    -- (string)   no idea
@@ -274,6 +320,8 @@ end
 -- return the methods
 
 return {
+  ABOUT = ABOUT,
+  
   create = create,
   create_device = create_device,
   

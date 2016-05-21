@@ -1,6 +1,11 @@
-local _NAME = "openLuup.server"
-local revisionDate = "2016.02.29"
-local banner = "   version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.server",
+  VERSION       = "2016.05.17",
+  DESCRIPTION   = "HTTP/HTTPS GET/PUT requests server and luup.inet.wget client",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- openLuup SERVER - HTTP GET request server and client
@@ -10,20 +15,31 @@ local banner = "   version " .. revisionDate .. "  @akbooer"
 -- 2016.02.24   also look for files in /cmh-lu/
 -- 2016.02.25   make myIP global (used for rewriting icon urls)
 -- 2016.02.29   redirect file requests for UI5 and UI7 icons
--- 2016.03.05  io.open with 'rb' for Windows, thanks @vosmont
+-- 2016.03.05   io.open with 'rb' for Windows, thanks @vosmont
+-- 2016.03.16   wget now checks port number when intercepting local traffic, thanks @reneboer
+-- 2016.03.20   added svg to mime types and https support to wget, thanks @cybrmage
+-- 2016.04.14   @explorer: Added workaround for Sonos not liking chunked transfers of MP3 files. 
+-- 2016.04.14   @explorer: Parametrized HTTP response functions - better control over transfer mode and headers.
+-- 2016.04.15   @explorer: Added a few common MIME types such as css, mp3 (@akbooer moved to external file)
+-- 2016.04.28   @akbooer, change Sonos file fix to apply to ALL .mp3 files
+-- 2016.05.10   handle upnp/control/hag requests (AltUI redirects from port 49451) through WSAPI
+-- 2016.05.17   log "No handler" responses
 
 local socket    = require "socket"
 local url       = require "socket.url"
 local http      = require "socket.http"
+local https     = require "ssl.https"
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"    -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
 local json      = require "openLuup.json"       -- only for non-string response error message
 local wsapi     = require "openLuup.wsapi"      -- WSAPI connector for CGI processing
+local mime      = require "openLuup.mimetypes"
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 -- CONSTANTS
 
@@ -35,25 +51,14 @@ local iprequests = {}     -- log of incoming requests {ip = ..., mac = ..., time
 
 local http_handler = {} -- the handler dispatch list
 
--- MIME types from filename extension (very limited selection)
-
-local mime = {
-  html = "text/html", 
-  htm  = "text/html", 
-  js   = "application/javascript",
-  json = "application/json",
-  txt  = "text/plain",
-  png  = "image/png",
-  xml  = "application/xml",
-}
-
---
+local function file_type (filename)
+  return filename: match "%.([^%.]+)$"     -- extract extension from filename
+end
 
 -- GLOBAL functions
 
 local function MIME (filename)
-  local extension = filename: match "%.([^%.]+)$"     -- extract extension from filename
-  return mime[extension or '']                        -- returns nil if unknown
+  return mime[file_type (filename) or '']                        -- returns nil if unknown
 end
 
 -- add callbacks to the HTTP handler dispatch list  
@@ -107,7 +112,8 @@ local function http_query (URL)
     ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request_name, parameters, format)
     if not ok then _log ("error in callback: " .. request .. ", error is " .. (response or 'nil')) end
   else 
-    response = "No handler"
+    response = "No handler for id=" .. request     -- 2016.05.17   log "No handler" responses
+    _log (response)
   end
   return (response or 'not a data request'), mtype
 end
@@ -115,7 +121,7 @@ end
   
 -- handle file requests
 -- parameter is either a path string, or a parsed URL table
-local function http_file (URL)
+local function http_file (URL, headers)
   if type(URL) == "string" then URL = {path = URL} end
   local path = URL.path
   path = path: gsub ("%.%.", '')                    -- ban attempt to move up directory tree
@@ -123,23 +129,30 @@ local function http_file (URL)
   path = path: gsub ("luvd/", '')                   -- no idea how this is handled in Luup, just remove it!
   path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
   path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
-  local info
+  local response_type = MIME (path)
+  local info, chunked, response_headers
   local f = io.open(path,'rb')                                  -- 2016.03.05  'b' for Windows, thanks @vosmont
   if not f then f = io.open ("../cmh-lu/" .. path, 'rb') end    -- 2016.02.24  also look in /etc/cmh-lu/
   if f then 
     info = (f: read "*a") or ''                   -- should perhaps buffer long files
 --    _log ("file length = "..#info, "openLuup.HTTP.FILE")
     f: close ()
+    -- @explorer:  2016.04.14, Workaround for SONOS not liking chunked MP3 and some headers.       
+    if file_type (path) == "mp3" then    -- 2016.04.28  @akbooer, change this to apply to ALL .mp3 files
+      chunked = false
+      response_headers = {}
+    end
+  
   else
     _log ("file not found:" .. path, "openLuup.HTTP.FILE")  
   end
- return info, MIME (path)
+  return info, response_type, chunked, response_headers
 end
 
 -- dispatch to appropriate handler depending on whether query or not
 -- URL parameter is parsed table of URL structure (see url.parse)
 
-local is_cgi = {["cgi"] = true, ["cgi-bin"] = true}       -- root locations of CGI directories
+local is_cgi = {["cgi"] = true, ["cgi-bin"] = true, ["upnp"] = true}       -- root locations of CGI directories
 
 local function http_dispatch_request (URL, headers, post_content)    
   local dispatch
@@ -171,17 +184,20 @@ local function wget (URL, Timeout, Username, Password)
     ["0.0.0.0"] = true, 
     [myIP] = true,
   }
-  URL = http_parse_request (URL)                            -- break it up into bits  
-  if self_reference [URL.host] then                   -- INTERNAL request
+  URL = http_parse_request (URL)                      -- break it up into bits  
+  if ((URL.port or '') == "3480")                     -- 2016-03-16 check for port #, thanks @reneboer
+  and self_reference [URL.host] then                  -- INTERNAL request
     result = http_dispatch_request (URL)
     if result then status = 0 else status = -1 end    -- assume success
   else                                                -- EXTERNAL request   
-    http.TIMEOUT = Timeout or 5
+    local scheme = http
     URL.scheme = URL.scheme or "http"                 -- assumed undefined is http request
+    if URL.scheme == "https" then scheme = https end  -- 2016.03.20
     URL.user = Username                               -- add authorization credentials
     URL.password = Password
     URL= url.build (URL)                              -- reconstruct request for external use
-    result, status = http.request (URL)
+    scheme.TIMEOUT = Timeout or 5
+    result, status = scheme.request (URL)
     if result and status == 200 then status = 0 end   -- wget has a strange return code
   end
   return status, result or ''                         -- note reversal of parameter order
@@ -221,7 +237,7 @@ local function send_chunked (sock, x, n)
 end
 
 
-local function http_response (sock, response, type)
+local function http_response (sock, response, type, chunked, response_headers)
   response = response or ''
   local t = _G.type(response)
   if t ~= "string" then -- Thanks @CudaNet
@@ -241,22 +257,38 @@ local function http_response (sock, response, type)
     status = "404 Not Found"
     response = ''
   end
-  local crlf = "\r\n"
-  local headers =  table.concat({
-      "HTTP/1.1 " .. status,
-      "Accept-Encoding: Identity",        -- added 2015.12.19 to stop chunked responses
-      "Allow: GET",                       -- added 2015.10.06
-      "Access-Control-Allow-Origin: *",   -- @d55m14 
+
+  -- @explorer: reworked beyond this point:
+  if response_headers == nil then
+    response_headers = {}
+    response_headers["Accept-Encoding"] = "Identity"        -- added 2015.12.19 to stop chunked responses
+    response_headers["Allow"] = "GET"                       -- added 2015.10.06
+    response_headers["Access-Control-Allow-Origin"] = "*"   -- @d55m14 
       -- see: http://forum.micasaverde.com/index.php/topic,31078.msg248418.html#msg248418
-      "Server: openLuup/" .. revisionDate,
-      "Content-Type: " .. type or "text/plain",
---      "Content-Length: " .. #response,
-      "Transfer-Encoding: Chunked",
-      "Connection: keep-alive", 
-      crlf}, crlf)
+    response_headers["Transfer-Encoding"] = "Chunked"
+    response_headers["Connection"] = "keep-alive" 
+  end
+  response_headers["Content-Type"] = type or "text/plain"
+  if chunked == false then
+    response_headers["Content-Length"] = #response
+  else
+    chunked = true
+    response_headers["Transfer-Encoding"] = "Chunked"
+  end
+  response_headers["Server"] = "openLuup/" .. ABOUT.VERSION
+
+  local crlf = "\r\n"
+  local headers = "HTTP/1.1 " .. status .. crlf
+  for k, v in pairs(response_headers) do headers = headers .. k .. ": " .. v .. crlf end
+  headers = headers .. crlf 
+
   send (sock, headers)
-  local ok, err, nc = send_chunked (sock, response, 16000)
---  local ok, err, nc = send (sock, response)
+  local ok, err, nc
+  if chunked then
+    ok, err, nc= send_chunked (sock, response, 16000)
+  else
+    ok, err, nc = send (sock, response)
+  end
   return #(response or {}), nc or 0
 end
   
@@ -328,8 +360,8 @@ local function client_request (sock)
   end
   
   local function exec_request ()
-    local response, type = http_dispatch_request (URL, headers, post_content) 
-    local n, nc = http_response (sock, response, type)
+    local response, type, chunked, response_headers = http_dispatch_request (URL, headers, post_content) 
+    local n, nc = http_response (sock, response, type, chunked, response_headers)
     local t = math.floor (1000*(socket.gettime() - start_time))
     _log (("request completed (%d bytes, %d chunks, %d ms) %s"):format (n, nc, t, tostring(sock)))
   end
@@ -443,6 +475,8 @@ end
 --- return module variables and methods
 
 return {
+    ABOUT = ABOUT,
+    
     -- constants
     myIP = myIP,
     

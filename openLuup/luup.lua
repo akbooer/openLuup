@@ -1,10 +1,19 @@
-local _NAME = "openLuup.luup"
-local revisionDate = "2016.03.01"
-local banner = "     version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.luup",
+  VERSION       = "2016.05.17",
+  DESCRIPTION   = "emulation of luup.xxx(...) calls",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- openLuup - an emulation of Luup calls to allow some Vera plugins to run on a non-Vera machine
 --  
+
+-- 2016.05.10  update userdata_dataversion when top-level attribute set
+-- 2016.05.15  change set_failure logic per discussion here: http://forum.micasaverde.com/index.php/topic,37672.0.html
+-- 2016.05.17  set_failure sets urn:micasaverde-com:serviceId:HaDevice1 / CommFailure variable in device
 
 local logs          = require "openLuup.logs"
 
@@ -24,13 +33,13 @@ local io            = require "openLuup.io"
 
 -- @param: what_to_log (string), log_level (optional, number)
 local function log (msg, level)
-  logs.send (msg, level, scheduler.current_context())
+  logs.send (msg, level, scheduler.current_device())
 end
 
 --  local log
-local function _log (msg, name) log (msg, name or _NAME) end
+local function _log (msg, name) log (msg, name or ABOUT.NAME) end
 
-_log (banner, _NAME)   -- for version control
+logs.banner (ABOUT)   -- for version control
 
 local _log_altui_variable  = logs.altui_variable
 
@@ -60,11 +69,7 @@ local remotes = {}
 --
 -- GLOBAL functions: Luup API
 --
-  
-
-local function set_failure (status)
-  _log ("status = " .. tostring(status), "luup.set_failure")
-end
+ 
 --[[
 startup": {
 
@@ -119,7 +124,7 @@ end
 local function missing_dev_srv_name (dev, srv, name, tag)
     local fmt = "No such device/serviceId/name %s.%s.%s"
     local msg = fmt: format (tostring(dev or '?'),srv or '?', name or '?')
-    _log (msg, tag or _NAME)
+    _log (msg, tag or ABOUT.NAME)
 end
 
 -- function: is_ready
@@ -138,7 +143,7 @@ end
 -- parameters: service (string), variable (string), value (string), device (string or number), [startup (bool)]
 -- returns: nothing 
 local function variable_set (service, name, value, device, startup)
-  device = device or scheduler.current_context()    -- undocumented luup feature!
+  device = device or scheduler.current_device()    -- undocumented luup feature!
   local dev = devices[device]
   if not dev then 
     missing_dev_srv_name (device, service, name, "luup.variable_set")
@@ -160,7 +165,7 @@ end
 -- parameters: service (string), variable (string), device (string or number)
 -- returns: value (string) and Unix time stamp (number) of when the variable last changed
 local function variable_get (service, name, device)
-  device = device or scheduler.current_context()    -- undocumented luup feature!
+  device = device or scheduler.current_device()    -- undocumented luup feature!
   local dev = devices[device]
   if not dev then 
     missing_dev_srv_name (device, service, name, "luup.variable_get")
@@ -222,6 +227,7 @@ local function attr_set (attribute, value, device)
       if special.number then value = tonumber(value) end
       luup[special.name or attribute] = value or ''
     end 
+    devutil.new_userdata_dataversion ()     -- 2016.05.10  update userdata_dataversion when top-level attribute set
   else
     local dev = devices[device]
     if dev then
@@ -288,6 +294,29 @@ local function mac_set (value, device)
   end
 end
 
+ 
+-- function: set_failure
+-- parameters: value (int), device (string or number)
+-- returns:
+--
+-- Luup maintains a 'failure' flag for every device to indicate if it is not functioning. 
+-- You can set the flag to 1 if the device is failing, 0 if it's working, 
+-- and 2 if the device is reachable but there's an authentication error. 
+-- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
+local function set_failure (status, device)
+  local map = {[0] = -1, 2,2}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
+  _log ("status = " .. tostring(status), "luup.set_failure")
+  local devNo = device or scheduler.current_device()
+  local dev = devices[devNo]
+  if dev then 
+    dev:status_set (map[tonumber(status) or 0] or -1)  -- 2016.05.15
+    local time = 0
+    if status ~= 0 then time = os.time() end
+    local HaSID = "urn:micasaverde-com:serviceId:HaDevice1"
+    variable_set (HaSID, "CommFailure", status)     -- 2016.05.17
+    variable_set (HaSID, "CommFailureTime", time)
+  end  
+end
 
 --
 -- CALLBACKS
@@ -297,7 +326,7 @@ end
 local function entry_point (name, subsystem)
   local fct, env
   -- look in device environment, or startup, or globally
-  local dev = devices[scheduler.current_context() or 0]
+  local dev = devices[scheduler.current_device() or 0]
   env = (dev and dev.environment) or {}
   fct = env[name] or loader.shared_environment[name] or _G[name]   
   if not fct then
@@ -420,7 +449,7 @@ local function register_handler (global_function_name, request_name)
     -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
     local msg = ("global_function_name=%s, request=%s"): format (global_function_name, request_name)
     _log (msg, "luup.register_handler")
-    server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_context())
+    server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
   end
 end
 
@@ -513,7 +542,7 @@ local function reload (exit_status)
   if not exit_status then         -- we're going to reload
     exit_status = 42              -- special 'reload' exit status
     local fmt = "device %d '%s' requesting reload"
-    local devNo = scheduler.current_context() or 0
+    local devNo = scheduler.current_device() or 0
     local name = (devices[devNo] or {}).description or "_system_"
     local txt = fmt:format (devNo, name)
     print (os.date "%c", txt)

@@ -19,26 +19,6 @@
     </action>
 
     <action>
-      <name>SetStartupCode</name>
-      <argumentList>
-        <argument>
-          <name>StartupCode</name>
-          <direction>in</direction>
-        </argument>
-      </argumentList>
-    </action>
-
-    <action>
-      <name>SetShutdownCode</name>
-      <argumentList>
-        <argument>
-          <name>ShutdownCode</name>
-          <direction>in</direction>
-        </argument>
-      </argumentList>
-    </action>
-
-    <action>
       <name>GetStats</name>
       <argumentList>
         <argument>
@@ -60,7 +40,13 @@
     </action>
  
     <action>
-      <name>Reset</name>
+      <name>openLuupUpdate</name>
+      <argumentList>
+        <argument>
+          <name>Tag</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
     </action>
 
   </actionList>

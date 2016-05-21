@@ -1,6 +1,11 @@
-local _NAME = "openLuup.wsapi"
-local revisionDate = "2016.03.05"
-local banner = "    version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.wsapi",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- This module implements a WSAPI application connector for the openLuup port 3480 server.
 --
@@ -13,8 +18,9 @@ local banner = "    version " .. revisionDate .. "  @akbooer"
 -- see: http://forum.micasaverde.com/index.php/topic,36189.0.html
 -- 2016.02.18
 
---2016.02.26  add self parameter to input.read(), seems to be called from wsapi.request with colon syntax
---            ...also util.lua shows that the same is true for the error.write(...) function.
+-- 2016.02.26  add self parameter to input.read(), seems to be called from wsapi.request with colon syntax
+--             ...also util.lua shows that the same is true for the error.write(...) function.
+-- 2016.05.10  add ".lua" extension to CGI filename if not initially found
 
 --[[
 
@@ -45,17 +51,18 @@ The connectors are careful to treat errors gracefully: if they occur before send
 
 --]]
 
-local loader  = require "openLuup.loader"
-local logs    = require "openLuup.logs"
+local loader  = require "openLuup.loader"     -- to create new environment in which to execute CGI script 
+local logs    = require "openLuup.logs"       -- used for wsapi_env.error:write()
 
+
+--  local log
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 -- utilities
 
 local cache = {}       -- cache for compiled CGIs
-
---  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
 
 -- return a dummy WSAPI app with error code and message
 local function dummy_app (status, message)
@@ -77,7 +84,7 @@ end
 -- build makes an application function for the connector
 local function build (script)
   local file = script: match ".(.+)"      -- ignore leading '/'
-  local f = io.open (file) 
+  local f = io.open (file) or io.open (file..".lua")  -- 2016.05.10  add ".lua" extension if not initially found
   if not f then 
     return dummy_app (404, "file not found: " .. (script or '?')) 
   end
@@ -152,6 +159,31 @@ end
                        "SERVER_PORT" | "SERVER_PROTOCOL" |
                        "SERVER_SOFTWARE" | scheme |
                        protocol-var-name | extension-var-name
+
+also: http://www.cgi101.com/book/ch3/text.html
+
+DOCUMENT_ROOT 	The root directory of your server
+HTTP_COOKIE 	  The visitor's cookie, if one is set
+HTTP_HOST 	    The hostname of the page being attempted
+HTTP_REFERER 	  The URL of the page that called your program
+HTTP_USER_AGENT The browser type of the visitor
+HTTPS 	        "on" if the program is being called through a secure server
+PATH 	          The system path your server is running under
+QUERY_STRING 	  The query string (see GET, below)
+REMOTE_ADDR 	  The IP address of the visitor
+REMOTE_HOST 	  The hostname of the visitor (if your server has reverse-name-lookups on; else this is the IP address again)
+REMOTE_PORT 	  The port the visitor is connected to on the web server
+REMOTE_USER 	  The visitor's username (for .htaccess-protected pages)
+REQUEST_METHOD 	GET or POST
+REQUEST_URI 	  The interpreted pathname of the requested document or CGI (relative to the document root)
+SCRIPT_FILENAME The full pathname of the current CGI
+SCRIPT_NAME 	  The interpreted pathname of the current CGI (relative to the document root)
+SERVER_ADMIN 	  The email address for your server's webmaster
+SERVER_NAME 	  Your server's fully qualified domain name (e.g. www.cgi101.com)
+SERVER_PORT 	  The port number your server is listening on
+SERVER_SOFTWARE The server software you're using (e.g. Apache 1.3)
+
+
 --]]
 -- cgi is called by the server when it receives a CGI request
 local function cgi (URL, headers, post_content) 
@@ -197,8 +229,10 @@ local function cgi (URL, headers, post_content)
 end
 
 return {
+    ABOUT = ABOUT,
+    TEST  = {build = build},        -- access to 'build' for testing
+     
     cgi   = cgi,                    -- called by the server to process a CGI request
-    test  = {build = build},        -- access to 'build' for testing
   }
   
 -----

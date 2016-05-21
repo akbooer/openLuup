@@ -1,12 +1,18 @@
-local version = "openLuup.timers   2015.10.31  @akbooer"
-
+local ABOUT = {
+  NAME          = "openLuup.timers",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- openLuup TIMERS modules
-
---
 -- TIMER related API
 -- all time-related functions (aside from the scheduler itself)
---
+
+-- 2016.04.14  @explorer: Added timezone offset to the rise_set return value 
+
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
@@ -46,6 +52,11 @@ local function sleep (milliseconds)
   socket.sleep ((tonumber (milliseconds) or 0)/1000)      -- wait a bit
 end
 
+-- returns timezone offset in seconds
+local function time_zone()
+  local now = os.time()
+  return os.difftime(now, os.time(os.date("!*t", now)))
+end
 
 -- sunrise, sunset times given date (and lat + long as globals)
 -- see: http://aa.usno.navy.mil/faq/docs/SunApprox.php
@@ -96,7 +107,9 @@ local function rise_set (date)
     rise = noon - hour_angle
     set  = noon + hour_angle 
   end
-  return rise, set, noon
+  
+  local tz = time_zone()
+  return rise + tz, set + tz, noon + tz
 end
 
 -- function: sunset / sunrise
@@ -331,6 +344,8 @@ end
 ---- return methods
 
 return {
+  ABOUT = ABOUT,
+  
   cpu_clock   = cpu_clock,
   sleep       = sleep,
   sunrise     = sunrise,
@@ -341,7 +356,6 @@ return {
   call_timer  = call_timer,
   -- constants
   loadtime    = loadtime,
-  version     = version,
 }
 
 ----

@@ -1,7 +1,11 @@
-_NAME = "VeraBridge"
-_VERSION = "2016.02.15"
-_DESCRIPTION = "VeraBridge plugin for openLuup!!"
-_AUTHOR = "@akbooer"
+ABOUT = {
+  NAME          = "VeraBridge",
+  VERSION       = "2016.05.21",
+  DESCRIPTION   = "VeraBridge plugin for openLuup!!",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- bi-directional monitor/control link to remote Vera system
 -- NB. this version ONLY works in openLuup
@@ -13,15 +17,34 @@ _AUTHOR = "@akbooer"
 -- 2015-11-01   change device numbering scheme
 -- 2015-11-12   create links to remote scenes
 -- 2016-02-15   use string altid (not number), thanks @cybrmage
-
--- TODO: revert to original Vera altid (needed for Zwave devices) and clone device 1.
+-- 2016-03-19   prepare for major refactoring: 
+--                retention of parent/child structure
+--                mirroring of selected local openLuup devices on remote Vera
+--                set LastUpdate variable to indicate active link, thanks @reneboer
+-- 2016.03.27   fix for device 1 and 2 on non-primary bridges (clone all hidden devices)
+-- 2016.04.14   fix for missing device #2
+-- 2016.04.15   don't convert device states table into string (thanks @explorer)
+-- 2016.04.17   chdev.create devices each time to ensure cloning of all attributes and variables
+-- 2016.04.18   add username, password, ip, mac, json_file to attributes in chdev.create
+-- 2016.04.19   fix action redirects for multiple controllers
+-- 2016.04.22   fix old room allocations
+-- 2016.04.29   update device status
+-- 2016.04.30   initial implementation of mirror devices (thanks @logread for design discussions & prototyping)
+-- 2016.05.08   @explorer options for bridged devices
+-- 2016.05.14   settled on implementation of mirror devices using top-level openLuup.mirrors attribute
+-- 2016.05.15   HouseMode variable to reflect status of bridged Vera (thanks @logread)
+-- 2016.05.21   @explorer fix for missing Zwave device children when ZWaveOnly selected
 
 local devNo                      -- our device number
 
+local chdev     = require "openLuup.chdev"
 local json      = require "openLuup.json"
+local rooms     = require "openLuup.rooms"
 local scenes    = require "openLuup.scenes"
 local userdata  = require "openLuup.userdata"
 local url       = require "socket.url"
+
+--local pretty = require "pretty"   -- TODO: TESTING ONLY
 
 local ip                          -- remote machine ip address
 local POLL_DELAY = 5              -- number of seconds between remote polls
@@ -34,26 +57,81 @@ local SID = {
   altui    = "urn:upnp-org:serviceId:altui1"          -- Variables = 'DisplayLine1' and 'DisplayLine2'
 }
 
+local Mirrored    -- mirrors is a set of device IDs for 'reverse bridging', not to be cloned
+local MirrorHash  -- reverse lookup: local hash to remote device ID
+
+-- @explorer options for device filtering
+
+local ZWaveOnly, Included, Excluded
+
+-- LUUP utility functions 
+
+local function getVar (name, service, device) 
+  service = service or SID.gateway
+  device = device or devNo
+  local x = luup.variable_get (service, name, device)
+  return x
+end
+
+local function setVar (name, value, service, device)
+  service = service or SID.gateway
+  device = device or devNo
+  local old = luup.variable_get (service, name, device)
+  if tostring(value) ~= old then 
+   luup.variable_set (service, name, value, device)
+  end
+end
+
+-- get and check UI variables
+local function uiVar (name, default, lower, upper)
+  local value = getVar (name) 
+  local oldvalue = value
+  if value and (value ~= "") then           -- bounds check if required
+    if lower and (tonumber (value) < lower) then value = lower end
+    if upper and (tonumber (value) > upper) then value = upper end
+  else
+    value = default
+  end
+  value = tostring (value)
+  if value ~= oldvalue then setVar (name, value) end   -- default or limits may have modified value
+  return value
+end
+
+-- given a string of numbers s = "n, m, ..." convert to a set (for easy indexing)
+local function convert_to_set (s)
+  local set = {}
+  for a in s: gmatch "%d+" do
+    local n = tonumber (a)
+    if n then set[n] = true end
+  end
+  return set
+end
+
+-----------
 -- mapping between remote and local device IDs
 
 local OFFSET                      -- offset to base of new device numbering scheme
 local BLOCKSIZE = 10000           -- size of each block of device and scene IDs allocated
+local Zwave = {}                  -- list of Zwave Controller IDs to map without device number translation
 
 local function local_by_remote_id (id) 
-  return id + OFFSET
+  return Zwave[id] or id + OFFSET
 end
 
 local function remote_by_local_id (id)
-  return id - OFFSET
+  return Zwave[id] or id - OFFSET
 end
 
---create a variable list for each remote device from given states table
-local function create_variables (states)
-  local v = {}
-  for i, s in ipairs (states) do
-      v[i] = table.concat {s.service, ',', s.variable, '=', s.value}
+-- change parent of given device, and ensure that it handles child actions
+local function set_parent (devNo, newParent)
+  local dev = luup.devices[devNo]
+  if dev then
+    local meta = getmetatable(dev).__index
+    luup.log ("device[" .. devNo .. "] parent set to " .. newParent)
+    meta.handle_children = true                   -- handle Zwave actions
+    dev.device_num_parent = newParent             -- parent resides in two places under different names !!
+    dev.attributes.id_parent = newParent
   end
-  return table.concat (v, '\n')
 end
  
 -- create bi-directional indices of rooms: room name <--> room number
@@ -67,51 +145,136 @@ local function index_rooms (rooms)
   return room_index
 end
 
--- create rooms (strangely, there's no Luup command to do this directly)
-local function create_room(n) 
-  luup.inet.wget ("127.0.0.1:3480/data_request?id=room&action=create&name=" .. n) 
-end
-
--- create a child device for each remote one
--- we cheat standard luup here by manipulating the top-level attribute Device_Num_Next
--- in advance of calling chdev.append so that we can force a specific device number.
-local function create_children (devices, new_room)
-  local remote_attr = {}      -- important attibutes, indexed by remote dev.id
-  
-  local Device_Num_Next = luup.attr_get "Device_Num_Next"    -- save the real one
-  local childDevices = luup.chdev.start(devNo)
-  local embedded = false
-  local invisible = false
-  
-  local n = 0
-  for _, dev in ipairs (devices) do   -- this devices table is from the "user_data" request
-    if not (dev.invisible == "1") then
-      n = n + 1
-      local remote_id = tonumber (dev.id) 
-      local cloneId = local_by_remote_id(remote_id)
-      remote_attr[remote_id] = {manufacturer = dev.manufacturer, model = dev.model}
-      local variables = create_variables (dev.states)
-      local impl_file = 'X'  -- override device file's implementation definition... musn't run here!
-      luup.attr_set ("Device_Num_Next", cloneId)    -- set this, in case next call creates new device
-      -- changed altids to enable plugins which manipulate Zwave devices directly...
-      -- and expect altids to be the Zwave node number... (although in string form)
-      local altid = tostring(cloneId)
-      if tonumber(dev.id_parent) == 1 then    -- it's a Zwave device, use its altid (Zwave node #)
-        altid = tostring(dev.altid)
-      end
-      -- ... but note that this must be unique within our child devices
-      -- ... Zwave node numbers can't be more than about 250, so this should be OK
-      luup.chdev.append (devNo, childDevices, altid, dev.name, 
-        dev.device_type, dev.device_file, impl_file, 
-        variables, embedded, invisible, new_room)
+-- make a list of our existing children, counting grand-children, etc.!!!
+local function existing_children (parent)
+  local c = {}
+  local function children_of (d,index)
+    for _, child in ipairs (index[d] or {}) do
+      c[child] = luup.devices[child]
+      children_of (child, index)
     end
   end
   
-  luup.attr_set ("Device_Num_Next", Device_Num_Next)  -- restore original BEFORE possible reload
-  luup.chdev.sync(devNo, childDevices)
+  local idx = {}
+  for child, dev in pairs (luup.devices) do
+    local num = dev.device_num_parent
+    local children = idx[num] or {}
+    children[#children+1] = child
+    idx[num] = children
+  end
+  children_of (parent, idx)
+  return c
+end
+
+-- create a new device, cloning the remote one
+local function create_new (cloneId, dev, room)
+--[[
+          hidden          = nil, 
+          pluginnum       = d.plugin,
+          disabled        = d.disabled,
+
+--]]
+  local d = chdev.create {
+    devNo = cloneId, 
+    device_type = dev.device_type,
+    internal_id = tostring(dev.altid or ''),
+    invisible   = dev.invisible == "1",   -- might be invisible, eg. Zwave and Scene controllers
+    json_file   = dev.device_json,
+    description = dev.name,
+    upnp_file   = dev.device_file,
+    upnp_impl   = 'X',              -- override device file's implementation definition... musn't run here!
+    parent      = devNo,
+    password    = dev.password,
+    room        = room, 
+    statevariables = dev.states,
+    username    = dev.username,
+    ip          = dev.ip, 
+    mac         = dev.mac, 
+  }  
+  luup.devices[cloneId] = d   -- remember to put into the devices table! (chdev.create doesn't do that)
+end
+
+-- ensure that all the parent/child relationships are correct
+local function build_families (devices)
+  for _, dev in pairs (devices) do   -- once again, this 'devices' table is from the 'user_data' request
+    local cloneId  = local_by_remote_id (dev.id)
+    local parentId = local_by_remote_id (tonumber (dev.id_parent) or 0)
+    if parentId == OFFSET then parentId = devNo end      -- the bridge is the "device 0" surrogate
+    local clone  = luup.devices[cloneId]
+    local parent = luup.devices[parentId]
+    if clone and parent then
+      set_parent (cloneId, parentId)
+    end
+  end
+--  existing_children (devNo)     -- TODO: TESTING ONLY 
+end
+
+-- return true if device is to be cloned
+-- note: these are REMOTE devices from the Vera status request
+-- consider: ZWaveOnly, Included, Excluded (...takes precedence over the first two)
+-- and Mirrored, a sequence of "remote = local" device IDs for 'reverse bridging'
+
+-- plus @explorer modification
+-- see: http://forum.micasaverde.com/index.php/topic,37753.msg282098.html#msg282098
+
+local function is_to_be_cloned (dev)
+  local d = tonumber (dev.id)
+  local p = tonumber (dev.id_parent)
+  local zwave = p == 1 or d == 1
+  if ZWaveOnly and p then -- see if it's a child of the remote zwave device
+      local i = local_by_remote_id(p)
+      if i and luup.devices[i] then zwave = true end
+  end
+  return  not (Excluded[d] or Mirrored[d])
+          and (Included[d] or (not ZWaveOnly) or (ZWaveOnly and zwave) )
+end
+
+--[[
+-- original
+local function is_to_be_cloned (dev)
+  local d = tonumber (dev.id)
+  local p = tonumber (dev.id_parent)
+  local zwave = p == 1
+  return  not (Excluded[d] or Mirrored[d])
+          and (Included[d] or (not ZWaveOnly) or (ZWaveOnly and zwave) )
+end
+--]]
+
+-- create the child devices managed by the bridge
+local function create_children (devices, room)
+  local N = 0
+  local list = {}           -- list of created or deleted devices (for logging)
+  local something_changed = false
+  local current = existing_children (devNo)
+  for _, dev in ipairs (devices) do   -- this 'devices' table is from the 'user_data' request
+    dev.id = tonumber(dev.id)
+    if is_to_be_cloned (dev) then
+      N = N + 1
+      local cloneId = local_by_remote_id (dev.id)
+      if not current[cloneId] then 
+        something_changed = true
+      else
+        local old_room = luup.devices[cloneId].room_num
+        room = (old_room ~= 0) and old_room or room   -- use room number
+      end
+      create_new (cloneId, dev, room) -- recreate the device anyway to set current attributes and variables
+      list[#list+1] = cloneId
+      current[cloneId] = nil
+    end
+  end
+  if #list > 0 then luup.log ("creating device numbers: " .. json.encode(list)) end
   
-  luup.log ("local children created = " .. n)
-  return n
+  list = {}
+  for n in pairs (current) do
+    luup.devices[n] = nil       -- remove entirely!
+    something_changed = true
+    list[#list+1] = n
+  end
+  if #list > 0 then luup.log ("deleting device numbers: " .. json.encode(list)) end
+  
+  build_families (devices)
+  if something_changed then luup.reload() end
+  return N
 end
 
 -- remove old scenes within our allocated block
@@ -158,10 +321,11 @@ local function create_scenes (remote_scenes, room)
   return N+M
 end
 
+
 local function GetUserData ()
   local Vera    -- (actually, 'remote' Vera!)
   local Ndev, Nscn = 0, 0
-  local url = table.concat {"http://", ip, ":3480/data_request?id=user_data&output_format=json"}
+  local url = table.concat {"http://", ip, ":3480/data_request?id=user_data2&output_format=json"}
   local atr = url:match "=(%a+)"
   local status, j = luup.inet.wget (url)
   if status == 0 then Vera = json.decode (j) end
@@ -172,7 +336,7 @@ local function GetUserData ()
       local new_room_name = "MiOS-" .. (Vera.PK_AccessPoint: gsub ("%c",''))  -- stray control chars removed!!
       if Vera[t] then userdata.attributes [t] = Vera[t] end
       luup.log (new_room_name)
-      create_room (new_room_name)
+      rooms.create (new_room_name)
   
       remote_room_index = index_rooms (Vera.rooms or {})
       local_room_index  = index_rooms (luup.rooms or {})
@@ -181,7 +345,7 @@ local function GetUserData ()
       Ndev = #Vera.devices
       luup.log ("number of remote devices = " .. Ndev)
       local roomNo = local_room_index[new_room_name] or 0
-      Ndev = create_children (Vera.devices or {}, roomNo)
+      Ndev = create_children (Vera.devices, roomNo)
       Nscn = create_scenes (Vera.scenes, roomNo)
     end
   end
@@ -194,12 +358,16 @@ end
 -- this devices table is from the "status" request
 local function UpdateVariables(devices)
   for _, dev in pairs (devices) do
-    if tonumber (dev.id) == 1 then luup.log "Zwave data update ignored for device 1" end
+  dev.id = tonumber (dev.id)
     local i = local_by_remote_id(dev.id)
-    if i and luup.devices[i] and (type (dev.states) == "table") then
+    local device = i and luup.devices[i] 
+    if device and (type (dev.states) == "table") then
+      device: status_set (dev.status)      -- 2016.04.29 set the overall device status
       for _, v in ipairs (dev.states) do
+--        setVar (v.variable, v.service, v.value, i)    -- only actually changes if it's different from current value
         local value = luup.variable_get (v.service, v.variable, i)
         if v.value ~= value then
+--          print ("update", dev.id, i, v.variable)    -- TODO: TEST ONLY
           luup.variable_set (v.service, v.variable, v.value, i)
         end
       end
@@ -208,6 +376,7 @@ local function UpdateVariables(devices)
 end
 
 -- poll remote Vera for changes
+-- TODO: make callback use asynchronous I/O
 local poll_count = 0
 function VeraBridge_delay_callback (DataVersion)
   local s
@@ -218,8 +387,10 @@ function VeraBridge_delay_callback (DataVersion)
   local status, j = luup.inet.wget (url)
   if status == 0 then s = json.decode (j) end
   if s and s.devices then
+    setVar ("HouseMode", tonumber (s.Mode) or 1)   -- 2016.05.15, thanks @logread!
     UpdateVariables (s.devices)
     DataVersion = s.DataVersion
+    luup.devices[devNo]:variable_set (SID.gateway, "LastUpdate", os.time(), true) -- 2016.03.20 set without log entry
   end 
   luup.call_delay ("VeraBridge_delay_callback", POLL_DELAY, DataVersion)
 end
@@ -249,6 +420,80 @@ local function wget (request)
   if status ~= 0 then
     luup.log ("failed requests status: " .. (result or '?'))
   end
+end
+
+--
+-- MIRRORS
+--
+
+-- openLuup.mirrors syntax is:
+-- <VeraIP>
+-- <VeraDeviceId> = <openLuupDeviceId>.<serviceId>.<variableName>
+-- ...
+--[==[
+
+luup.attr_set ("openLuup.mirrors", [[
+192.168.99.99
+82 = 15.urn:upnp-org:serviceId:TemperatureSensor1.CurrentTemperature 
+83 = 16.urn:micasaverse-com:serviceId:HumiditySensor1.CurrentLevel
+85 = 17.urn:cd-jackson-com:serviceId:SystemMonitor.memoryAvailable
+85 = 17.urn:cd-jackson-com:serviceId:SystemMonitor.systemLuupRestartTime
+]])
+
+--]==]
+
+-- set up variable watches for mirrored devices, 
+-- returning set of devices to ignore in cloning
+-- and hash table for variable watch
+local function set_of_mirrored_devices ()
+  local Minfo = luup.attr_get "openLuup.mirrors"      -- this attribute set at startup
+  local mirrored = {}
+  local hashes = {}                     -- hash table of all mirrored variables
+  local our_ip = false                  -- set to true when we're parsing our own data
+  luup.log "reading mirror info..."
+  for line in (Minfo or ''): gmatch "%C+" do
+    local ip_info = line:match "^%s*(%d+%.%d+%.%d+%.%d+)"      -- IP address format
+    if ip_info then 
+      our_ip = ip_info == ip
+    elseif our_ip then
+      local rem, lcl, srv, var  = line:match "^%s*(%d+)%s*=%s*(%d+)%.(%S+)%.(%S+)"
+      if var then
+        -- set up device watch
+        rem = tonumber (rem)
+        lcl = tonumber (lcl)
+        luup.log (("mirror: rem=%s, lcl=%d.%s.%s"): format (rem, lcl, srv, var))
+        local m = mirrored[rem] or {}                       -- flag remote device as a mirror, so don't clone locally
+        local hash = table.concat ({lcl, srv, var}, '.')    -- build hash key
+        hashes[hash] = rem
+        m[#m+1] = {lcl=lcl, srv=srv, var=var, hash=hash}    -- add to list of watched vars for this device
+        mirrored[rem] = m 
+      end
+    end
+  end
+  return mirrored, hashes
+end
+
+-- Mirror watch callbacks
+
+function VeraBridge_Mirror_Callback (dev, srv, var, _, new)
+  local hash = table.concat ({dev, srv, var}, '.')
+  local request = "http://%s:3480/data_request?id=variableset&DeviceNum=%d&serviceId=%s&Variable=%s&Value=%s"
+  local rem = MirrorHash[hash]
+  if rem then   --  send to remote device
+    luup.inet.wget (request: format(ip, rem, srv, var, url.escape(new)))
+  end
+end
+
+-- set up callbacks and initialise remote device variables
+local function watch_mirror_variables (mirrored)
+  for rem, mirror in pairs (mirrored) do
+    for _, v in ipairs (mirror) do
+      luup.variable_watch ("VeraBridge_Mirror_Callback", v.srv, v.var, v.lcl)   -- start watching 
+      local val = luup.variable_get (v.srv, v.var, v.lcl)
+      VeraBridge_Mirror_Callback (rem, v.srv, v.var, nil, val or '')  -- use the callback to set the values
+    end
+  end
+  return
 end
 
 --
@@ -282,27 +527,52 @@ end
 
 -- plugin startup
 function init (lul_device)
-  luup.log (_NAME)
-  luup.log (_VERSION)
-    
-  devNo = lul_device
-  OFFSET = findOffset ()
-  luup.log ("device clone numbering starts at " .. OFFSET)
-
-  luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
+  luup.log (ABOUT.NAME)
+  luup.log (ABOUT.VERSION)
   
+  devNo = lul_device
   ip = luup.attr_get ("ip", devNo)
   luup.log (ip)
   
-  local Ndev, Nscn = GetUserData ()
-  luup.variable_set (SID.gateway, "Devices", Ndev, devNo)
-  luup.variable_set (SID.gateway, "Scenes",  Nscn, devNo)
-  luup.variable_set (SID.gateway, "Version", _VERSION, devNo)
-  luup.variable_set (SID.altui, "DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", devNo)
-  luup.variable_set (SID.altui, "DisplayLine2", ip, devNo)
+  OFFSET = findOffset ()
+  luup.log ("device clone numbering starts at " .. OFFSET)
 
-  VeraBridge_delay_callback ()
+  -- User configuration parameters: @explorer and @logread options
   
-  return true, "OK", _NAME
+  ZWaveOnly = uiVar ("ZWaveOnly", '')         -- if set to true then only Z-Wave devices are considered by VeraBridge.
+  Included  = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
+  Excluded  = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge, 
+                                              -- ...takes precedence over the first two.
+  
+  ZWaveOnly = ZWaveOnly == "true"                         -- convert to logical
+  Included = convert_to_set (Included)
+  Excluded = convert_to_set (Excluded)  
+  Mirrored, MirrorHash = set_of_mirrored_devices ()       -- create set and hash of remote device IDs which are mirrored
+  
+  -- map remote Zwave controller device if we are the primary VeraBridge 
+  if OFFSET == BLOCKSIZE then 
+    Zwave = {1}                   -- device IDs for mapping (same value on local and remote)
+    set_parent (1, devNo)         -- ensure Zwave controller is an existing child 
+    set_parent (2, 0)             -- unhook local scene controller (remote will have its own)
+    luup.log "VeraBridge maps remote Zwave controller"
+  end
+
+  luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
+  
+  local Ndev, Nscn = GetUserData ()
+  
+  setVar ("Version", ABOUT.VERSION)
+  setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
+  setVar ("DisplayLine2", ip, SID.altui)
+  
+  if Ndev > 0 or Nscn > 0 then
+    watch_mirror_variables (Mirrored)         -- set up variable watches for mirrored devices
+    VeraBridge_delay_callback ()
+    luup.set_failure (0)                      -- all's well with the world
+  else
+    luup.set_failure (2)                      -- say it's an authentication error
+  end
+  return true, "OK", ABOUT.NAME
 end
 
+-----

@@ -1,11 +1,19 @@
-local revisionDate = "2016.03.01"
-local banner = "     version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.devices",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "low-level device/service/variable objects",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- openLuup.devices
 --
 
 -- 2016.03.01  added notes to action jobs
+-- 2016.04.15  added per-device variable numbering (thanks @explorer)
+-- 2016.04.29  added device status
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 
@@ -38,21 +46,24 @@ local sys_watchers = {}         -- list of system-wide (ie. non-device-specific)
 -- Note that there is no "get" function, object variables can be read directly (but setting should use the method)
 --
 
-local variable = { VarID = 0 }            -- unique variable number incremented for each new instance
-  
+local variable = {}
+
 function variable.new (name, serviceId, devNo)    -- factory for new variables
-  variable.VarID = variable.VarID + 1
+  local device = device_list[devNo] or {}
+  local vars = device.variables or {}
+  local varID = #vars + 1
   new_userdata_dataversion ()                     -- say structure has changed
-  return {
+  vars[varID] = {
       -- variables
       dev       = devNo,
-      id        = variable.VarID,                 -- unique ID
+      id        = varID,                          -- unique ID
       name      = name,                           -- name (unique within service)
       srv       = serviceId,
       watchers  = {},                             -- callback hooks
       -- methods
       set       = variable.set,
     }
+  return vars[varID]
 end
   
 function variable:set (value)
@@ -161,7 +172,21 @@ local function new (devNo)
   local version               -- set device version (used to flag changes)
   local missing_action        -- an action callback to catch missing actions
   local watchers    = {}      -- list of watchers for any service or variable
- 
+  local status      = -1      -- device status
+  
+  local function status_get (self)            -- 2016.04.29
+    return status
+  end
+  
+  local function status_set (self, value)     -- 2016.04.29
+    if status ~= value then
+--      new_dataversion ()
+      new_userdata_dataversion ()
+      status = value
+    end
+  end
+  
+  
   -- function: variable_set
   -- parameters: service (string), variable (string), value (string), watch (boolean)
   -- if watch is true, then invoke any watchers for this device/service/variable
@@ -282,9 +307,11 @@ local function new (devNo)
    
   device_list[devNo] =  {
       -- data structures
+      
       attributes          = attributes,
       services            = services,
       watchers            = watchers,
+      variables           = {},            -- 2016.04.15  complete list of device variables by ID
       
       -- note that these methods should be called with device:function() syntax...
       call_action         = call_action,
@@ -293,6 +320,9 @@ local function new (devNo)
       
       attr_get            = attr_get,
       attr_set            = attr_set,
+      
+      status_get          = status_get,
+      status_set          = status_set,
       
       variable_set        = variable_set, 
       variable_get        = variable_get,
@@ -307,11 +337,12 @@ end
 -- export variables and methods
 
 return {
+  ABOUT = ABOUT,
+  
   -- variables
   dataversion           = dataversion,
   device_list           = device_list,
   userdata_dataversion  = userdata_dataversion,
-  version               = banner,           -- this is the module software version
   
   -- methods
   new                       = new,

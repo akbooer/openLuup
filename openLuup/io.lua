@@ -1,6 +1,11 @@
-local _NAME = "openLuup.io"
-local revisionDate = "2016.02.15"
-local banner = "       version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.io",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "I/O module for plugins",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- openLuupIO - I/O module for plugins
@@ -27,8 +32,9 @@ local scheduler = require "openLuup.scheduler"
 
 --  local log
 --local function _log (msg, name) logs.send (msg, name or _NAME) end
-local function _log (msg, name) logs.send (msg, name or _NAME, scheduler.current_device()) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME, scheduler.current_device()) end
+
+logs.banner (ABOUT)   -- for version control
 
 --[[
  <protocol>
@@ -250,6 +256,7 @@ end
 -- return methods
 
 return {
+--  ABOUT = ABOUT,      -- commented out, because this is a module visible to the user
   intercept     = intercept, 
   is_connected  = is_connected,
   open          = open, 

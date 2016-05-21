@@ -9,12 +9,18 @@
     <friendlyName>Vera Bridge</friendlyName>
     <manufacturer>akbooer</manufacturer>
     <manufacturerURL></manufacturerURL>
-    <modelDescription>Vera Bridge</modelDescription>
-    <modelName>1.0</modelName>
+    <modelDescription>Vera Bridge for openLuup</modelDescription>
+    <modelName>VeraBridge v2.0</modelName>
     <modelNumber>1</modelNumber>
     <handleChildren>1</handleChildren>
+    <Category_Num>1</Category_Num>
     <UDN></UDN>
     <serviceList>
+      <service>
+        <serviceType>urn:akbooer-com:service:VeraBridge:1</serviceType>
+        <serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+        <SCPDURL>S_VeraBridge.xml</SCPDURL>
+      </service>
     </serviceList>
 		<staticJson>D_VeraBridge.json</staticJson>
     <implementationList>

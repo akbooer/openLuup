@@ -1,11 +1,30 @@
-local version = "openLuup.user_data  2015.10.30  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.userdata",
+  VERSION       = "2016.05.21",
+  DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 -- user_data
 -- saving and loading, plus utility functions used by HTTP requests id=user_data, etc.
 
-local json = require "openLuup.json"
+-- 2016.05.09   return length of user_data.json file on successful save
+-- 2016.05.12   moved load_user_data to this module from init
+-- 2016.05.15   use InstalledPlugins2 list
+-- 2016.05.21   handle empty InstalledPlugins2 in user_data file on loading
 
-local plugins = require "openLuup.plugins"
+local json    = require "openLuup.json"
+local rooms   = require "openLuup.rooms"
+local logs    = require "openLuup.logs"
+local scenes  = require "openLuup.scenes"
+local chdev   = require "openLuup.chdev"
+
+--  local log
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 --
 -- Here a complete list of top-level (scalar) attributes taken from an actual Vera user_data2 request
@@ -81,30 +100,204 @@ local attributes = {
 
 -- openLuup specials
 
+  GitHubVersion = "unknown",
+  GitHubLatest  = "unknown",
   ShutdownCode = '',
 
 }
+
+--
+-- preset plug data
+--
+
+local InstalledPlugins2 = {}
+
+  InstalledPlugins2[1] =      -- we'll always put openLuup in pole position!
+    {
+      AllowMultiple   = "0",
+      Title           = "openLuup",
+      Icon            = "https://avatars.githubusercontent.com/u/4962913",
+      Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
+      AutoUpdate      = "0",
+      VersionMajor    = "GitHub",
+      VersionMinor    = '?',
+      id              = "openLuup",
+      Repository      = {          
+          backup            = "plugins/backup/altui/",
+          downloads         = "plugins/downloads/altui/",
+          blockly_downloads = "plugins/downloads/altui/blockly/",
+        },
+      Files           = {},
+    }
+
+
+  InstalledPlugins2[2] =      -- Sorry, relegated to #2 position!
+    {
+      AllowMultiple   = "0",
+      Title           = "Alternate UI",
+      Icon            = "plugins/icons/8246.png",  -- usage: http://apps.mios.com/icons/8246.png
+      Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
+      AutoUpdate      = "1",
+      VersionMajor    = "GitHub",
+      VersionMinor    = '?',
+      id              = 8246,
+      timestamp       = os.time(),
+      Files           = {},
+    }
+
+  InstalledPlugins2[3] =  
+    {
+      AllowMultiple   = "1",
+      Title           = "VeraBridge",
+      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
+      Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
+--        Hidden          = "0",
+      AutoUpdate      = "0",
+--      Version         = 28706,
+      VersionMajor    = "GitHub",
+      VersionMinor    = '?',
+--      "SupportedPlatforms": null,
+--      "MinimumVersion": null,
+--      "DevStatus": null,
+--      "Approved": "0",
+      id              = "VeraBridge",
+--      "TargetVersion": "28706",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {},
+      Directories     = {
+        backup        = "",
+        download      = "",
+        install       = "",
+        repository    = ""
+      },
+    }
+
+
+--  InstalledPlugins2[4] =  
+--    {
+--      AllowMultiple   = "0",
+--      Title           = "DataYours",
+--      Icon            = "https://raw.githubusercontent.com/akbooer/DataYours/master/icons/DataYours.png",
+--      Instructions    = "https://github.com/akbooer/DataYours/tree/master/Documentation",
+--      AutoUpdate      = "0",
+----      Version         = 28706,
+--      VersionMajor    = "not",
+--      VersionMinor    = 'installed',
+--      id              = 8211,
+----      "TargetVersion": "28706",
+--      timestamp       = os.time(),
+--      Files           = {},
+--    }
+
+
+--  InstalledPlugins2[5] = 
+--    {
+--      AllowMultiple   = "0",
+--      Title           = "Generic",
+--      Icon            = "images/plugin.png", 
+--      Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
+--      Hidden          = "0",
+--      AutoUpdate      = "0",
+--      VersionMajor    = "MiOS_Trac",
+--      VersionMinor    = '?',
+--      id              = "Test",
+--      timestamp       = os.time(),
+--      Files           = {},
+--    }
+
 
 local function parse_user_data (user_data_json)
   return json.decode (user_data_json)
 end
 
 
-local function load_user_data (filename)
-  local user_data, message, err
-  local f = io.open (filename or "user_data.json", 'r')
-  if f then 
-    local user_data_json = f:read "*a"
-    f:close ()
-    user_data, err = parse_user_data (user_data_json)
-    if not user_data then
-      message = "error in user_data: " .. err
-    end
+
+-- load user_data (persistence for attributes, rooms, devices and scenes)
+local function load_user_data (user_data_json)  
+  _log "loading user_data json..."
+  local user_data, msg = parse_user_data (user_data_json)
+  if msg then 
+    _log (msg)
   else
-    user_data = {}
-    message = "cannot open user_data file"    -- not an error, _per se_, there may just be no file
+    -- ATTRIBUTES
+    local attr = attributes or {}
+    for a,b in pairs (attr) do                    -- go through the template for names to restore
+      luup.attr_set (a, user_data[a] or b)        -- use saved value or default
+      -- note that attr_set also handles the "special" attributes which are mirrored in luup.XXX
+    end
+    
+    -- ROOMS    
+    _log "loading rooms..."
+    for _,x in pairs (user_data.rooms or {}) do
+      rooms.create (x.name, x.id)
+      _log (("room#%d '%s'"): format (x.id,x.name)) 
+    end
+    _log "...room loading completed"
+    
+    -- DEVICES  
+    _log "loading devices..."    
+    for _, d in ipairs (user_data.devices or {}) do
+      local dev = chdev.create {      -- the variation in naming within luup is appalling
+          devNo = d.id, 
+          device_type     = d.device_type, 
+          internal_id     = d.altid,
+          description     = d.name, 
+          upnp_file       = d.device_file, 
+          upnp_impl       = d.impl_file or '',
+          json_file       = d.device_json or '',
+          ip              = d.ip, 
+          mac             = d.mac, 
+          hidden          = nil, 
+          invisible       = d.invisible == "1",
+          parent          = d.id_parent,
+          room            = tonumber (d.room), 
+          pluginnum       = d.plugin,
+          statevariables  = d.states,      -- states : table {id, service, variable, value}
+          disabled        = d.disabled,
+          username        = d.username,
+          password        = d.password,
+        }
+      dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
+      -- set other device attributes
+      for a,v in pairs (d) do
+        if type(v) ~= "table" and not dev.attributes[a] then
+          dev:attr_set (a, v)
+        end
+      end
+      luup.devices[d.id] = dev                          -- save it
+    end 
+  
+    -- SCENES 
+    _log "loading scenes..."
+    local Nscn = 0
+    for _, scene in ipairs (user_data.scenes or {}) do
+      local new, msg = scenes.create (scene)
+      if new and scene.id then
+        Nscn = Nscn + 1
+        luup.scenes[scene.id] = new
+        _log (("[%s] %s"): format (scene.id or '?', scene.name))
+      else
+        _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
+      end
+    end
+    _log ("number of scenes = " .. Nscn)
+    
+    for i,n in ipairs (luup.scenes) do _log (("scene#%d '%s'"):format (i,n.description)) end
+    _log "...scene loading completed"
+  
+    -- PLUGINS
+    _log "loading installed plugin info..."
+    local i = user_data.InstalledPlugins2
+    local plugins = InstalledPlugins2
+    if i and next(i) then plugins = i end
+    attr.InstalledPlugins2 = plugins
+    for _, plugin in ipairs (plugins) do
+      _log (table.concat {"id: ", plugin.id, ", name: ", plugin.Title})
+    end
   end
-  return user_data, message
+  _log "...user_data loading completed"
+  return not msg, msg
 end
 
 --
@@ -115,15 +308,13 @@ local function devices_table (device_list)
   local serviceNo = 0
   for _,d in pairs (device_list) do 
     local states = {}
-      for serviceId, srv in pairs(d.services) do
-        for name,item in pairs(srv.variables) do
-          states[#states+1] = {
-          id = item.id, 
-          service = serviceId,
-          variable = name,
-          value = item.value,
-        }
-      end
+    for i,item in ipairs(d.variables) do
+      states[i] = {
+        id = item.id, 
+        service = item.srv,
+        variable = item.name,
+        value = item.value,
+      }
     end
     local curls 
     if d.serviceList then         -- add the ControlURLs
@@ -139,9 +330,12 @@ local function devices_table (device_list)
       end
     end
     
+    local status = d:status_get() or -1      -- 2016.04.29
+--    if status == -1 then status = nil end     -- don't report 'normal' status ???
     local tbl = {     
       ControlURLs     = curls,                              
       states          = states,
+      status          = status,
     }
     for a,b in pairs (d.attributes) do tbl[a] = b end
     info[#info+1] = tbl
@@ -152,51 +346,54 @@ end
 -- save ()
 -- top-level attributes and key tables: devices, rooms, scenes
 -- TODO: [, sections, users, weatherSettings]
-local function save_user_data (luup, filename)
+local function save_user_data (localLuup, filename)   -- refactored thanks to @explorer
+  local luup = localLuup or luup
   local result, message
-  local f = io.open (filename or "user_data.json", 'w')
-  if not f then
-    message =  "error writing user_data"
+  local data = {rooms = {}, scenes = {}}
+  -- scalar attributes
+  for a,b in pairs (attributes) do
+    if type(b) ~= "table" then data[a] = b end
+  end
+  -- devices
+  data.devices = devices_table (luup.devices or {})
+  -- plugins
+  data.InstalledPlugins2 = attributes.InstalledPlugins2   -- 2016.05.15
+  -- rooms
+  local rooms = data.rooms
+  for i, name in pairs (luup.rooms or {}) do 
+    rooms[#rooms+1] = {id = i, name = name}
+  end
+  -- scenes
+  local scenes = data.scenes
+  for _, s in pairs (luup.scenes or {}) do
+    scenes[#scenes+1] = s: user_table ()
+  end    
+  --
+  local j, msg = json.encode (data)
+  if not j then
+    message = "syntax error in user_data: " .. (msg or '?')
   else
-    local data = {rooms = {}, scenes = {}}
-    -- scalar attributes
-    for a,b in pairs (attributes) do
-      if type(b) ~= "table" then data[a] = b end
-    end
-    -- devices
-    data.devices = devices_table (luup.devices or {})
-    -- plugins
-    data.InstalledPlugins2 = {}   -- TODO: replace with plugins.installed()
-    -- rooms
-    local rooms = data.rooms
-    for i, name in pairs (luup.rooms or {}) do 
-      rooms[#rooms+1] = {id = i, name = name}
-    end
-    -- scenes
-    local scenes = data.scenes
-    for _, s in pairs (luup.scenes or {}) do
-      scenes[#scenes+1] = s: user_table ()
-    end    
-    --
-    local j, msg = json.encode (data)
-    if j then
+    local f, err = io.open (filename or "user_data.json", 'w')
+    if not f then
+      message =  "error writing user_data: " .. (err or '?')
+    else
       f:write (j)
       f:write '\n'
-      result = true
-    else
-      message = "syntax error in user_data: " .. (msg or '?')
+      f:close ()
+      result = #j   -- 2016.05.09 return length of user_data.json file
     end
-    f:close ()
   end
+
   return result, message
 end
 
 return {
+  ABOUT           = ABOUT,
+  
   attributes      = attributes,
   devices_table   = devices_table, 
   load            = load_user_data,
-  parse           = parse_user_data,
+--  parse           = parse_user_data,
   save            = save_user_data,
-  version         = version,
 }
 

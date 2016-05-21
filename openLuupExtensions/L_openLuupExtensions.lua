@@ -1,7 +1,11 @@
-_NAME = "openLuup:Extensions"
-_VERSION = "2015.11.03"
-_DESCRIPTION = "openLuup:Extensions plugin for openLuup!!"
-_AUTHOR = "@akbooer"
+local ABOUT = {
+  NAME          = "openLuup:Extensions",
+  VERSION       = "2016.05.10",
+  DESCRIPTION   = "openLuup:Extensions plugin for openLuup!!",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- provide added functionality, including:
@@ -10,16 +14,8 @@ _AUTHOR = "@akbooer"
 --   * etc., etc...
 --
 
-local timers        = require "openLuup.timers"
-
-local json = require "openLuup.json"
-
-local ole = {
-     _NAME = _NAME,
-    _VERSION = _VERSION,
-    _DESCRIPTION = _DESCRIPTION,
-    _AUTHOR = _AUTHOR,
-}
+local timers  = require "openLuup.timers"
+local json    = require "openLuup.json"
 
 local INTERVAL = 120
 local MINUTES  = "2m"
@@ -75,8 +71,8 @@ end
 function HTTP_Extensions (r, p, f)
   local x = {}
   local fmt = "%-16s   %s   "
-  for a,b in pairs (ole) do
-    x[#x+1] = fmt:format (a,b)
+  for a,b in pairs (ABOUT) do
+    x[#x+1] = fmt:format (a, tostring(b))
   end
   x = table.concat (x, '\n')
   return x
@@ -102,7 +98,7 @@ function init ()
   luup.register_handler ("HTTP_Extensions", "version")
   
   display "Uptime 0"
-  return nil, msg, ole._NAME
+  return true, msg, ABOUT.NAME
 end
 
 -----

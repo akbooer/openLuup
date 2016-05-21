@@ -1,6 +1,11 @@
-local _NAME = "openLuup.rooms"
-local revisionDate = "2015.10.15"
-local banner = "    version " .. revisionDate .. "  @akbooer"
+local ABOUT = {
+  NAME          = "openLuup.rooms",
+  VERSION       = "2016.04.30",
+  DESCRIPTION   = "room-related calls ",
+  AUTHOR        = "@akbooer",
+  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+}
 
 --
 -- openLuup.rooms: the place for room-related calls 
@@ -11,8 +16,9 @@ local logs    = require "openLuup.logs"
 local json    = require "openLuup.json"
 
 --  local log
-local function _log (msg, name) logs.send (msg, name or _NAME) end
-_log (banner, _NAME)   -- for version control
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 --
 -- ROOM
@@ -100,6 +106,8 @@ local function save (filename)
 end
 
 return {
+  ABOUT = ABOUT,
+  
   create    = create,
   delete    = delete,
   rename    = rename,
