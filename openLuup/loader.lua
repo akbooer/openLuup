@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.21",
   DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -23,6 +23,7 @@ local ABOUT = {
 -- 2016.04.14  @explorer added device category name lookup by category number. 
 -- 2016.04.16  tidy up some previous edits
 -- 2016.05.12  pre-load openLuup static data
+-- 2016.05.21  fix for invalid argument list in parse_service_xml
 
 ------------------
 --
@@ -284,9 +285,11 @@ local function parse_service_xml (service_xml)
   for _,a in ipairs (actions) do
     local argument = xml.extract (a, "argumentList", "argument")
     local list = {}
-    for _,k in ipairs (argument) do
-      if k.direction: match "out" and k.name and k.relatedStateVariable then
-        list [k.name] = k.relatedStateVariable
+    if type (argument) == "table" then  -- 2016.05.21  fix for invalid argument list in parse_service_xml
+      for _,k in ipairs (argument) do
+        if k.direction: match "out" and k.name and k.relatedStateVariable then
+          list [k.name] = k.relatedStateVariable
+        end
       end
     end
     returns[a.name] = list
