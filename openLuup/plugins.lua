@@ -12,7 +12,7 @@ local ABOUT = {
 -- 
 -- 2016.04.26  switch to GitHub update module
 -- 2016.05.15  add some InstalledPlugins2 data for openLuup and AltUI
-
+-- 2016.05.21  fix destination directory  error in openLuup install!
 
 -- TODO: parameterize all this to be data-driven from the InstalledPlugins2 structure.
 
@@ -214,11 +214,10 @@ local function update_openLuup (p)
   if not ok then return "openLuup download failed" end
  
   local cmh_ludl = ''
---  cmh_ludl = "CMH_LUDL_TEST/"       -- TODO: testing only
-  mkdir_tree (cmh_ludl)
+  local openLuup = path "openLuup/"
   
   _log "installing new openLuup version..."
-  s1 = batch_copy (openLuup_downloads, cmh_ludl)
+  s1 = batch_copy (openLuup_downloads, openLuup)
   s2 = batch_copy (bridge_downloads, cmh_ludl)
   s3 = batch_copy (extensions_downloads, cmh_ludl)
   _log (table.concat {"Grand Total size: ", s1 + s2 + s3, " bytes"})
