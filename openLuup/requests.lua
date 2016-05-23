@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.05.21",
+  VERSION       = "2016.05.23",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -21,6 +21,7 @@ local ABOUT = {
 -- 2016.04.25  openLuup update changes
 -- 2016.04.29  add actual device status to status response 
 -- 2016.05.18  generic update_plugin request for latest version
+-- 2016.05.23  fix &id=altui plugin numbering string (thanks @amg0)
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -687,7 +688,7 @@ local function reload () luup.reload () end     -- reload openLuup
 
 local function file (_,p) return server.http_file (p.parameters or '') end                 -- file access
 
-local function altui (_,p) return plugins.create {PluginNum = 8246, TracRev=tonumber(p.rev)} end    -- install/update ALTUI
+local function altui (_,p) return plugins.create {PluginNum = "8246", TracRev=tonumber(p.rev)} end    -- install/update ALTUI
 
 local function update (_,p) return plugins.create {PluginNum = "openLuup", Tag = p.rev} end   -- update openLuup
 
