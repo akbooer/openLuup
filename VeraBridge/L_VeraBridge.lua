@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.05.21",
+  VERSION       = "2016.05.23",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -34,6 +34,7 @@ ABOUT = {
 -- 2016.05.14   settled on implementation of mirror devices using top-level openLuup.mirrors attribute
 -- 2016.05.15   HouseMode variable to reflect status of bridged Vera (thanks @logread)
 -- 2016.05.21   @explorer fix for missing Zwave device children when ZWaveOnly selected
+-- 2016.05.23   HouseModeMirror for mirroring either way (thanks @konradwalsh)
 
 local devNo                      -- our device number
 
@@ -53,12 +54,21 @@ local local_room_index           -- bi-directional index of our rooms
 local remote_room_index          -- bi-directional of remote rooms
 
 local SID = {
+  altui    = "urn:upnp-org:serviceId:altui1"  ,         -- Variables = 'DisplayLine1' and 'DisplayLine2'
   gateway  = "urn:akbooer-com:serviceId:VeraBridge1",
-  altui    = "urn:upnp-org:serviceId:altui1"          -- Variables = 'DisplayLine1' and 'DisplayLine2'
+  hag      = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
 }
 
-local Mirrored    -- mirrors is a set of device IDs for 'reverse bridging', not to be cloned
-local MirrorHash  -- reverse lookup: local hash to remote device ID
+local Mirrored          -- mirrors is a set of device IDs for 'reverse bridging', not to be cloned
+local MirrorHash        -- reverse lookup: local hash to remote device ID
+local HouseModeMirror   -- flag with one of the following options
+local HouseModeTime = 0 -- last time we checked
+
+local HouseModeOptions = {      -- 2016.05.23
+  ['0'] = "0 : no mirroring",
+  ['1'] = "1 : local mirrors remote",
+  ['2'] = "2 : remote mirrors local",
+}
 
 -- @explorer options for device filtering
 
@@ -294,7 +304,6 @@ local function create_scenes (remote_scenes, room)
   luup.log "linking to remote scenes..."
   
   local action = "RunScene"
-  local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
   local wget = 'luup.inet.wget "http://%s:3480/data_request?id=action&serviceId=%s&action=%s&SceneNum=%d"' 
   
   for _, s in pairs (remote_scenes) do
@@ -307,7 +316,7 @@ local function create_scenes (remote_scenes, room)
           id = id,
           name = s.name,
           room = room,
-          lua = wget:format (ip, sid, action, s.id)   -- trigger the remote scene
+          lua = wget:format (ip, SID.hag, action, s.id)   -- trigger the remote scene
           }
         luup.scenes[new.id] = scenes.create (new)
         luup.log (("scene [%d] %s"): format (new.id, new.name))
@@ -375,6 +384,30 @@ local function UpdateVariables(devices)
   end
 end
 
+-- update HouseMode variable and, possibly, the actual openLuup Mode
+local function UpdateHouseMode (Mode)
+  Mode = tostring(Mode)
+  setVar ("HouseMode", Mode)                  -- 2016.05.15, thanks @logread!
+  
+  local current = userdata.attributes.Mode
+  if current ~= Mode then 
+    if HouseModeMirror == '1' then
+      luup.attr_set ("Mode", Mode)            -- 2016.05.23, thanks @konradwalsh!
+      
+    elseif HouseModeMirror == '2' then
+      local now = os.time()
+      luup.log "remote HouseMode differs from that set..."
+      if now > HouseModeTime + 60 then        -- ensure a long delay between retries (Vera is slow to change)
+        local switch = "remote HouseMode update, was: %s, switching to: %s"
+        luup.log (switch: format (Mode, current))
+        HouseModeTime = now
+        local request = "http://%s:3480/data_request?id=action&serviceId=%s&DeviceNum=0&action=SetHouseMode&Mode=%s"
+        luup.inet.wget (request: format(ip, SID.hag, current))
+      end
+    end
+  end
+end
+
 -- poll remote Vera for changes
 -- TODO: make callback use asynchronous I/O
 local poll_count = 0
@@ -387,7 +420,7 @@ function VeraBridge_delay_callback (DataVersion)
   local status, j = luup.inet.wget (url)
   if status == 0 then s = json.decode (j) end
   if s and s.devices then
-    setVar ("HouseMode", tonumber (s.Mode) or 1)   -- 2016.05.15, thanks @logread!
+    UpdateHouseMode (s.Mode)
     UpdateVariables (s.devices)
     DataVersion = s.DataVersion
     luup.devices[devNo]:variable_set (SID.gateway, "LastUpdate", os.time(), true) -- 2016.03.20 set without log entry
@@ -543,6 +576,10 @@ function init (lul_device)
   Included  = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
   Excluded  = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge, 
                                               -- ...takes precedence over the first two.
+  
+  local hmm = uiVar ("HouseModeMirror",HouseModeOptions['0'])   -- 2016.05.23
+  HouseModeMirror = hmm: match "^([012])" or '0'
+  setVar ("HouseModeMirror", HouseModeOptions[HouseModeMirror]) -- replace with full string
   
   ZWaveOnly = ZWaveOnly == "true"                         -- convert to logical
   Included = convert_to_set (Included)
