@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.05.22",
+  VERSION       = "2016.05.24",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -14,7 +14,8 @@ local ABOUT = {
 -- 2016.05.12   moved load_user_data to this module from init
 -- 2016.05.15   use InstalledPlugins2 list
 -- 2016.05.21   handle empty InstalledPlugins2 in user_data file on loading
--- 2016.05.22  ignore table structure in writing user_data attributes
+-- 2016.05.22   ignore table structure in writing user_data attributes
+-- 2016.05.24   update InstalledPlugins2 list
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -126,7 +127,7 @@ local InstalledPlugins2 = {}
           downloads         = "plugins/downloads/altui/",
           blockly_downloads = "plugins/downloads/altui/blockly/",
         },
-      Files           = {},
+      Files = {},
     }
 
 
