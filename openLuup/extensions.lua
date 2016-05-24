@@ -65,13 +65,6 @@ local function calc_stats ()
   set_attr ["Uptime"]  = uptime .. " days"
 end
 
------
-
-local function ticker ()
-  print ("luup.device", luup.device)
-  calc_stats()
-end
-
 -- HTTP requests
 
 --function HTTP_openLuup (r, p, f)
@@ -87,11 +80,16 @@ end
 
 -- init
 
-local function synchronise ()
+function OLE_ticker ()
+  calc_stats()
+end
+
+function OLE_synchronise ()
   local days, data                      -- unused parameters
   local timer_type = 1                  -- interval timer
-  local recurring = true                -- reschedule automatically
-  timers.call_timer (ticker, timer_type, MINUTES, days, data, recurring)
+  local recurring = true                -- reschedule automatically, definitely not a Vera luup option! ... 
+                          -- ...it ensures that rescheduling is always on time and does not 'slip' between calls.
+  luup.call_timer ("OLE_ticker", timer_type, MINUTES, days, data, recurring)
   luup.log "synchronisation completed, system monitor started"
   calc_stats ()
 end
@@ -100,9 +98,8 @@ function init (devNo)
   ole = devNo
   local later = timers.timenow() + INTERVAL    -- some minutes in the future
   later = INTERVAL - later % INTERVAL          -- adjust to on-the-hour 
-  timers.call_delay (synchronise, later)
+  luup.call_delay ("OLE_synchronise", later)
   local msg = ("synchronising in %0.1f seconds"): format (later)
-  print (msg)
   
   luup.register_handler ("HTTP_openLuup", "version")
   
