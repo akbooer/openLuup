@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.05.21",
+  VERSION       = "2016.05.22",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -14,6 +14,7 @@ local ABOUT = {
 -- 2016.05.12   moved load_user_data to this module from init
 -- 2016.05.15   use InstalledPlugins2 list
 -- 2016.05.21   handle empty InstalledPlugins2 in user_data file on loading
+-- 2016.05.22  ignore table structure in writing user_data attributes
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -100,14 +101,12 @@ local attributes = {
 
 -- openLuup specials
 
-  GitHubVersion = "unknown",
-  GitHubLatest  = "unknown",
   ShutdownCode = '',
 
 }
 
 --
--- preset plug data
+-- preset plugin data
 --
 
 local InstalledPlugins2 = {}
@@ -174,24 +173,62 @@ local InstalledPlugins2 = {}
     }
 
 
---  InstalledPlugins2[4] =  
---    {
---      AllowMultiple   = "0",
---      Title           = "DataYours",
---      Icon            = "https://raw.githubusercontent.com/akbooer/DataYours/master/icons/DataYours.png",
---      Instructions    = "https://github.com/akbooer/DataYours/tree/master/Documentation",
---      AutoUpdate      = "0",
-----      Version         = 28706,
---      VersionMajor    = "not",
---      VersionMinor    = 'installed',
---      id              = 8211,
-----      "TargetVersion": "28706",
---      timestamp       = os.time(),
---      Files           = {},
---    }
+  InstalledPlugins2[4] =  
+    {
+      AllowMultiple   = "0",
+      Title           = "DataYours",
+      Icon            = "https://raw.githubusercontent.com/akbooer/DataYours/master/icons/DataYours.png",
+      Instructions    = "https://github.com/akbooer/DataYours/tree/master/Documentation",
+      AutoUpdate      = "0",
+--      Version         = 28706,
+      VersionMajor    = "not",
+      VersionMinor    = 'installed',
+      id              = 8211,
+--      "TargetVersion": "28706",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {},
+      Directories     = {
+        backup        = "",
+        download      = "",
+        install       = "",
+        repository    = ""
+      },
+    }
 
 
---  InstalledPlugins2[5] = 
+  InstalledPlugins2[5] = 
+    {
+      AllowMultiple   = "0",
+      Title           = "MySensors Arduino",
+      Icon            = "https://www.mysensors.org/icon/MySensors.png", 
+      Instructions    = "https://github.com/mysensors/Vera/tree/UI7",
+      Hidden          = "0",
+      AutoUpdate      = "0",
+      VersionMajor    = "not",
+      VersionMinor    = "installed",
+      id              = "Arduino",
+      timestamp       = os.time(),
+      Files           = {},
+    }
+
+  InstalledPlugins2[6] = 
+    {
+      AllowMultiple   = "0",
+      Title           = "iPhoneLocator",
+      Icon            = "https://raw.githubusercontent.com/amg0/IPhoneLocator/master/iconIPhone.png", 
+      Instructions    = "https://github.com/amg0/IPhoneLocator",
+      Hidden          = "0",
+      AutoUpdate      = "0",
+      VersionMajor    = "not",
+      VersionMinor    = "installed",
+      id              = "4686",
+      timestamp       = os.time(),
+      Files           = {},
+    }
+
+
+--  InstalledPlugins2[6] = 
 --    {
 --      AllowMultiple   = "0",
 --      Title           = "Generic",
@@ -207,24 +244,21 @@ local InstalledPlugins2 = {}
 --    }
 
 
-local function parse_user_data (user_data_json)
-  return json.decode (user_data_json)
-end
-
-
 
 -- load user_data (persistence for attributes, rooms, devices and scenes)
 local function load_user_data (user_data_json)  
   _log "loading user_data json..."
-  local user_data, msg = parse_user_data (user_data_json)
+  local user_data, msg = json.decode (user_data_json)
   if msg then 
     _log (msg)
   else
     -- ATTRIBUTES
     local attr = attributes or {}
     for a,b in pairs (attr) do                    -- go through the template for names to restore
-      luup.attr_set (a, user_data[a] or b)        -- use saved value or default
+      if type(b) ~= "table" then
+        luup.attr_set (a, user_data[a] or b)        -- use saved value or default
       -- note that attr_set also handles the "special" attributes which are mirrored in luup.XXX
+      end
     end
     
     -- ROOMS    
@@ -238,34 +272,36 @@ local function load_user_data (user_data_json)
     -- DEVICES  
     _log "loading devices..."    
     for _, d in ipairs (user_data.devices or {}) do
-      local dev = chdev.create {      -- the variation in naming within luup is appalling
-          devNo = d.id, 
-          device_type     = d.device_type, 
-          internal_id     = d.altid,
-          description     = d.name, 
-          upnp_file       = d.device_file, 
-          upnp_impl       = d.impl_file or '',
-          json_file       = d.device_json or '',
-          ip              = d.ip, 
-          mac             = d.mac, 
-          hidden          = nil, 
-          invisible       = d.invisible == "1",
-          parent          = d.id_parent,
-          room            = tonumber (d.room), 
-          pluginnum       = d.plugin,
-          statevariables  = d.states,      -- states : table {id, service, variable, value}
-          disabled        = d.disabled,
-          username        = d.username,
-          password        = d.password,
-        }
-      dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
-      -- set other device attributes
-      for a,v in pairs (d) do
-        if type(v) ~= "table" and not dev.attributes[a] then
-          dev:attr_set (a, v)
+      if d.id ~= 2 then               -- device #2 is reserved
+        local dev = chdev.create {      -- the variation in naming within luup is appalling
+            devNo = d.id, 
+            device_type     = d.device_type, 
+            internal_id     = d.altid,
+            description     = d.name, 
+            upnp_file       = d.device_file, 
+            upnp_impl       = d.impl_file or '',
+            json_file       = d.device_json or '',
+            ip              = d.ip, 
+            mac             = d.mac, 
+            hidden          = nil, 
+            invisible       = d.invisible == "1",
+            parent          = d.id_parent,
+            room            = tonumber (d.room), 
+            pluginnum       = d.plugin,
+            statevariables  = d.states,      -- states : table {id, service, variable, value}
+            disabled        = d.disabled,
+            username        = d.username,
+            password        = d.password,
+          }
+        dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
+        -- set other device attributes
+        for a,v in pairs (d) do
+          if type(v) ~= "table" and not dev.attributes[a] then
+            dev:attr_set (a, v)
+          end
         end
-      end
-      luup.devices[d.id] = dev                          -- save it
+        luup.devices[d.id] = dev                          -- save it
+      end 
     end 
   
     -- SCENES 
@@ -393,7 +429,6 @@ return {
   attributes      = attributes,
   devices_table   = devices_table, 
   load            = load_user_data,
---  parse           = parse_user_data,
   save            = save_user_data,
 }
 

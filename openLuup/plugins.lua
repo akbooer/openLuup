@@ -293,6 +293,55 @@ end
 
 --------------------------------------------------
 --
+-- Generic table-driven updates
+--
+-- invoked by:
+-- /data_request?id=action&
+--    serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&
+--     action=CreatePlugin&PluginNum=VeraBridge&Version=...
+
+
+local generic_updater = github.new ("akbooer/openLuup", "plugins/downloads/")
+
+local function update_generic (p)  -- TODO: finish this
+
+  local bridge_backup         = path "plugins/backup/VeraBridge/"
+  local bridge_downloads      = path "plugins/downloads/"
+  
+--  local rev = p.Version or "master"
+  local rev = p.Version or "development"
+  
+  _log "backing up VeraBridge"
+  mkdir_tree (bridge_backup)
+  local s2 = batch_copy ('.' .. pathSeparator, bridge_backup, "VeraBridge")   -- VeraBridge from /etc/cmh-ludl/
+  
+  _log ("downloading VeraBridge rev " .. rev)  
+  local subdirectories = {    -- these are the bits of the repository that we want
+    "/VeraBridge",
+  }
+  
+  local ok = bridge_updater.get_release (rev, subdirectories) 
+  if not ok then return "VeraBridge download failed" end
+ 
+  local cmh_ludl = ''
+--  cmh_ludl = "CMH_LUDL_TEST/"       -- TODO: testing only
+  mkdir_tree (cmh_ludl)
+  
+  _log "installing new VeraBridge version..."
+  s2 = batch_copy (bridge_downloads .. "VeraBridge/", cmh_ludl)
+
+  local IP2 = luup.attr_get "InstalledPlugins2"
+  IP2[3] = IP2[3] or {}
+  IP2[3].VersionMinor = rev   -- 2016.05.15
+  
+  local msg = "VeraBridge installed version: " .. rev
+  _log (msg)
+  luup.reload ()
+end
+
+
+--------------------------------------------------
+--
 -- TEST plugin methods
 --
 
@@ -321,6 +370,7 @@ local function create (p)
     ["openLuup"]    = update_openLuup, 
     ["VeraBridge"]  = update_bridge,
     ["Test"]        = update_test,
+    ["8211"]        = none,           -- DataYours
     ["8246"]        = update_altui,
   }
   return (dispatch[PluginNum or ''] or none) (p) 

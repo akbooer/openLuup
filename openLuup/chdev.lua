@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2016.05.12",
+  VERSION       = "2016.05.24",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -18,6 +18,7 @@ local ABOUT = {
 -- 2016.04.18  add username and password to attributes (for cameras)
 -- 2016.04.29  add device status
 -- 2016.05.12  use luup.attr_get and set, rather than a dependence on openLuup.userdata
+-- 2016.05.24  fix 'nil' plugin attribute
 
 local logs      = require "openLuup.logs"
 
@@ -140,7 +141,7 @@ local function create (x)
     manufacturer    = d.manufacturer or '',
     model           = d.modelName or '',
     name            = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?')), 
-    plugin          = tostring(x.pluginnum),
+    plugin          = tostring(x.pluginnum or ''),
     password        = x.password,
     room            = tostring(tonumber (x.room or 0)),   -- why it's a string, I have no idea
     subcategory_num = tonumber (d.subcategory_num) or 0,
