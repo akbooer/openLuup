@@ -27,7 +27,12 @@ local SID = {
 
 local ole   -- our own device ID
 
--- init
+
+local function round (x, p)
+  p = p or 1
+  x = x + p / 2
+  return x - x % p
+end
 
 local function display (line1, line2)
   luup.variable_set (SID.altui, "DisplayLine1",  line1 or '', ole)
@@ -37,32 +42,32 @@ end
 -----
 
 -- vital statistics
+local cpu_prev = 0
+
 local function calc_stats ()
   local AppMemoryUsed =  math.floor(collectgarbage "count")   -- openLuup's memory usage in kB
-  local now, cpu = os.time(), timers.cpu_clock()
-  local elapsed = now - timers.loadtime + 1
+  local now, cpu = timers.timenow(), timers.cpu_clock()
+  local uptime = now - timers.loadtime + 1
   
-  local percent = 100 * cpu / elapsed         -- % cpu
-  local memory = AppMemoryUsed / 1000         -- Mb
-  local uptime = elapsed / 24 / 60 / 60       -- days
-   
-  percent = ("%0.2f"): format (percent)
-  memory  = ("%0.1f"): format (memory)
-  uptime  = ("%0.2f"): format (uptime)
+  local cpuload = round ((cpu - cpu_prev) / INTERVAL * 100, 0.1)
+  local memory  = round (AppMemoryUsed / 1000, 0.1)
+  local days    = round (uptime / 24 / 60 / 60, 0.01)
   
-  luup.variable_set (SID.ole, "Memory_Mb",       memory,  ole)
-  luup.variable_set (SID.ole, "CpuLoad_Percent", percent, ole)
-  luup.variable_set (SID.ole, "Uptime_Days",     uptime,  ole)
+  cpu_prev= cpu
 
-  local line1 = ("%sMb, cpu %s%%, up %s days"): format (memory, percent, uptime)
+  luup.variable_set (SID.ole, "Memory_Mb",   memory,  ole)
+  luup.variable_set (SID.ole, "CpuLoad",     cpuload, ole)
+  luup.variable_set (SID.ole, "Uptime_Days", days,    ole)
+
+  local line1 = ("%s Mb, cpu %s%%, up %s days"): format (memory, cpuload, days)
   local line2 = ''                      -- TODO: "version: v0.7.0  (latest v0.8.3)"
   display (line1, line2)
   luup.log (line1)
  
   local set_attr = userdata.attributes.openLuup
-  set_attr ["Memory"]  = memory .. "Mbyte"
-  set_attr ["CpuLoad"] = percent .. '%'
-  set_attr ["Uptime"]  = uptime .. " days"
+  set_attr ["Memory"]  = memory .. " Mbyte"
+  set_attr ["CpuLoad"] = cpuload .. '%'
+  set_attr ["Uptime"]  = days .. " days"
 end
 
 -- HTTP requests
@@ -73,6 +78,11 @@ function HTTP_openLuup ()
   local fmt = "%-16s   %s   "
   for a,b in pairs (ABOUT) do
     x[#x+1] = fmt:format (a, tostring(b))
+  end
+  local info = luup.attr_get "openLuup"
+  x[#x+1] = "----------"
+  for a,b in pairs (info or {}) do
+    x[#x+1] = table.concat {a, " : ", tostring(b)} 
   end
   x = table.concat (x, '\n')
   return x
@@ -97,11 +107,11 @@ end
 function init (devNo)
   ole = devNo
   local later = timers.timenow() + INTERVAL    -- some minutes in the future
-  later = INTERVAL - later % INTERVAL          -- adjust to on-the-hour 
+  later = INTERVAL - later % INTERVAL          -- adjust to on-the-hour (actually, two-minutes)
   luup.call_delay ("OLE_synchronise", later)
   local msg = ("synchronising in %0.1f seconds"): format (later)
   
-  luup.register_handler ("HTTP_openLuup", "version")
+  luup.register_handler ("HTTP_openLuup", "openLuup")
   
   calc_stats ()
   return true, msg, ABOUT.NAME

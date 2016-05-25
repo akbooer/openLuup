@@ -353,19 +353,6 @@ end
 
 --------------------------------------------------
 --
--- TEST plugin methods
---
-
-local function update_test (p)
- local IP2 = luup.attr_get "InstalledPlugins2"
-  IP2[5] = IP2[5] or {}
-  IP2[5].VersionMinor = p.Version or os.time()
-  _log "update_test for plugins"
-end
-
-
---------------------------------------------------
---
 -- plugin methods
 --
 
@@ -380,7 +367,6 @@ local function create (p)
   local dispatch = {
     ["openLuup"]    = update_openLuup, 
     ["VeraBridge"]  = update_bridge,
-    ["Test"]        = update_test,
     ["8211"]        = none,           -- DataYours
     ["8246"]        = update_altui,
   }
