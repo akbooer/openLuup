@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.05.17",
+  VERSION       = "2016.05.25",
   DESCRIPTION   = "HTTP/HTTPS GET/PUT requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -24,6 +24,7 @@ local ABOUT = {
 -- 2016.04.28   @akbooer, change Sonos file fix to apply to ALL .mp3 files
 -- 2016.05.10   handle upnp/control/hag requests (AltUI redirects from port 49451) through WSAPI
 -- 2016.05.17   log "No handler" responses
+-- 2016.05.25   also look for files in openLuup/
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -133,6 +134,7 @@ local function http_file (URL, headers)
   local info, chunked, response_headers
   local f = io.open(path,'rb')                                  -- 2016.03.05  'b' for Windows, thanks @vosmont
   if not f then f = io.open ("../cmh-lu/" .. path, 'rb') end    -- 2016.02.24  also look in /etc/cmh-lu/
+  if not f then f = io.open ("openLuup/" .. path, 'rb') end     -- 2016.05.25  also look in openLuup/
   if f then 
     info = (f: read "*a") or ''                   -- should perhaps buffer long files
 --    _log ("file length = "..#info, "openLuup.HTTP.FILE")

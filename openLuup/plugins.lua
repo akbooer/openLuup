@@ -19,6 +19,7 @@ local ABOUT = {
 
 local logs          = require "openLuup.logs"
 local github        = require "openLuup.github"
+local loader        = require "openLuup.loader"
 local lfs           = require "lfs"             -- for portable mkdir and dir
 
 local pathSeparator = package.config:sub(1,1)   -- thanks to @vosmont for this Windows/Unix discriminator
@@ -37,6 +38,16 @@ logs.banner (ABOUT)   -- for version control
 
 -- Utility functions
 
+local function file_write (filename, content)
+  local f, msg
+  f, msg = io.open (filename, 'w+')
+  if f then
+    f: write (content)
+    f: close ()
+  end
+  return f, msg
+end
+
 local function file_copy (source, dest)
   local attr = lfs.attributes (source)
   if attr and attr.mode ~= "file" then
@@ -47,11 +58,7 @@ local function file_copy (source, dest)
   if f then
     content = f: read "*a"
     f: close ()
-    f, msg = io.open (dest, 'w+')
-    if f then
-      f: write (content)
-      f: close ()
-    end
+    f, msg = file_write (dest, content)
   end
   local bytes = content and #content or 0
   return not msg, msg, bytes 
@@ -70,7 +77,7 @@ local function batch_copy (source, destination, pattern)
       local ok, msg, bytes = file_copy (source_path, dest_path)
       if ok then
         total = total + bytes
-        files [#files+1] = dest_path
+        files [#files+1] = file   -- filename only, not path
         msg = ("%-8d %s"):format (bytes, file)
         _log (msg)
       else
@@ -230,6 +237,15 @@ local function update_openLuup (p)
   mkdir_tree (upnp_control)
   file_copy (path "openLuup/hag.lua", upnp_control .. "hag")            -- to enable Startup Lua editing, etc.
   
+  local html = "index.html"
+  if not lfs.attributes (html) then     -- don't overwrite if already there
+    _log "installing index.html"
+    local content = loader.read_vfs (html)
+    if content then 
+      file_write (html, content)
+    end
+  end
+    
   local IP2 = luup.attr_get "InstalledPlugins2"
   local ipl = IP2[1] or {}
   ipl.VersionMinor = rev   -- 2016.05.15
@@ -322,30 +338,30 @@ local function update_generic (p)  -- TODO: finish this
 --  local rev = p.Version or "master"
   local rev = p.Version or "development"    -- this need to be a "default", for when the Update box has no entry
   
-  _log "backing up VeraBridge"
+  _log "backing up Generic"
   mkdir_tree (bridge_backup)
   local s2 = batch_copy ('.' .. pathSeparator, bridge_backup, "VeraBridge")   -- VeraBridge from /etc/cmh-ludl/
   
-  _log ("downloading VeraBridge rev " .. rev)  
+  _log ("downloading Generic rev " .. rev)  
   local subdirectories = {    -- these are the bits of the repository that we want
     "/VeraBridge",
   }
   
   local ok = bridge_updater.get_release (rev, subdirectories) 
-  if not ok then return "VeraBridge download failed" end
+  if not ok then return "Generic download failed" end
  
   local cmh_ludl = ''
 --  cmh_ludl = "CMH_LUDL_TEST/"       -- TODO: testing only
   mkdir_tree (cmh_ludl)
   
-  _log "installing new VeraBridge version..."
+  _log "installing new Generic version..."
   s2 = batch_copy (bridge_downloads .. "VeraBridge/", cmh_ludl)
 
   local IP2 = luup.attr_get "InstalledPlugins2"
   IP2[3] = IP2[3] or {}
   IP2[3].VersionMinor = rev   -- 2016.05.15
   
-  local msg = "VeraBridge installed version: " .. rev
+  local msg = "Generic installed version: " .. rev
   _log (msg)
   luup.reload ()
 end

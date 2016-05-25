@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2016.05.24",
+  VERSION       = "2016.05.25",
   DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -25,6 +25,7 @@ local ABOUT = {
 -- 2016.05.12  pre-load openLuup static data
 -- 2016.05.21  fix for invalid argument list in parse_service_xml
 -- 2016.05.24  virtual file system for system .xml and .json files
+-- 2016.05.25  add read_vfs
 
 ------------------
 --
@@ -482,4 +483,6 @@ return {
   read_device         = read_device,
   read_impl           = read_impl,
   read_json           = read_json,
+  read_vfs            = cached_read,    -- read virtual file system
+
 }
