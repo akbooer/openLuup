@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.05.25",
+  VERSION       = "2016.05.26",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -9,6 +9,8 @@ local ABOUT = {
 
 -- the loader cache is preset with these files
 
+-- the local references mean that these files will not be removed from the 
+-- ephemeral cache table by garbage collection 
 --
 -- device files for "openLuup" (aka. Extensions)
 -- this also provides the files for some unit tests
@@ -125,6 +127,10 @@ local S_openLuup_svc = [[
 
 -----
 
+-- Default values for installed plugins
+
+-----
+
 -- other install files
 
 local index_html = [[
@@ -145,10 +151,7 @@ a test file
 
 -----
 
-return {
-  ABOUT = ABOUT,
-
-  manifest = {
+local manifest = {
     ["D_openLuup.xml"]  = D_openLuup_dev,
     ["D_openLuup.json"] = D_openLuup_json,
     ["I_openLuup.xml"]  = I_openLuup_impl,
@@ -158,6 +161,23 @@ return {
 
     ["TEST"] = testing,
   }
+
+-----
+
+return {
+  ABOUT = ABOUT,
+  
+--  manifest = setmetatable (manifest, {__mode = "kv"}),
+  manifest = manifest,
+  
+  attributes = function (filename) 
+    local y = manifest[filename]
+    if type(y) == "string" then return {type = "file", size = #y} end
+  end,
+  
+  dir   = function () return next, manifest end,
+  read  = function (filename) return manifest[filename] end,
+  write = function (filename, contents) manifest[filename] = contents end,
 
 }
 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.05.24",
+  VERSION       = "2016.05.28",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -106,13 +106,15 @@ local attributes = {
 
 }
 
---
--- preset plugin data
---
 
-local InstalledPlugins2 = {}
+-------
 
-  InstalledPlugins2[1] =      -- we'll always put openLuup in pole position!
+local default_plugins_version = "2016.05.29d" --<<<-- change this if default_plugins changed
+
+local default_plugins = {
+
+-- openLuup
+
     {
       AllowMultiple   = "0",
       Title           = "openLuup",
@@ -121,129 +123,232 @@ local InstalledPlugins2 = {}
       AutoUpdate      = "0",
       VersionMajor    = "GitHub",
       VersionMinor    = '?',
+      TargetVersion   = default_plugins_version, -- openLuup uses this for the InstalledPlugins2 version number
       id              = "openLuup",
-      Repository      = {          
-          backup            = "plugins/backup/altui/",
-          downloads         = "plugins/downloads/altui/",
-          blockly_downloads = "plugins/downloads/altui/blockly/",
-        },
+      timestamp       = os.time(),
       Files = {},
-    }
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
+        downloads = "plugins/downloads/openLuup/",
+        backup    = "plugins/backup/openLuup/",
+        default   = "development",                    -- "development" or "master" or any tagged release
+        pattern   = "%w+%.%w+",                       -- TODO: WRONG pattern match string for required files
+        folders   = {                                 -- these are the bits of the repository that we want
+          "/openLuup",
+          "/VeraBridge",
+        },
+      },
+    },
 
+-- AltUI
 
-  InstalledPlugins2[2] =      -- Sorry, relegated to #2 position!
     {
       AllowMultiple   = "0",
       Title           = "Alternate UI",
-      Icon            = "plugins/icons/8246.png",  -- usage: http://apps.mios.com/icons/8246.png
+      Icon            = "plugins/icons/8246.png",     -- usage: http://apps.mios.com/icons/8246.png
       Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
-      AutoUpdate      = "1",
+      AutoUpdate      = "1",                          -- not really "auto", but will prompt on browser refresh
       VersionMajor    = "GitHub",
       VersionMinor    = '?',
-      id              = 8246,
+      id              = 8246,                         -- this is the genuine MiOS plugin number
       timestamp       = os.time(),
-      Files           = {},
-    }
+      Files           = {},                           -- populated on download from repository
+      Devices         = {
+        {
+          DeviceFileName  = "D_ALTUI.xml",
+          DeviceType      = "urn:schemas-upnp-org:device:altui:1",
+          ImplFile        = "I_ALTUI.xml",
+          Invisible       =  "0",
+--          CategoryNum = "1"
+        },
+      },
+      Repository      = {     
+        type      = "GitHub",
+        source    = "amg0/ALTUI",                   -- @amg0 repository
+        downloads = "plugins/downloads/altui/",
+        backup    = "plugins/backup/altui/",
+        default   = "master",                       -- "development" or "master" or any tagged release
+        pattern   = "ALTUI",                        -- pattern match string for required files
+        folders   = {                               -- these are the bits of the repository that we want
+          '',               -- the main folder
+          "/blockly",       -- and blocky editor
+        },
+      },
+    },
 
-  InstalledPlugins2[3] =  
+-- VeraBridge
+
     {
       AllowMultiple   = "1",
       Title           = "VeraBridge",
       Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
       Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
---        Hidden          = "0",
       AutoUpdate      = "0",
---      Version         = 28706,
       VersionMajor    = "GitHub",
       VersionMinor    = '?',
---      "SupportedPlatforms": null,
---      "MinimumVersion": null,
---      "DevStatus": null,
---      "Approved": "0",
       id              = "VeraBridge",
---      "TargetVersion": "28706",
       timestamp       = os.time(),
       Files           = {},
-      Devices         = {},
-      Directories     = {
-        backup        = "",
-        download      = "",
-        install       = "",
-        repository    = ""
+      Devices         = {
+        {
+          DeviceFileName  = "D_VeraBridge.xml",
+          DeviceType      = "VeraBridge",
+          ImplFile        = "I_VeraBridge.xml",
+          Invisible       =  "0",
+        },
       },
-    }
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
+        downloads = "plugins/downloads/openLuup/VeraBridge/",
+        backup    = "plugins/backup/openLuup/VeraBridge/",
+        default   = "development",                    -- "development" or "master" or any tagged release
+        pattern   = "VeraBridge",                     -- pattern match string for required files
+        folders   = {                                 -- these are the bits of the repository that we want
+          "/VeraBridge",
+        },
+      },
+    },
 
+-- DataYours
 
-  InstalledPlugins2[4] =  
     {
       AllowMultiple   = "0",
       Title           = "DataYours",
       Icon            = "https://raw.githubusercontent.com/akbooer/DataYours/master/icons/DataYours.png",
       Instructions    = "https://github.com/akbooer/DataYours/tree/master/Documentation",
       AutoUpdate      = "0",
---      Version         = 28706,
       VersionMajor    = "not",
       VersionMinor    = 'installed',
       id              = 8211,
---      "TargetVersion": "28706",
       timestamp       = os.time(),
       Files           = {},
-      Devices         = {},
-      Directories     = {
-        backup        = "",
-        download      = "",
-        install       = "",
-        repository    = ""
+      Devices         = {
+        {
+          DeviceFileName  = "D_DataYours.xml",
+          DeviceType      = "urn:akbooer-com:device:DataYours:1",
+          ImplFile        = "I_DataYours.xml",
+          Invisible       =  "0",
+        },
       },
-    }
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/Datayours",
+        downloads = "plugins/downloads/DataYours/",
+        backup    = "plugins/backup/DataYours/",
+        default   = "development",                     -- "development" or "master" or any tagged release
+        pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
+        },
+    },
 
+-- Arduino
 
-  InstalledPlugins2[5] = 
     {
-      AllowMultiple   = "0",
+      AllowMultiple   = "1",
       Title           = "MySensors Arduino",
       Icon            = "https://www.mysensors.org/icon/MySensors.png", 
       Instructions    = "https://github.com/mysensors/Vera/tree/UI7",
-      Hidden          = "0",
       AutoUpdate      = "0",
       VersionMajor    = "not",
       VersionMinor    = "installed",
       id              = "Arduino",
       timestamp       = os.time(),
       Files           = {},
-    }
+      Devices         = {
+        {
+          DeviceFileName  = "D_Arduino1.xml",
+          DeviceType      = "urn:schemas-arduino-cc:device:arduino:1",
+          ImplFile        = "D_Arduino1.xml",
+          Invisible       =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "mysensors/Vera",
+        downloads = "plugins/downloads/Arduino/",
+        backup    = "plugins/backup/Arduino/",
+        default   = "UI7",
+        pattern   = "[DILS]_Arduino%w*%.%w+",             -- pattern match string for required files
+      },
+    },
 
-  InstalledPlugins2[6] = 
+-- IPhoneLocator
+
     {
-      AllowMultiple   = "0",
-      Title           = "iPhoneLocator",
+      AllowMultiple   = "1",
+      Title           = "IPhoneLocator",
       Icon            = "https://raw.githubusercontent.com/amg0/IPhoneLocator/master/iconIPhone.png", 
       Instructions    = "https://github.com/amg0/IPhoneLocator",
-      Hidden          = "0",
       AutoUpdate      = "0",
       VersionMajor    = "not",
       VersionMinor    = "installed",
-      id              = "4686",
+      id              = 4686,
       timestamp       = os.time(),
       Files           = {},
-    }
+      Devices         = {
+        {
+          DeviceFileName  = "D_IPhone.xml",
+          DeviceType      = "urn:schemas-upnp-org:device:IPhoneLocator:1",
+          ImplFile        = "D_IPhone.xml",
+          Invisible       =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "amg0/IPhoneLocator",
+        downloads = "plugins/downloads/IPhoneLocator/",
+        backup    = "plugins/backup/IPhoneLocator/",
+        default   = "master",                   -- "development" or "master" or any tagged release
+        pattern   = "IPhone",                   -- pattern match string for required files
+      },
+    },
+
+-- Netatmo
+
+    {
+      AllowMultiple   = "0",
+      Title           = "Netatmo",
+      Icon            = "https://raw.githubusercontent.com/akbooer/Netatmo/master/icons/Netatmo.png",
+      Instructions    = "https://github.com/akbooer/Netatmo/tree/master/Documentation",
+      AutoUpdate      = "0",
+      VersionMajor    = "not",
+      VersionMinor    = 'installed',
+      id              = 4456,
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {
+        {
+          DeviceFileName = "D_Netatmo.xml",
+          DeviceType = "urn:akbooer-com:device:Netatmo:1",
+          ImplFile = "I_Netatmo.xml",
+          Invisible =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/Netatmo",
+        downloads = "plugins/downloads/Netatmo/",
+        backup    = "plugins/backup/Netatmo/",
+        default   = "master",                         -- "development" or "master" or any tagged release
+        pattern   = "[DILS]_Netatmo%w*%.%w+",             -- pattern match string for required files
+      },
+    },
+
+  }   -- end of default_plugins
 
 
---  InstalledPlugins2[6] = 
---    {
---      AllowMultiple   = "0",
---      Title           = "Generic",
---      Icon            = "images/plugin.png", 
---      Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
---      Hidden          = "0",
---      AutoUpdate      = "0",
---      VersionMajor    = "MiOS_Trac",
---      VersionMinor    = '?',
---      id              = "Test",
---      timestamp       = os.time(),
---      Files           = {},
---    }
+-- utilities
 
+-- given installed plugin structure, generate index by ID
+local function plugin_index (plugins)
+  local index = {}
+  for i,p in ipairs (plugins) do
+    local id = tostring (p.id)
+    if id then index[id] = i end
+  end
+  return index
+end
 
 
 -- load user_data (persistence for attributes, rooms, devices and scenes)
@@ -325,13 +430,29 @@ local function load_user_data (user_data_json)
   
     -- PLUGINS
     _log "loading installed plugin info..."
-    local i = user_data.InstalledPlugins2
-    local plugins = InstalledPlugins2
-    if i and next(i) then plugins = i end
-    attr.InstalledPlugins2 = plugins
-    for _, plugin in ipairs (plugins) do
-      _log (table.concat {"id: ", plugin.id, ", name: ", plugin.Title})
+    
+    local new = user_data.InstalledPlugins2 or {}
+    local index = plugin_index (new)
+    
+    -- check TargetVersion of openLuup to see if InstalledPlugins2 is current   
+    local ol = new[index.openLuup]
+    local refresh = not ol or (ol.TargetVersion ~= default_plugins_version)
+    local ref = "InstalledPlugins2, user_data: %s, openLuup: %s"
+    _log (ref: format (ol.TargetVersion or '?', default_plugins_version))
+    
+    if refresh then     -- replace the lot (so losing current version information and installed status)
+      new = default_plugins
+    else                -- just fill in any missing ones
+      for _, plugin in ipairs (default_plugins) do  -- copy any missing defaults to the new list
+        if not index[tostring(plugin.id)] then new[#new+1] = plugin end
+      end
     end
+    for _, plugin in ipairs (new) do
+      local version = table.concat {plugin.VersionMajor or '?', '.', plugin.VersionMinor or '?'}
+      local ver = "[%s] %s (%s)"
+      _log (ver: format (plugin.id, plugin.Title, version))
+    end
+    attr.InstalledPlugins2 = new
   end
   _log "...user_data loading completed"
   return not msg, msg
@@ -382,7 +503,6 @@ end
 
 -- save ()
 -- top-level attributes and key tables: devices, rooms, scenes
--- TODO: [, sections, users, weatherSettings]
 local function save_user_data (localLuup, filename)   -- refactored thanks to @explorer
   local luup = localLuup or luup
   local result, message

@@ -24,7 +24,7 @@ local ABOUT = {
 -- 2016.04.28   @akbooer, change Sonos file fix to apply to ALL .mp3 files
 -- 2016.05.10   handle upnp/control/hag requests (AltUI redirects from port 49451) through WSAPI
 -- 2016.05.17   log "No handler" responses
--- 2016.05.25   also look for files in openLuup/
+-- 2016.05.25   also look for files in openLuup/ (for plugins page)
 
 local socket    = require "socket"
 local url       = require "socket.url"

@@ -16,6 +16,7 @@ local ABOUT = {
 
 local timers    = require "openLuup.timers"
 local userdata  = require "openLuup.userdata"
+local plugins   = require "openLuup.plugins"
 
 local INTERVAL = 120
 local MINUTES  = "2m"
@@ -25,8 +26,8 @@ local SID = {
   altui = "urn:upnp-org:serviceId:altui1",  -- Variables = 'DisplayLine1' and 'DisplayLine2'
 }
 
-local ole   -- our own device ID
-
+local ole               -- our own device ID
+local latest = '?'      -- latest tagged GitHub version of openLuup
 
 local function round (x, p)
   p = p or 1
@@ -35,8 +36,8 @@ local function round (x, p)
 end
 
 local function display (line1, line2)
-  luup.variable_set (SID.altui, "DisplayLine1",  line1 or '', ole)
-  luup.variable_set (SID.altui, "DisplayLine2",  line2 or '', ole)
+  if line1 then luup.variable_set (SID.altui, "DisplayLine1",  line1 or '', ole) end
+  if line2 then luup.variable_set (SID.altui, "DisplayLine2",  line2 or '', ole) end
 end
 
 -----
@@ -59,9 +60,8 @@ local function calc_stats ()
   luup.variable_set (SID.ole, "CpuLoad",     cpuload, ole)
   luup.variable_set (SID.ole, "Uptime_Days", days,    ole)
 
-  local line1 = ("%s Mb, cpu %s%%, up %s days"): format (memory, cpuload, days)
-  local line2 = ''                      -- TODO: "version: v0.7.0  (latest v0.8.3)"
-  display (line1, line2)
+  local line1 = ("%0.0f Mb, cpu %s%%, up %s days"): format (memory, cpuload, days)
+  display (line1)
   luup.log (line1)
  
   local set_attr = userdata.attributes.openLuup
@@ -100,7 +100,8 @@ function OLE_synchronise ()
   local recurring = true                -- reschedule automatically, definitely not a Vera luup option! ... 
                           -- ...it ensures that rescheduling is always on time and does not 'slip' between calls.
   luup.call_timer ("OLE_ticker", timer_type, MINUTES, days, data, recurring)
-  luup.log "synchronisation completed, system monitor started"
+  local latest = "latest: " .. (plugins.latest_version () or '?')
+  display (nil, latest)
   calc_stats ()
 end
 
@@ -109,9 +110,12 @@ function init (devNo)
   local later = timers.timenow() + INTERVAL    -- some minutes in the future
   later = INTERVAL - later % INTERVAL          -- adjust to on-the-hour (actually, two-minutes)
   luup.call_delay ("OLE_synchronise", later)
-  local msg = ("synchronising in %0.1f seconds"): format (later)
+  local msg = ("synch in %0.1f s"): format (later)
+  luup.log (msg)
+  display (nil, '')
   
   luup.register_handler ("HTTP_openLuup", "openLuup")
+  luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
   
   calc_stats ()
   return true, msg, ABOUT.NAME

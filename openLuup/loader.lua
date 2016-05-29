@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2016.05.25",
+  VERSION       = "2016.05.24",
   DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -25,7 +25,6 @@ local ABOUT = {
 -- 2016.05.12  pre-load openLuup static data
 -- 2016.05.21  fix for invalid argument list in parse_service_xml
 -- 2016.05.24  virtual file system for system .xml and .json files
--- 2016.05.25  add read_vfs
 
 ------------------
 --
@@ -73,7 +72,7 @@ local service_data = {}         -- cache for serviceType and serviceId data, ind
 
 local static_data = {}          -- cache for decoded static JSON data, indexed by filename
 
-local file_cache = setmetatable (vfs.manifest, {__mode = "kv"})    -- fully weak table
+local file_cache = vfs.manifest -- preset read cache to vfs contents
 
 ----
 --
@@ -483,6 +482,5 @@ return {
   read_device         = read_device,
   read_impl           = read_impl,
   read_json           = read_json,
-  read_vfs            = cached_read,    -- read virtual file system
 
 }

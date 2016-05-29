@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.github",
-  VERSION       = "2016.05.18",
+  VERSION       = "2016.05.28",
   DESCRIPTION   = "update plugins from GitHub repository",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -15,6 +15,8 @@ local ABOUT = {
 
 -- 2016.03.15  created
 -- 2016.04.25  make generic, for use with openLuup / AltUI / anything else
+-- 2016.05.28  change write mode to "w+" to try and fix some update failures
+--              see: http://forum.micasaverde.com/index.php/topic,37285.msg282900.html#msg282900
 
 local https     = require "ssl.https"
 local ltn12     = require "ltn12"
@@ -126,7 +128,7 @@ local function new (archive, target)
   
       local _, code = https.request{
           url = x.download_url,
-          sink = ltn12.sink.file(io.open(fname, 'w'))
+          sink = ltn12.sink.file(io.open(fname, "w+"))
         }
       
       if code ~= 200 then ok = false end
@@ -158,7 +160,7 @@ local function new (archive, target)
     
     local _, code = https.request{
       url = "https://codeload.github.com/" .. archive .. "/tar.gz/master",
-      sink = ltn12.sink.file(io.open(target .. "/latest.tar.gz", "wb"))
+      sink = ltn12.sink.file(io.open(target .. "/latest.tar.gz", "+wb"))
     }
     if code ~= 200 then 
       msg = "GitHub download failed with code " .. code

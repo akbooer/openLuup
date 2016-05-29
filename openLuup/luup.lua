@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.05.17",
+  VERSION       = "2016.05.26",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -14,6 +14,7 @@ local ABOUT = {
 -- 2016.05.10  update userdata_dataversion when top-level attribute set
 -- 2016.05.15  change set_failure logic per discussion here: http://forum.micasaverde.com/index.php/topic,37672.0.html
 -- 2016.05.17  set_failure sets urn:micasaverde-com:serviceId:HaDevice1 / CommFailure variable in device
+-- 2016.05.26  add device number to CommFailure variables in set_failure (thanks @vosmont)
 
 local logs          = require "openLuup.logs"
 
@@ -313,8 +314,8 @@ local function set_failure (status, device)
     local time = 0
     if status ~= 0 then time = os.time() end
     local HaSID = "urn:micasaverde-com:serviceId:HaDevice1"
-    variable_set (HaSID, "CommFailure", status)     -- 2016.05.17
-    variable_set (HaSID, "CommFailureTime", time)
+    variable_set (HaSID, "CommFailure", status, devNo)     -- 2016.05.17 and 2015.05.26
+    variable_set (HaSID, "CommFailureTime", time, devNo)
   end  
 end
 

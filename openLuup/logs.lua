@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2016.05.14",
+  VERSION       = "2016.05.26",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -10,6 +10,7 @@ local ABOUT = {
 -- log handling - basic at the moment
 --
 -- 2016.05.14   add logging for AltUI workflows
+-- 2016.05.26   fix error on nil message
 
 local socket = require "socket"
 
@@ -173,6 +174,7 @@ local function openLuup_logger (info)
 
   -- format and write log
   local function send (msg, subsystem_or_number, devNo)
+    msg = msg or '?'
     if msg: match "Wkflow %- Workflow: %d+%-%d+," then    -- copy AltUI Workflow message to altui log
       altui.workflow (msg, subsystem_or_number, devNo)
     end
