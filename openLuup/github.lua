@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.github",
-  VERSION       = "2016.05.28",
+  VERSION       = "2016.05.30",
   DESCRIPTION   = "update plugins from GitHub repository",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",

@@ -109,7 +109,7 @@ local attributes = {
 
 -------
 
-local default_plugins_version = "2016.05.30b" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.05.30c" --<<<-- change this if default_plugins changed
 
 local default_plugins = {
 

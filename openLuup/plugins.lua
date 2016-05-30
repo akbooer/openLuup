@@ -43,7 +43,7 @@ local function no_such_plugin (Plugin)
   return msg, "text/plain" 
 end
 
--- return first device id if a device of the given type is present locally
+-- return first found device id if a device of the given type is present locally
 local function present (device_type)
   for devNo, d in pairs (luup.devices) do
     if (d.device_num_parent == 0)     -- local device!!
@@ -217,9 +217,12 @@ local function generic_plugin (p, ipl, no_reload)
   mkdir_tree (cmh_ludl)
   
   _log "updating device files..."
-  local _,files = batch_copy (r.downloads, cmh_ludl, "[^p][^n][^g]$")   -- don't copy icons to cmh-ludl...
+  local s1, files = batch_copy (r.downloads, cmh_ludl, "[^p][^n][^g]$")   -- don't copy icons to cmh-ludl...
   _log "updating icons..."
-  batch_copy (r.downloads, "icons/", "%.png$")                          -- ... but to icons/
+  local s2 = batch_copy (r.downloads, "icons/", "%.png$")                          -- ... but to icons/
+  if s2 > 0 then
+    _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
+  end
   
   ipl.VersionMajor = r.type
   ipl.VersionMinor = rev
@@ -386,62 +389,6 @@ local function update_altui (p, ipl)
   luup.reload ()
 end
 
---------------------------------------------------
---
--- VeraBridge
---
--- invoked by:
--- /data_request?id=action&
---    serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&
---     action=CreatePlugin&PluginNum=VeraBridge&Version=...
--- OR
--- if TracRev is missing then use Version
---OR
--- /data_request?id=update&rev=0.7.0
-
-
-local function update_bridge (p, ipl)
-
-  local bridge_updater = github.new ("akbooer/openLuup", "plugins/downloads/")
-
-  local bridge_backup         = path "plugins/backup/openLuup/VeraBridge/"
-  local bridge_downloads      = path "plugins/downloads/openLuup/VeraBridge/"
-  
---  local rev = p.Version or "master"
-  local rev = p.Version or "development"
-  
-  _log "backing up VeraBridge"
-  mkdir_tree (bridge_backup)
-  batch_copy ('.' .. pathSeparator, bridge_backup, "VeraBridge")   -- VeraBridge from /etc/cmh-ludl/
-  
-  _log ("downloading VeraBridge rev " .. rev)  
-  local subdirectories = {    -- these are the bits of the repository that we want
-    "/VeraBridge",
-  }
-  
-  local ok = bridge_updater.get_release (rev, subdirectories) 
-  if not ok then return "VeraBridge download failed" end
- 
-  local cmh_ludl = ''
-  mkdir_tree (cmh_ludl)
-  
-  _log "installing new VeraBridge version..."
-  local _,f1 = batch_copy (bridge_downloads .. "VeraBridge/", cmh_ludl)
-
-  ipl.VersionMinor = rev   -- 2016.05.15
-  local iplf = ipl.Files or {}
-  for i,f in ipairs (f1) do
-    iplf[i] = {SourceName = f}
-  end
-  
-  local msg = "VeraBridge installed version: " .. rev
-  _log (msg)
-  
-  install_if_missing (ipl)
-  luup.reload ()
-end
-
-
 
 --------------------------------------------------
 --
@@ -477,8 +424,7 @@ end
 local function create (p)
   local special = {
     ["openLuup"]    = update_openLuup,        -- device is already installed
---    ["VeraBridge"]  = update_bridge,          
-    ["8211"]        = update_datayours,
+    ["8211"]        = update_datayours,       -- extra configuration to do
     ["8246"]        = update_altui,
   }
   local Plugin = p.PluginNum or p.Plugin
@@ -501,7 +447,7 @@ local function create (p)
 end
 
 local function delete ()
-  _log "Can't delete plugin"
+  _log "Can't delete plugin"    -- TODO: delete plugins!
   return false
 end
 
