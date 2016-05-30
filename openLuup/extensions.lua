@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup:Extensions",
-  VERSION       = "2016.05.24",
+  VERSION       = "2016.05.29",
   DESCRIPTION   = "openLuup:Extensions plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -60,7 +60,7 @@ local function calc_stats ()
   luup.variable_set (SID.ole, "CpuLoad",     cpuload, ole)
   luup.variable_set (SID.ole, "Uptime_Days", days,    ole)
 
-  local line1 = ("%0.0f Mb, cpu %s%%, up %s days"): format (memory, cpuload, days)
+  local line1 = ("%0.0f Mb, cpu %s%%, %s days"): format (memory, cpuload, days)
   display (line1)
   luup.log (line1)
  

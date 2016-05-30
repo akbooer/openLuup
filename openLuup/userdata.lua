@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.05.28",
+  VERSION       = "2016.05.29",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -109,7 +109,7 @@ local attributes = {
 
 -------
 
-local default_plugins_version = "2016.05.29d" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.05.30b" --<<<-- change this if default_plugins changed
 
 local default_plugins = {
 
@@ -259,7 +259,7 @@ local default_plugins = {
         {
           DeviceFileName  = "D_Arduino1.xml",
           DeviceType      = "urn:schemas-arduino-cc:device:arduino:1",
-          ImplFile        = "D_Arduino1.xml",
+          ImplFile        = "I_Arduino1.xml",
           Invisible       =  "0",
         },
       },
@@ -290,7 +290,7 @@ local default_plugins = {
         {
           DeviceFileName  = "D_IPhone.xml",
           DeviceType      = "urn:schemas-upnp-org:device:IPhoneLocator:1",
-          ImplFile        = "D_IPhone.xml",
+          ImplFile        = "I_IPhone.xml",
           Invisible       =  "0",
         },
       },
@@ -319,10 +319,10 @@ local default_plugins = {
       Files           = {},
       Devices         = {
         {
-          DeviceFileName = "D_Netatmo.xml",
-          DeviceType = "urn:akbooer-com:device:Netatmo:1",
-          ImplFile = "I_Netatmo.xml",
-          Invisible =  "0",
+          DeviceFileName  = "D_Netatmo.xml",
+          DeviceType      = "urn:akbooer-com:device:Netatmo:1",
+          ImplFile        = "I_Netatmo.xml",
+          Invisible       =  "0",
         },
       },
       Repository      = {
@@ -332,6 +332,37 @@ local default_plugins = {
         backup    = "plugins/backup/Netatmo/",
         default   = "master",                         -- "development" or "master" or any tagged release
         pattern   = "[DILS]_Netatmo%w*%.%w+",             -- pattern match string for required files
+      },
+    },
+
+-- EventWatcher
+
+    {
+      AllowMultiple   = "0",
+      Title           = "EventWatcher",
+      Icon            = "https://raw.githubusercontent.com/akbooer/EventWatcher/master/icons/EventWatcher.png",
+      Instructions    = "https://github.com/akbooer/EventWatcher/tree/master/Documentation",
+      AutoUpdate      = "0",
+      VersionMajor    = "not",
+      VersionMinor    = 'installed',
+      id              = 4726,
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {
+        {
+          DeviceFileName  = "D_EventWatcher.xml",
+          DeviceType      = "urn:akbooer-com:device:EventWatcher:1",
+          ImplFile        = "I_EventWatcher.xml",
+          Invisible       =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/EventWatcher",
+        downloads = "plugins/downloads/EventWatcher/",
+        backup    = "plugins/backup/EventWatcher/",
+        default   = "master",                         -- "development" or "master" or any tagged release
+        pattern   = "[DILS]_EventWatcher%w*%.%w+",    -- pattern match string for required files
       },
     },
 

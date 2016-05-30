@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.plugins",
-  VERSION       = "2016.05.29",
+  VERSION       = "2016.05.30",
   DESCRIPTION   = "create/delete plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -41,6 +41,16 @@ local function no_such_plugin (Plugin)
   local msg = "no such plugin: " .. (Plugin or '?')
   _log (msg) 
   return msg, "text/plain" 
+end
+
+-- return first device id if a device of the given type is present locally
+local function present (device_type)
+  for devNo, d in pairs (luup.devices) do
+    if (d.device_num_parent == 0)     -- local device!!
+    and (d.device_type == device_type) then
+      return devNo
+    end
+  end
 end
 
 local function file_write (filename, content)
@@ -109,7 +119,7 @@ end
 -- check to see if plugin needs to install device(s)
 -- at the moment, only create the FIRST device in the list
 -- (multiple devices are a bit of a challenge to identify uniquely)
-local function install_if_missing (plugin)      -- TODO: make this generic
+local function install_if_missing (plugin)
   local devices = plugin["Devices"] or {}
   local device1 = devices[1] or {}
   local device_type = device1["DeviceType"]
@@ -128,19 +138,8 @@ local function install_if_missing (plugin)      -- TODO: make this generic
     return devNo
   end
   
-  local function missing (device_type)
-    for _, d in pairs (luup.devices) do
-      if (d.device_num_parent == 0)     -- local device!!
-      and (d.device_type == device_type) then
---      and (d.plugin_num == pluginnum) then
-        return false    -- it's not missing
-      end
-    end
-    return true   -- it IS missing
-  end
-  
   local devNo
-  if device_type and missing(device_type) then 
+  if device_type and not present (device_type) then 
     devNo = install(plugin) 
   end
   return devNo
@@ -166,9 +165,6 @@ local openLuup_backup       = path "plugins/backup/openLuup/openLuup/"
 local bridge_backup         = path "plugins/backup/openLuup/VeraBridge/"
 local openLuup_downloads    = path "plugins/downloads/openLuup/openLuup/"
 local bridge_downloads      = path "plugins/downloads/openLuup/VeraBridge/"
-
-local cgi_bin_cmh   = path "cgi-bin/cmh/"
-local upnp_control  = path "upnp/control/"
 
 local openLuup_updater = github.new ("akbooer/openLuup", "plugins/downloads/openLuup")
 
@@ -198,12 +194,6 @@ local function update_openLuup (p, ipl)
   s1, f1 = batch_copy (openLuup_downloads, openLuup)
   s2, f2 = batch_copy (bridge_downloads, cmh_ludl)
   _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
-
-  _log "installing CGI files"
-  mkdir_tree (cgi_bin_cmh)
-  file_copy (path "openLuup/backup.lua", cgi_bin_cmh .. "backup.sh")    -- to enable user_data backups
-  mkdir_tree (upnp_control)
-  file_copy (path "openLuup/hag.lua", upnp_control .. "hag")            -- to enable Startup Lua editing, etc.
   
   local html = "index.html"
   if not lfs.attributes (html) then     -- don't overwrite if already there
@@ -243,27 +233,17 @@ local altui_downloads   = ("plugins/downloads/altui/"):         gsub ("/", pathS
 local blockly_downloads = ("plugins/downloads/altui/blockly/"): gsub ("/", pathSeparator)
 
 
-local function install_altui_if_missing ()
+--local function install_altui_if_missing ()
     
-  local function install ()
-    local upnp_impl, ip, mac, hidden, invisible, parent, room
-    local pluginnum = 8246
-    luup.create_device ('', "ALTUI", "ALTUI", "D_ALTUI.xml", 
-      upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum)  
-  end
+--  local function install ()
+--    local upnp_impl, ip, mac, hidden, invisible, parent, room
+--    local pluginnum = 8246
+--    luup.create_device ('', "ALTUI", "ALTUI", "D_ALTUI.xml", 
+--      upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum)  
+--  end
   
-  local function missing ()
-    for _, d in pairs (luup.devices) do
-      if (d.device_num_parent == 0)     -- local device!!
-      and (d.device_type == "urn:schemas-upnp-org:device:altui:1") then
-        return false    -- it's not missing
-      end
-    end
-    return true   -- it IS missing
-  end
-  
-  if missing() then install() end
-end
+--  if not present "urn:schemas-upnp-org:device:altui:1" then install() end
+--end
 
 -- get the AltUI version number from the actual code
 -- so it doesn't matter which branch this was retrieved from
@@ -302,7 +282,7 @@ local function update_altui (p, ipl)
   local s2 = batch_copy (blockly_downloads, '', "ALTUI")
   _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
 
-  install_altui_if_missing ()
+  install_if_missing "urn:schemas-upnp-org:device:altui:1"
   
   rev = get_altui_version() or rev    -- recover ACTUAL version from source code, if possible
   
@@ -432,7 +412,7 @@ local function generic_plugin (p, ipl, no_reload)
   
   _log ("backing up " .. ipl.Title)
   mkdir_tree (r.backup)
-  batch_copy ('.' .. pathSeparator, r.backup, r.pattern)   -- VeraBridge from /etc/cmh-ludl/
+  batch_copy ('.' .. pathSeparator, r.backup, r.pattern)   -- copy from /etc/cmh-ludl/
  
   local cmh_ludl = ''     -- destination path for install
   mkdir_tree (cmh_ludl)

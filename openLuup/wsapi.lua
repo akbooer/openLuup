@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.05.30",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -20,7 +20,7 @@ local ABOUT = {
 
 -- 2016.02.26  add self parameter to input.read(), seems to be called from wsapi.request with colon syntax
 --             ...also util.lua shows that the same is true for the error.write(...) function.
--- 2016.05.10  add ".lua" extension to CGI filename if not initially found
+-- 2016.05.30  look in specified places for some missing CGI files 
 
 --[[
 
@@ -54,11 +54,18 @@ The connectors are careful to treat errors gracefully: if they occur before send
 local loader  = require "openLuup.loader"     -- to create new environment in which to execute CGI script 
 local logs    = require "openLuup.logs"       -- used for wsapi_env.error:write()
 
-
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 
 logs.banner (ABOUT)   -- for version control
+
+--
+
+local special = {       -- if not found on the CGI searchpaths, then lookup alternatives here
+  ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
+  ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
+  ["upnp/control/hag"]          = "openLuup/hag.lua",
+}
 
 -- utilities
 
@@ -84,7 +91,14 @@ end
 -- build makes an application function for the connector
 local function build (script)
   local file = script: match ".(.+)"      -- ignore leading '/'
-  local f = io.open (file) or io.open (file..".lua")  -- 2016.05.10  add ".lua" extension if not initially found
+  local f = io.open (file) 
+  if not f then 
+    local alternative = special[file]     -- 2016.05.30
+    if alternative then
+      _log (table.concat {"using ", alternative, " for ", file})
+      f = io.open (alternative)
+    end
+  end
   if not f then 
     return dummy_app (404, "file not found: " .. (script or '?')) 
   end
