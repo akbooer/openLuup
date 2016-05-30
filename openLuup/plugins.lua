@@ -148,6 +148,96 @@ end
 
 local function path (x) return x: gsub ("/", pathSeparator) end
 
+
+--------------------------------------------------
+--
+-- Generic table-driven updates
+--
+
+--  InstalledPlugins2[...] =    -- this is the 'ipl' parameter below
+--    {
+--      AllowMultiple   = "0",
+--      Title           = "DataYours",
+--      Icon            = "images/plugin.png", 
+--      Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
+--      AutoUpdate      = "0",
+--      VersionMajor    = "GitHub",
+--      VersionMinor    = '?',
+--      id              = "8211",         -- use genuine MiOS ID, otherwise name
+--      timestamp       = os.time(),
+--      Files           = {},
+--      Devices         = {
+--        {
+--          DeviceFileName = "D_IPhone.xml",
+--          DeviceType = "urn:schemas-upnp-org:device:IPhoneLocator:1",
+--          ImplFile = "D_IPhone.xml",
+--          Invisible =  "0",
+--          CategoryNum = "1",
+--        },
+--      },
+--
+--      -- openLuup extras
+--
+--     Repository       = {
+--        type      = "GitHub",
+--        source    = "akbooer/Datayours",
+--        downloads = "plugins/downloads/DataYours/",
+--        backup    = "plugins/backup/DataYours/",
+--        default   = "development",      -- or "master" or any tagged release
+--        folders = {                     -- these are the bits we need
+--          "subdir1",
+--          "subdir2",
+--        },
+--        pattern = "[DILS]_%w+%.%w+"     -- Lua pattern string to describe wanted files
+--      },
+--
+--    }
+
+-- need to replace this wih the appropriate IncludePlugins2 item
+-- parameters: (1) the repository, (2) the download destination (actually, this is problably always the same)
+
+local function generic_plugin (p, ipl, no_reload)
+  local r = ipl.Repository  
+  if not r.source and r.downloads then return end
+  
+  local updater = github.new (r.source, r.downloads)
+  
+  local rev = p.Version or r.default    -- this needs a "default", for when the Update box has no entry
+  
+  _log (table.concat ({"downloading", ipl.id, "rev", rev}, ' ') )
+  local folders = r.folders or {''}    -- these are the bits of the repository that we want
+  local ok = updater.get_release (rev, folders, r.pattern) 
+  if not ok then return ipl.Title .. " download failed" end
+  
+  _log ("backing up " .. ipl.Title)
+  mkdir_tree (r.backup)
+  batch_copy ('.' .. pathSeparator, r.backup, r.pattern)   -- copy from /etc/cmh-ludl/
+ 
+  local cmh_ludl = ''     -- destination path for install
+  mkdir_tree (cmh_ludl)
+  
+  _log "updating device files..."
+  local _,files = batch_copy (r.downloads, cmh_ludl, "[^p][^n][^g]$")   -- don't copy icons to cmh-ludl...
+  _log "updating icons..."
+  batch_copy (r.downloads, "icons/", "%.png$")                          -- ... but to icons/
+  
+  ipl.VersionMajor = r.type
+  ipl.VersionMinor = rev
+  ipl.timestamp = os.time()
+  local iplf = ipl.Files or {}
+  for i,f in ipairs (files) do
+    iplf[i] = {SourceName = f}
+  end
+ 
+  local msg = "updated version: " .. rev
+  _log (msg)
+  
+  install_if_missing (ipl)
+  if not no_reload then luup.reload () end    -- sorry about double negative
+end
+
+
+
 --------------------------------------------------
 --
 -- openLuup
@@ -282,7 +372,7 @@ local function update_altui (p, ipl)
   local s2 = batch_copy (blockly_downloads, '', "ALTUI")
   _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
 
-  install_if_missing "urn:schemas-upnp-org:device:altui:1"
+  install_if_missing (ipl)
   
   rev = get_altui_version() or rev    -- recover ACTUAL version from source code, if possible
   
@@ -346,95 +436,9 @@ local function update_bridge (p, ipl)
   
   local msg = "VeraBridge installed version: " .. rev
   _log (msg)
-  luup.reload ()
-end
-
-
---------------------------------------------------
---
--- Generic table-driven updates
---
-
---  InstalledPlugins2[...] =    -- this is the 'ipl' parameter below
---    {
---      AllowMultiple   = "0",
---      Title           = "DataYours",
---      Icon            = "images/plugin.png", 
---      Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
---      AutoUpdate      = "0",
---      VersionMajor    = "GitHub",
---      VersionMinor    = '?',
---      id              = "8211",         -- use genuine MiOS ID, otherwise name
---      timestamp       = os.time(),
---      Files           = {},
---      Devices         = {
---        {
---          DeviceFileName = "D_IPhone.xml",
---          DeviceType = "urn:schemas-upnp-org:device:IPhoneLocator:1",
---          ImplFile = "D_IPhone.xml",
---          Invisible =  "0",
---          CategoryNum = "1",
---        },
---      },
---
---      -- openLuup extras
---
---     Repository       = {
---        type      = "GitHub",
---        source    = "akbooer/Datayours",
---        downloads = "plugins/downloads/DataYours/",
---        backup    = "plugins/backup/DataYours/",
---        default   = "development",      -- or "master" or any tagged release
---        folders = {                     -- these are the bits we need
---          "subdir1",
---          "subdir2",
---        },
---        pattern = "[DILS]_%w+%.%w+"     -- Lua pattern string to describe wanted files
---      },
---
---    }
-
--- need to replace this wih the appropriate IncludePlugins2 item
--- parameters: (1) the repository, (2) the download destination (actually, this is problably always the same)
-
-local function generic_plugin (p, ipl, no_reload)
-  local r = ipl.Repository  
-  if not r.source and r.downloads then return end
-  
-  local updater = github.new (r.source, r.downloads)
-  
-  local rev = p.Version or r.default    -- this needs a "default", for when the Update box has no entry
-  
-  _log (table.concat ({"downloading", ipl.id, "rev", rev}, ' ') )
-  local folders = r.folders or {''}    -- these are the bits of the repository that we want
-  local ok = updater.get_release (rev, folders, r.pattern) 
-  if not ok then return ipl.Title .. " download failed" end
-  
-  _log ("backing up " .. ipl.Title)
-  mkdir_tree (r.backup)
-  batch_copy ('.' .. pathSeparator, r.backup, r.pattern)   -- copy from /etc/cmh-ludl/
- 
-  local cmh_ludl = ''     -- destination path for install
-  mkdir_tree (cmh_ludl)
-  
-  _log "updating device files..."
-  local _,files = batch_copy (r.downloads, cmh_ludl, "[^p][^n][^g]$")   -- don't copy icons to cmh-ludl...
-  _log "updating icons..."
-  batch_copy (r.downloads, "icons/", "%.png$")                          -- ... but to icons/
-  
-  ipl.VersionMajor = r.type
-  ipl.VersionMinor = rev
-  ipl.timestamp = os.time()
-  local iplf = ipl.Files or {}
-  for i,f in ipairs (files) do
-    iplf[i] = {SourceName = f}
-  end
- 
-  local msg = "updated version: " .. rev
-  _log (msg)
   
   install_if_missing (ipl)
-  if not no_reload then luup.reload () end    -- sorry about double negative
+  luup.reload ()
 end
 
 
@@ -448,7 +452,8 @@ end
 
 local function update_datayours (p, ipl)
   _log "DataYours install..."
-  local devNo = generic_plugin (p, ipl, true)
+  local dont_reload = true
+  local devNo = generic_plugin (p, ipl, dont_reload)   
   
   if devNo then   -- new device created, so set up parameters
     _log "DataYours setup not complete:  TBD"
@@ -472,7 +477,7 @@ end
 local function create (p)
   local special = {
     ["openLuup"]    = update_openLuup,        -- device is already installed
-    ["VeraBridge"]  = update_bridge,          
+--    ["VeraBridge"]  = update_bridge,          
     ["8211"]        = update_datayours,
     ["8246"]        = update_altui,
   }

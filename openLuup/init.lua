@@ -103,9 +103,9 @@ do -- CALLBACK HANDLERS
   local extendedList = {}
   for name, proc in pairs (requests) do 
     extendedList[name]        = proc
-    extendedList["lu_"..name] = proc                      -- add compatibility with old-style call names
+    extendedList["lu_"..name] = proc            -- add compatibility with old-style call names
   end
-  server.add_callback_handlers (extendedList)       -- tell the HTTP server to use these callbacks
+  server.add_callback_handlers (extendedList)   -- tell the HTTP server to use these callbacks
 end
 
 do -- STARTUP   

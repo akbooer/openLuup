@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.05.29",
+  VERSION       = "2016.05.30",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -201,7 +201,7 @@ local default_plugins = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
-        downloads = "plugins/downloads/openLuup/VeraBridge/",
+        downloads = "plugins/downloads/openLuup/",             -- a /VeraBridge folder will br created here
         backup    = "plugins/backup/openLuup/VeraBridge/",
         default   = "development",                    -- "development" or "master" or any tagged release
         pattern   = "VeraBridge",                     -- pattern match string for required files
@@ -545,7 +545,7 @@ local function save_user_data (localLuup, filename)   -- refactored thanks to @e
   -- devices
   data.devices = devices_table (luup.devices or {})
   -- plugins
-  data.InstalledPlugins2 = attributes.InstalledPlugins2   -- 2016.05.15
+  data.InstalledPlugins2 = attributes.InstalledPlugins2 or default_plugins   -- 2016.05.15 and 2016.05.30
   -- rooms
   local rooms = data.rooms
   for i, name in pairs (luup.rooms or {}) do 
@@ -578,7 +578,7 @@ end
 return {
   ABOUT           = ABOUT,
   
-  attributes      = attributes,
+  attributes      = attributes,  
   devices_table   = devices_table, 
   load            = load_user_data,
   save            = save_user_data,
