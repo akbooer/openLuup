@@ -9,6 +9,11 @@ local ABOUT = {
 
 --
 -- create/delete plugins
+--
+-- invoked by:
+-- /data_request?id=action&
+--    serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&
+--     action=CreatePlugin&PluginNum=...
 -- 
 -- 2016.04.26  switch to GitHub update module
 -- 2016.05.15  add some InstalledPlugins2 data for openLuup and AltUI
@@ -25,16 +30,13 @@ local lfs           = require "lfs"                           -- for portable mk
 local pathSeparator = package.config:sub(1,1)   -- thanks to @vosmont for this Windows/Unix discriminator
                             -- although since lfs (luafilesystem) accepts '/' or '\', it's not necessary
 
+local function path (x) return x: gsub ("/", pathSeparator) end
+
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 
 logs.banner (ABOUT)   -- for version control
 
-
--- invoked by:
--- /data_request?id=action&
---    serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&
---     action=CreatePlugin&PluginNum=8246&TracRev=1237
 
 -- Utility functions
 local function no_such_plugin (Plugin) 
@@ -147,9 +149,6 @@ local function install_if_missing (plugin)
 end
 
 
-local function path (x) return x: gsub ("/", pathSeparator) end
-
-
 --------------------------------------------------
 --
 -- Generic table-driven updates
@@ -257,40 +256,11 @@ end
 --OR
 -- /data_request?id=update&rev=0.7.0
 
-local openLuup_backup       = path "plugins/backup/openLuup/openLuup/"
-local bridge_backup         = path "plugins/backup/openLuup/VeraBridge/"
-local openLuup_downloads    = path "plugins/downloads/openLuup/openLuup/"
-local bridge_downloads      = path "plugins/downloads/openLuup/VeraBridge/"
 
 local openLuup_updater = github.new ("akbooer/openLuup", "plugins/downloads/openLuup")
 
 local function update_openLuup (p, ipl)
-  p.Version = p.Tag or p.Version        -- set this for generic_plugin install
---  local rev = p.Version or "development"
-  
---  _log "backing up openLuup"
---  mkdir_tree (openLuup_backup)
---  mkdir_tree (bridge_backup)
---  local s1, f1 = batch_copy ('openLuup' .. pathSeparator, openLuup_backup)        -- /etc/cmh-ludl/openLuup folder
---  local s2, f2 = batch_copy ('.' .. pathSeparator, bridge_backup, "VeraBridge")   -- VeraBridge from /etc/cmh-ludl/
---  _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
-  
---  _log ("downloading openLuup rev " .. rev)  
---  local folders = {    -- these are the bits of the repository that we want
---    "/openLuup",
---    "/VeraBridge",
---  }
-  
---  local ok = openLuup_updater.get_release (rev, folders) 
---  if not ok then return "openLuup download failed" end
- 
---  local cmh_ludl = ''
---  local openLuup = path "openLuup/"
-  
---  _log "installing new openLuup version..."
---  s1, f1 = batch_copy (openLuup_downloads, openLuup)
---  s2, f2 = batch_copy (bridge_downloads, cmh_ludl)
---  _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
+  p.Version = p.rev or p.Tag or p.Version        -- set this for generic_plugin install
   
   local dont_reload = true
   generic_plugin (p, ipl, dont_reload)   
@@ -304,13 +274,6 @@ local function update_openLuup (p, ipl)
     end
   end
     
---  ipl.VersionMinor = rev   -- 2016.05.15
---  local iplf = ipl.Files or {}
---  for i,f in ipairs (f1) do
---    iplf[i] = {SourceName = f}          -- don't include the VeraBridge files in this list
---  end
---  local msg = "openLuup installed version: " .. rev
---  _log (msg)
   luup.reload ()
 end
 
@@ -344,7 +307,7 @@ local function get_altui_version ()
 end
 
 local function update_altui (p, ipl)
-  p.Version = p.TracRev or p.Version        -- set this for generic_plugin install
+  p.Version = p.rev or p.TracRev or p.Version        -- set this for generic_plugin install
   
   local dont_reload = true
   generic_plugin (p, ipl, dont_reload)   
