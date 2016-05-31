@@ -109,7 +109,7 @@ local attributes = {
 
 -------
 
-local default_plugins_version = "2016.05.31e" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.05.31f" --<<<-- change this if default_plugins changed
 
 local default_plugins = {
 
@@ -201,7 +201,7 @@ local default_plugins = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
-        downloads = "plugins/downloads/openLuup/",             -- a /VeraBridge folder will br created here
+        downloads = "plugins/downloads/VeraBridge/",
         backup    = "plugins/backup/VeraBridge/",
         default   = "development",                    -- "development" or "master" or any tagged release
         pattern   = "VeraBridge",                     -- pattern match string for required files
@@ -311,7 +311,7 @@ local default_plugins = {
 -- Netatmo
 
     {
-      AllowMultiple   = "0",
+      AllowMultiple   = "1",
       Title           = "Netatmo",
       Icon            = "https://raw.githubusercontent.com/akbooer/Netatmo/master/icons/Netatmo.png",
       Instructions    = "https://github.com/akbooer/Netatmo/tree/master/Documentation",
