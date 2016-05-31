@@ -109,7 +109,7 @@ local attributes = {
 
 -------
 
-local default_plugins_version = "2016.05.31d" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.05.31e" --<<<-- change this if default_plugins changed
 
 local default_plugins = {
 
@@ -134,7 +134,7 @@ local default_plugins = {
         backup    = "plugins/backup/openLuup/",
         target    = "openLuup/",                      -- not /etc/cmh-ludl/, like everything else
         default   = "development",                    -- "development" or "master" or any tagged release
-        pattern   = "%w+%.%w+",                       -- TODO: WRONG pattern match string for required files
+        pattern   = "%w+%.lua",                       -- pattern match string for required files
         folders   = {                                 -- these are the bits of the repository that we want
           "/openLuup",
         },
@@ -202,7 +202,7 @@ local default_plugins = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
         downloads = "plugins/downloads/openLuup/",             -- a /VeraBridge folder will br created here
-        backup    = "plugins/backup/openLuup/VeraBridge/",
+        backup    = "plugins/backup/VeraBridge/",
         default   = "development",                    -- "development" or "master" or any tagged release
         pattern   = "VeraBridge",                     -- pattern match string for required files
         folders   = {                                 -- these are the bits of the repository that we want

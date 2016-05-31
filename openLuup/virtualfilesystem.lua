@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.05.26",
+  VERSION       = "2016.05.31",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -143,6 +143,39 @@ local index_html = [[
 </html>
 ]]
 
+local openLuup_reload = [[
+#!/bin/sh
+#
+# reload loop for openLuup
+# @akbooer, Aug 2015
+# you may need to change ‘lua’ to ‘lua5.1’ depending on your install
+
+lua5.1 openLuup/init.lua $1
+
+while [ $? -eq 42 ]
+do
+   lua5.1 openLuup/init.lua
+done
+]]
+
+local openLuup_reload_bat = [[
+@ECHO OFF
+SETLOCAL
+SET LUA_DEV=D:\devhome\app\LuaDist\bin
+SET CURRENT_PATH=%~dp0
+ECHO Start openLuup from "%CURRENT_PATH%"
+ECHO.
+CD %CURRENT_PATH%
+"%LUA_DEV%\lua" openLuup\init.lua %1
+
+:loop
+IF NOT %ERRORLEVEL% == 42 GOTO exit
+"%LUA_DEV%\lua" openLuup\init.lua
+GOTO loop
+
+:exit
+]]
+
 -- TEST
 
 local testing = [[
@@ -157,7 +190,9 @@ local manifest = {
     ["I_openLuup.xml"]  = I_openLuup_impl,
     ["S_openLuup.xml"]  = S_openLuup_svc,
     
-    ["index.html"]      = index_html,
+    ["index.html"]          = index_html,
+    ["openLuup_reload"]     = openLuup_reload,
+    ["openLuup_reload.bat"] = openLuup_reload_bat,
 
     ["TEST"] = testing,
   }
@@ -179,6 +214,13 @@ return {
   read  = function (filename) return manifest[filename] end,
   write = function (filename, contents) manifest[filename] = contents end,
 
+  open  = function (filename)
+            return {
+              read  = function () return manifest[filename] end,
+              write = function (contents) manifest[filename] = contents end,
+              close = function () end,
+            }
+          end,
 }
 
 -----
