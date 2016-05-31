@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.plugins",
-  VERSION       = "2016.05.30",
+  VERSION       = "2016.05.31",
   DESCRIPTION   = "create/delete plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -43,7 +43,7 @@ local function no_such_plugin (Plugin)
   return msg, "text/plain" 
 end
 
--- return first found device id if a device of the given type is present locally
+-- return first found device ID if a device of the given type is present locally
 local function present (device_type)
   for devNo, d in pairs (luup.devices) do
     if (d.device_num_parent == 0)     -- local device!!
@@ -125,6 +125,7 @@ local function install_if_missing (plugin)
   local device_type = device1["DeviceType"]
   local device_file = device1["DeviceFileName"]
   local device_impl = device1["ImplFile"]
+  local statevariables = device1["StateVariables"]
   local pluginnum = plugin.id
   
   local function install (plugin)
@@ -134,7 +135,7 @@ local function install_if_missing (plugin)
     _log ("installing " .. name)
     -- device file comes from Devices structure
     local devNo = luup.create_device (device_type, altid, name, device_file, 
-      device_impl, ip, mac, hidden, invisible, parent, room, pluginnum)  
+      device_impl, ip, mac, hidden, invisible, parent, room, pluginnum, statevariables)  
     return devNo
   end
   
@@ -173,6 +174,7 @@ local function path (x) return x: gsub ("/", pathSeparator) end
 --          ImplFile = "D_IPhone.xml",
 --          Invisible =  "0",
 --          CategoryNum = "1",
+--          StateVariables = "..." -- see luup.create_device documentation
 --        },
 --      },
 --
@@ -321,23 +323,6 @@ end
 -- OR
 -- /data_request?id=altui&rev=1237
 
-local altui_backup      = ("plugins/backup/altui/"):            gsub ("/", pathSeparator)
-local altui_downloads   = ("plugins/downloads/altui/"):         gsub ("/", pathSeparator)
-local blockly_downloads = ("plugins/downloads/altui/blockly/"): gsub ("/", pathSeparator)
-
-
---local function install_altui_if_missing ()
-    
---  local function install ()
---    local upnp_impl, ip, mac, hidden, invisible, parent, room
---    local pluginnum = 8246
---    luup.create_device ('', "ALTUI", "ALTUI", "D_ALTUI.xml", 
---      upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum)  
---  end
-  
---  if not present "urn:schemas-upnp-org:device:altui:1" then install() end
---end
-
 -- get the AltUI version number from the actual code
 -- so it doesn't matter which branch this was retrieved from
 local function get_altui_version ()
@@ -354,36 +339,13 @@ local function get_altui_version ()
 end
 
 local function update_altui (p, ipl)
-  local rev =  tonumber (p.TracRev or p.Version) or "master"
-  local AltUI_updater = github.new ("amg0/ALTUI", "plugins/downloads/altui")
+  p.Version = p.TracRev or p.Version        -- set this for generic_plugin install
+  local rev =  tonumber (p.Version)
   
-  _log "backing up AltUI plugin"
-  mkdir_tree (altui_backup)
-  batch_copy ('.' .. pathSeparator, altui_backup, "ALTUI")
-
-  _log ("downloading ALTUI rev " .. rev)  
-  local folders = {    -- these are the bits of the repository that we want
-    '',           -- root
-    "/blockly",   -- blockly editor
-  }
-  
-  local ok = AltUI_updater.get_release (rev, folders, "ALTUI")
-  if not ok then return "AltUI download failed" end
-
-  _log "installing new AltUI version..."
-  local s1, f1 = batch_copy (altui_downloads, '', "ALTUI")
-  local s2 = batch_copy (blockly_downloads, '', "ALTUI")
-  _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
-
-  install_if_missing (ipl)
-  
-  rev = get_altui_version() or rev    -- recover ACTUAL version from source code, if possible
-  
+  local dont_reload = true
+  generic_plugin (p, ipl, dont_reload)   
+  rev = get_altui_version() or rev    -- recover ACTUAL version from source code, if possible  
   ipl.VersionMinor = rev   -- 2016.05.15
-  local iplf = ipl.Files or {}
-  for i,f in ipairs (f1) do       -- don't include the blockly files in this list
-    iplf[i] = {SourceName = f}
-  end
   local msg = "AltUI installed version: " .. rev
   _log (msg)
   luup.reload ()
@@ -403,13 +365,12 @@ local function update_datayours (p, ipl)
   local devNo = generic_plugin (p, ipl, dont_reload)   
   
   if devNo then   -- new device created, so set up parameters
-    _log "DataYours setup not complete:  TBD"
+    lfs.mkdir "whisper/"            -- default openLuup Whisper database location
     -- TODO: finish DataYours setup
-    -- create Whisper directory
     -- install configuration files
     -- start logging cpu and memory from device #2 by patching AltUI VariablesToSend
+    luup.reload ()
   end
-  return true
 end
 
 
@@ -419,13 +380,12 @@ end
 --
 
 
-
 -- return true if successful, false if not.
 local function create (p)
   local special = {
     ["openLuup"]    = update_openLuup,        -- device is already installed
     ["8211"]        = update_datayours,       -- extra configuration to do
-    ["8246"]        = update_altui,
+    ["8246"]        = update_altui,           -- extracts version from code
   }
   local Plugin = p.PluginNum or p.Plugin
   local installed = luup.attr_get "InstalledPlugins2"

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.05.30",
+  VERSION       = "2016.05.31",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -109,7 +109,7 @@ local attributes = {
 
 -------
 
-local default_plugins_version = "2016.05.30c" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.05.31b" --<<<-- change this if default_plugins changed
 
 local default_plugins = {
 
@@ -230,6 +230,10 @@ local default_plugins = {
           DeviceType      = "urn:akbooer-com:device:DataYours:1",
           ImplFile        = "I_DataYours.xml",
           Invisible       =  "0",
+          StateVariables  = [[
+            urn:akbooer-com:serviceId:DataYours1,DAEMONS=Watch Cache Graph
+            urn:akbooer-com:serviceId:DataYours1,LOCAL_DATA_DIR=whisper/
+          ]]
         },
       },
       Repository      = {
