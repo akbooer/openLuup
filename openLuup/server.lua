@@ -37,7 +37,7 @@ local scheduler = require "openLuup.scheduler"
 local json      = require "openLuup.json"       -- only for non-string response error message
 local wsapi     = require "openLuup.wsapi"      -- WSAPI connector for CGI processing
 local mime      = require "openLuup.mimetypes"
-local vfs       = require "openluup.virtualfilesystem"
+local vfs       = require "openLuup.virtualfilesystem"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
