@@ -535,14 +535,13 @@ end
 -- copy all device files and icons from remote vera
 -- (previously performed by the openLuup_getfiles utility)
 function GetVeraFiles ()
-  local ip = "172.16.42.10"   -- TODO: REMOVE
   
   local code = [[
 
   local lfs = require "lfs"
   local f = io.open ("/www/directory.txt", 'w')
   for fname in lfs.dir ("%s") do
-    if fname:match "lzo$"then
+    if fname:match "lzo$" or fname: match "png$" then
       f:write (fname)
       f:write '\n'
     end
@@ -569,26 +568,24 @@ function GetVeraFiles ()
   local function get_files_from (path, dest, url_prefix)
     dest = dest or '.'
     url_prefix = url_prefix or ":3480/"
+    luup.log ("getting files from " .. path)
     local info = get_directory (path)
     for x in info: gmatch "%C+" do
-      local status
       local fname = x:gsub ("%.lzo",'')   -- remove unwanted extension for compressed files
-      status, info = luup.inet.wget ("http://" .. ip .. url_prefix .. fname)
+      local status, content = luup.inet.wget ("http://" .. ip .. url_prefix .. fname)
       if status == 0 then
-        print (#info, fname)
+        luup.log (table.concat {#content, ' ', fname})
         
         local f = io.open (dest .. '/' .. fname, 'wb')
-        f:write (info)
+        f:write (content)
         f:close ()
       else
-        print ("error", fname)
+        luup.log ("error: " .. fname)
       end
     end
   end
 
   -- device, service, lua, json, files...
-  print (get_directory "/etc/cmh-lu")
-  do return false end   -- TODO: REMOVE
   lfs.mkdir "files"
   get_files_from ("/etc/cmh-ludl/", "files", ":3480/")
   get_files_from ("/etc/cmh-lu/", "files", ":3480/")
