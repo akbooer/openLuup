@@ -44,6 +44,7 @@ local rooms     = require "openLuup.rooms"
 local scenes    = require "openLuup.scenes"
 local userdata  = require "openLuup.userdata"
 local url       = require "socket.url"
+local lfs       = require "lfs"
 
 --local pretty = require "pretty"   -- TODO: TESTING ONLY
 
@@ -528,6 +529,84 @@ local function watch_mirror_variables (mirrored)
   end
   return
 end
+
+-- Bridge action handler(s)
+
+-- copy all device files and icons from remote vera
+-- (previously performed by the openLuup_getfiles utility)
+function GetVeraFiles ()
+  local ip = "172.16.42.10"   -- TODO: REMOVE
+  
+  local code = [[
+
+  local lfs = require "lfs"
+  local f = io.open ("/www/directory.txt", 'w')
+  for fname in lfs.dir ("%s") do
+    if fname:match "lzo$"then
+      f:write (fname)
+      f:write '\n'
+    end
+  end
+  f:close ()
+
+  ]]
+
+  local function get_directory (path)
+    local template = "http://%s:3480/data_request?id=action" ..
+                      "&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1" ..
+                      "&action=RunLua&Code=%s"
+    local request = template:format (ip, url.escape (code: format(path)))
+
+    local status, info = luup.inet.wget (request)
+    if status ~= 0 then luup.log ("error creating remote directory listing: " .. status) return end
+
+    status, info = luup.inet.wget ("http://" .. ip .. "/directory.txt")
+    if status ~= 0 then luup.log ("error reading remote directory listing: " .. status) return end
+    
+    return info
+  end
+
+  local function get_files_from (path, dest, url_prefix)
+    dest = dest or '.'
+    url_prefix = url_prefix or ":3480/"
+    local info = get_directory (path)
+    for x in info: gmatch "%C+" do
+      local status
+      local fname = x:gsub ("%.lzo",'')   -- remove unwanted extension for compressed files
+      status, info = luup.inet.wget ("http://" .. ip .. url_prefix .. fname)
+      if status == 0 then
+        print (#info, fname)
+        
+        local f = io.open (dest .. '/' .. fname, 'wb')
+        f:write (info)
+        f:close ()
+      else
+        print ("error", fname)
+      end
+    end
+  end
+
+  -- device, service, lua, json, files...
+  print (get_directory "/etc/cmh-lu")
+  do return false end   -- TODO: REMOVE
+  lfs.mkdir "files"
+  get_files_from ("/etc/cmh-ludl/", "files", ":3480/")
+  get_files_from ("/etc/cmh-lu/", "files", ":3480/")
+
+  -- icons
+  lfs.mkdir "icons"
+
+  -- UI7
+  get_files_from ("/www/cmh/skins/default/img/devices/device_states/", 
+    "icons", "/cmh/skins/default/img/devices/device_states/")
+
+  -- UI5
+  --get_files_from ("/www/cmh/skins/default/icons/", "icons", "/cmh/skins/default/icons/")
+
+  -----
+  
+end
+
 
 --
 -- GENERIC ACTION HANDLER

@@ -109,7 +109,7 @@ local attributes = {
 
 -------
 
-local default_plugins_version = "2016.05.31f" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.06.01a" --<<<-- change this if default_plugins changed
 
 local default_plugins = {
 
@@ -233,7 +233,7 @@ local default_plugins = {
           StateVariables  = [[
             urn:akbooer-com:serviceId:DataYours1,DAEMONS=Watch Cache Graph
             urn:akbooer-com:serviceId:DataYours1,LOCAL_DATA_DIR=whisper/
-          ]]
+          ]],
         },
       },
       Repository      = {
@@ -243,7 +243,7 @@ local default_plugins = {
         backup    = "plugins/backup/DataYours/",
         default   = "development",                     -- "development" or "master" or any tagged release
         pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
-        },
+      },
     },
 
 -- Arduino

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.05.25",
+  VERSION       = "2016.06.01",
   DESCRIPTION   = "HTTP/HTTPS GET/PUT requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -25,6 +25,7 @@ local ABOUT = {
 -- 2016.05.10   handle upnp/control/hag requests (AltUI redirects from port 49451) through WSAPI
 -- 2016.05.17   log "No handler" responses
 -- 2016.05.25   also look for files in openLuup/ (for plugins page)
+-- 2016.06.01   also look for files in virtualfilesystem
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -36,6 +37,7 @@ local scheduler = require "openLuup.scheduler"
 local json      = require "openLuup.json"       -- only for non-string response error message
 local wsapi     = require "openLuup.wsapi"      -- WSAPI connector for CGI processing
 local mime      = require "openLuup.mimetypes"
+local vfs       = require "openluup.virtualfilesystem"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -132,9 +134,10 @@ local function http_file (URL, headers)
   path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
   local response_type = MIME (path)
   local info, chunked, response_headers
-  local f = io.open(path,'rb')                                  -- 2016.03.05  'b' for Windows, thanks @vosmont
-  if not f then f = io.open ("../cmh-lu/" .. path, 'rb') end    -- 2016.02.24  also look in /etc/cmh-lu/
-  if not f then f = io.open ("openLuup/" .. path, 'rb') end     -- 2016.05.25  also look in openLuup/
+  local f = io.open(path,'rb')                      -- 2016.03.05  'b' for Windows, thanks @vosmont
+    or io.open ("../cmh-lu/" .. path, 'rb')         -- 2016.02.24  also look in /etc/cmh-lu/
+    or io.open ("openLuup/" .. path, 'rb')          -- 2016.05.25  also look in openLuup/
+    or vfs.open (path, 'rb')                        -- 2016.06.01  also look in virtualfilesystem
   if f then 
     info = (f: read "*a") or ''                   -- should perhaps buffer long files
 --    _log ("file length = "..#info, "openLuup.HTTP.FILE")

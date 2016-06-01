@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.05.31",
+  VERSION       = "2016.06.01",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -217,8 +217,8 @@ return {
   open  = function (filename)
             return {
               read  = function () return manifest[filename] end,
-              write = function (contents) manifest[filename] = contents end,
-              close = function () end,
+              write = function (_, contents) manifest[filename] = contents end,
+              close = function () filename = nil end,
             }
           end,
 }

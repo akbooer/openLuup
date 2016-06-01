@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup:Extensions",
-  VERSION       = "2016.05.29",
+  VERSION       = "2016.06.01",
   DESCRIPTION   = "openLuup:Extensions plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -70,7 +70,9 @@ local function calc_stats ()
   set_attr ["Uptime"]  = days .. " days"
 end
 
+--
 -- HTTP requests
+--
 
 --function HTTP_openLuup (r, p, f)
 function HTTP_openLuup ()
@@ -87,6 +89,22 @@ function HTTP_openLuup ()
   x = table.concat (x, '\n')
   return x
 end
+
+--
+-- GENERIC ACTION HANDLER
+--
+-- called with serviceId and name of undefined action
+-- returns action tag object with possible run/job/incoming/timeout functions
+--
+local function generic_action (serviceId, name)
+  local function job (lul_device, lul_settings)
+    local msg = table.concat {"Generic action: ", serviceId, ", ", name}
+    luup.log (msg)
+    return 4,0
+  end
+  return {run = job}    -- job or run ?
+end
+
 
 -- init
 
@@ -117,6 +135,8 @@ function init (devNo)
   luup.register_handler ("HTTP_openLuup", "openLuup")
   luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
   
+  luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
+
   calc_stats ()
   return true, msg, ABOUT.NAME
 end

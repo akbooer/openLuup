@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.plugins",
-  VERSION       = "2016.05.31",
+  VERSION       = "2016.06.01",
   DESCRIPTION   = "create/delete plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -221,10 +221,9 @@ local function generic_plugin (p, ipl, no_reload)
   _log "updating device files..."
   local s1, files = batch_copy (r.downloads, target, "[^p][^n][^g]$")   -- don't copy icons to cmh-ludl...
   _log "updating icons..."
+  lfs.mkdir "icons/"
   local s2 = batch_copy (r.downloads, "icons/", "%.png$")                          -- ... but to icons/
-  if s2 > 0 then
-    _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
-  end
+  _log (table.concat {"Grand Total size: ", s1 + s2, " bytes"})
   
   ipl.VersionMajor = r.type
   ipl.VersionMinor = rev
@@ -237,8 +236,9 @@ local function generic_plugin (p, ipl, no_reload)
   local msg = "updated version: " .. rev
   _log (msg)
   
-  install_if_missing (ipl)
+  local devNo = install_if_missing (ipl)
   if not no_reload then luup.reload () end    -- sorry about double negative
+  return devNo
 end
 
 
@@ -328,7 +328,6 @@ end
 -- and provide appropriate parameters and a Whisper data directory
 
 local function update_datayours (p, ipl)
-  _log "DataYours install..."
   local dont_reload = true
   local devNo = generic_plugin (p, ipl, dont_reload)   
   
