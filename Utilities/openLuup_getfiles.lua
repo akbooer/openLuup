@@ -5,6 +5,7 @@
 -- 2015-11-17   @akbooer
 -- 2015-12-08   use socket.http rather than luup.inet.wget
 -- 2016-03-07   use 'wb' in io.write() for Windows compatibilty (thanks @vosmont and @scyto)
+-- 2016-05-31   correct return prameter in http.request call
 
 local http  = require "socket.http"
 local url   = require "socket.url"
@@ -48,7 +49,7 @@ local function get_directory (path)
                     "&action=RunLua&Code=%s"
   local request = template:format (ip, url.escape (code: format(path)))
 
-  local info, status, info = http.request (request)
+  local info, status = http.request (request)
   assert (status == 200, "error creating remote directory listing")
 
   info, status = http.request ("http://" .. ip .. "/directory.txt")

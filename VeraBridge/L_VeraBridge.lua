@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.05.23",
+  VERSION       = "2016.06.01",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -35,6 +35,7 @@ ABOUT = {
 -- 2016.05.15   HouseMode variable to reflect status of bridged Vera (thanks @logread)
 -- 2016.05.21   @explorer fix for missing Zwave device children when ZWaveOnly selected
 -- 2016.05.23   HouseModeMirror for mirroring either way (thanks @konradwalsh)
+-- 2016.06.01   Add GetVeraFiles action to replace openLuup_getfiles separate utility
 
 local devNo                      -- our device number
 
@@ -44,6 +45,7 @@ local rooms     = require "openLuup.rooms"
 local scenes    = require "openLuup.scenes"
 local userdata  = require "openLuup.userdata"
 local url       = require "socket.url"
+local lfs       = require "lfs"
 
 --local pretty = require "pretty"   -- TODO: TESTING ONLY
 
@@ -52,6 +54,8 @@ local POLL_DELAY = 5              -- number of seconds between remote polls
 
 local local_room_index           -- bi-directional index of our rooms
 local remote_room_index          -- bi-directional of remote rooms
+
+local BuildVersion                -- ...of remote machine
 
 local SID = {
   altui    = "urn:upnp-org:serviceId:altui1"  ,         -- Variables = 'DisplayLine1' and 'DisplayLine2'
@@ -337,6 +341,7 @@ local function GetUserData ()
   local url = table.concat {"http://", ip, ":3480/data_request?id=user_data2&output_format=json"}
   local atr = url:match "=(%a+)"
   local status, j = luup.inet.wget (url)
+  local version
   if status == 0 then Vera = json.decode (j) end
   if Vera then 
     luup.log "Vera info received!"
@@ -351,6 +356,9 @@ local function GetUserData ()
       local_room_index  = index_rooms (luup.rooms or {})
       luup.log ("new room number: " .. (local_room_index[new_room_name] or '?'))
   
+      version = Vera.BuildVersion
+      luup.log ("BuildVersion = " .. version)
+      
       Ndev = #Vera.devices
       luup.log ("number of remote devices = " .. Ndev)
       local roomNo = local_room_index[new_room_name] or 0
@@ -358,7 +366,7 @@ local function GetUserData ()
       Nscn = create_scenes (Vera.scenes, roomNo)
     end
   end
-  return Ndev, Nscn
+  return Ndev, Nscn, version
 end
 
 -- MONITOR variables
@@ -530,6 +538,86 @@ local function watch_mirror_variables (mirrored)
 end
 
 --
+-- Bridge ACTION handler(s)
+--
+
+-- copy all device files and icons from remote vera
+-- (previously performed by the openLuup_getfiles utility)
+function GetVeraFiles ()
+  
+  local code = [[
+
+  local lfs = require "lfs"
+  local f = io.open ("/www/directory.txt", 'w')
+  for fname in lfs.dir ("%s") do
+    if fname:match "lzo$" or fname: match "png$" then
+      f:write (fname)
+      f:write '\n'
+    end
+  end
+  f:close ()
+
+  ]]
+
+  local function get_directory (path)
+    local template = "http://%s:3480/data_request?id=action" ..
+                      "&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1" ..
+                      "&action=RunLua&Code=%s"
+    local request = template:format (ip, url.escape (code: format(path)))
+
+    local status, info = luup.inet.wget (request)
+    if status ~= 0 then luup.log ("error creating remote directory listing: " .. status) return end
+
+    status, info = luup.inet.wget ("http://" .. ip .. "/directory.txt")
+    if status ~= 0 then luup.log ("error reading remote directory listing: " .. status) return end
+    
+    return info
+  end
+
+  local function get_files_from (path, dest, url_prefix)
+    dest = dest or '.'
+    url_prefix = url_prefix or ":3480/"
+    luup.log ("getting files from " .. path)
+    local info = get_directory (path)
+    for x in info: gmatch "%C+" do
+      local fname = x:gsub ("%.lzo",'')   -- remove unwanted extension for compressed files
+      local status, content = luup.inet.wget ("http://" .. ip .. url_prefix .. fname)
+      if status == 0 then
+        luup.log (table.concat {#content, ' ', fname})
+        
+        local f = io.open (dest .. '/' .. fname, 'wb')
+        f:write (content)
+        f:close ()
+      else
+        luup.log ("error: " .. fname)
+      end
+    end
+  end
+
+  -- device, service, lua, json, files...
+  lfs.mkdir "files"
+  get_files_from ("/etc/cmh-ludl/", "files", ":3480/")
+  get_files_from ("/etc/cmh-lu/", "files", ":3480/")
+  luup.log "...end of device files"
+  
+  -- icons
+  lfs.mkdir "icons"
+  local _,b,_ = BuildVersion: match "(%d+)%.(%d+)%.(%d+)"    -- branch, major minor
+  local major = tonumber(b)
+ 
+  if major then  
+    if major > 5 then     -- UI7
+      get_files_from ("/www/cmh/skins/default/img/devices/device_states/", 
+        "icons", "/cmh/skins/default/img/devices/device_states/")
+    else                  -- UI5
+      get_files_from ("/www/cmh/skins/default/icons/", "icons", "/cmh/skins/default/icons/")
+    end
+    luup.log "...end of icon files"  
+  end
+end
+
+
+--
 -- GENERIC ACTION HANDLER
 --
 -- called with serviceId and name of undefined action
@@ -596,7 +684,8 @@ function init (lul_device)
 
   luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
   
-  local Ndev, Nscn = GetUserData ()
+  local Ndev, Nscn
+  Ndev, Nscn, BuildVersion = GetUserData ()
   
   setVar ("Version", ABOUT.VERSION)
   setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)

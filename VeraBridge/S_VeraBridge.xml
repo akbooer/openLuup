@@ -5,5 +5,8 @@
     <minor>0</minor>
   </specVersion>
   <actionList>
+    <action>
+      <name>GetVeraFiles</name>
+    </action>
   </actionList>
 </scpd>

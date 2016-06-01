@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2016.05.21",
+  VERSION       = "2016.05.24",
   DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -24,6 +24,7 @@ local ABOUT = {
 -- 2016.04.16  tidy up some previous edits
 -- 2016.05.12  pre-load openLuup static data
 -- 2016.05.21  fix for invalid argument list in parse_service_xml
+-- 2016.05.24  virtual file system for system .xml and .json files
 
 ------------------
 --
@@ -33,7 +34,7 @@ local ABOUT = {
 local function shallow_copy (a)
   local b = {}
   for i,j in pairs (a) do 
-      b[i] = j 
+    b[i] = j 
   end
   return b
 end
@@ -59,20 +60,19 @@ local new_environment = _pristine_environment ()
 
 local shared_environment  = new_environment "openLuup_startup_and_scenes"
 
-local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
-
-local static_data = {          -- cache for decoded static JSON data, indexed by filename
-  openLuup = {
-	  default_icon = "https://avatars.githubusercontent.com/u/4962913",
-	  DeviceType = "openLuup"
-  }
-}
-
 ------------------
 
 local xml  = require "openLuup.xml"
 local json = require "openLuup.json"
+local vfs  = require "openLuup.virtualfilesystem"
 
+------------------
+
+local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
+
+local static_data = {}          -- cache for decoded static JSON data, indexed by filename
+
+local file_cache = vfs.manifest -- preset read cache to vfs contents
 
 ----
 --
@@ -83,34 +83,34 @@ local mcv  = "urn:schemas-micasaverde-com:device:"
 local upnp = "urn:schemas-upnp-org:device:"
 
 local categories_lookup =             -- info about device types and categories
-  {
-      {id =  1, name = "Interface",          type = mcv  .. "HomeAutomationGateway:1"},
-      {id =  2, name = "Dimmable Switch",    type = upnp .. "DimmableLight:1"},  
-      {id =  3, name = "On/Off Switch",      type = upnp .. "BinaryLight:1"},
-      {id =  4, name = "Sensor",             type = mcv  .. "DoorSensor:1"},
-      {id =  5, name = "HVAC",               type = upnp .. "HVAC_ZoneThermostat:1"}, 
-      {id =  6, name = "Camera",             type = upnp .. "DigitalSecurityCamera:1"},  
-      {id =  6, name = "Camera",             type = upnp .. "DigitalSecurityCamera:2"},  
-      {id =  7, name = "Door Lock",          type = mcv  .. "DoorLock:1"},
-      {id =  8, name = "Window Covering",    type = mcv  .. "WindowCovering:1"},
-      {id =  9, name = "Remote Control",     type = mcv  .. "RemoteControl:1"}, 
-      {id = 10, name = "IR Transmitter",     type = mcv  .. "IrTransmitter:1"}, 
-      {id = 11, name = "Generic I/O",        type = mcv  .. "GenericIO:1"},
-      {id = 12, name = "Generic Sensor",     type = mcv  .. "GenericSensor:1"},
-      {id = 13, name = "Serial Port",        type =         "urn:micasaverde-org:device:SerialPort:1"},  -- yes, it really IS different       
-      {id = 14, name = "Scene Controller",   type = mcv  .. "SceneController:1"},
-      {id = 15, name = "A/V",                type = mcv  .. "avmisc:1"},
-      {id = 16, name = "Humidity Sensor",    type = mcv  .. "HumiditySensor:1"},
-      {id = 17, name = "Temperature Sensor", type = mcv  .. "TemperatureSensor:1"},
-      {id = 18, name = "Light Sensor",       type = mcv  .. "LightSensor:1"},
-      {id = 19, name = "Z-Wave Interface",   type = mcv  .. "ZWaveNetwork:1"},
-      {id = 20, name = "Insteon Interface",  type = mcv  .. "InsteonNetwork:1"},
-      {id = 21, name = "Power Meter",        type = mcv  .. "PowerMeter:1"},
-      {id = 22, name = "Alarm Panel",        type = mcv  .. "AlarmPanel:1"},
-      {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:1"},
-      {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:2"},
-      {id = 24, name = "Siren",              type = mcv  .. "Siren:1"},
-  }
+{
+  {id =  1, name = "Interface",          type = mcv  .. "HomeAutomationGateway:1"},
+  {id =  2, name = "Dimmable Switch",    type = upnp .. "DimmableLight:1"},  
+  {id =  3, name = "On/Off Switch",      type = upnp .. "BinaryLight:1"},
+  {id =  4, name = "Sensor",             type = mcv  .. "DoorSensor:1"},
+  {id =  5, name = "HVAC",               type = upnp .. "HVAC_ZoneThermostat:1"}, 
+  {id =  6, name = "Camera",             type = upnp .. "DigitalSecurityCamera:1"},  
+  {id =  6, name = "Camera",             type = upnp .. "DigitalSecurityCamera:2"},  
+  {id =  7, name = "Door Lock",          type = mcv  .. "DoorLock:1"},
+  {id =  8, name = "Window Covering",    type = mcv  .. "WindowCovering:1"},
+  {id =  9, name = "Remote Control",     type = mcv  .. "RemoteControl:1"}, 
+  {id = 10, name = "IR Transmitter",     type = mcv  .. "IrTransmitter:1"}, 
+  {id = 11, name = "Generic I/O",        type = mcv  .. "GenericIO:1"},
+  {id = 12, name = "Generic Sensor",     type = mcv  .. "GenericSensor:1"},
+  {id = 13, name = "Serial Port",        type =         "urn:micasaverde-org:device:SerialPort:1"},  -- yes, it really IS different       
+  {id = 14, name = "Scene Controller",   type = mcv  .. "SceneController:1"},
+  {id = 15, name = "A/V",                type = mcv  .. "avmisc:1"},
+  {id = 16, name = "Humidity Sensor",    type = mcv  .. "HumiditySensor:1"},
+  {id = 17, name = "Temperature Sensor", type = mcv  .. "TemperatureSensor:1"},
+  {id = 18, name = "Light Sensor",       type = mcv  .. "LightSensor:1"},
+  {id = 19, name = "Z-Wave Interface",   type = mcv  .. "ZWaveNetwork:1"},
+  {id = 20, name = "Insteon Interface",  type = mcv  .. "InsteonNetwork:1"},
+  {id = 21, name = "Power Meter",        type = mcv  .. "PowerMeter:1"},
+  {id = 22, name = "Alarm Panel",        type = mcv  .. "AlarmPanel:1"},
+  {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:1"},
+  {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:2"},
+  {id = 24, name = "Siren",              type = mcv  .. "Siren:1"},
+}
 
 local cat_by_dev = {}                         -- category number lookup by device type
 local cat_name_by_dev = {}                    -- category  name  lookup by device type
@@ -125,8 +125,8 @@ end
 --  utilities
 
 -- memoize: return new function which caches its previously computed results
-local function memoize (fct)
-  local cache = setmetatable ({}, {__mode = "kv"})
+local function memoize (fct, cache)
+  cache = cache or setmetatable ({}, {__mode = "kv"})
   return function (x)
     cache[x] = cache[x] or fct(x)
     return cache[x]
@@ -144,7 +144,7 @@ local function raw_read (filename)
   end
 end
 
-local cached_read = memoize (raw_read)    -- 2016.02.23
+local cached_read = memoize (raw_read, file_cache)    -- 2016.02.23
 
 local function xml_read (filename)
   local raw_xml = cached_read (filename) 
@@ -188,7 +188,7 @@ local function parse_device_xml (device_xml)
     subcategory_num = d.subcategory_num,
   }
 end 
- 
+
 -- read and parse device file, if present
 local function read_device (upnp_file)
   local info = {}
@@ -223,9 +223,9 @@ end
 -- build <incoming> handler
 local function build_incoming (lua)
   return table.concat ({
-    "function _openLuup_INCOMING_ (lul_device, lul_data)",
-    lua,
-    "end"}, '\n')
+      "function _openLuup_INCOMING_ (lul_device, lul_data)",
+      lua,
+      "end"}, '\n')
 end
 
 -- read implementation file, if present, and build actions, files, and code.
@@ -259,7 +259,7 @@ local function parse_impl_xml (impl_xml, raw_xml)
   loadList[#loadList+1] = actions                               -- append the actions for jobs
   loadList[#loadList+1] = incoming                              -- append the incoming data handler
   local source_code = table.concat (loadList, '\n')             -- concatenate the code
-  
+
   return {
     protocol    = i.settings and i.settings.protocol,   -- may be defined here, but more normally in device file
     source_code = source_code,
@@ -299,7 +299,7 @@ local function parse_service_xml (service_xml)
   for _,v in ipairs (variables) do
     short_codes[v.name] = v.shortCode
   end
-  
+
   return {
     actions     = actions,
     returns     = returns,
@@ -307,7 +307,7 @@ local function parse_service_xml (service_xml)
     variables   = variables,
   }
 end 
- 
+
 -- read and parse service file, if present
 -- openLuup only needs the service files to determine the return arguments for actions
 -- the 'relatedStateVariable' tells what data to return for 'out' arguments
@@ -343,7 +343,7 @@ end
 local function read_json (json_file)
   local data, msg
   if json_file then 
-    local j = raw_read (json_file)        -- 2016.02.23, no point in caching since Lua structure itself is cached below
+    local j = cached_read (json_file)     -- 2016.05.24, restore caching to use virtual file system for .json files
     if j then 
       if icon_path then                   -- 2016.02.23
         j = rewrite_icon_path (j)
@@ -379,12 +379,12 @@ end
 -- This function attempts to wrap the assembly into one place.
 -- defined filename parameters override the definitions embedded in other files.
 local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_impl, json_file)
-  
+
   -- returns non-blank contents of x or nil
   local function non_blank (x) 
     return x and x: match "%S+"
   end
-    
+
   -- read device file, if present  
   local d = read_device (upnp_file)                
   d.device_type = non_blank (d.device_type) or device_type      --  file overrides parameter
@@ -415,7 +415,7 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
     end
     static_data [file] = json  
   end
-  
+
   -- read implementation file, if present  
   file = non_blank(upnp_impl) or d.impl_file          -- parameter overrides file
   d.impl_file = file                                  -- update file actually used
@@ -423,7 +423,7 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   if file then 
     i = read_impl (file) 
   end
-  
+
   -- load and compile the amalgamated code from <files>, <functions>, <actions>, and <startup> tags
   local code, error_msg
   if i.source_code then
@@ -435,25 +435,25 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
     end
     i.source_code = nil   -- free up for garbage collection
   end
-  
+
   -- look for protocol in both device and implementation files 
   d.protocol = d.protocol or i.protocol
-  
+
   -- set up code environment (for context switching)
   code = code or {}
   d.environment     = code  
-  
+
   -- add category information  
   d.category_num    = tonumber (d.category_num) or cat_by_dev[device_type] or 0
   d.category_name   = cat_name_by_dev [device_type] or cat_name_by_num[d.category_num]
-  
+
   -- dereference code entry point
   d.entry_point = code[i.startup or ''] 
-  
+
   -- dereference action list 
   d.action_list     = code._openLuup_ACTIONS_
   code._openLuup_ACTIONS_ = nil             -- remove from code name space
-  
+
   -- dereference incoming asynchronous I/O callback
   d.incoming = code._openLuup_INCOMING_
   code._openLuup_INCOMING_ = nil             -- remove from code name space
@@ -463,23 +463,24 @@ end
 
 
 return {
-    ABOUT = ABOUT,
-    
-    -- tables
-    service_data        = service_data,
-    shared_environment  = shared_environment,
-    static_data         = static_data,  
-    
-    -- methods
-    assemble_device     = assemble_device_from_files,
-    compile_lua         = compile_lua,
-    icon_redirect       = icon_redirect,
-    new_environment     = new_environment,
-    parse_service_xml   = parse_service_xml,
-    parse_device_xml    = parse_device_xml,
-    parse_impl_xml      = parse_impl_xml,
-    read_service        = read_service,
-    read_device         = read_device,
-    read_impl           = read_impl,
-    read_json           = read_json,
-  }
+  ABOUT = ABOUT,
+
+  -- tables
+  service_data        = service_data,
+  shared_environment  = shared_environment,
+  static_data         = static_data,  
+
+  -- methods
+  assemble_device     = assemble_device_from_files,
+  compile_lua         = compile_lua,
+  icon_redirect       = icon_redirect,
+  new_environment     = new_environment,
+  parse_service_xml   = parse_service_xml,
+  parse_device_xml    = parse_device_xml,
+  parse_impl_xml      = parse_impl_xml,
+  read_service        = read_service,
+  read_device         = read_device,
+  read_impl           = read_impl,
+  read_json           = read_json,
+
+}
