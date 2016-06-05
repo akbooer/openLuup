@@ -379,6 +379,9 @@ local function update_datayours (p, ipl)
     -- install configuration files from virtual file storage
     copy_if_missing (vfs.open "storage-schemas.conf", "whisper/storage-schemas.conf")
     copy_if_missing (vfs.open "storage-aggregation.conf", "whisper/storage-aggregation.conf")
+    -- create unknown.wsp file so that there's a blank plot shown for a new variable
+    local whisper = require "L_DataWhisper"
+    whisper.create ("whisper/unknown.wsp", "1d:1d")
     -- start logging cpu and memory from device #2 by setting AltUI VariablesToSend
     local request = table.concat {
         "http://127.0.0.1:3480/data_request?id=lr_ALTUI_Handler",
@@ -387,7 +390,8 @@ local function update_datayours (p, ipl)
         "&variable=%s",                 -- variable to watch
         "&device=2",
         "&scene=-1",                    -- Data Push Watch
-        "&expression=&xml=",
+        "&expression= ",                -- the blank character seems to be important for some systems
+        "&xml= ",                       -- ditto
         "&provider=datayours",
         "&providerparams=%s",           -- JSON parameter list
       }
