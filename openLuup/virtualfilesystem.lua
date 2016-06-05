@@ -1,7 +1,7 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.06.01",
-  DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files",
+  VERSION       = "2016.06.03",
+  DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
@@ -176,15 +176,75 @@ GOTO loop
 :exit
 ]]
 
--- TEST
 
-local testing = [[
-a test file
+-----
+--
+-- DataYours schema and aggregation definitions for AltUI DataStorage Provider
+--
+
+local storage_schemas_conf = [[
+#
+# Schema definitions for Whisper files. Entries are scanned in order,
+# and first match wins. This file is read whenever a file create is required.
+#
+#  [name]  (used in log reporting)
+#  pattern = regex 
+#  retentions = timePerPoint:timeToStore, timePerPoint:timeToStore, ...
+
+#  2016.01.24  @akbooer
+#  basic patterns for AltUI Data Storage Provider
+
+[day]
+pattern = \.d$
+retentions = 1m:1d
+
+[week]
+pattern = \.w$
+retentions = 5m:7d
+
+[month]
+pattern = \.m$
+retentions = 20m:30d
+
+[quarter]
+pattern = \.q$
+retentions = 1h:90d
+
+[year]
+pattern = \.y$
+retentions = 6h:1y
+
+]]
+
+local storage_aggregation_conf = [[
+#
+#Aggregation methods for whisper files. Entries are scanned in order,
+# and first match wins. This file is read whenever a file create is required.
+#
+#  [name]
+#  pattern = <regex>    
+#  xFilesFactor = <float between 0 and 1>
+#  aggregationMethod = <average|sum|last|max|min>
+#
+#  name: Arbitrary unique name for the rule
+#  pattern: Regex pattern to match against the metric name
+#  xFilesFactor: Ratio of valid data points required for aggregation to the next retention to occur
+#  aggregationMethod: function to apply to data points for aggregation
+#
+#  2014.02.22  @akbooer
+
+#
+[otherwise]
+pattern = .
+xFilesFactor = 0
+aggregationMethod = average
+
 ]]
 
 -----
 
 local manifest = {
+    
     ["D_openLuup.xml"]  = D_openLuup_dev,
     ["D_openLuup.json"] = D_openLuup_json,
     ["I_openLuup.xml"]  = I_openLuup_impl,
@@ -194,7 +254,9 @@ local manifest = {
     ["openLuup_reload"]     = openLuup_reload,
     ["openLuup_reload.bat"] = openLuup_reload_bat,
 
-    ["TEST"] = testing,
+    ["storage-schemas.conf"]      = storage_schemas_conf,
+    ["storage-aggregation.conf"]  = storage_aggregation_conf,
+    
   }
 
 -----

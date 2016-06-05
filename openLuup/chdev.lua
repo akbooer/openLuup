@@ -55,7 +55,7 @@ local UUID = (function ()
 end) ()
 
 -- convert string statevariable definition into Lua table of device variables
-local function varlist_to_table (statevariables)   -- TODO: thanks @explorer, for this temporary fix
+local function varlist_to_table (statevariables) 
   -- syntax is: "serviceId,variable=value" separated by new lines
   local vars = {}
   for srv, var, val in statevariables: gmatch "%s*([^,]+),([^=]+)=(%C*)" do
