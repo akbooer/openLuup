@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.05.21",
+  VERSION       = "2016.06.04",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -21,6 +21,8 @@ local ABOUT = {
 -- 2016.04.25  openLuup update changes
 -- 2016.04.29  add actual device status to status response 
 -- 2016.05.18  generic update_plugin request for latest version
+-- 2016.05.23  fix &id=altui plugin numbering string (thanks @amg0)
+-- 2016.06.04  remove luup.reload() from device delete action: AltUI requests reload anyway
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -126,7 +128,6 @@ local function device (_,p)
     end    
     scenes.verify_all()           -- 2016.03.11 ensure there are no references to these devices in scene actions
     -- AltUI variable watch triggers will have to take care of themselves!
-    luup.reload ()
   end
   local function noop () end
 
@@ -687,7 +688,7 @@ local function reload () luup.reload () end     -- reload openLuup
 
 local function file (_,p) return server.http_file (p.parameters or '') end                 -- file access
 
-local function altui (_,p) return plugins.create {PluginNum = 8246, TracRev=tonumber(p.rev)} end    -- install/update ALTUI
+local function altui (_,p) return plugins.create {PluginNum = "8246", TracRev=tonumber(p.rev)} end    -- install/update ALTUI
 
 local function update (_,p) return plugins.create {PluginNum = "openLuup", Tag = p.rev} end   -- update openLuup
 

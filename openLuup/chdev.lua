@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2016.05.12",
+  VERSION       = "2016.06.02",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -18,6 +18,8 @@ local ABOUT = {
 -- 2016.04.18  add username and password to attributes (for cameras)
 -- 2016.04.29  add device status
 -- 2016.05.12  use luup.attr_get and set, rather than a dependence on openLuup.userdata
+-- 2016.05.24  fix 'nil' plugin attribute
+-- 2016.06.02  undo @explorer string mods (interim solution not now needed) and revert to standard Vera syntax
 
 local logs      = require "openLuup.logs"
 
@@ -53,13 +55,10 @@ local UUID = (function ()
 end) ()
 
 -- convert string statevariable definition into Lua table of device variables
-local function variable_explorer (statevariables)   -- TODO: thanks @explorer, for this temporary fix
+local function varlist_to_table (statevariables) 
   -- syntax is: "serviceId,variable=value" separated by new lines
-  -- @explorer: separate the state variables by form feed because values can have new lines
-  local svars = '\n' .. statevariables
-  svars = svars: gsub( "\n([%w%.%-:]+),([%w%._]+)=", "\f\n%1,%2=" )     
   local vars = {}
-  for srv, var, val in svars: gmatch "\n([%w%.%-:]+),([%w%._]+)=([^\f]*)" do
+  for srv, var, val in statevariables: gmatch "%s*([^,]+),([^=]+)=(%C*)" do
     vars[#vars+1] = {service = srv, variable = var, value = val}
   end
   return vars
@@ -140,7 +139,7 @@ local function create (x)
     manufacturer    = d.manufacturer or '',
     model           = d.modelName or '',
     name            = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?')), 
-    plugin          = tostring(x.pluginnum),
+    plugin          = tostring(x.pluginnum or ''),
     password        = x.password,
     room            = tostring(tonumber (x.room or 0)),   -- why it's a string, I have no idea
     subcategory_num = tonumber (d.subcategory_num) or 0,
@@ -216,7 +215,7 @@ local function create_device (
     parent = parent,                    -- (number)
     room = room,                        -- (number)
     pluginnum = pluginnum,              -- (number)
-    statevariables = variable_explorer (statevariables or ''),    -- (string)   "service,variable=value\nservice..."
+    statevariables = varlist_to_table (statevariables or ''),    -- (string)   "service,variable=value\nservice..."
     pnpid = pnpid,                      -- (number)   no idea (perhaps uuid??)
     nochildsync = nochildsync,          -- (string)   no idea
     aeskey = aeskey,                    -- (string)   no idea

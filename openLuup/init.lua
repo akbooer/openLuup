@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.05.21",
+  VERSION       = "2016.06.06",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -33,13 +33,14 @@ local userdata      = require "openLuup.userdata"
 local json          = require "openLuup.json"
 local mime          = require "mime"
 
+
 -- what it says...
 local function compile_and_run (lua, name)
   _log ("running " .. name)
   local startup_env = loader.shared_environment    -- shared with scenes
   local source = table.concat {"function ", name, " () ", lua, "end" }
   local code, error_msg = 
-    loader.compile_lua (source, name, startup_env) -- load, compile, instantiate
+  loader.compile_lua (source, name, startup_env) -- load, compile, instantiate
   if not code then 
     _log (error_msg, name) 
   else
@@ -49,27 +50,10 @@ local function compile_and_run (lua, name)
   end
 end
 
--- heartbeat monitor for memory usage and checkpointing
 
+-- heartbeat monitor for memory usage and checkpointing
 local function openLuupPulse ()
-  timers.call_delay(openLuupPulse, 6*60)                      -- periodic pulse (6 minutes)
-  local AppMemoryUsed =  math.floor(collectgarbage "count")   -- openLuup's memory usage in kB
-  local now, cpu = os.time(), timers.cpu_clock()
-  local uptime = now - timers.loadtime + 1
-  local percent = ("%0.2f%%"): format (100 * cpu / uptime)
-  local memory = ("%0.1fMb"): format (AppMemoryUsed / 1000)
-  uptime = ("%0.2f days"): format (uptime / 24 / 60 / 60)
-  
-  -- luup.variable_set ("urn:upnp-org:serviceId:altui1", "DisplayLine1", "mem 7.8Mb, cpu 1.23%, up 0.00 days",15)
-  -- luup.variable_set ("urn:upnp-org:serviceId:altui1", "DisplayLine2", "version: v0.7.0  (latest v0.8.3)",15)
-  local set_attr = userdata.attributes 
-  set_attr ["openLuup.Memory"]   = memory
-  set_attr ["openLuup.CpuLoad"]  = percent
-  set_attr ["openLuup.Uptime"]   = uptime
-  local sfmt = "memory: %s, uptime: %s, cpu: %0.1f sec (%s)"
-  local stats = sfmt: format (memory, uptime, cpu, percent)
-  _log (stats, "openLuup.heartbeat")
-  
+  timers.call_delay(openLuupPulse, 6*60)                      -- periodic pulse (6 minutes)  
   -- CHECKPOINT !
   local ok, msg = userdata.save (luup)
   if not ok then
@@ -88,19 +72,21 @@ do -- change search paths for Lua require and icon urls
 --  loader.icon_redirect ''                                 -- remove all prefix paths for icons
 end
 
-do -- Devices 1 and 2 are the Vera standard ones
+do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, replaced by openLuup)
   local invisible = true
   luup.attr_set ("Device_Num_Next", 1)  -- this may get overwritten by a subsequent user_data load
 
   -- create (device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, ...)
   luup.create_device ("urn:schemas-micasaverde-com:device:ZWaveNetwork:1", '',
-                      "ZWave", "D_ZWaveNetwork.xml", nil, nil, nil, nil, invisible)
-  luup.create_device ("urn:schemas-micasaverde-com:device:SceneController:1", '',
-                      "_SceneController", "D_SceneController1.xml", nil, nil, nil, nil, invisible, 1)
+    "ZWave", "D_ZWaveNetwork.xml", nil, nil, nil, nil, invisible)
+--  luup.create_device ("urn:schemas-micasaverde-com:device:SceneController:1", '',
+--                      "_SceneController", "D_SceneController1.xml", nil, nil, nil, nil, invisible, 1)
+  luup.create_device ("openLuup", '', " openLuup", "D_openLuup.xml")
 end
 
 do -- set attributes, possibly decoding if required
   local set_attr = userdata.attributes 
+  set_attr["openLuup"] = {StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime)}
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
   local attr = string.char(unpack (attrs))
   loader.shared_environment[attr] = function (info)
@@ -111,7 +97,6 @@ do -- set attributes, possibly decoding if required
       set_attr[a] = b
     end
   end
-  set_attr ["openLuup.Startup"] = os.date "%Y-%m-%dT%H:%M:%S"
 end
 
 do -- CALLBACK HANDLERS
@@ -119,9 +104,9 @@ do -- CALLBACK HANDLERS
   local extendedList = {}
   for name, proc in pairs (requests) do 
     extendedList[name]        = proc
-    extendedList["lu_"..name] = proc                      -- add compatibility with old-style call names
+    extendedList["lu_"..name] = proc            -- add compatibility with old-style call names
   end
-  server.add_callback_handlers (extendedList)       -- tell the HTTP server to use these callbacks
+  server.add_callback_handlers (extendedList)   -- tell the HTTP server to use these callbacks
 end
 
 do -- STARTUP   
@@ -148,7 +133,7 @@ do -- STARTUP
   end
   _log "init phase completed"
 end
- 
+
 local status
 
 do -- SERVER and SCHEDULER
@@ -166,5 +151,3 @@ end
 luup.reload (status)      -- actually, it's a final exit (but it saves the user_data.json file)
 
 -----------
-
-

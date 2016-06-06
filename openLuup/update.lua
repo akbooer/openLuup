@@ -1,6 +1,6 @@
 local ABOUT = {
-  NAME          = "openLuup.github",
-  VERSION       = "2016.05.30",
+  NAME          = "openLuup.update",
+  VERSION       = "2016.05.11",
   DESCRIPTION   = "update plugins from GitHub repository",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -15,8 +15,6 @@ local ABOUT = {
 
 -- 2016.03.15  created
 -- 2016.04.25  make generic, for use with openLuup / AltUI / anything else
--- 2016.05.28  change write mode to "w+" to try and fix some update failures
---              see: http://forum.micasaverde.com/index.php/topic,37285.msg282900.html#msg282900
 
 local https     = require "ssl.https"
 local ltn12     = require "ltn12"
@@ -115,22 +113,20 @@ local function new (archive, target)
   -- get specific parts of tagged release
   local function get_release (v, subdirectories, pattern)
     local ok = true
---    directory_check (subdirectories)
-    directory_check {''}          -- just the main directory
+    directory_check (subdirectories)
     _log ("getting contents of version: " .. v)
 
     -- x is a GitHub descriptor with name, path, etc...
     local function get_file (x)
       local wanted = (x.type == "file") and (x.name):match (pattern or '.') 
       if not wanted then return end
---      local fname = table.concat {target, pathSeparator, x.path}  -- use this if you want subdirectory structure
+      local fname = table.concat {target, pathSeparator, x.path}  -- use this if you want subdirectory structure
 --      local fname = table.concat {target, pathSeparator, x.name}  -- ...or this to collapse all to target directory
-      local fname = table.concat {target, x.name}  -- ...or this to collapse all to target directory
       _log (fname)
   
       local _, code = https.request{
           url = x.download_url,
-          sink = ltn12.sink.file(io.open(fname, "w+"))
+          sink = ltn12.sink.file(io.open(fname, 'w'))
         }
       
       if code ~= 200 then ok = false end
@@ -162,7 +158,7 @@ local function new (archive, target)
     
     local _, code = https.request{
       url = "https://codeload.github.com/" .. archive .. "/tar.gz/master",
-      sink = ltn12.sink.file(io.open(target .. "/latest.tar.gz", "+wb"))
+      sink = ltn12.sink.file(io.open(target .. "/latest.tar.gz", "wb"))
     }
     if code ~= 200 then 
       msg = "GitHub download failed with code " .. code
