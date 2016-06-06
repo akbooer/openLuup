@@ -280,15 +280,14 @@ local function update_openLuup (p, ipl)
   local dont_reload = true
   generic_plugin (p, ipl, dont_reload)   
   
+  -- add extra files if absent
   local html = "index.html"
-  if not lfs.attributes (html) then     -- don't overwrite if already there
-    _log "installing index.html"
-    local content = vfs.read (html)
-    if content then 
-      file_write (html, content)
-    end
-  end
-    
+  copy_if_missing (vfs.open (html), html)
+  
+  local reload = "openLuup_reload"
+  if pathSeparator ~= '/' then reload = reload .. ".bat" end   -- Windows version
+  copy_if_missing (vfs.open (reload), reload)
+  
   luup.reload ()
 end
 
@@ -425,7 +424,7 @@ local function create (p)
     ["8246"]        = update_altui,           -- extracts version from code
   }
   local Plugin = p.PluginNum or p.Plugin
-  local installed = luup.attr_get "InstalledPlugins2"
+  local installed = luup.attr_get "InstalledPlugins2" or {}
   
   local info
   for _,p in ipairs (installed) do

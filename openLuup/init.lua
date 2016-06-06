@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.05.25",
+  VERSION       = "2016.06.06",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -86,6 +86,7 @@ end
 
 do -- set attributes, possibly decoding if required
   local set_attr = userdata.attributes 
+  set_attr["openLuup"] = {StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime)}
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
   local attr = string.char(unpack (attrs))
   loader.shared_environment[attr] = function (info)
@@ -123,8 +124,6 @@ do -- STARTUP
         ok = userdata.load (code)
         code = userdata.attributes ["StartupCode"] or ''  -- substitute the Startup Lua
       end
-      userdata.attributes["openLuup"] = 
-        {StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime)}
       compile_and_run (code, "_openLuup_STARTUP_")  -- the given file or the code in user_data
     else
       _log "no init data"
