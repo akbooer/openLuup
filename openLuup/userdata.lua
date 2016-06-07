@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.05.31",
+  VERSION       = "2016.06.06",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -16,6 +16,7 @@ local ABOUT = {
 -- 2016.05.21   handle empty InstalledPlugins2 in user_data file on loading
 -- 2016.05.22   ignore table structure in writing user_data attributes
 -- 2016.05.24   update InstalledPlugins2 list
+-- 2016.06.06   fix load error if missing openLuup structure (upgrading from old version)
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -472,7 +473,7 @@ local function load_user_data (user_data_json)
     local index = plugin_index (new)
     
     -- check TargetVersion of openLuup to see if InstalledPlugins2 is current   
-    local ol = new[index.openLuup]
+    local ol = new[index.openLuup] or {}
     local refresh = not ol or (ol.TargetVersion ~= default_plugins_version)
     local ref = "InstalledPlugins2, user_data: %s, openLuup: %s"
     _log (ref: format (ol.TargetVersion or '?', default_plugins_version))
