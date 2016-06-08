@@ -17,6 +17,7 @@ local ABOUT = {
 -- 2016.05.22   ignore table structure in writing user_data attributes
 -- 2016.05.24   update InstalledPlugins2 list
 -- 2016.06.06   fix load error if missing openLuup structure (upgrading from old version)
+-- 2016.06.08   add pre-defined startup code for new systems
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -61,7 +62,33 @@ local attributes = {
 --  Server_Device_Alt = "vera-us-oem-device11.mios.com",
 --  SetupDevices = {},
 --  ShowIndividualJobs = 0,
-  StartupCode = "",
+  StartupCode = [[
+
+-- You can personalise the installation by changing these attributes,
+-- which are persistent and may be removed from the Startup after a reload.
+local attr = luup.attr_set
+
+attr ("City_description", "Greenwich")
+attr ("Country_description", "UNITED KINGDOM")
+attr ("KwhPrice", "0.15")
+attr ("PK_AccessPoint", "88800000")
+attr ("Region_description", "England")
+attr ("TemperatureFormat", "C")
+
+attr ("currency", "£")
+attr ("date_format", "dd/mm/yy")
+attr ("latitude", "51.00")
+attr ("longitude", "-1.00")
+attr ("model", "Not a Vera")
+attr ("timeFormat", "24hr")
+attr ("timezone", "0")
+
+-- Any other startup processing may be inserted here...
+
+luup.log "Hello from my very own startup code"
+
+]]
+,
 --  SvnVersion = "*13875*",
   TemperatureFormat = "C",
 --  UnassignedDevices = 0,
