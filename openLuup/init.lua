@@ -13,6 +13,7 @@ local ABOUT = {
 
 -- 2016.04.18  add username and password to attributes (for cameras)
 -- 2016.05.12  moved load_user_data from this module to userdata
+-- 2016.06.08  add 'altui' startup option to do new install
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -32,7 +33,6 @@ local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local json          = require "openLuup.json"
 local mime          = require "mime"
-
 
 -- what it says...
 local function compile_and_run (lua, name)
@@ -68,8 +68,8 @@ end
 
 do -- change search paths for Lua require and icon urls
   local cmh_lu = ";../cmh-lu/?.lua"
-  package.path = package.path .. cmh_lu                   -- add /etc/cmh-lu/ to search path
---  loader.icon_redirect ''                                 -- remove all prefix paths for icons
+  package.path = package.path .. cmh_lu       -- add /etc/cmh-lu/ to search path
+--  loader.icon_redirect ''                   -- remove all prefix paths for icons
 end
 
 do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, replaced by openLuup)
@@ -113,6 +113,10 @@ do -- STARTUP
   local init = arg[1] or "user_data.json"       -- optional parameter: Lua or JSON startup file
   _log ("loading configuration ".. init)
   if init == "reset" then luup.reload () end    -- factory reset
+  if init == "altui" then                      -- install altui in reset system
+    userdata.use_defaults ()
+    requests.altui (nil,{}) 
+  end
   local f = io.open (init, 'r')
   if f then 
     local code = f:read "*a"

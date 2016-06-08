@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.06.06",
+  VERSION       = "2016.06.08",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -376,6 +376,10 @@ local default_plugins = {
   }   -- end of default_plugins
 
 
+local function use_defaults ()
+  attributes.InstalledPlugins2 = default_plugins
+end
+
 -- utilities
 
 -- given installed plugin structure, generate index by ID
@@ -586,6 +590,7 @@ return {
   ABOUT           = ABOUT,
   
   attributes      = attributes,  
+  use_defaults    = use_defaults,
   devices_table   = devices_table, 
   load            = load_user_data,
   save            = save_user_data,
