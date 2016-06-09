@@ -3,6 +3,8 @@ local t = require "tests.luaunit"
 
 -- openLuup.chdev TESTS
 
+local luup = {}   -- luup is not really there.
+
 --
 -- DEVICE CREATE
 --
@@ -17,10 +19,10 @@ function TestChdevDevice:setUp ()
     devNo = 0, 
     device_type = devType, 
     statevariables =
-      [[
-        myServiceId,Variable=Value
-        anotherSvId,MoreVars=pi
-      ]]
+      {
+        { service = "myServiceId", variable = "Variable", value = "Value" },
+        { service = "anotherSvId", variable = "MoreVars", value = "pi" },
+      }
     }
 end
 
@@ -47,7 +49,7 @@ function TestChdevDevice:test_create ()
   t.assertIsString  (d.pass)
   t.assertIsNumber  (d.room_num)
   t.assertIsNumber  (d.subcategory_num)
-  t.assertIsNil     (d.udn)               -- we don't do UDNs
+  t.assertIsString  (d.udn)  
   t.assertIsString  (d.user)    
 
   -- check all the methods are present:

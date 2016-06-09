@@ -4,7 +4,7 @@
 
 local ABOUT = {
   NAME          = "upnp.control.hag",
-  VERSION       = "2016.05.15",
+  VERSION       = "2016.06.09",
   DESCRIPTION   = "a handler for redirected port_49451 /upnp/control/hag requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -13,9 +13,13 @@ local ABOUT = {
 
 -- see: http://wiki.micasaverde.com/index.php/ModifyUserData
 
+-- 2016.06.05  add scene processing (for AltUI long scene POST requests)
+-- 2016.06.09  make 'run' a local function and export module table explicitly
+
 local xml       = require "openLuup.xml"
 local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
+local scenes    = require "openLuup.scenes"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -47,7 +51,7 @@ JSON structure contains:
 
 --]]
 
-function run(wsapi_env)
+local function run(wsapi_env)
   local response = "OK"
   local headers = { ["Content-type"] = "text/plain" }
   
@@ -70,10 +74,33 @@ function run(wsapi_env)
       _log (msg)
     else
       
+      -- Startup
+      
       if j.StartupCode then
         luup.attr_set ("StartupCode", j.StartupCode)
         _log "modified StartupCode"
       end
+      
+      -- Scenes
+      
+      if j.scenes then                                -- 2016.06.05
+        for name, scene in pairs (j.scenes) do
+          local id = tonumber (scene.id)
+          if id >= 1e6 then scene.id = nil end        -- remove bogus scene number
+          local new_scene, msg = scenes.create (scene)
+          id = tonumber (scene.id)                    -- may have changed
+          if id and new_scene then
+            luup.scenes[id] = new_scene               -- slot into scenes table
+            _log ("modified scene #" .. id)
+          else
+            response = msg
+            _log (msg)
+            break
+          end
+        end
+      end
+      
+      -- also devices, sections, rooms, users...
       
     end
     
@@ -83,6 +110,13 @@ function run(wsapi_env)
   
   return 200, headers, iterator
 end
+
+-----
+
+return {
+  ABOUT = ABOUT,
+  run = run,
+}
 
 -----
 

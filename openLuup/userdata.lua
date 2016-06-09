@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.05.31",
+  VERSION       = "2016.06.08",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -16,6 +16,8 @@ local ABOUT = {
 -- 2016.05.21   handle empty InstalledPlugins2 in user_data file on loading
 -- 2016.05.22   ignore table structure in writing user_data attributes
 -- 2016.05.24   update InstalledPlugins2 list
+-- 2016.06.06   fix load error if missing openLuup structure (upgrading from old version)
+-- 2016.06.08   add pre-defined startup code for new systems
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -60,7 +62,33 @@ local attributes = {
 --  Server_Device_Alt = "vera-us-oem-device11.mios.com",
 --  SetupDevices = {},
 --  ShowIndividualJobs = 0,
-  StartupCode = "",
+  StartupCode = [[
+
+-- You can personalise the installation by changing these attributes,
+-- which are persistent and may be removed from the Startup after a reload.
+local attr = luup.attr_set
+
+-- Geographical location
+attr ("City_description", "Greenwich")
+attr ("Country_description", "UNITED KINGDOM")
+attr ("Region_description", "England")
+attr ("latitude", "51.48")
+attr ("longitude", "0.0")
+
+-- other parameters
+attr ("TemperatureFormat", "C")
+attr ("PK_AccessPoint", "88800000")
+attr ("currency", "£")
+attr ("date_format", "dd/mm/yy")
+attr ("model", "Not a Vera")
+attr ("timeFormat", "24hr")
+attr ("timezone", "0")
+
+-- Any other startup processing may be inserted here...
+luup.log "startup code completed"
+
+]]
+,
 --  SvnVersion = "*13875*",
   TemperatureFormat = "C",
 --  UnassignedDevices = 0,
@@ -375,6 +403,10 @@ local default_plugins = {
   }   -- end of default_plugins
 
 
+local function use_defaults ()
+  attributes.InstalledPlugins2 = default_plugins
+end
+
 -- utilities
 
 -- given installed plugin structure, generate index by ID
@@ -472,7 +504,7 @@ local function load_user_data (user_data_json)
     local index = plugin_index (new)
     
     -- check TargetVersion of openLuup to see if InstalledPlugins2 is current   
-    local ol = new[index.openLuup]
+    local ol = new[index.openLuup] or {}
     local refresh = not ol or (ol.TargetVersion ~= default_plugins_version)
     local ref = "InstalledPlugins2, user_data: %s, openLuup: %s"
     _log (ref: format (ol.TargetVersion or '?', default_plugins_version))
@@ -585,6 +617,7 @@ return {
   ABOUT           = ABOUT,
   
   attributes      = attributes,  
+  use_defaults    = use_defaults,
   devices_table   = devices_table, 
   load            = load_user_data,
   save            = save_user_data,

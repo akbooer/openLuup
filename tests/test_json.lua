@@ -292,7 +292,8 @@ local de,ee
 local lua,json, original
 
 for _,fn in ipairs (json_files) do
-	local f = io.open ('json/'..fn,'r')
+--	local f = io.open ('json/'..fn,'r')
+	local f = io.open (fn,'r')
 	if f then
 		json = f:read ('*a')
 		f: close ()
@@ -305,6 +306,9 @@ for _,fn in ipairs (json_files) do
 		t0 = os.clock()
 		json, ee = J.encode(lua)
 		t1 = os.clock()
+    
+--    print (json)
+    
 		print ('','encode kB = '..#json/1000)
 		print ('','encode time = '.. (t1-t0)*1000 ..' mS' )
 		print ('','encode status = ', ee or 'OK')

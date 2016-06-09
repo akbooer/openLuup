@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.plugins",
-  VERSION       = "2016.06.01",
+  VERSION       = "2016.06.08",
   DESCRIPTION   = "create/delete plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -19,13 +19,16 @@ local ABOUT = {
 -- 2016.05.15  add some InstalledPlugins2 data for openLuup and AltUI
 -- 2016.05.21  fix destination directory error in openLuup install!
 -- 2016.05.24  build files list when plugins are installed
-
--- TODO: parameterize all this to be data-driven from the InstalledPlugins2 structure.
+-- 2016.06.06  complete configuration of DataYours install (to log cpu and memory, "out of the box")
+-- 2016.06.06  add missing dkjson.lua to AltUI install
+-- 2016.06.08  add add_ancilliary_files to export table
 
 local logs          = require "openLuup.logs"
 local github        = require "openLuup.github"
+local json          = require "openLuup.json"                 -- for DataYours AltUI configuration
 local vfs           = require "openLuup.virtualfilesystem"    -- for index.html install
 local lfs           = require "lfs"                           -- for portable mkdir and dir
+local url           = require "socket.url"                    -- for escaping request parameters
 
 local pathSeparator = package.config:sub(1,1)   -- thanks to @vosmont for this Windows/Unix discriminator
                             -- although since lfs (luafilesystem) accepts '/' or '\', it's not necessary
@@ -104,6 +107,19 @@ local function batch_copy (source, destination, pattern)
   end
   _log (table.concat {"Total size: ", total, " bytes"})
   return total, files
+end
+
+-- slightly unusual parameter list, since source file may be in virtual storage
+-- source is an open file handle
+local function copy_if_missing (source, destination)
+  if not lfs.attributes (destination) then
+    local f = io.open (destination, 'w')
+    if f then
+      f: write ((source: read "*a"))    -- double parentheses for strip of multiple returns from read
+      f: close ()
+    end
+  end
+  source: close ()
 end
 
 local function mkdir_tree (path)
@@ -259,21 +275,24 @@ end
 
 local openLuup_updater = github.new ("akbooer/openLuup", "plugins/downloads/openLuup")
 
+-- add extra files if absent
+local function add_ancillary_files ()  
+  local html = "index.html"
+  copy_if_missing (vfs.open (html), html)
+  
+  local reload = "openLuup_reload"
+  if pathSeparator ~= '/' then reload = reload .. ".bat" end   -- Windows version
+  copy_if_missing (vfs.open (reload), reload)
+end
+
 local function update_openLuup (p, ipl)
   p.Version = p.rev or p.Tag or p.Version        -- set this for generic_plugin install
   
   local dont_reload = true
   generic_plugin (p, ipl, dont_reload)   
   
-  local html = "index.html"
-  if not lfs.attributes (html) then     -- don't overwrite if already there
-    _log "installing index.html"
-    local content = vfs.read (html)
-    if content then 
-      file_write (html, content)
-    end
-  end
-    
+  add_ancillary_files ()
+  
   luup.reload ()
 end
 
@@ -312,6 +331,11 @@ local function update_altui (p, ipl)
   local dont_reload = true
   generic_plugin (p, ipl, dont_reload)   
   
+  local _,dkjson = luup.inet.wget "https://raw.githubusercontent.com/LuaDist/dkjson/master/dkjson.lua"
+  local dkname = "dkjson.lua"
+  vfs.write (dkname, dkjson)
+  copy_if_missing (vfs.open(dkname), dkname)
+  
   local rev = get_altui_version() or ipl.VersionMinor    -- recover ACTUAL version from source code, if possible  
   ipl.VersionMinor = rev   -- 2016.05.15
   local msg = "AltUI installed version: " .. rev
@@ -327,15 +351,65 @@ end
 -- this has a special installer because it has to create the plugin if missing
 -- and provide appropriate parameters and a Whisper data directory
 
+--[[ 
+
+personal communication from @amg0 on inserting elements into VariablesToSend
+
+... GET with a url like this
+"?id=lr_ALTUI_Handler&command={8}&service={0}&variable={1}&device={2}&scene={3}&expression={4}&xml={5}&provider={6}&providerparams={7}".format(
+         w.service, w.variable, w.deviceid, w.sceneid,
+         encodeURIComponent(w.luaexpr),
+         encodeURIComponent(w.xml),
+         w.provider,
+         encodeURIComponent( JSON.stringify(w.params) ), command)
+
+some comments:
+- command is 'addWatch' or 'delWatch'
+- sceneid must be -1 for a Data Push Watch
+- expression & xml can be empty str
+- provider is the provider name ( same as passed during registration )
+- providerparams is a JSON stringified version of an array,  which contains its 0,1,2 indexes the values of the parameters that were declared as necessary by the data provider at the time of the registration
+
+the api returns 1 if the watch was added or removed, 0 if a similar watch was already registered before or if we did not remove any
+
+--]]
+
 local function update_datayours (p, ipl)
   local dont_reload = true
   local devNo = generic_plugin (p, ipl, dont_reload)   
   
   if devNo then   -- new device created, so set up parameters
     lfs.mkdir "whisper/"            -- default openLuup Whisper database location
-    -- TODO: finish DataYours setup
-    -- install configuration files
-    -- start logging cpu and memory from device #2 by patching AltUI VariablesToSend
+    -- install configuration files from virtual file storage
+    copy_if_missing (vfs.open "storage-schemas.conf", "whisper/storage-schemas.conf")
+    copy_if_missing (vfs.open "storage-aggregation.conf", "whisper/storage-aggregation.conf")
+    -- create unknown.wsp file so that there's a blank plot shown for a new variable
+    local whisper = require "L_DataWhisper"
+    whisper.create ("whisper/unknown.wsp", "1d:1d")
+    -- start logging cpu and memory from device #2 by setting AltUI VariablesToSend
+    local request = table.concat {
+        "http://127.0.0.1:3480/data_request?id=lr_ALTUI_Handler",
+        "&command=addWatch", 
+        "&service=openLuup",
+        "&variable=%s",                 -- variable to watch
+        "&device=2",
+        "&scene=-1",                    -- Data Push Watch
+        "&expression= ",                -- the blank character seems to be important for some systems
+        "&xml= ",                       -- ditto
+        "&provider=datayours",
+        "&providerparams=%s",           -- JSON parameter list
+      }
+    local memParams = url.escape (json.encode {
+        "memory.d",                     -- one day's worth of storage
+        "/data_request?id=lr_render&target={0}&hideLegend=true&height=250&from=-y",
+      })
+    local cpuParams = url.escape (json.encode {
+        "cpu.d",                        -- one day's worth of storage
+        "/data_request?id=lr_render&target={{0},memory.d}&height=250&from=-y",
+      })
+    luup.inet.wget (request:format ("Memory_Mb", memParams))
+    luup.inet.wget (request:format ("CpuLoad",   cpuParams))
+    
     luup.reload ()
   end
 end
@@ -355,7 +429,7 @@ local function create (p)
     ["8246"]        = update_altui,           -- extracts version from code
   }
   local Plugin = p.PluginNum or p.Plugin
-  local installed = luup.attr_get "InstalledPlugins2"
+  local installed = luup.attr_get "InstalledPlugins2" or {}
   
   local info
   for _,p in ipairs (installed) do
@@ -386,6 +460,7 @@ return {
   create    = create,
   delete    = delete,
   
+  add_ancillary_files = add_ancillary_files,                  -- for others to use
   latest_version = openLuup_updater.latest_version,
 }
 
