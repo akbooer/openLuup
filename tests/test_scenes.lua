@@ -161,6 +161,31 @@ function TestScenes:test_multiple_scene_lua ()
   t.assertEquals (s.environment.scene_global, 43)
 end
 
+function TestScenes:test_verify ()
+   local lua_scene_123 = {
+    id = 123,
+    name = "non_existent_device_scene",
+    groups = {
+      [1] = {
+        actions = {
+          {device = "123"}
+        }
+      }
+    },
+  } 
+  t.assertIsNil (luup.devices[123])
+  local sc,err = s.create (lua_scene_123) 
+  t.assertIsNil (err)
+  local u1 = sc: user_table ()              -- get the user_data version of things
+  t.assertEquals (#u1.groups[1].actions, 0)    -- check action has been removed
+  sc.verify()
+end
+
+function TestScenes:test_verify_all ()
+  s.verify_all ()
+end
+
+
 function TestScenes:test_ ()
   
 end

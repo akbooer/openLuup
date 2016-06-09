@@ -119,7 +119,7 @@ function TestScheduler:test_job_done ()
   t.assertIsNumber (jobNo)
   t.assertNotEquals (jobNo, 0)
   t.assertIsTable (return_arguments)
-  s.step ()      -- one cycle of processing
+  s.TEST.step ()      -- one cycle of processing
   local status, notes = s.status (jobNo)
   t.assertEquals (status, s.state.Done)
   t.assertEquals (notes, '')
@@ -138,7 +138,7 @@ function TestScheduler:test_job_target ()
   t.assertIsNumber (jobNo)
   t.assertNotEquals (jobNo, 0)
   t.assertIsTable (return_arguments)
-  s.step ()      -- one cycle of processing
+  s.TEST.step ()      -- one cycle of processing
   local status, notes = s.status (jobNo)
   t.assertEquals (status, s.state.Done)
   t.assertEquals (notes, '')
@@ -151,7 +151,7 @@ function TestScheduler:test_job_error ()
   t.assertIsNumber (jobNo)
   t.assertNotEquals (jobNo, 0)
   t.assertIsTable (return_arguments)
-  s.step ()      -- one cycle of processing
+  s.TEST.step ()      -- one cycle of processing
   local status, notes = s.status (jobNo)
   t.assertEquals (status, s.state.Error)
   t.assertEquals (notes, '')
@@ -168,7 +168,7 @@ function TestScheduler:test_call ()
   t.assertEquals (notes, '')
   
   for _, seq in ipairs (sequence) do
-    s.step()
+    s.TEST.step ()
     local status, notes = s.status (jobNo)   
     t.assertEquals (notes, '')
     t.assertEquals (status, seq)
@@ -190,7 +190,7 @@ function TestScheduler:test_delayed ()
   t.assertEquals (status, s.state.WaitingToStart)
   t.assertEquals (notes, '')
   
-  s.step()   -- should stay in waiting to start status and then run after timeout period
+  s.TEST.step()   -- should stay in waiting to start status and then run after timeout period
   
   local status, notes = s.status (jobNo)   
   t.assertEquals (status, s.state.WaitingToStart)
@@ -198,7 +198,7 @@ function TestScheduler:test_delayed ()
   
   socket.select ({}, nil, TIMEOUT)      -- wait a bit
   
-  s.step()   -- should run to completion
+  s.TEST.step()   -- should run to completion
   
   local status, notes = s.status (jobNo)   
   t.assertEquals (status, s.state.Done)
@@ -218,7 +218,7 @@ function TestScheduler:test_no_timeout_tag ()
   t.assertEquals (status, s.state.WaitingToStart)
   t.assertEquals (notes, '')
   
-  s.step()   -- should now be in WaitingForCallback forever
+  s.TEST.step()   -- should now be in WaitingForCallback forever
   
   local status, notes = s.status (jobNo)   
   t.assertEquals (status, s.state.WaitingForCallback)
@@ -226,7 +226,7 @@ function TestScheduler:test_no_timeout_tag ()
   
   socket.select ({}, nil, TIMEOUT)      -- wait a bit
   
-  s.step()   -- should timeout and exit with Aborted status
+  s.TEST.step()   -- should timeout and exit with Aborted status
   
   local status, notes = s.status (jobNo)   
   t.assertEquals (status, s.state.Aborted)
@@ -248,7 +248,7 @@ function TestScheduler:test_timeout_tag ()
   t.assertEquals (status, s.state.WaitingToStart)
   t.assertEquals (notes, '')
   
-  s.step()   -- should now be in WaitingForCallback forever
+  s.TEST.step()   -- should now be in WaitingForCallback forever
   
   local status, notes = s.status (jobNo)   
   t.assertEquals (status, s.state.WaitingForCallback)
@@ -256,7 +256,7 @@ function TestScheduler:test_timeout_tag ()
   
   socket.select ({}, nil, TIMEOUT)      -- wait a bit
   
-  s.step()   -- should timeout and exit with Done status
+  s.TEST.step()   -- should timeout and exit with Done status
   
   local status, notes = s.status (jobNo)   
   t.assertEquals (status, s.state.Done)
@@ -272,7 +272,7 @@ function TestScheduler:test_invalid_state ()
   t.assertIsNumber (jobNo)
   t.assertIsTable (return_arguments)
   
-  s.step()   -- should now have exited with an invalid state
+  s.TEST.step()   -- should now have exited with an invalid state
   
   local status, notes = s.status (jobNo)   
   t.assertEquals (status, s.state.Aborted)

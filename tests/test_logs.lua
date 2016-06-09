@@ -10,7 +10,7 @@ function TestLogs:setUp ()
 end
 
 function TestLogs:test_openLuup_log ()
-  local log = log.openLuup_logger {name = "tests/Test.log", versions = 3, lines =20}.send
+  local log = log.openLuup_logger {name = "tests/data/Test.log", versions = 3, lines =20}.send
   for i = 1,50 do
     log (i)
   end
@@ -18,7 +18,7 @@ end
 
 
 function TestLogs:test_altui_slog ()
-  local alt = log.altui_logger {name = "tests/TestALT.log", lines =20}
+  local alt = log.altui_logger {name = "tests/data/TestALT.log", lines =20}
   local slog = alt.scene
   
   local scn = {id = 42, name = "foo"}         -- log a scene running
@@ -33,7 +33,7 @@ function TestLogs:test_altui_slog ()
 end
 
 function TestLogs:test_altui_vlog ()
-  local alt = log.altui_logger {name = "tests/TestALT.log", lines =20}
+  local alt = log.altui_logger {name = "tests/data/TestALT.log", lines =20}
   local vlog = alt.variable
 
   local var = {dev = 42, srv = "myService", name = "foo", old = nil, value = 123, watchers = {1,2,3}}

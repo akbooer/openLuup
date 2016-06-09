@@ -8,6 +8,9 @@ local t = require "tests.luaunit"
 --
 
 luup            = require "openLuup.luup"
+luup.create_device ('','foo')     --device #1
+
+luup.devices[94] = luup.devices[1]     -- just makes sure there's some reference to this device used in scene actions
 
 local requests  = require "openLuup.requests"
 local json      = require "openLuup.json"
@@ -21,6 +24,7 @@ luup.variable_set ("myService","name2", 88, devNo)     -- add a couple of variab
 local example_scene = {
   id = 42,
   name = "test_scene_name",
+  paused = "0",
   room = 0,
   groups = {
     {
@@ -351,7 +355,7 @@ end
   server.add_callback_handlers (requests)       -- tell the HTTP server to use these callbacks
 
 function TestSceneRequests:test_wget_scene_list ()
-  local req = "http://127.0.0.1:2480/data_request?id=scene&action=list&scene=42"
+  local req = "http://127.0.0.1:3480/data_request?id=scene&action=list&scene=42"
   local ok,s = luup.inet.wget (req)
   t.assertEquals (ok, 0)
   t.assertIsString (s)
