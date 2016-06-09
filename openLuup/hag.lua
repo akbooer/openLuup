@@ -1,6 +1,6 @@
 #!/usr/bin/env wsapi.cgi
 
---module(..., package.seeall)
+module(..., package.seeall)
 
 local ABOUT = {
   NAME          = "upnp.control.hag",
@@ -14,7 +14,6 @@ local ABOUT = {
 -- see: http://wiki.micasaverde.com/index.php/ModifyUserData
 
 -- 2016.06.05  add scene processing (for AltUI long scene POST requests)
--- 2016.06.09  make 'run' a local function and export module table explicitly
 
 local xml       = require "openLuup.xml"
 local json      = require "openLuup.json"
@@ -51,7 +50,7 @@ JSON structure contains:
 
 --]]
 
-local function run(wsapi_env)
+function run(wsapi_env)
   local response = "OK"
   local headers = { ["Content-type"] = "text/plain" }
   
@@ -110,13 +109,6 @@ local function run(wsapi_env)
   
   return 200, headers, iterator
 end
-
------
-
-return {
-  ABOUT = ABOUT,
-  run = run,
-}
 
 -----
 
