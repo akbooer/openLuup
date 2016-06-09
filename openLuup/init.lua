@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.06.06",
+  VERSION       = "2016.06.09",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -11,9 +11,9 @@ local ABOUT = {
 -- openLuup - Initialize Luup engine
 --  
 
--- 2016.04.18  add username and password to attributes (for cameras)
 -- 2016.05.12  moved load_user_data from this module to userdata
 -- 2016.06.08  add 'altui' startup option to do new install
+-- 2016.06.09  add files/ directory to Lua search path
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -66,8 +66,8 @@ end
 -- INIT STARTS HERE
 --
 
-do -- change search paths for Lua require and icon urls
-  local cmh_lu = ";../cmh-lu/?.lua"
+do -- change search paths for Lua require
+  local cmh_lu = ";../cmh-lu/?.lua;files/?.lua"
   package.path = package.path .. cmh_lu       -- add /etc/cmh-lu/ to search path
 --  loader.icon_redirect ''                   -- remove all prefix paths for icons
 end

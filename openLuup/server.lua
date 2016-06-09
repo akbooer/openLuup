@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.06.01",
+  VERSION       = "2016.06.09",
   DESCRIPTION   = "HTTP/HTTPS GET/PUT requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -26,6 +26,7 @@ local ABOUT = {
 -- 2016.05.17   log "No handler" responses
 -- 2016.05.25   also look for files in openLuup/ (for plugins page)
 -- 2016.06.01   also look for files in virtualfilesystem
+-- 2016.06.09   also look in files/ directory
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -136,6 +137,7 @@ local function http_file (URL, headers)
   local info, chunked, response_headers
   local f = io.open(path,'rb')                      -- 2016.03.05  'b' for Windows, thanks @vosmont
     or io.open ("../cmh-lu/" .. path, 'rb')         -- 2016.02.24  also look in /etc/cmh-lu/
+    or io.open ("files/" .. path, 'rb')             -- 2016.06.09  also look in files/
     or io.open ("openLuup/" .. path, 'rb')          -- 2016.05.25  also look in openLuup/
     or vfs.open (path, 'rb')                        -- 2016.06.01  also look in virtualfilesystem
   if f then 

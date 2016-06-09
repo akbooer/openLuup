@@ -68,24 +68,24 @@ local attributes = {
 -- which are persistent and may be removed from the Startup after a reload.
 local attr = luup.attr_set
 
+-- Geographical location
 attr ("City_description", "Greenwich")
 attr ("Country_description", "UNITED KINGDOM")
-attr ("KwhPrice", "0.15")
-attr ("PK_AccessPoint", "88800000")
 attr ("Region_description", "England")
-attr ("TemperatureFormat", "C")
+attr ("latitude", "51.48")
+attr ("longitude", "0.0")
 
+-- other parameters
+attr ("TemperatureFormat", "C")
+attr ("PK_AccessPoint", "88800000")
 attr ("currency", "£")
 attr ("date_format", "dd/mm/yy")
-attr ("latitude", "51.00")
-attr ("longitude", "-1.00")
 attr ("model", "Not a Vera")
 attr ("timeFormat", "24hr")
 attr ("timezone", "0")
 
 -- Any other startup processing may be inserted here...
-
-luup.log "Hello from my very own startup code"
+luup.log "startup code completed"
 
 ]]
 ,

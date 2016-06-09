@@ -276,7 +276,7 @@ end
 local openLuup_updater = github.new ("akbooer/openLuup", "plugins/downloads/openLuup")
 
 -- add extra files if absent
-local function add_ancilliary_files ()  
+local function add_ancillary_files ()  
   local html = "index.html"
   copy_if_missing (vfs.open (html), html)
   
@@ -291,7 +291,7 @@ local function update_openLuup (p, ipl)
   local dont_reload = true
   generic_plugin (p, ipl, dont_reload)   
   
-  add_ancilliary_files ()
+  add_ancillary_files ()
   
   luup.reload ()
 end
@@ -460,7 +460,7 @@ return {
   create    = create,
   delete    = delete,
   
-  add_ancilliary_files = add_ancilliary_files,                  -- for others to use
+  add_ancillary_files = add_ancillary_files,                  -- for others to use
   latest_version = openLuup_updater.latest_version,
 }
 
