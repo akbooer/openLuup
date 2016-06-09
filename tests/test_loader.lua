@@ -4,6 +4,11 @@ local t = require "tests.luaunit"
 
 local loader  = require "openLuup.loader"
 local xml = require "openLuup.xml"
+local vfs = require "openLuup.virtualfilesystem"       -- for some test files
+--local cmh_lu = ";../cmh-lu/?.lua"
+--if not package.path:match (cmh_lu) then
+--  package.path = package.path .. cmh_lu                   -- add /etc/cmh-lu/ to search path
+--end
 
 local function noop () end
 
@@ -468,7 +473,7 @@ TestImplementationFile = {}
 
 function TestImplementationFile:test_impl_file ()
   local impl_xml = xml.decode (I)
-  local i = loader.parse_impl_xml (impl_xml) 
+  local i = loader.parse_impl_xml (impl_xml, I) 
   t.assertEquals (i.startup, "initstatus")      
   local a, error_msg = loadstring (i.source_code, i.module_name)  -- load it
   local ENV = new_env()
@@ -476,6 +481,7 @@ function TestImplementationFile:test_impl_file ()
   t.assertIsNil (error_msg)
   setfenv (a, ENV)
   if a then a, error_msg = pcall(a) end                 -- instantiate it
+  t.assertIsNil (error_msg)
   local code = ENV
   local acts = code._openLuup_ACTIONS_
   t.assertIsTable (acts)
@@ -493,33 +499,21 @@ end
 
 
 function TestImplementationFile:test_impl_2 ()
-  local i = loader.read_impl "I_Test.xml"
+  local I = vfs.read "I_openLuup.xml"
+  local impl_xml = xml.decode (I)
+  local i = loader.parse_impl_xml (impl_xml, I) 
   t.assertIsString (i.startup)
-  t.assertEquals (i.startup, "testStartup")
+  t.assertEquals (i.startup, "init")
   local a, error_msg = loadstring (i.source_code, i.module_name)  -- load it
   t.assertIsFunction (a)
   t.assertIsNil (error_msg)
   local ENV = new_env()
   setfenv (a, ENV)
   if a then a, error_msg = pcall(a) end                 -- instantiate it
+  t.assertIsNil (error_msg)
   local code = ENV
   local acts = code._openLuup_ACTIONS_
-  t.assertIsTable (acts)
-  t.assertEquals (#acts, 6)
   t.assertIsFunction (code[i.startup])   
-end
-
-function TestImplementationFile:test_impl_AltUI ()
-  local i = loader.read_impl "I_ALTUI.xml"
-  t.assertIsString (i.startup)
-  t.assertEquals (i.startup, "initstatus")
-  local a, error_msg = loadstring (i.source_code, i.module_name)  -- load it
-  t.assertIsFunction (a)
-  t.assertIsNil (error_msg)
-  local ENV = new_env()
-  setfenv (a, ENV)
-  if a then a, error_msg = pcall(a) end                 -- instantiate it
-  local code = ENV
 end
 
 
@@ -597,8 +591,8 @@ t.LuaUnit.run "-v"
 local pretty = require "pretty"
 
 --local s = loader.read_service "S_SwitchPower1.xml"
-local s = loader.read_service "S_AstronomicalPosition1.xml"
---s = df.parse_service_xml (xml.decode (S))
+--local s = loader.read_service "S_AstronomicalPosition1.xml"
+s = loader.parse_service_xml (xml.decode (S))
 --print(pretty(s))
 
 print "--------"

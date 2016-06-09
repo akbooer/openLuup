@@ -1,18 +1,18 @@
 local t = require "tests.luaunit"
 
--- openLuup.scenes TESTS
+-- openLuup TEST template
 
 luup = require "openLuup.luup"
 
 
-TestScenes = {}
+Test = {}
 
-function TestScenes:setUp ()
+function Test:setUp ()
 end
 
 
 
-function TestScenes:test_ ()
+function Test:test_ ()
   
 end
 

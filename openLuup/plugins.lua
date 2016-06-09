@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.plugins",
-  VERSION       = "2016.06.06",
+  VERSION       = "2016.06.08",
   DESCRIPTION   = "create/delete plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -21,6 +21,7 @@ local ABOUT = {
 -- 2016.05.24  build files list when plugins are installed
 -- 2016.06.06  complete configuration of DataYours install (to log cpu and memory, "out of the box")
 -- 2016.06.06  add missing dkjson.lua to AltUI install
+-- 2016.06.08  add add_ancilliary_files to export table
 
 local logs          = require "openLuup.logs"
 local github        = require "openLuup.github"
@@ -274,19 +275,23 @@ end
 
 local openLuup_updater = github.new ("akbooer/openLuup", "plugins/downloads/openLuup")
 
-local function update_openLuup (p, ipl)
-  p.Version = p.rev or p.Tag or p.Version        -- set this for generic_plugin install
-  
-  local dont_reload = true
-  generic_plugin (p, ipl, dont_reload)   
-  
-  -- add extra files if absent
+-- add extra files if absent
+local function add_ancillary_files ()  
   local html = "index.html"
   copy_if_missing (vfs.open (html), html)
   
   local reload = "openLuup_reload"
   if pathSeparator ~= '/' then reload = reload .. ".bat" end   -- Windows version
   copy_if_missing (vfs.open (reload), reload)
+end
+
+local function update_openLuup (p, ipl)
+  p.Version = p.rev or p.Tag or p.Version        -- set this for generic_plugin install
+  
+  local dont_reload = true
+  generic_plugin (p, ipl, dont_reload)   
+  
+  add_ancillary_files ()
   
   luup.reload ()
 end
@@ -455,6 +460,7 @@ return {
   create    = create,
   delete    = delete,
   
+  add_ancillary_files = add_ancillary_files,                  -- for others to use
   latest_version = openLuup_updater.latest_version,
 }
 

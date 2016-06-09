@@ -45,7 +45,7 @@ function TestRooms:test_room_delete ()
 end
 
 function TestRooms:test_room_save_load ()
-  local roomfile = "tests/testroom.json"
+  local roomfile = "tests/data/testroom.json"
   local a = room.create "A room to be written"
   local b = room.create "A room to be saved"
   local c = room.create "A room to be deleted"
