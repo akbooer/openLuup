@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.plugins",
-  VERSION       = "2016.06.08",
+  VERSION       = "2016.06.11",
   DESCRIPTION   = "create/delete plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -401,11 +401,11 @@ local function update_datayours (p, ipl)
       }
     local memParams = url.escape (json.encode {
         "memory.d",                     -- one day's worth of storage
-        "/data_request?id=lr_render&target={0}&hideLegend=true&height=250&from=-y",
+        "/data_request?id=lr_render&target={0}&title=Memory (Mb)&hideLegend=true&height=250&from=-y",
       })
     local cpuParams = url.escape (json.encode {
         "cpu.d",                        -- one day's worth of storage
-        "/data_request?id=lr_render&target={{0},memory.d}&height=250&from=-y",
+        "/data_request?id=lr_render&target={{0},memory.d}&title=CPU (%) Memory (Mb) &height=250&from=-y",
       })
     luup.inet.wget (request:format ("Memory_Mb", memParams))
     luup.inet.wget (request:format ("CpuLoad",   cpuParams))

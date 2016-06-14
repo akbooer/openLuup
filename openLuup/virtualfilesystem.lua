@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.06.03",
+  VERSION       = "2016.06.12",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -269,7 +269,7 @@ return {
   
   attributes = function (filename) 
     local y = manifest[filename]
-    if type(y) == "string" then return {type = "file", size = #y} end
+    if type(y) == "string" then return {mode = "file", size = #y} end
   end,
   
   dir   = function () return next, manifest end,
