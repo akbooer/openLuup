@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.06.01",
+  VERSION       = "2016.06.20",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -36,6 +36,7 @@ ABOUT = {
 -- 2016.05.21   @explorer fix for missing Zwave device children when ZWaveOnly selected
 -- 2016.05.23   HouseModeMirror for mirroring either way (thanks @konradwalsh)
 -- 2016.06.01   Add GetVeraFiles action to replace openLuup_getfiles separate utility
+-- 2016.06.20   Do not re-parent device #2 (now openLuup device) if not child of #1 (_SceneController)
 
 local devNo                      -- our device number
 
@@ -678,7 +679,10 @@ function init (lul_device)
   if OFFSET == BLOCKSIZE then 
     Zwave = {1}                   -- device IDs for mapping (same value on local and remote)
     set_parent (1, devNo)         -- ensure Zwave controller is an existing child 
-    set_parent (2, 0)             -- unhook local scene controller (remote will have its own)
+    local d2 = luup.devices[2]
+    if d2.device_num_parent ~= 0 then   --   2016.06.20
+      set_parent (2, 0)           -- unhook local scene controller (remote will have its own)
+    end
     luup.log "VeraBridge maps remote Zwave controller"
   end
 
