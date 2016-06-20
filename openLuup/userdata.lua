@@ -241,6 +241,37 @@ local default_plugins = {
       },
     },
 
+-- AltAppStore
+
+    {
+      AllowMultiple   = "1",
+      Title           = "Alternative App Store",
+      Icon            = "https://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
+      Instructions    = "https://github.com/akbooer/AltAppStore",
+      AutoUpdate      = "0",
+      VersionMajor    = "GitHub",
+      VersionMinor    = '?',
+      id              = "AltAppStore",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {
+        {
+          DeviceFileName  = "D_AltAppStore.xml",
+          DeviceType      = "urn:schemas-upnp-org:device:AltAppStore:1",
+          ImplFile        = "I_AltAppStore.xml",
+          Invisible       =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/AltAppStore",
+        downloads = "plugins/downloads/AltAppStore/",
+        backup    = "plugins/backup/AltAppStore/",
+        default   = "master",                    -- "development" or "master" or any tagged release
+        pattern   = "AltAppStore",                     -- pattern match string for required files
+      },
+    },
+
 -- DataYours
 
     {
