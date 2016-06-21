@@ -299,7 +299,7 @@ end
 
 --------------------------------------------------
 
--- return true if successful, false if not.
+-- this function returns an HTTP message in reponse to an update request.
 local function create (p)
   local special = {
     ["openLuup"]    = update_openLuup,        -- device is already installed
@@ -319,6 +319,8 @@ local function create (p)
     local dev = device_present "urn:schemas-upnp-org:device:AltAppStore:1"
     local _, error_msg = luup.call_action (sid, act, arg, dev)
     
+    -- NOTE: that the above action executes asynchronously and the function call
+    --       returns immediately, so you CAN'T do a luup.reload() here !!
     return error_msg or "OK"
 --    return (special[Plugin] or generic_plugin) (p, info) 
   else
@@ -342,7 +344,7 @@ return {
   create    = create,
   delete    = delete,
   
-  add_ancillary_files = add_ancillary_files,            -- for others to use
+  add_ancillary_files = add_ancillary_files,            -- for others to use (qv. openLuup_installer script)
   latest_version = function () return "unknown" end,    -- TODO: fix openLuup latest version display
   metadata  = metadata,
 --  present   = present,

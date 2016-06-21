@@ -137,7 +137,7 @@ luup.log "startup code completed"
 }
 
 
-local default_plugins_version = "2016.06.21" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.06.21a" --<<<-- change this if default_plugins changed
 
 -------
 --
@@ -160,6 +160,7 @@ local preinstalled = {
       id              = "openLuup",
       timestamp       = os.time(),
       Files = {},
+      Devices         = {},                           -- no devices to install!!
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
