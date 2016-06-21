@@ -1,7 +1,7 @@
 local ABOUT = {
-  NAME          = "openLuup:Extensions",
-  VERSION       = "2016.06.01",
-  DESCRIPTION   = "openLuup:Extensions plugin for openLuup!!",
+  NAME          = "L_openLuup",
+  VERSION       = "2016.06.21",
+  DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
@@ -14,9 +14,12 @@ local ABOUT = {
 --   * etc., etc...
 --
 
-local timers    = require "openLuup.timers"
-local userdata  = require "openLuup.userdata"
-local plugins   = require "openLuup.plugins"
+-- 2016.06.18  add AltAppStore as child device
+
+local timers      = require "openLuup.timers"
+local userdata    = require "openLuup.userdata"
+local plugins     = require "openLuup.plugins"
+local AltAppStore = require "L_AltAppStore"
 
 local INTERVAL = 120
 local MINUTES  = "2m"
@@ -137,6 +140,17 @@ function init (devNo)
   
   luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
 
+  do -- install AltAppStore as child device
+    local ptr = luup.chdev.start (devNo)
+    local altid = "AltAppStore"
+    local description = "Alternate App Store"
+    local device_type = "urn:schemas-upnp-org:device:AltAppStore:1"
+    local upnp_file = "D_AltAppStore.xml"
+    local upnp_impl = "I_AltAppStore.xml"
+    luup.chdev.append (devNo, ptr, altid, description, device_type, upnp_file, upnp_impl)
+    luup.chdev.sync (devNo, ptr)  
+  end  
+  
   calc_stats ()
   return true, msg, ABOUT.NAME
 end
