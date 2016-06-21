@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.06.20",
+  VERSION       = "2016.06.21",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -34,8 +34,9 @@ local scheduler     = require "openLuup.scheduler"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local json          = require "openLuup.json"
-local mime          = require "mime"
 local plugins       = require "openLuup.plugins"
+local mime          = require "mime"
+local ltn12         = require "ltn12"
 
 -- what it says...
 local function compile_and_run (lua, name)
