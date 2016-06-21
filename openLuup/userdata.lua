@@ -137,7 +137,7 @@ luup.log "startup code completed"
 }
 
 
-local default_plugins_version = "2016.06.21a" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.06.21c" --<<<-- change this if default_plugins changed
 
 -------
 --
@@ -261,7 +261,7 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
-        default   = "development",                    -- "development" or "master" or any tagged release
+        default   = "master",                         -- "development" or "master" or any tagged release
         versions  = {master = {release = "master"}},
         pattern   = "VeraBridge",                     -- pattern match string for required files
         folders   = {"/VeraBridge"},                  -- these are the bits of the repository that we want
