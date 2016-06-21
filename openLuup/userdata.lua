@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.06.20",
+  VERSION       = "2016.06.21",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -137,7 +137,7 @@ luup.log "startup code completed"
 }
 
 
-local default_plugins_version = "2016.06.20" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.06.21" --<<<-- change this if default_plugins changed
 
 -------
 --
@@ -164,7 +164,8 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
         target    = "./openLuup/",                    -- not /etc/cmh-ludl/, like everything else
-        default   = "development",                    -- "development" or "master" or any tagged release
+        default   = "master",                         -- "development" or "master" or any tagged release
+        versions  = {master = {release = "master"}},
         pattern   = "%w+%.lua",                       -- pattern match string for required files
         folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
        },
@@ -196,12 +197,12 @@ local preinstalled = {
         type      = "GitHub",
         source    = "amg0/ALTUI",                   -- @amg0 repository
         default   = "master",                       -- "development" or "master" or any tagged release
+        versions  = {master = {release = "master"}},
         pattern   = "ALTUI",                        -- pattern match string for required files
         folders   = {                               -- these are the bits of the repository that we want
           '',               -- the main folder
           "/blockly",       -- and blocky editor
         },
-        versions = {master = {release = "master"}}
       },
     },
 
@@ -230,6 +231,7 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/AltAppStore",
         default   = "master",                    -- "development" or "master" or any tagged release
+        versions  = {master = {release = "master"}},
         pattern   = "AltAppStore",                     -- pattern match string for required files
       },
     },
@@ -259,6 +261,7 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
         default   = "development",                    -- "development" or "master" or any tagged release
+        versions  = {master = {release = "master"}},
         pattern   = "VeraBridge",                     -- pattern match string for required files
         folders   = {"/VeraBridge"},                  -- these are the bits of the repository that we want
       },
@@ -293,6 +296,7 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/Datayours",
         default   = "development",                     -- "development" or "master" or any tagged release
+        versions  = {development = {release = "development"}},
         pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
       },
     },
