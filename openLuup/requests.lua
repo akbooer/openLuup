@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.06.04",
+  VERSION       = "2016.06.20",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -23,6 +23,7 @@ local ABOUT = {
 -- 2016.05.18  generic update_plugin request for latest version
 -- 2016.05.23  fix &id=altui plugin numbering string (thanks @amg0)
 -- 2016.06.04  remove luup.reload() from device delete action: AltUI requests reload anyway
+-- 2016.06.20  better comments for plugin updates and openLuup-specific requests
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -675,24 +676,40 @@ local function request_image (_, p)
   end
 end
 
-
+--
 -- misc
+--
 
-local function alive () return "OK" end                          -- return OK if the engine is running
+-- return OK if the engine is running
+local function alive () return "OK" end
 
-local function debug() luup.debugON = not luup.debugON; return "DEBUG = ".. tostring(luup.debugON) end -- toggle debug
+-- file access
+local function file (_,p) return server.http_file (p.parameters or '') end
 
-local function exit () scheduler.stop() ; return ("requested openLuup exit at "..os.date()) end     -- quit openLuup
+-- reload openLuup
+local function reload () luup.reload () end
 
-local function reload () luup.reload () end     -- reload openLuup
-
-local function file (_,p) return server.http_file (p.parameters or '') end                 -- file access
-
-local function altui (_,p) return plugins.create {PluginNum = "8246", TracRev=tonumber(p.rev)} end    -- install/update ALTUI
-
-local function update (_,p) return plugins.create {PluginNum = "openLuup", Tag = p.rev} end   -- update openLuup
-
+-- This is a genuine Vera-style request for an update
+-- originated from the Update button of the plugins page
+-- when NO version is specified.
 local function update_plugin (_,p) plugins.create (p) end -- 2016.05.18  generic update_plugin request
+
+--
+-- openLuup additions
+--
+
+-- used in bootstrapping a new system - forces a download of AltUI
+-- the TracRev parameter (pre-GitHub!) is used by AltUI to override the MiOS Version number 
+local function altui (_,p) return plugins.create {PluginNum = "8246", TracRev= p.rev} end
+
+-- easy HTTP request to force openLuup update (not used by AltUI)
+local function update (_,p) return plugins.create {PluginNum = "openLuup", Tag = p.rev} end
+
+-- toggle debug flag (not yet used)
+local function debug() luup.debugON = not luup.debugON; return "DEBUG = ".. tostring(luup.debugON) end
+
+-- force openLuup final exit openLuup (to exit calling script reload loop)
+local function exit () scheduler.stop() ; return ("requested openLuup exit at "..os.date()) end
 
 --
 -- export all Luup requests

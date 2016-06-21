@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2016.06.09",
+  VERSION       = "2016.06.18",
   DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -26,6 +26,7 @@ local ABOUT = {
 -- 2016.05.21  fix for invalid argument list in parse_service_xml
 -- 2016.05.24  virtual file system for system .xml and .json files
 -- 2016.06.09  also look in files/ directory
+-- 2016.06.18  also look in openLuup/ directory (for AltAppStore)
 
 ------------------
 --
@@ -137,8 +138,9 @@ end
 
 local function raw_read (filename)
   local f = io.open (filename) 
-    or io.open ("../cmh-lu/" .. filename)           -- look in 'cmh-lu/' directory
-    or io.open ("files/" .. filename, 'rb')             -- 2016.06.09  also look in files/
+    or io.open ("../cmh-lu/" .. filename)             -- look in 'cmh-lu/' directory
+    or io.open ("files/" .. filename, 'rb')           -- 2016.06.09  also look in files/
+    or io.open ("openLuup/" .. filename, 'rb')        -- 2016.06.18  also look in openLuup/ (for AltAppStore)
   if f then 
     local data = f: read "*a"
     f: close () 

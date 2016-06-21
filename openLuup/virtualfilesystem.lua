@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.06.12",
+  VERSION       = "2016.06.19",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -40,7 +40,7 @@ local D_openLuup_dev = [[
 
 local D_openLuup_json = [[
 {
-  "default_icon": "https:\/\/avatars.githubusercontent.com\/u\/4962913",
+  "default_icon": "https://avatars.githubusercontent.com/u/4962913",
   "DeviceType": "openLuup"
 }
 ]]
@@ -48,7 +48,7 @@ local D_openLuup_json = [[
 local I_openLuup_impl = [[
 <?xml version="1.0"?>
 <implementation>
-  <files>openLuup/extensions.lua</files>
+  <files>openLuup/L_openLuup.lua</files>
   <startup>init</startup>
   <actionList>
     
@@ -124,6 +124,195 @@ local S_openLuup_svc = [[
 </scpd>
 ]]
 
+-----
+--
+-- AltAppStore device files
+--
+
+local D_AltAppStore_dev = [[
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:AltAppStore:1</deviceType>
+    <friendlyName>Alternate App Store</friendlyName>
+    <manufacturer></manufacturer>
+    <manufacturerURL></manufacturerURL>
+    <modelDescription>AltUI App Store</modelDescription>
+    <modelName>1</modelName>
+    <modelNumber>1</modelNumber>
+    <Category_Num>1</Category_Num>
+    <UDN></UDN>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:AltAppStore:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:AltAppStore1</serviceId>
+        <SCPDURL>S_AltAppStore.xml</SCPDURL>
+      </service>
+    </serviceList>
+		<staticJson>D_AltAppStore.json</staticJson>
+    <implementationList>
+      <implementationFile>I_AltAppStore.xml</implementationFile>
+    </implementationList>
+  </device>
+</root>
+]]
+
+local D_AltAppStore_json = [[
+{
+	"flashicon": "http://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
+	"default_icon": "http://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
+	"x": "2",
+	"y": "3",
+	"Tabs": [
+		{
+			"Label": {
+				"lang_tag": "tabname_control",
+				"text": "Control"
+			},
+			"Position": "0",
+			"TabType": "flash",
+			"ControlGroup":[
+				{
+					"id": "1",
+					"scenegroup": "1"
+				}
+			],
+			"SceneGroup":[
+				{
+					"id": "1",
+					"top": "1.5",
+					"left": "0.25",
+					"x": "1.5",
+					"y": "2"
+				}
+			],
+			"Control": [
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "0",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine1",
+						"Top": 40,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "1",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine2",
+						"Top": 60,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:AltAppStore1",
+						"Variable": "Version",
+						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "label",
+					"top": "4",
+					"left": "0",
+					"Label": {
+						"lang_tag": "icons8",
+						"text": "<a href='https://icons8.com/license/' target='_blank'>icon by icons8</a>"
+					},
+					"Display": {
+						"Top": 120,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				}
+			]
+		},
+		{
+			"Label": {
+				"lang_tag": "advanced",
+				"text": "Advanced"
+			},
+			"Position": "1",
+			"TabType": "javascript",
+			"ScriptName": "shared.js",
+			"Function": "advanced_device"
+		},
+	],
+	"DeviceType": "urn:schemas-upnp-org:device:AltAppStore:1"
+}
+]]
+
+local I_AltAppStore_impl = [[
+<?xml version="1.0"?>
+<implementation>
+  <files>L_AltAppStore.lua</files>
+  <startup>AltAppStore_init</startup>
+  <actionList>
+    <action>
+  		<serviceId>urn:upnp-org:serviceId:AltAppStore1</serviceId>
+  		<name>update_plugin</name>
+  		<run>
+  			-- lul_device, lul_settings
+        return update_plugin_run (lul_settings)
+  		</run>
+  		<job>
+  			return update_plugin_job (lul_settings)
+  		</job>
+    </action>
+  </actionList>
+</implementation>
+]]
+
+local S_AltAppStore_svc = [[
+<?xml version="1.0"?>
+<scpd xmlns="urn:schemas-upnp-org:service-1-0">
+  <specVersion>
+      <major>1</major>
+      <minor>0</minor>
+  </specVersion>
+	<serviceStateTable>
+    <stateVariable sendEvents="no">
+      <name>metadata</name>
+      <dataType>string</dataType>
+    </stateVariable>	
+	</serviceStateTable>
+  <actionList>
+    <action>
+      <name>update_plugin</name>
+      <argumentList>
+        <argument>
+          <name>metadata</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+	</actionList>
+</scpd>
+]]
 
 -----
 
@@ -249,6 +438,11 @@ local manifest = {
     ["D_openLuup.json"] = D_openLuup_json,
     ["I_openLuup.xml"]  = I_openLuup_impl,
     ["S_openLuup.xml"]  = S_openLuup_svc,
+    
+    ["D_AltAppStore.xml"]  = D_AltAppStore_dev,
+    ["D_AltAppStore.json"] = D_AltAppStore_json,
+    ["I_AltAppStore.xml"]  = I_AltAppStore_impl,
+    ["S_AltAppStore.xml"]  = S_AltAppStore_svc,
     
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.06.09",
+  VERSION       = "2016.06.20",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -14,6 +14,8 @@ local ABOUT = {
 -- 2016.05.12  moved load_user_data from this module to userdata
 -- 2016.06.08  add 'altui' startup option to do new install
 -- 2016.06.09  add files/ directory to Lua search path
+-- 2016.06.18  add openLuup/ directory to Lua search path
+-- 2016.06.19  switch to L_AltAppStore module for initial AltUI download
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -33,6 +35,7 @@ local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local json          = require "openLuup.json"
 local mime          = require "mime"
+local plugins       = require "openLuup.plugins"
 
 -- what it says...
 local function compile_and_run (lua, name)
@@ -67,7 +70,7 @@ end
 --
 
 do -- change search paths for Lua require
-  local cmh_lu = ";../cmh-lu/?.lua;files/?.lua"
+  local cmh_lu = ";../cmh-lu/?.lua;files/?.lua;openLuup/?.lua"
   package.path = package.path .. cmh_lu       -- add /etc/cmh-lu/ to search path
 --  loader.icon_redirect ''                   -- remove all prefix paths for icons
 end
@@ -104,19 +107,30 @@ do -- CALLBACK HANDLERS
   local extendedList = {}
   for name, proc in pairs (requests) do 
     extendedList[name]        = proc
-    extendedList["lu_"..name] = proc            -- add compatibility with old-style call names
+    extendedList["lu_"..name] = proc              -- add compatibility with old-style call names
   end
-  server.add_callback_handlers (extendedList)   -- tell the HTTP server to use these callbacks
+  server.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
 end
 
 do -- STARTUP   
-  local init = arg[1] or "user_data.json"       -- optional parameter: Lua or JSON startup file
+  local init = arg[1] or "user_data.json"         -- optional parameter: Lua or JSON startup file
   _log ("loading configuration ".. init)
-  if init == "reset" then luup.reload () end    -- factory reset
-  if init == "altui" then                      -- install altui in reset system
-    userdata.use_defaults ()
-    requests.altui (nil,{}) 
+  
+  if init == "reset" then luup.reload () end      -- factory reset
+  
+  if init == "altui" then                         -- install altui in reset system
+    userdata.attributes.InstalledPlugins2 = userdata.default_plugins
+    -- this is a bit tricky, since the scheduler is not running at this stage
+    -- but we need to execute a multi-step action with <run> and <job> tags...
+    require "openLuup.L_AltAppStore"              -- manually load the plugin updater
+    AltAppStore_init (2)                          -- give it a device to work with
+    local meta = plugins.metadata (8246)          -- AltUI plugin number
+    update_plugin_run {metadata = meta}    -- <run> phase
+    repeat
+      local status = update_plugin_job ()  -- <job> phase
+    until status ~= 0
   end
+  
   local f = io.open (init, 'r')
   if f then 
     local code = f:read "*a"

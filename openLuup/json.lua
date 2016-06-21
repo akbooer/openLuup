@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.json",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.06.19",
   DESCRIPTION   = "JSON encode/decode with unicode escapes to UTF-8 encoding and pretty-printing",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -9,16 +9,16 @@ local ABOUT = {
 
 -- JSON encode/decode with full functionality including unicode escapes to UTF-8 encoding.
 -- now does pretty-printing of encoded JSON strings.
--- (c) 2013,2014,2015  AK Booer
   
 -- 2015.04.10   allow comma before closing '}' or ']'
 -- 2015.11.29   improve formatting of nested objects, cache encoded strings
+-- 2016.06.19   encode "/" as "/" not "\/" in strings
 
   local default   = 
     {
       huge = "8.88e888",          -- representation for JSON infinity (looks like infinity symbols on their side)
       max_array_length = 1000,    -- not a coding restriction, per se, just a sanity check against, eg {[1e6] = 1}
-                                  -- since arrays are enumerated from starting index 1 with all the intervening 'nil' values
+                                  -- since arrays are enumerated from starting index 1 with every intervening 'nil' 
     }
     
     
@@ -47,7 +47,7 @@ local ABOUT = {
 
     local replace = {
          ['"']  = '\\"',    -- double quote
-         ['/']  = '\\/',    -- solidus
+--         ['/']  = '\\/',    -- solidus          2016.06.19
          ['\\'] = '\\\\',   -- reverse solidus
          ['\b'] = "\\b",    -- backspace  
          ['\f'] = "\\f",    -- formfeed
@@ -62,7 +62,8 @@ local ABOUT = {
     
     local str_cache  = {}                         -- cache storage for encoded strings
     local ctrl_chars = "%z\001-\031"              -- whole range of control characters
-    local old = '[' .. '"' .. '/' .. '\\' .. ctrl_chars .. ']'
+--    local old = '[' .. '"' .. '/' .. '\\' .. ctrl_chars .. ']'
+    local old = table.concat {'[', '"', '\\', ctrl_chars, ']'}      -- 2016.06.19
         
     local function string (x)
       if not str_cache[x] then

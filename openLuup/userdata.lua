@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.06.08",
+  VERSION       = "2016.06.20",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -108,8 +108,8 @@ luup.log "startup code completed"
 --  local_udn = "uuid:4d494342-5342-5645-0000-000002b03069",
   longitude = "0.0",
   mode_change_delay = "30",
-  mode_change_mode = '',      -- TODO: implement
-  mode_change_time = '',      -- TODO: implement
+  mode_change_mode = '',      -- TODO: implement mode_change_mode
+  mode_change_time = '',      -- TODO: implement mode_change_time
   model = "Not a Vera",
 --  net_pnp = "0",
 --  overview_tabs = {},
@@ -137,13 +137,16 @@ luup.log "startup code completed"
 }
 
 
+local default_plugins_version = "2016.06.20" --<<<-- change this if default_plugins changed
+
 -------
+--
+-- pre-installed plugins
+--
 
-local default_plugins_version = "2016.06.01a" --<<<-- change this if default_plugins changed
-
-local default_plugins = {
-
--- openLuup
+local preinstalled = {
+  
+  openLuup = 
 
     {
       AllowMultiple   = "0",
@@ -151,8 +154,8 @@ local default_plugins = {
       Icon            = "https://avatars.githubusercontent.com/u/4962913",
       Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
       AutoUpdate      = "0",
-      VersionMajor    = "GitHub",
-      VersionMinor    = '?',
+      VersionMajor    = "baseline",
+      VersionMinor    = "install",
       TargetVersion   = default_plugins_version, -- openLuup uses this for the InstalledPlugins2 version number
       id              = "openLuup",
       timestamp       = os.time(),
@@ -160,18 +163,14 @@ local default_plugins = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
-        downloads = "plugins/downloads/openLuup/",
-        backup    = "plugins/backup/openLuup/",
-        target    = "openLuup/",                      -- not /etc/cmh-ludl/, like everything else
+        target    = "./openLuup/",                    -- not /etc/cmh-ludl/, like everything else
         default   = "development",                    -- "development" or "master" or any tagged release
         pattern   = "%w+%.lua",                       -- pattern match string for required files
-        folders   = {                                 -- these are the bits of the repository that we want
-          "/openLuup",
-        },
-      },
+        folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
+       },
     },
 
--- AltUI
+  AltUI = 
 
     {
       AllowMultiple   = "0",
@@ -180,7 +179,7 @@ local default_plugins = {
       Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
       AutoUpdate      = "1",                          -- not really "auto", but will prompt on browser refresh
       VersionMajor    = "GitHub",
-      VersionMinor    = '?',
+      VersionMinor    = "master",
       id              = 8246,                         -- this is the genuine MiOS plugin number
       timestamp       = os.time(),
       Files           = {},                           -- populated on download from repository
@@ -196,61 +195,26 @@ local default_plugins = {
       Repository      = {     
         type      = "GitHub",
         source    = "amg0/ALTUI",                   -- @amg0 repository
-        downloads = "plugins/downloads/altui/",
-        backup    = "plugins/backup/altui/",
         default   = "master",                       -- "development" or "master" or any tagged release
         pattern   = "ALTUI",                        -- pattern match string for required files
         folders   = {                               -- these are the bits of the repository that we want
           '',               -- the main folder
           "/blockly",       -- and blocky editor
         },
+        versions = {master = {release = "master"}}
       },
     },
 
--- VeraBridge
+  AltAppStore =
 
     {
       AllowMultiple   = "1",
-      Title           = "VeraBridge",
-      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
-      Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
-      AutoUpdate      = "0",
-      VersionMajor    = "GitHub",
-      VersionMinor    = '?',
-      id              = "VeraBridge",
-      timestamp       = os.time(),
-      Files           = {},
-      Devices         = {
-        {
-          DeviceFileName  = "D_VeraBridge.xml",
-          DeviceType      = "VeraBridge",
-          ImplFile        = "I_VeraBridge.xml",
-          Invisible       =  "0",
-        },
-      },
-      Repository      = {
-        type      = "GitHub",
-        source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
-        downloads = "plugins/downloads/VeraBridge/",
-        backup    = "plugins/backup/VeraBridge/",
-        default   = "development",                    -- "development" or "master" or any tagged release
-        pattern   = "VeraBridge",                     -- pattern match string for required files
-        folders   = {                                 -- these are the bits of the repository that we want
-          "/VeraBridge",
-        },
-      },
-    },
-
--- AltAppStore
-
-    {
-      AllowMultiple   = "1",
-      Title           = "Alternative App Store",
+      Title           = "Alternate App Store",
       Icon            = "https://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
       Instructions    = "https://github.com/akbooer/AltAppStore",
       AutoUpdate      = "0",
-      VersionMajor    = "GitHub",
-      VersionMinor    = '?',
+      VersionMajor    = "baseline",
+      VersionMinor    = "install",
       id              = "AltAppStore",
       timestamp       = os.time(),
       Files           = {},
@@ -265,14 +229,42 @@ local default_plugins = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/AltAppStore",
-        downloads = "plugins/downloads/AltAppStore/",
-        backup    = "plugins/backup/AltAppStore/",
         default   = "master",                    -- "development" or "master" or any tagged release
         pattern   = "AltAppStore",                     -- pattern match string for required files
       },
     },
 
--- DataYours
+  VeraBridge = 
+
+    {
+      AllowMultiple   = "1",
+      Title           = "VeraBridge",
+      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
+      Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
+      AutoUpdate      = "0",
+      VersionMajor    = "not",
+      VersionMinor    = "installed",
+      id              = "VeraBridge",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {
+        {
+          DeviceFileName  = "D_VeraBridge.xml",
+          DeviceType      = "VeraBridge",
+          ImplFile        = "I_VeraBridge.xml",
+          Invisible       =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
+        default   = "development",                    -- "development" or "master" or any tagged release
+        pattern   = "VeraBridge",                     -- pattern match string for required files
+        folders   = {"/VeraBridge"},                  -- these are the bits of the repository that we want
+      },
+    },
+
+  DataYours =
 
     {
       AllowMultiple   = "0",
@@ -300,14 +292,12 @@ local default_plugins = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/Datayours",
-        downloads = "plugins/downloads/DataYours/",
-        backup    = "plugins/backup/DataYours/",
         default   = "development",                     -- "development" or "master" or any tagged release
         pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
       },
     },
 
--- Arduino
+  Arduino =
 
     {
       AllowMultiple   = "1",
@@ -331,112 +321,20 @@ local default_plugins = {
       Repository      = {
         type      = "GitHub",
         source    = "mysensors/Vera",
-        downloads = "plugins/downloads/Arduino/",
-        backup    = "plugins/backup/Arduino/",
         default   = "UI7",
         pattern   = "[DILS]_Arduino%w*%.%w+",             -- pattern match string for required files
       },
     },
-
--- IPhoneLocator
-
-    {
-      AllowMultiple   = "1",
-      Title           = "IPhoneLocator",
-      Icon            = "https://raw.githubusercontent.com/amg0/IPhoneLocator/master/iconIPhone.png", 
-      Instructions    = "https://github.com/amg0/IPhoneLocator",
-      AutoUpdate      = "0",
-      VersionMajor    = "not",
-      VersionMinor    = "installed",
-      id              = 4686,
-      timestamp       = os.time(),
-      Files           = {},
-      Devices         = {
-        {
-          DeviceFileName  = "D_IPhone.xml",
-          DeviceType      = "urn:schemas-upnp-org:device:IPhoneLocator:1",
-          ImplFile        = "I_IPhone.xml",
-          Invisible       =  "0",
-        },
-      },
-      Repository      = {
-        type      = "GitHub",
-        source    = "amg0/IPhoneLocator",
-        downloads = "plugins/downloads/IPhoneLocator/",
-        backup    = "plugins/backup/IPhoneLocator/",
-        default   = "master",                   -- "development" or "master" or any tagged release
-        pattern   = "IPhone",                   -- pattern match string for required files
-      },
-    },
-
--- Netatmo
-
-    {
-      AllowMultiple   = "1",
-      Title           = "Netatmo",
-      Icon            = "https://raw.githubusercontent.com/akbooer/Netatmo/master/icons/Netatmo.png",
-      Instructions    = "https://github.com/akbooer/Netatmo/tree/master/Documentation",
-      AutoUpdate      = "0",
-      VersionMajor    = "not",
-      VersionMinor    = 'installed',
-      id              = 4456,
-      timestamp       = os.time(),
-      Files           = {},
-      Devices         = {
-        {
-          DeviceFileName  = "D_Netatmo.xml",
-          DeviceType      = "urn:akbooer-com:device:Netatmo:1",
-          ImplFile        = "I_Netatmo.xml",
-          Invisible       =  "0",
-        },
-      },
-      Repository      = {
-        type      = "GitHub",
-        source    = "akbooer/Netatmo",
-        downloads = "plugins/downloads/Netatmo/",
-        backup    = "plugins/backup/Netatmo/",
-        default   = "master",                         -- "development" or "master" or any tagged release
-        pattern   = "[DILS]_Netatmo%w*%.%w+",             -- pattern match string for required files
-      },
-    },
-
--- EventWatcher
-
-    {
-      AllowMultiple   = "0",
-      Title           = "EventWatcher",
-      Icon            = "https://raw.githubusercontent.com/akbooer/EventWatcher/master/icons/EventWatcher.png",
-      Instructions    = "https://github.com/akbooer/EventWatcher/tree/master/Documentation",
-      AutoUpdate      = "0",
-      VersionMajor    = "not",
-      VersionMinor    = 'installed',
-      id              = 4726,
-      timestamp       = os.time(),
-      Files           = {},
-      Devices         = {
-        {
-          DeviceFileName  = "D_EventWatcher.xml",
-          DeviceType      = "urn:akbooer-com:device:EventWatcher:1",
-          ImplFile        = "I_EventWatcher.xml",
-          Invisible       =  "0",
-        },
-      },
-      Repository      = {
-        type      = "GitHub",
-        source    = "akbooer/EventWatcher",
-        downloads = "plugins/downloads/EventWatcher/",
-        backup    = "plugins/backup/EventWatcher/",
-        default   = "master",                         -- "development" or "master" or any tagged release
-        pattern   = "[DILS]_EventWatcher%w*%.%w+",    -- pattern match string for required files
-      },
-    },
-
-  }   -- end of default_plugins
+  }   -- end of preinstalled plugins
 
 
-local function use_defaults ()
-  attributes.InstalledPlugins2 = default_plugins
-end
+local default_plugins = {
+    preinstalled.openLuup,
+    preinstalled.AltUI,
+    preinstalled.AltAppStore,
+    preinstalled.VeraBridge,
+    preinstalled.DataYours,
+  }
 
 -- utilities
 
@@ -647,9 +545,11 @@ end
 return {
   ABOUT           = ABOUT,
   
-  attributes      = attributes,  
-  use_defaults    = use_defaults,
+  attributes      = attributes, 
   devices_table   = devices_table, 
+  default_plugins = default_plugins,
+  
+  -- methods  
   load            = load_user_data,
   save            = save_user_data,
 }
