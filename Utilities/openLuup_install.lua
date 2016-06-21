@@ -25,6 +25,14 @@ p "un-zipping download files..."
 x "tar -xf latest.tar.gz" 
 x "mv openLuup-master/openLuup/ ."
 x "rm -r openLuup-master/"
+   
+p "getting dkjson.lua..."
+_, code = http.request{
+    url = "http://dkolf.de/src/dkjson-lua.fsl/raw/dkjson.lua?name=16cbc26080996d9da827df42cb0844a25518eeb3",
+    sink = ltn12.sink.file(io.open("dkjson.lua", "wb"))
+  }
+
+assert (code == 200, "GitHub download failed with code " .. code)
 
 p "initialising..."
 
