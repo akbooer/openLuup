@@ -446,7 +446,7 @@ function update_plugin_run(args)
   local v = meta.version
   
   if not (d and p and r and v) then 
-    _log "invalid metadata: missing repository, plugin, devices, or versionid"
+    _log "invalid metadata: missing repository, plugin, devices, or version"
     return false
   end
   
@@ -549,7 +549,8 @@ function update_plugin_job()
     _log (meta.plugin.Title or '?', "update completed")
     
     install_if_missing (meta)
-    display ('Reload','required')
+--    display ('Reload','required')
+    luup.reload()
     return jobstate.Done,0        -- finished job
   end
 end
