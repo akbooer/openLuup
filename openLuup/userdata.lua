@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.06.21",
+  VERSION       = "2016.06.22",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -18,6 +18,7 @@ local ABOUT = {
 -- 2016.05.24   update InstalledPlugins2 list
 -- 2016.06.06   fix load error if missing openLuup structure (upgrading from old version)
 -- 2016.06.08   add pre-defined startup code for new systems
+-- 2016.06.22   add metadata routine for plugin install
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -137,7 +138,7 @@ luup.log "startup code completed"
 }
 
 
-local default_plugins_version = "2016.06.21c" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.06.22" --<<<-- change this if default_plugins changed
 
 -------
 --
@@ -154,8 +155,8 @@ local preinstalled = {
       Icon            = "https://avatars.githubusercontent.com/u/4962913",
       Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
       AutoUpdate      = "0",
-      VersionMajor    = "baseline",
-      VersionMinor    = "install",
+      VersionMajor    = '',
+      VersionMinor    = "baseline.",
       TargetVersion   = default_plugins_version, -- openLuup uses this for the InstalledPlugins2 version number
       id              = "openLuup",
       timestamp       = os.time(),
@@ -180,8 +181,8 @@ local preinstalled = {
       Icon            = "plugins/icons/8246.png",     -- usage: http://apps.mios.com/icons/8246.png
       Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
       AutoUpdate      = "1",                          -- not really "auto", but will prompt on browser refresh
-      VersionMajor    = "GitHub",
-      VersionMinor    = "master",
+      VersionMajor    = "not",
+      VersionMinor    = "installed",
       id              = 8246,                         -- this is the genuine MiOS plugin number
       timestamp       = os.time(),
       Files           = {},                           -- populated on download from repository
@@ -215,8 +216,8 @@ local preinstalled = {
       Icon            = "https://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
       Instructions    = "https://github.com/akbooer/AltAppStore",
       AutoUpdate      = "0",
-      VersionMajor    = "baseline",
-      VersionMinor    = "install",
+      VersionMajor    = '',
+      VersionMinor    = "baseline.",
       id              = "AltAppStore",
       timestamp       = os.time(),
       Files           = {},
@@ -341,7 +342,9 @@ local default_plugins = {
     preinstalled.DataYours,
   }
 
--- utilities
+--
+-- PLUGINS
+--
 
 -- given installed plugin structure, generate index by ID
 local function plugin_index (plugins)
@@ -353,6 +356,49 @@ local function plugin_index (plugins)
   return index
 end
 
+-- find the requested plugin data, and index in structure
+local function find_installed_data (plugin)
+  plugin = tostring(plugin)
+  local installed = luup.attr_get "InstalledPlugins2" or {}
+  local info, idx
+  for i,p in ipairs (installed) do
+    local id = tostring (p.id)
+    if id == plugin then
+      info, idx = p, i
+      break
+    end
+  end
+  return info, idx
+end
+
+-- build update_plugin metadata from InstalledPlugins2 structure
+local function plugin_metadata (id, tag)
+  
+  local IP = find_installed_data (id)    -- get the named InstalledPlugins2 metadata
+  if IP then 
+    local r = IP.Repository
+    local major = r.type or "GitHub"
+    local tag = tag or r.default or "master"
+    r.versions = {[tag] = {release = tag}}
+    local plugin = {}
+    for a,b in pairs (IP) do
+      if type(b) ~= "table" then plugin[a] = b end    -- copy all the scalar data
+    end
+    return  {                             -- reformat for update_plugin request
+        devices     = IP.Devices,
+        plugin      = plugin,
+        repository  = IP.Repository,
+        version     = {major = major, minor = tag},
+        versionid   = tag,
+      }
+  end
+  return nil, table.concat {"metadata for'", id or '?', "' not found"}
+end
+
+
+--
+-- LOAD and SAVE
+--
 
 -- load user_data (persistence for attributes, rooms, devices and scenes)
 local function load_user_data (user_data_json)  
@@ -551,11 +597,15 @@ return {
   ABOUT           = ABOUT,
   
   attributes      = attributes, 
-  devices_table   = devices_table, 
   default_plugins = default_plugins,
   
   -- methods  
-  load            = load_user_data,
-  save            = save_user_data,
+  
+  devices_table       = devices_table, 
+  plugin_metadata     = plugin_metadata,
+  find_installed_data = find_installed_data, 
+
+  load = load_user_data,
+  save = save_user_data,
 }
 

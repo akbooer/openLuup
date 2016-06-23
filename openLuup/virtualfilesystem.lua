@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.06.19",
+  VERSION       = "2016.06.22",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -430,6 +430,13 @@ aggregationMethod = average
 
 ]]
 
+local unknown_wsp = [[
+          1,      86400,        0.5,          1
+         84,      86400,          1
+          0,                      0
+]]
+
+
 -----
 
 local manifest = {
@@ -450,6 +457,7 @@ local manifest = {
 
     ["storage-schemas.conf"]      = storage_schemas_conf,
     ["storage-aggregation.conf"]  = storage_aggregation_conf,
+    ["unknown.wsp"]               = unknown_wsp,
     
   }
 

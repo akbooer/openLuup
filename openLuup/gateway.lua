@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.06.22",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -12,7 +12,9 @@ local ABOUT = {
 -- this is the Lua implementation of the Home Automation Gateway device, aka. Device 0
 --
 
-local plugins     = require "openLuup.plugins"
+-- 2016.06.22   CreatePLugin and DeletePlugin now use update_plugin/delete_plugin in request module
+
+local requests    = require "openLuup.requests"
 local scenes      = require "openLuup.scenes"
 local userdata    = require "openLuup.userdata"     -- for HouseMode
 local loader      = require "openLuup.loader"       -- for compile_lua
@@ -78,18 +80,26 @@ end
 -- action=CreatePluginDevice&PluginNum=int 	
 -- Creates a device for plugin #PluginNum.
 -- StateVariables 	string 
-local function CreatePluginDevice (_, p) 
-  return plugins.create (p.PluginNum) 
+local function CreatePluginDevice (...) 
+  requests.update_plugin (...)
+  return true
 end
 
 -- action=CreatePlugin&PluginNum=int 	
 -- Create a plugin with the PluginNum number and Version version. 
 -- StateVariables are the variables that will be set when the device is created. 
 -- For more information look at the description of the CreateDevice action above. 
-local function CreatePlugin (_, p)
-  return plugins.create (p)
+local function CreatePlugin (...)
+  requests.update_plugin (...)
+  return true
 end
 
+-- DeletePlugin  PluginNum  int  Uninstall the given plugin. 
+-- action=DeletePlugin&PluginNum=...
+local function DeletePlugin (...)
+  requests.delete_plugin (...)
+  return
+end
 
 -- action=DeleteDevice&DeviceNum=...
 local function DeleteDevice ()
@@ -97,6 +107,7 @@ local function DeleteDevice ()
 end
 
 
+--
 -- build the action list
 
 Device_0.services[SID].actions = 
@@ -107,8 +118,8 @@ Device_0.services[SID].actions =
       job = function (_, p) 
         if p.Reload == '1' then luup.reload () end
       end,
-      name = "CreateDevice",
-      returns = {DeviceNum = "DeviceNum"},
+      name = "CreateDevice",                -- required for return arguments
+      returns = {DeviceNum = "DeviceNum"},  -- ditto
       serviceId = SID,
     },
     
@@ -116,12 +127,9 @@ Device_0.services[SID].actions =
     CreatePlugin        = {run = CreatePlugin},
     DeleteDevice        = {run = DeleteDevice},
     
-    -- DeletePlugin 	PluginNum 	int 	Uninstall the given plugin. 
-    DeletePlugin = {
-      run = function (_, p)
-        plugins.delete (p)
-        luup.reload ()    
-      end
+    DeletePlugin = {      -- <run> / <job> structure allows return message to UI before reload
+      run = DeletePlugin,
+      job = function () luup.reload () end,
     },
     
     -- LogIpRequest 	IpAddress 	UDN 	MacAddress 	UDN 

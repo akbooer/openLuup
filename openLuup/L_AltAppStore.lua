@@ -1,7 +1,7 @@
 
 local ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2016.06.21",
+  VERSION       = "2016.06.22",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2016",
@@ -40,6 +40,7 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 
 -- 2016.06.20   use optional target repository parameter for final download destination
 -- 2016.06.21   luup.create_device didn't work for UI7, so use action call for all systems
+-- 2016.06.22   slightly better log messages for <run> and <job> phases
 
 local https     = require "ssl.https"
 local lfs       = require "lfs"
@@ -355,7 +356,7 @@ local AltAppStore =
     AutoUpdate      = "0",
     VersionMajor    = "not",
     VersionMinor    = "installed",
-    id              = "AltAppStore",    -- TODO: replace with real id once in MiOS App Store?
+    id              = "AltAppStore",
 --    timestamp       = os.time(),
     Files           = {},
     Devices         = {
@@ -477,7 +478,7 @@ function update_plugin_run(args)
   display ("Downloading...", p.Title or '?')
   total = 0
   files = {}
-  _log "starting <job> phase..."
+  _log "scheduling <job> phase..."
   return true                               -- continue with <job>
 end
 
@@ -497,6 +498,7 @@ local jobstate =  {
 function update_plugin_job()
   
   local status, name, content, N, Nfiles = next_file()
+  if N and N == 1 then _log "starting <job> phase..." end
   if status then
     if status ~= 200 then
       _log ("download failed, status:", status)
@@ -518,6 +520,7 @@ function update_plugin_job()
     return jobstate.WaitingToStart,0        -- reschedule immediately
   else
     -- finish up
+    _log "...final <job> phase"
     _log ("Total size", total)
  
     -- copy/compress files to final destination... 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.06.20",
+  VERSION       = "2016.06.22",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -24,6 +24,7 @@ local ABOUT = {
 -- 2016.05.23  fix &id=altui plugin numbering string (thanks @amg0)
 -- 2016.06.04  remove luup.reload() from device delete action: AltUI requests reload anyway
 -- 2016.06.20  better comments for plugin updates and openLuup-specific requests
+-- 2016.06.22  move HTTP request plugin update/delete code to here from plugins
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -35,7 +36,6 @@ local rooms         = require "openLuup.rooms"
 local scenes        = require "openLuup.scenes"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
-local plugins       = require "openLuup.plugins"
 local loader        = require "openLuup.loader"       -- for static_data, service_data, and loadtime
 
 --  local log
@@ -43,7 +43,19 @@ local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 
 logs.banner (ABOUT)   -- for version control
 
-local build_version = '*' .. luup.version .. '*'  -- needed in sdata and user_data
+
+-- Utility functions
+
+-- return first found device ID if a device of the given type is present locally
+local function device_present (device_type)
+  for devNo, d in pairs (luup.devices) do
+    if ((d.device_num_parent == 0)      -- local device...
+    or  (d.device_num_parent == 2))     -- ...or child of openLuup device
+    and (d.device_type == device_type) then
+      return devNo
+    end
+  end
+end
 
 -----
 --
@@ -96,7 +108,7 @@ end
 --   http://ip_address:3480/data_request?id=device&action=rename&device=5&name=Chandelier&room=Garage
 --   http://ip_address:3480/data_request?id=device&action=delete&device=5
 --
-
+-- TODO: add better status messages
 local function device (_,p)
   local devNo = tonumber (p.device)
   local dev = luup.devices[devNo]
@@ -217,7 +229,7 @@ end
 -- It allows a user interface that is only worried about control, and not detailed configuration, 
 -- to get a summary of the data that would normally be presented to the user and to monitor the changes.
 -- http://VeraIP:3480/data_request?id=sdata&output_format=json
-local function sdata(r,p,f)
+local function sdata(...)
   local sdata = {
     categories = categories_table (),
     dataversion = devutil.dataversion.value,
@@ -231,7 +243,7 @@ local function sdata(r,p,f)
     sections = sections_table(),
     state = -1,
     temperature = luup.attr_get "TemperatureFormat",
-    version = build_version,
+    version = luup.attr_get "BuildVersion",
   }
   return json.encode (sdata) or 'error in sdata', "application/json"
 end 
@@ -245,14 +257,12 @@ local function status_devices_table (device_list, data_version)
   local dev_dv
   for i,d in pairs (device_list) do 
 --    dev_dv = d:version_get() or 0
-    local debug = {device_ver = d:version_get()}
     if d:version_get() > dv then
       info = info or {}         -- create table if not present
       local states = {}
       for serviceId, srv in pairs(d.services) do
         for name,item in pairs(srv.variables) do
           local ver = item.version
---          debug[name] = ver
 --          if item.version > dv then
           do
             states[#states+1] = {
@@ -322,7 +332,7 @@ end
 
 -- This returns the current status for all devices including all the current UPnP variables and the status of any active jobs. 
 -- http://172.16.42.14:3480/data_request?id=status&DeviceNum=47
-local function status (r,p,f)
+local function status (_,p)
   local status = {                                -- basic top level attributes
     alerts = {},
     TimeStamp = os.time(),
@@ -417,7 +427,7 @@ end
 -- This returns the configuration data for Vera, 
 -- which is a list of all devices and the UPnP variables which are persisted between resets [NOT YET IMPLEMENTED]
 -- as well as rooms, names, and other data the user sets as part of the configuration.
-local function user_data (r,p,f) 
+local function user_data (_,p) 
   local result = "NO_CHANGES"
   local mime_type = "text/plain"
   local dv = tonumber(p.DataVersion)
@@ -460,7 +470,7 @@ end
 --This creates, renames, or deletes a room depending on the action. 
 --To rename or delete a room you must pass the room id for the with room=N.
 --
-local function room (r,p,f)
+local function room (_,p)
   local name = (p.name ~= '') and p.name
   local number = tonumber (p.room)
 
@@ -495,7 +505,7 @@ Example: http://ip_address:3480/data_request?id=scene&action=list&scene=5
 
 --]]
 
-local function scene (r,p,f)  
+local function scene (_,p)  
   local name = (p.name ~= '') and p.name
   local room = (p.room ~= '') and p.room
   local number = tonumber (p.scene)
@@ -548,7 +558,7 @@ end
 
 -- http://ip_address:3480/data_request?id=variableset&DeviceNum=6&serviceId=urn:micasaverde-com:serviceId:DoorLock1&Variable=Status&Value=1
 -- If you leave off the DeviceNum and serviceID, then this sets a top-level json tag called "Variable" with the value.
-local function variableset (r,p,f)
+local function variableset (_,p)
   local devNo = tonumber (p.DeviceNum) or 0
 --  if devNo == 0 and not p.serviceId and p.Variable then
   if (not p.serviceId) and p.Variable then
@@ -561,7 +571,7 @@ end
 
 -- http://ip_address:3480/data_request?id=variableget&DeviceNum=6&serviceId=urn:micasaverde-com:serviceId:DoorLock1&Variable=Status
 -- If you leave off the DeviceNum and serviceId, then this gets a top-level json tag called "Variable".
-local function variableget (r,p,f)
+local function variableget (_,p)
   local result
   local devNo = tonumber (p.DeviceNum) or 0
   if devNo == 0 and p.Variable then
@@ -605,9 +615,10 @@ end
    401 "Invalid Service"  
    501 "No implementation"
 --]]
-local function action (r,p,f)
+local function action (_,p,f)
   -- notice that the argument list is the full HTTP query including DeviceNum, serviceId, and action
   local error, error_msg, job, arguments = luup.call_action (p.serviceId, p.action, p, tonumber(p.DeviceNum))
+  local _,_ = error_msg, job    -- unused at present
   local mime_type = "text/plain"
   local result = tostring(error)
   if type (arguments) == "table" then
@@ -618,7 +629,7 @@ local function action (r,p,f)
       mime_type = "application/json"
     else
       result = xml.encode (result)
-      result = result: gsub ("^(%s*<u:%w+)", '<?xml version="1.0"?>\n%1 xmlns:u="Unknown Service"')
+      result = result: gsub ("^(%s*<u:%w+)", '<?xml version="1.0"?>\n%1 xmlns:u="' .. p.serviceId .. '"')
       mime_type = "application/xml"
     end
   end
@@ -676,8 +687,89 @@ local function request_image (_, p)
   end
 end
 
+--[[
+---------------------------------------------------------
+
+PLUGIN UPDATES: THINGS TO KNOW:
+
+From the Plugins page, AltUI issues two types of requests 
+depending on whether or not anything is entered into the Update box:
+
+empty request to openLuup:
+
+/data_request?id=update_plugin&Plugin=openLuup
+
+entry of "v0.8.2" to VeraBridge update box:
+
+/data_request?id=action&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&action=CreatePlugin&PluginNum=VeraBridge&Version=v0.8.2
+
+... NOTE: the difference between the parameter names specifying the Plugin!!
+
+Because the MiOS plugin store Version has nothing to do with AltUI build versions, @amg0 tags GitHub releases and passes these to openLuup when a browser refresh plugin update is initiated:
+
+...need an example here with &TracRev=... 
+
+---------------------------------------------------------
+--]]
+
 --
--- misc
+-- update_plugin ()
+-- This is a genuine Vera-style request for an update
+-- originated from the Update button of the plugins page
+-- the TracRev parameter (pre-GitHub!) is used by AltUI to override the MiOS Version number 
+local function update_plugin (_,p) 
+  
+  local Plugin = p.PluginNum or p.Plugin
+  local tag = p.TracRev or p.Version          -- pecking order for parameter names
+  local meta, errmsg = userdata.plugin_metadata (Plugin, tag)
+    
+  if meta then
+    local sid = "urn:upnp-org:serviceId:AltAppStore1"
+    local act = "update_plugin"
+    local arg = {metadata = json.encode (meta)}
+    local dev = device_present "urn:schemas-upnp-org:device:AltAppStore:1"
+    
+    -- check for pre-install device-specific configuration, failure means do NOT install
+    local status
+    status, errmsg = luup.call_action ("openLuup", "plugin_configuration", meta, 2) 
+    
+    if status == 0 then
+      _, errmsg = luup.call_action (sid, act, arg, dev)       -- actual install
+      
+      -- NOTE: that the above action executes asynchronously and the function call
+      --       returns immediately, so you CAN'T do a luup.reload() here !!
+      --       (it's done at the end of the <job> part of the called action)
+    end
+  end
+  
+  if errmsg then _log (errmsg) end
+  return errmsg or "OK", "text/plain" 
+end
+
+-- delete_plugin ()
+local function delete_plugin (_, p)
+  local Plugin = p.PluginNum  or '?'
+  local IP, idx = userdata.find_installed_data (Plugin)
+  if idx then
+    local device_type = IP.Devices[1].DeviceType                -- assume it's there!
+    table.remove (userdata.attributes.InstalledPlugins2, idx)   -- move all the higher indices down, also
+    _log ("removing plugin devices of type: " .. (device_type or '?'))
+    for devNo, d in pairs (luup.devices) do                     -- remove associated devices....
+      if (d.device_type == device_type) 
+      and (d.device_num_parent == 0) then     -- local device of correct type...
+        _log ("delete device #" .. devNo)
+        local msg = device (_, {action="delete", device=devNo}) -- call device action in this module
+        _log (msg or ("Plugin removed: " .. devNo))
+      end
+    end
+    _log ("Plugin_removed: " .. Plugin)
+  end
+  return "No such plugin: " .. Plugin, "text/plain"
+end
+
+
+--
+-- Miscellaneous
 --
 
 -- return OK if the engine is running
@@ -689,21 +781,15 @@ local function file (_,p) return server.http_file (p.parameters or '') end
 -- reload openLuup
 local function reload () luup.reload () end
 
--- This is a genuine Vera-style request for an update
--- originated from the Update button of the plugins page
--- when NO version is specified.
-local function update_plugin (_,p) plugins.create (p) end -- 2016.05.18  generic update_plugin request
-
 --
 -- openLuup additions
 --
 
--- used in bootstrapping a new system - forces a download of AltUI
--- the TracRev parameter (pre-GitHub!) is used by AltUI to override the MiOS Version number 
-local function altui (_,p) return plugins.create {PluginNum = "8246", TracRev= p.rev} end
+-- easy HTTP request to force a download of AltUI
+local function altui (_,p) return update_plugin (_, {PluginNum = "8246", Version= p.Version}) end
 
 -- easy HTTP request to force openLuup update (not used by AltUI)
-local function update (_,p) return plugins.create {PluginNum = "openLuup", Tag = p.rev} end
+local function update (_,p) return update_plugin (_, {PluginNum = "openLuup", Version = p.Version}) end
 
 -- toggle debug flag (not yet used)
 local function debug() luup.debugON = not luup.debugON; return "DEBUG = ".. tostring(luup.debugON) end
@@ -721,6 +807,7 @@ return {
   action              = action, 
   alive               = alive,
   device              = device,
+  delete_plugin       = delete_plugin,
   file                = file,
   iprequests          = iprequests,
   invoke              = invoke,
