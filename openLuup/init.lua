@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.06.22",
+  VERSION       = "2016.06.24",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -117,14 +117,14 @@ do -- STARTUP
   
   if init == "reset" then luup.reload () end      -- factory reset
   
-  if init == "altui" then                         -- install altui in reset system
+  if init == "altui" then                               -- install altui in reset system
     -- this is a bit tricky, since the scheduler is not running at this stage
     -- but we need to execute a multi-step action with <run> and <job> tags...
     userdata.attributes.InstalledPlugins2 = userdata.default_plugins
-    require "openLuup.L_AltAppStore"              -- manually load the plugin updater
-    AltAppStore_init (2)                          -- give it a device to work with
-    local meta = userdata.plugin_metadata (8246)          -- AltUI plugin number
-    update_plugin_run {metadata = meta}    -- <run> phase
+    require "openLuup.L_AltAppStore"                    -- manually load the plugin updater
+    AltAppStore_init (2)                                -- give it a device to work with
+    local meta = userdata.plugin_metadata (8246)        -- AltUI plugin number
+    update_plugin_run {metadata = json.encode (meta)}   -- <run> phase
     repeat
       local status = update_plugin_job ()  -- <job> phase
     until status ~= 0

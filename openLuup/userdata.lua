@@ -167,7 +167,6 @@ local preinstalled = {
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
         target    = "./openLuup/",                    -- not /etc/cmh-ludl/, like everything else
         default   = "master",                         -- "development" or "master" or any tagged release
-        versions  = {master = {release = "master"}},
         pattern   = "%w+%.lua",                       -- pattern match string for required files
         folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
        },
@@ -199,7 +198,6 @@ local preinstalled = {
         type      = "GitHub",
         source    = "amg0/ALTUI",                   -- @amg0 repository
         default   = "master",                       -- "development" or "master" or any tagged release
-        versions  = {master = {release = "master"}},
         pattern   = "ALTUI",                        -- pattern match string for required files
         folders   = {                               -- these are the bits of the repository that we want
           '',               -- the main folder
@@ -233,7 +231,6 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/AltAppStore",
         default   = "master",                    -- "development" or "master" or any tagged release
-        versions  = {master = {release = "master"}},
         pattern   = "AltAppStore",                     -- pattern match string for required files
       },
     },
@@ -263,7 +260,6 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
         default   = "master",                         -- "development" or "master" or any tagged release
-        versions  = {master = {release = "master"}},
         pattern   = "VeraBridge",                     -- pattern match string for required files
         folders   = {"/VeraBridge"},                  -- these are the bits of the repository that we want
       },
@@ -298,7 +294,6 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/Datayours",
         default   = "development",                     -- "development" or "master" or any tagged release
-        versions  = {development = {release = "development"}},
         pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
       },
     },
@@ -378,7 +373,7 @@ local function plugin_metadata (id, tag)
   if IP then 
     local r = IP.Repository
     local major = r.type or "GitHub"
-    local tag = tag or r.default or "master"
+    tag = tag or r.default or "master"
     r.versions = {[tag] = {release = tag}}
     local plugin = {}
     for a,b in pairs (IP) do
