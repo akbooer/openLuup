@@ -1,7 +1,7 @@
 
 local ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2016.06.22",
+  VERSION       = "2016.06.24",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2016",
@@ -279,16 +279,15 @@ local function install_if_missing (meta)
     local ip, mac, hidden, invisible, parent, room
     local altid = ''
     _log ("installing " .. name)
-    local devNo =  create_device (device_type, altid, name, device_file, 
+    create_device (device_type, altid, name, device_file, 
       device_impl, ip, mac, hidden, invisible, parent, room, pluginnum, statevariables)  
-    return devNo
   end
   
-  local devNo
+  -- install_if_missing()
   if device_type and not present (device_type) then 
-    devNo = install() 
+    install() 
+    return true
   end
-  return devNo
 end
 
 local function file_copy (source, destination)
@@ -514,7 +513,6 @@ function update_plugin_job()
     f: close ()
     local size = #content or 0
     total = total + size
-    files[#files+1] = {SourceName = name}
     local column = "(%d of %d) %6d %s"
     _log (column:format (N, Nfiles, size, name))
     return jobstate.WaitingToStart,0        -- reschedule immediately
@@ -537,6 +535,7 @@ function update_plugin_job()
           destination = icon_folder .. file
           file_copy (source, destination)
         else
+        files[#files+1] = {SourceName = file}
           destination = target .. file
           if Vera then   
             os.execute (table.concat ({"pluto-lzo c", source, destination .. ".lzo"}, ' '))
@@ -551,9 +550,13 @@ function update_plugin_job()
     update_InstalledPlugins2 (meta, files)
     _log (meta.plugin.Title or '?', "update completed")
     
-    install_if_missing (meta)
---    display ('Reload','required')
-    luup.reload()
+    local new_install = install_if_missing (meta)
+    -- only perform reload if there was already a version installed
+    -- in order to start using the new files.
+    -- If a new device has been created, it will be using them, and
+    -- plugins often generate system reloads anyway as part of first-time setup.
+    if not new_install then luup.reload() end
+    display ('','')
     return jobstate.Done,0        -- finished job
   end
 end

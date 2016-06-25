@@ -19,6 +19,7 @@ local ABOUT = {
 -- 2016.06.06   fix load error if missing openLuup structure (upgrading from old version)
 -- 2016.06.08   add pre-defined startup code for new systems
 -- 2016.06.22   add metadata routine for plugin install
+-- 2016.06.24   remove defaults from pre-installed repository data (always use "master"
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -138,7 +139,7 @@ luup.log "startup code completed"
 }
 
 
-local default_plugins_version = "2016.06.22" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.06.24" --<<<-- change this if default_plugins changed
 
 -------
 --
@@ -166,7 +167,6 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
         target    = "./openLuup/",                    -- not /etc/cmh-ludl/, like everything else
-        default   = "master",                         -- "development" or "master" or any tagged release
         pattern   = "%w+%.lua",                       -- pattern match string for required files
         folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
        },
@@ -197,7 +197,6 @@ local preinstalled = {
       Repository      = {     
         type      = "GitHub",
         source    = "amg0/ALTUI",                   -- @amg0 repository
-        default   = "master",                       -- "development" or "master" or any tagged release
         pattern   = "ALTUI",                        -- pattern match string for required files
         folders   = {                               -- these are the bits of the repository that we want
           '',               -- the main folder
@@ -230,7 +229,6 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/AltAppStore",
-        default   = "master",                    -- "development" or "master" or any tagged release
         pattern   = "AltAppStore",                     -- pattern match string for required files
       },
     },
@@ -259,7 +257,6 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
-        default   = "master",                         -- "development" or "master" or any tagged release
         pattern   = "VeraBridge",                     -- pattern match string for required files
         folders   = {"/VeraBridge"},                  -- these are the bits of the repository that we want
       },
@@ -293,7 +290,6 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/Datayours",
-        default   = "development",                     -- "development" or "master" or any tagged release
         pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
       },
     },
@@ -322,7 +318,6 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "mysensors/Vera",
-        default   = "UI7",
         pattern   = "[DILS]_Arduino%w*%.%w+",             -- pattern match string for required files
       },
     },
@@ -373,7 +368,7 @@ local function plugin_metadata (id, tag)
   if IP then 
     local r = IP.Repository
     local major = r.type or "GitHub"
-    tag = tag or r.default or "master"
+    tag = tag or "master"
     r.versions = {[tag] = {release = tag}}
     local plugin = {}
     for a,b in pairs (IP) do
