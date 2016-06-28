@@ -707,7 +707,9 @@ entry of "v0.8.2" to VeraBridge update box:
 
 Because the MiOS plugin store Version has nothing to do with AltUI build versions, @amg0 tags GitHub releases and passes these to openLuup when a browser refresh plugin update is initiated:
 
-...need an example here with &TracRev=... 
+This, for example, is an update request from AltUI after a browser refresh discovers there's a new version
+
+/data_request?id=action&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&action=CreatePlugin&PluginNum=8246&Version=31806&TracRev=1788
 
 ---------------------------------------------------------
 --]]

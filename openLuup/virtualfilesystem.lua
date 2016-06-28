@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.06.22",
+  VERSION       = "2016.06.28",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -12,7 +12,7 @@ local ABOUT = {
 -- the local references mean that these files will not be removed from the 
 -- ephemeral cache table by garbage collection 
 --
--- device files for "openLuup" (aka. Extensions)
+-- device files for "openLuup", "AltAppStore", and "VeraBridge". 
 -- this also provides the files for some unit tests
 --
 
@@ -314,6 +314,155 @@ local S_AltAppStore_svc = [[
 </scpd>
 ]]
 
+
+-----
+--
+-- VeraBridge device files
+--
+
+local D_VeraBridge_dev = [[
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>VeraBridge</deviceType>
+    <friendlyName>Vera Bridge</friendlyName>
+    <manufacturer>akbooer</manufacturer>
+    <manufacturerURL></manufacturerURL>
+    <modelDescription>Vera Bridge for openLuup</modelDescription>
+    <modelName>v2.0</modelName>
+    <modelNumber>1</modelNumber>
+    <handleChildren>1</handleChildren>
+    <Category_Num>1</Category_Num>
+    <UDN></UDN>
+    <serviceList>
+      <service>
+        <serviceType>urn:akbooer-com:service:VeraBridge:1</serviceType>
+        <serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+        <SCPDURL>S_VeraBridge.xml</SCPDURL>
+      </service>
+    </serviceList>
+		<staticJson>D_VeraBridge.json</staticJson>
+    <implementationList>
+      <implementationFile>I_VeraBridge.xml</implementationFile>
+    </implementationList>
+  </device>
+</root>
+]]
+
+local D_VeraBridge_json = [[
+{
+	"default_icon": "http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
+	"Tabs": [
+		{
+			"Label": {
+				"lang_tag": "tabname_control",
+				"text": "Control"
+			},
+			"Position": "0",
+			"TabType": "flash",
+			"ControlGroup":[
+				{
+					"id": "1",
+					"scenegroup": "1"
+				}
+			],
+			"SceneGroup":[
+				{
+					"id": "1",
+					"top": "1.5",
+					"left": "0.25",
+					"x": "1.5",
+					"y": "2"
+				}
+			],
+			"Control": [
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "0",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine1",
+						"Top": 40,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "1",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine2",
+						"Top": 60,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "urn:akbooer-com:serviceId:VeraBridge1",
+						"Variable": "Version",
+						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				}
+			]
+		}
+  ],
+	"DeviceType": "VeraBridge"
+}
+]]
+
+local I_VeraBridge_impl = [[
+<?xml version="1.0"?>
+<implementation>
+  <files>L_VeraBridge.lua</files>
+  <startup>init</startup>
+  <actionList>
+    <action>
+  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+  		<name>GetVeraFiles</name>
+  		<job>
+  			GetVeraFiles ()
+  			return 4,0
+  		</job>
+    </action>
+  </actionList>
+</implementation>
+]]
+
+local S_VeraBridge_svc = [[
+<?xml version="1.0"?>
+<scpd xmlns="urn:schemas-upnp-org:service-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <actionList>
+    <action>
+      <name>GetVeraFiles</name>
+    </action>
+  </actionList>
+</scpd>
+]]
+
+
 -----
 
 -- Default values for installed plugins
@@ -450,6 +599,11 @@ local manifest = {
     ["D_AltAppStore.json"] = D_AltAppStore_json,
     ["I_AltAppStore.xml"]  = I_AltAppStore_impl,
     ["S_AltAppStore.xml"]  = S_AltAppStore_svc,
+    
+    ["D_VeraBridge.xml"]  = D_VeraBridge_dev,
+    ["D_VeraBridge.json"] = D_VeraBridge_json,
+    ["I_VeraBridge.xml"]  = I_VeraBridge_impl,
+    ["S_VeraBridge.xml"]  = S_VeraBridge_svc,
     
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,

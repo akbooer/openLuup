@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.06.22",
+  VERSION       = "2016.06.28",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -20,6 +20,7 @@ local ABOUT = {
 -- 2016.06.08   add pre-defined startup code for new systems
 -- 2016.06.22   add metadata routine for plugin install
 -- 2016.06.24   remove defaults from pre-installed repository data (always use "master"
+-- 2016.06.28   change install parameters for VeraBridge (device and icon file locations)
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -139,7 +140,7 @@ luup.log "startup code completed"
 }
 
 
-local default_plugins_version = "2016.06.24" --<<<-- change this if default_plugins changed
+local default_plugins_version = "2016.06.28b" --<<<-- change this if default_plugins changed
 
 -------
 --
@@ -257,8 +258,9 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
+        target    = "./openLuup/",                    -- not /etc/cmh-ludl/, like everything else
         pattern   = "VeraBridge",                     -- pattern match string for required files
-        folders   = {"/VeraBridge"},                  -- these are the bits of the repository that we want
+        folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
       },
     },
 
