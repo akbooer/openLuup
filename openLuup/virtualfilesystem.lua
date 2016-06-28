@@ -353,9 +353,10 @@ local D_VeraBridge_dev = [[
 </root>
 ]]
 
+-- TODO: switch to icons/ directory once this release is in the master branch
 local D_VeraBridge_json = [[
 {
-	"default_icon": "http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
+	"default_icon": "http://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
 	"Tabs": [
 		{
 			"Label": {
