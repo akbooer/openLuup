@@ -148,6 +148,8 @@ luup.log "startup code completed"
 -- pre-installed plugins
 --
 
+local default_plugins_version = "2016.07.01f"  --<<<-- change this to force update of default_plugins
+
 local preinstalled = {
   
   openLuup = 
@@ -160,6 +162,7 @@ local preinstalled = {
       AutoUpdate      = "0",
       VersionMajor    = '',
       VersionMinor    = "baseline.",
+      TargetVersion   = default_plugins_version,      -- openLuup uses this for the InstalledPlugins2 version number
       id              = "openLuup",
       timestamp       = os.time(),
       Files           = (function ()                  -- generate this list dynamically
@@ -215,7 +218,7 @@ local preinstalled = {
   AltAppStore =
 
     {
-      AllowMultiple   = "1",
+      AllowMultiple   = "0",
       Title           = "Alternate App Store",
       Icon            = "https://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
       Instructions    = "https://github.com/akbooer/AltAppStore",
@@ -238,8 +241,9 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- get this from openLuup, NOT from AltAppStore...
+        folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
         target    = "./openLuup/",                    -- ...and put it back INTO ./openLuup/ folder
-        pattern   = "L_AltAppStore.lua",              -- only this file (others are in virtualfilesystem)
+        pattern   = "L_AltAppStore",                  -- only .lua file (others are in virtualfilesystem)
       },
     },
 
@@ -270,7 +274,7 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
         target    = "./openLuup/",                    -- ...and put it back INTO ./openLuup/ folder
-        pattern   = "L_VeraBridge.lua",               -- only this file (others are in virtualfilesystem)
+        pattern   = "L_VeraBridge",                   -- only .lua file (others are in virtualfilesystem)
         folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
       },
     },
@@ -483,20 +487,31 @@ local function load_user_data (user_data_json)
     -- PLUGINS
     _log "loading installed plugin info..."
     
-    local new = user_data.InstalledPlugins2 or {}
-    local index = plugin_index (new)
+    local installed = user_data.InstalledPlugins2 or {}
+    local index = plugin_index (installed)
+    
+    -- check TargetVersion of openLuup to see if InstalledPlugins2 defaults are current   
+    local ol = installed[index.openLuup] or {}
+    local refresh = ol.TargetVersion ~= default_plugins_version
     
     -- copy any missing defaults (may have been deleted) to the new list
-    for _, plugin in ipairs (default_plugins) do
-      if not index[tostring(plugin.id)] then new[#new+1] = plugin end
+    for _, default_plugin in ipairs (default_plugins) do
+      local existing = index[tostring(default_plugin.id)]
+      if not existing then 
+        installed[#installed+1] = default_plugin          -- add any missing defaults
+      elseif refresh then 
+      default_plugin.VersionMajor = installed[existing].VersionMajor  -- preserve version info
+      default_plugin.VersionMinor = installed[existing].VersionMinor
+      installed[existing] = default_plugin                -- out of date, so replace info anyway
+      end
     end
     -- log the full list of installed plugins
-    for _, plugin in ipairs (new) do
+    for _, plugin in ipairs (installed) do
       local version = table.concat {plugin.VersionMajor or '?', '.', plugin.VersionMinor or '?'}
       local ver = "[%s] %s (%s)"
       _log (ver: format (plugin.id, plugin.Title, version))
     end
-    attr.InstalledPlugins2 = new
+    attr.InstalledPlugins2 = installed
   end
   _log "...user_data loading completed"
   return not msg, msg

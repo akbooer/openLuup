@@ -18,5 +18,6 @@ require "tests.test_io"
 require "tests.test_userdata"
 require "tests.test_chdev"
 require "tests.test_vfs"
+require "tests.test_compression"
 
 t.LuaUnit.run "-v" 

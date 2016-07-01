@@ -138,7 +138,7 @@ do -- STARTUP
     f:close ()
     if code then
     
-      if init: match "%.lzap$" then                       -- uncompress file
+      if init: match "%.lzap$" then                       -- it's a compressed user_data file
         local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
         code = compress.lzap.decode (code, codec)         -- uncompress the file
       end
