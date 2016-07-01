@@ -328,7 +328,7 @@ local D_AltAppStore_json = [[
 local I_AltAppStore_impl = [[
 <?xml version="1.0"?>
 <implementation>
-  <files>L_AltAppStore.lua</files>
+  <files>openLuup/L_AltAppStore.lua</files>
   <startup>AltAppStore_init</startup>
   <actionList>
     <action>
@@ -492,7 +492,7 @@ local D_VeraBridge_json = [[
 local I_VeraBridge_impl = [[
 <?xml version="1.0"?>
 <implementation>
-  <files>L_VeraBridge.lua</files>
+  <files>openLuup/L_VeraBridge.lua</files>
   <startup>init</startup>
   <actionList>
     <action>

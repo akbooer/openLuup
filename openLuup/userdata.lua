@@ -347,6 +347,7 @@ local default_plugins = {
     preinstalled.AltAppStore,
     preinstalled.VeraBridge,
     preinstalled.DataYours,
+--    preinstalled.Arduino,
   }
 
 --

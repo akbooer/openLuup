@@ -128,7 +128,7 @@ do -- STARTUP
     local meta = userdata.plugin_metadata (8246)        -- AltUI plugin number
     update_plugin_run {metadata = json.encode (meta)}   -- <run> phase
     repeat
-      local status = update_plugin_job ()  -- <job> phase
+      local status = update_plugin_job ()               -- <job> phase
     until status ~= 0
   end
   
