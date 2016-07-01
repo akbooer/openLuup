@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.06.28",
+  VERSION       = "2016.06.30",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -21,12 +21,14 @@ local ABOUT = {
 -- 2016.06.22   add metadata routine for plugin install
 -- 2016.06.24   remove defaults from pre-installed repository data (always use "master"
 -- 2016.06.28   change install parameters for VeraBridge (device and icon file locations)
+-- 2016.06.30   split save into two functions: json & save to allow data compression
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
 local logs    = require "openLuup.logs"
 local scenes  = require "openLuup.scenes"
 local chdev   = require "openLuup.chdev"
+local lfs     = require "lfs"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -140,7 +142,6 @@ luup.log "startup code completed"
 }
 
 
-local default_plugins_version = "2016.06.28b" --<<<-- change this if default_plugins changed
 
 -------
 --
@@ -159,16 +160,21 @@ local preinstalled = {
       AutoUpdate      = "0",
       VersionMajor    = '',
       VersionMinor    = "baseline.",
-      TargetVersion   = default_plugins_version, -- openLuup uses this for the InstalledPlugins2 version number
       id              = "openLuup",
       timestamp       = os.time(),
-      Files = {},
+      Files           = (function ()                  -- generate this list dynamically
+                          local F = {}
+                          for f in lfs.dir "openLuup/" do
+                            if f: match "^.+%..+$" then F[#F+1] = {SourceName = f} end
+                          end
+                          return F
+                        end) (),
       Devices         = {},                           -- no devices to install!!
       Repository      = {
         type      = "GitHub",
-        source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
+        source    = "akbooer/openLuup",               -- the openLuup repository
         target    = "./openLuup/",                    -- not /etc/cmh-ludl/, like everything else
-        pattern   = "%w+%.lua",                       -- pattern match string for required files
+        pattern   = ".+%.lua$",                       -- pattern match string for required files
         folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
        },
     },
@@ -218,7 +224,9 @@ local preinstalled = {
       VersionMinor    = "baseline.",
       id              = "AltAppStore",
       timestamp       = os.time(),
-      Files           = {},
+      Files           = {                             -- it's part of the openLuup baseline
+          {SourceName = "L_AltAppStore.lua"},         -- this is a physical file in ./openLuup/
+        },
       Devices         = {
         {
           DeviceFileName  = "D_AltAppStore.xml",
@@ -229,8 +237,9 @@ local preinstalled = {
       },
       Repository      = {
         type      = "GitHub",
-        source    = "akbooer/AltAppStore",
-        pattern   = "AltAppStore",                     -- pattern match string for required files
+        source    = "akbooer/openLuup",               -- get this from openLuup, NOT from AltAppStore...
+        target    = "./openLuup/",                    -- ...and put it back INTO ./openLuup/ folder
+        pattern   = "L_AltAppStore.lua",              -- only this file (others are in virtualfilesystem)
       },
     },
 
@@ -246,7 +255,9 @@ local preinstalled = {
       VersionMinor    = "installed",
       id              = "VeraBridge",
       timestamp       = os.time(),
-      Files           = {},
+      Files           = {
+          {SourceName = "L_VeraBridge.lua"},          -- this is a physical file in ./openLuup/
+        },
       Devices         = {
         {
           DeviceFileName  = "D_VeraBridge.xml",
@@ -258,8 +269,8 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
-        target    = "./openLuup/",                    -- not /etc/cmh-ludl/, like everything else
-        pattern   = "VeraBridge",                     -- pattern match string for required files
+        target    = "./openLuup/",                    -- ...and put it back INTO ./openLuup/ folder
+        pattern   = "L_VeraBridge.lua",               -- only this file (others are in virtualfilesystem)
         folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
       },
     },
@@ -475,19 +486,11 @@ local function load_user_data (user_data_json)
     local new = user_data.InstalledPlugins2 or {}
     local index = plugin_index (new)
     
-    -- check TargetVersion of openLuup to see if InstalledPlugins2 is current   
-    local ol = new[index.openLuup] or {}
-    local refresh = not ol or (ol.TargetVersion ~= default_plugins_version)
-    local ref = "InstalledPlugins2, user_data: %s, openLuup: %s"
-    _log (ref: format (ol.TargetVersion or '?', default_plugins_version))
-    
-    if refresh then     -- replace the lot (so losing current version information and installed status)
-      new = default_plugins
-    else                -- just fill in any missing ones
-      for _, plugin in ipairs (default_plugins) do  -- copy any missing defaults to the new list
-        if not index[tostring(plugin.id)] then new[#new+1] = plugin end
-      end
+    -- copy any missing defaults (may have been deleted) to the new list
+    for _, plugin in ipairs (default_plugins) do
+      if not index[tostring(plugin.id)] then new[#new+1] = plugin end
     end
+    -- log the full list of installed plugins
     for _, plugin in ipairs (new) do
       local version = table.concat {plugin.VersionMajor or '?', '.', plugin.VersionMinor or '?'}
       local ver = "[%s] %s (%s)"
@@ -542,11 +545,10 @@ local function devices_table (device_list)
   return info
 end
 
--- save ()
+-- json ()
 -- top-level attributes and key tables: devices, rooms, scenes
-local function save_user_data (localLuup, filename)   -- refactored thanks to @explorer
+local function json_user_data (localLuup)   -- refactored thanks to @explorer
   local luup = localLuup or luup
-  local result, message
   local data = {rooms = {}, scenes = {}}
   -- scalar attributes
   for a,b in pairs (attributes) do
@@ -567,7 +569,14 @@ local function save_user_data (localLuup, filename)   -- refactored thanks to @e
     scenes[#scenes+1] = s: user_table ()
   end    
   --
-  local j, msg = json.encode (data)
+  return json.encode (data)   -- json text or nil, error message if any
+end
+ 
+-- save ()
+local function save_user_data (localLuup, filename)   -- refactored thanks to @explorer
+  local result, message
+  local j, msg = json_user_data (localLuup)
+
   if not j then
     message = "syntax error in user_data: " .. (msg or '?')
   else
@@ -585,6 +594,7 @@ local function save_user_data (localLuup, filename)   -- refactored thanks to @e
   return result, message
 end
 
+
 return {
   ABOUT           = ABOUT,
   
@@ -597,7 +607,8 @@ return {
   plugin_metadata     = plugin_metadata,
   find_installed_data = find_installed_data, 
 
-  load = load_user_data,
-  save = save_user_data,
+  json  = json_user_data,
+  load  = load_user_data,
+  save  = save_user_data,
 }
 

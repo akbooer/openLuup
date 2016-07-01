@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.06.24",
+  VERSION       = "2016.06.30",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -16,6 +16,7 @@ local ABOUT = {
 -- 2016.06.09  add files/ directory to Lua search path
 -- 2016.06.18  add openLuup/ directory to Lua search path
 -- 2016.06.19  switch to L_AltAppStore module for initial AltUI download
+-- 2016.06.30  uncompress user_data file if necessary
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -33,6 +34,7 @@ local server        = require "openLuup.server"
 local scheduler     = require "openLuup.scheduler"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
+local compress      = require "openLuup.compression"
 local json          = require "openLuup.json"
 local mime          = require "mime"
 
@@ -135,13 +137,19 @@ do -- STARTUP
     local code = f:read "*a"
     f:close ()
     if code then
+    
+      if init: match "%.lzap$" then                       -- uncompress file
+        local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
+        code = compress.lzap.decode (code, codec)         -- uncompress the file
+      end
+
       local ok = true
-      local json_code = code: match "^%s*{"    -- what sort of code is this?
+      local json_code = code: match "^%s*{"               -- what sort of code is this?
       if json_code then 
         ok = userdata.load (code)
         code = userdata.attributes ["StartupCode"] or ''  -- substitute the Startup Lua
       end
-      compile_and_run (code, "_openLuup_STARTUP_")  -- the given file or the code in user_data
+      compile_and_run (code, "_openLuup_STARTUP_")        -- the given file or the code in user_data
     else
       _log "no init data"
     end

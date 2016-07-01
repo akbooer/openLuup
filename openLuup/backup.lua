@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "backup.sh",
-  VERSION       = "2016.05.30",
+  VERSION       = "2016.06.30",
   DESCRIPTION   = "user_data backup script /etc/cmh-ludl/cgi-bin/cmh/backup.sh",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -16,7 +16,10 @@ local DIRECTORY = "backup"      -- change this is you want to backup elsewhere
 -- WSAPI Lua implementation of backup.sh
 -- backup written to ./backups/backup.openLuup-AccessPt-YYYYY-MM-DD
 
+-- 2016.06.30   use new compression module to reduce backup file size.
+
 local userdata = require "openLuup.userdata"
+local compress = require "openLuup.compression"
 local lfs = require "lfs"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
@@ -46,15 +49,30 @@ function run (wsapi_env)
    
   local PK = userdata.attributes.PK_AccessPoint or "AccessPt"
   local DATE = os.date "%Y-%m-%d" or "0000-00-00"
-  local fmt = "%s/backup.openLuup-%s-%s"
+  local fmt = "%s/backup.openLuup-%s-%s.lzap"
   local fname = fmt: format (DIRECTORY, PK, DATE)  
   _log ("backing up user_data to " .. fname)
   
-  local ok, msg = userdata.save (nil, fname)   -- save current luup environment
+  local ok, msg = userdata.json (nil)   -- save current luup environment
+  local small                           -- compressed file
+  if ok then 
+    local f
+    f, msg = io.open (fname, 'wb')
+    if f then 
+      local codec = compress.codec (nil, "LZAP")  -- full binary codec with header text
+      small = compress.lzap.encode (ok, codec)
+      f: write (small)
+      f: close ()
+      ok = #ok      -- convert to file sizes
+      small = #small
+    else
+      ok = false
+    end
+  end
   
   local status, return_content
   if ok then 
-    status, return_content = 200, table.concat {"backup completed: ", ok, " bytes written to ", fname}
+    status, return_content = 200, table.concat {"backup completed: ", ok, " bytes compressed to ", small or '?', " and written to ", fname}
   else
     status, return_content = 500, "backup failed: " .. msg
   end

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.06.22",
+  VERSION       = "2016.06.30",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -181,8 +181,13 @@ local function configure_DataYours ()
       "cpu.d",                        -- one day's worth of storage
       "/data_request?id=lr_render&target={{0},memory.d}&title=CPU (%) Memory (Mb) &height=250&from=-y",
     })
-  luup.inet.wget (request:format ("Memory_Mb", memParams))
-  luup.inet.wget (request:format ("CpuLoad",   cpuParams))
+  local dayParams = url.escape (json.encode {
+      "uptime.m",                     -- one month's worth of storage
+      "/data_request?id=lr_render&target={0}&title=Uptime (days)&hideLegend=true&height=250&from=-y",
+    })
+  luup.inet.wget (request:format ("Memory_Mb",    memParams))
+  luup.inet.wget (request:format ("CpuLoad",      cpuParams))
+  luup.inet.wget (request:format ("Uptime_Days",  dayParams))
   _log "...DataYours configured"  
 end
 
@@ -284,6 +289,7 @@ function init (devNo)
   end  
   
   calc_stats ()
+  luup.variable_set (SID.openLuup, "Version",   ABOUT.VERSION,  ole)
   return true, msg, ABOUT.NAME
 end
 

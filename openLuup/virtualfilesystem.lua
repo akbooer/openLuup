@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.06.28",
+  VERSION       = "2016.06.30",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -12,9 +12,9 @@ local ABOUT = {
 -- the local references mean that these files will not be removed from the 
 -- ephemeral cache table by garbage collection 
 --
+-- openLuup reload script files and index.html to redirect to AltUI.
 -- device files for "openLuup", "AltAppStore", and "VeraBridge". 
--- this also provides the files for some unit tests
---
+-- DataYours configuration files.
 
 local D_openLuup_dev = [[
 <?xml version="1.0"?>
@@ -41,6 +41,75 @@ local D_openLuup_dev = [[
 local D_openLuup_json = [[
 {
   "default_icon": "https://avatars.githubusercontent.com/u/4962913",
+	"Tabs": [
+		{
+			"Label": {
+				"lang_tag": "tabname_control",
+				"text": "Control"
+			},
+			"Position": "0",
+			"TabType": "flash",
+			"ControlGroup":[
+				{
+					"id": "1",
+					"scenegroup": "1"
+				}
+			],
+			"SceneGroup":[
+				{
+					"id": "1",
+					"top": "1.5",
+					"left": "0.25",
+					"x": "1.5",
+					"y": "2"
+				}
+			],
+			"Control": [
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "0",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine1",
+						"Top": 40,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "1",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine2",
+						"Top": 60,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "openLuup",
+						"Variable": "Version",
+						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				}
+			]
+		}
+  ],
   "DeviceType": "openLuup"
 }
 ]]
@@ -142,8 +211,8 @@ local D_AltAppStore_dev = [[
     <manufacturer></manufacturer>
     <manufacturerURL></manufacturerURL>
     <modelDescription>AltUI App Store</modelDescription>
-    <modelName>1</modelName>
-    <modelNumber>1</modelNumber>
+    <modelName></modelName>
+    <modelNumber></modelNumber>
     <Category_Num>1</Category_Num>
     <UDN></UDN>
     <serviceList>
@@ -250,18 +319,8 @@ local D_AltAppStore_json = [[
 					}
 				}
 			]
-		},
-		{
-			"Label": {
-				"lang_tag": "advanced",
-				"text": "Advanced"
-			},
-			"Position": "1",
-			"TabType": "javascript",
-			"ScriptName": "shared.js",
-			"Function": "advanced_device"
-		},
-	],
+		}
+  ],
 	"DeviceType": "urn:schemas-upnp-org:device:AltAppStore:1"
 }
 ]]
