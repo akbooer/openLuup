@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2016.05.30",
+  VERSION       = "2016.07.05",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -21,6 +21,8 @@ local ABOUT = {
 -- 2016.02.26  add self parameter to input.read(), seems to be called from wsapi.request with colon syntax
 --             ...also util.lua shows that the same is true for the error.write(...) function.
 -- 2016.05.30  look in specified places for some missing CGI files 
+-- 2016.07.05  use "require" for WSAPI files with a .lua extension (enables easy debugging)
+-- 2016.07.06   add 'method' to WSAPI server call for REQUEST_METHOD metavariable
 
 --[[
 
@@ -90,15 +92,14 @@ end
 
 -- build makes an application function for the connector
 local function build (script)
-  local file = script: match ".(.+)"      -- ignore leading '/'
-  local f = io.open (file) 
-  if not f then 
-    local alternative = special[file]     -- 2016.05.30
-    if alternative then
-      _log (table.concat {"using ", alternative, " for ", file})
-      f = io.open (alternative)
-    end
+  local file = script: match "/(.+)"      -- ignore leading '/'
+  local alternative = special[file]     -- 2016.05.30
+  if alternative then
+    _log (table.concat {"using ", alternative, " for ", file})
+    file = alternative
   end
+  
+  local f = io.open (file) 
   if not f then 
     return dummy_app (404, "file not found: " .. (script or '?')) 
   end
@@ -109,19 +110,38 @@ local function build (script)
   if not line:match "^%s*#!/usr/bin/env%s+wsapi.cgi%s*$" then 
     return dummy_app (501, "file is not a WSAPI application: " .. (script or '?')) 
   end
-  code = f:read "*a"
-  f: close ()
+  
+  -- if it has a .lua extension, then we can use 'require' and this means that
+  -- it can be easily debugged because the file is recognised by the IDE
+  
+  local lua_env
+  local lua_file = file: match "(.*)%.lua$"
+  if lua_file then
+    _log "using REQUIRE to load .lua CGI"
+    f: close ()                               -- don't need it open
+    lua_file = lua_file: gsub ('/','.')       -- replace path separators with periods, for require path
+    lua_env = require (lua_file)
+    if type(lua_env) ~= "table" then
+      _log ("error - require failed: " .. lua_file)
+      lua_env = nil
+    end
     
-  -- compile and load
-  local a, error_msg = loadstring (code, script)    -- load it
-  if not a or error_msg then
-    return dummy_app (500, error_msg)               -- 'internal server error'
-  end
-  local lua_env = loader.new_environment (script)   -- use new environment
-  setfenv (a, lua_env)                              -- Lua 5.1 specific function environment handling
-  a, error_msg = pcall(a)                           -- instantiate it
-  if not a then
-    return dummy_app (500, error_msg)               -- 'internal server error'
+  else
+    -- do it the hard way...
+    code = f:read "*a"
+    f: close ()
+      
+    -- compile and load
+    local a, error_msg = loadstring (code, script)    -- load it
+    if not a or error_msg then
+      return dummy_app (500, error_msg)               -- 'internal server error'
+    end
+    lua_env = loader.new_environment (script)         -- use new environment
+    setfenv (a, lua_env)                              -- Lua 5.1 specific function environment handling
+    a, error_msg = pcall(a)                           -- instantiate it
+    if not a then
+      return dummy_app (500, error_msg)               -- 'internal server error'
+    end
   end
   
   -- find application entry point
@@ -200,7 +220,7 @@ SERVER_SOFTWARE The server software you're using (e.g. Apache 1.3)
 
 --]]
 -- cgi is called by the server when it receives a CGI request
-local function cgi (URL, headers, post_content) 
+local function cgi (URL, headers, post_content, method) 
   local meta = {
     __index = function () return '' end;  -- return the empty string instead of nil for undefined metavariables
   }
@@ -228,6 +248,7 @@ local function cgi (URL, headers, post_content)
     ["CONTENT_LENGTH"]  = #post_content,
     ["CONTENT_TYPE"]    = headers["Content-Type"] or '',
     ["REMOTE_HOST"]     = headers ["Host"],
+    ["REQUEST_METHOD"]  = method,
     ["SCRIPT_NAME"]     = URL.path,
     ["PATH_INFO"]       = '/',
     ["QUERY_STRING"]    = URL.query,

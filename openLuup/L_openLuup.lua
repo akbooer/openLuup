@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.06.30",
+  VERSION       = "2016.07.05",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -272,6 +272,12 @@ function init (devNo)
   luup.log (msg)
   display (nil, '')
   
+  do -- version number
+    local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
+    local version = ("%d.%d.%d"): format (y%2000,m,d)
+    luup.variable_set (SID.openLuup, "Version", version,  ole)
+  end
+
   luup.register_handler ("HTTP_openLuup", "openLuup")
   luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
   
@@ -289,7 +295,6 @@ function init (devNo)
   end  
   
   calc_stats ()
-  luup.variable_set (SID.openLuup, "Version",   ABOUT.VERSION,  ole)
   return true, msg, ABOUT.NAME
 end
 

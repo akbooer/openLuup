@@ -27,6 +27,7 @@ local ABOUT = {
 -- 2016.05.25   also look for files in openLuup/ (for plugins page)
 -- 2016.06.01   also look for files in virtualfilesystem
 -- 2016.06.09   also look in files/ directory
+-- 2016.07.06   add 'method' to WSAPI server call
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -161,7 +162,7 @@ end
 
 local is_cgi = {["cgi"] = true, ["cgi-bin"] = true, ["upnp"] = true}       -- root locations of CGI directories
 
-local function http_dispatch_request (URL, headers, post_content)    
+local function http_dispatch_request (URL, headers, post_content, method)    
   local dispatch
 -- see: http://forum.micasaverde.com/index.php/topic,34465.msg254637.html#msg254637
 -- and: http://forum.micasaverde.com/index.php/topic,34465.msg254650.html#msg254650
@@ -176,7 +177,7 @@ local function http_dispatch_request (URL, headers, post_content)
       dispatch = http_file 
     end
   end
-  return dispatch (URL, headers or {}, post_content or '') 
+  return dispatch (URL, headers or {}, post_content or '', method) 
 end
 
 -- issue a GET request, handling local ones without going over HTTP
@@ -322,6 +323,7 @@ end
 
 -- if MinimumTime specified, then make initial delay
 local function client_request (sock)
+  local method, path, major, minor        -- this is the structure of an HTTP request line
   local URL           -- URL table structure with named components (see url.parse in LuaSocket)
   local headers       -- the request headers
   local post_content  -- content of POST (if any)
@@ -333,7 +335,6 @@ local function client_request (sock)
  
   -- receive client request
   local function receive ()
-    local method, path, major, minor        -- this is the structure of an HTTP request line
     local line, err = sock:receive()        -- read the request line
     if not err then  
       method, path, major, minor = line: match "^(%u+)%s+(.-)%s+HTTP/(%d)%.(%d)%s*$"
@@ -367,7 +368,7 @@ local function client_request (sock)
   end
   
   local function exec_request ()
-    local response, type, chunked, response_headers = http_dispatch_request (URL, headers, post_content) 
+    local response, type, chunked, response_headers = http_dispatch_request (URL, headers, post_content, method) 
     local n, nc = http_response (sock, response, type, chunked, response_headers)
     local t = math.floor (1000*(socket.gettime() - start_time))
     _log (("request completed (%d bytes, %d chunks, %d ms) %s"):format (n, nc, t, tostring(sock)))

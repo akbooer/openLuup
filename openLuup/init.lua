@@ -132,7 +132,7 @@ do -- STARTUP
     until status ~= 0
   end
   
-  local f = io.open (init, 'r')
+  local f = io.open (init, 'rb')                          -- may be binary compressed file 
   if f then 
     local code = f:read "*a"
     f:close ()

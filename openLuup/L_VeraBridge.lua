@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.06.20",
+  VERSION       = "2016.07.05",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -691,7 +691,12 @@ function init (lul_device)
   local Ndev, Nscn
   Ndev, Nscn, BuildVersion = GetUserData ()
   
-  setVar ("Version", ABOUT.VERSION)
+  do -- version number
+    local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
+    local version = ("%d.%d.%d"): format (y%2000,m,d)
+    setVar ("Version", version)
+  end
+  
   setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
   setVar ("DisplayLine2", ip, SID.altui)
   

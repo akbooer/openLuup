@@ -1,7 +1,7 @@
 
 local ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2016.06.24",
+  VERSION       = "2016.07.06",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2016",
@@ -526,16 +526,18 @@ function update_plugin_job()
     _log ("updating icons in", icon_folder, "...")
     _log ("updating device files in", target, "...")
     
+    local Nicon= 0
     for file in lfs.dir (downloads) do
       local source = downloads .. file
       local attributes = lfs.attributes (source)
       if file: match "^[^%.]" and attributes.mode == "file" then
         local destination
         if file:match ".+%.png$" then    -- ie. *.png
+          Nicon = Nicon + 1
           destination = icon_folder .. file
           file_copy (source, destination)
         else
-        files[#files+1] = {SourceName = file}
+          files[#files+1] = {SourceName = file}
           destination = target .. file
           if Vera then   
             os.execute (table.concat ({"pluto-lzo c", source, destination .. ".lzo"}, ' '))
@@ -546,6 +548,9 @@ function update_plugin_job()
         os.remove (source)
       end
     end
+    
+    _log ("...", Nicon,  "icon files")
+    _log ("...", #files, "device files")
        
     update_InstalledPlugins2 (meta, files)
     _log (meta.plugin.Title or '?', "update completed")
@@ -572,7 +577,13 @@ function AltAppStore_init (d)
   devNo = d  
   _log "starting..." 
   display (ABOUT.NAME,'')  
-  setVar ("Version", ABOUT.VERSION)
+  
+  do -- version number
+    local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
+    local version = ("%d.%d.%d"): format (y%2000,m,d)
+    setVar ("Version", version)
+  end
+  
   set_failure (0)
   return true, "OK", ABOUT.NAME
 end
