@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2016.07.10",
+  VERSION       = "2016.07.12",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -21,6 +21,7 @@ local ABOUT = {
 -- 2016.05.24  fix 'nil' plugin attribute
 -- 2016.06.02  undo @explorer string mods (interim solution not now needed) and revert to standard Vera syntax
 -- 2016.07.10  add extra 'no_reload' parameter to luup.chdev.sync (for ZWay plugin)
+-- 2016.07.12  add 'reload' return parameter to luup.chdev.sync (ditto)
 
 local logs      = require "openLuup.logs"
 
@@ -293,8 +294,8 @@ end
   
 -- function: sync
 -- parameters: device (string or number), ptr (binary object),
---    Note extra parameter "room" cf. luup 
--- returns: nothing
+--    Note extra parameter 'no_reload' cf. luup 
+-- returns: nothing  [CHANGED to return true if a reload WOULD have occurred and no_reload is set]
 --
 -- Pass in the ptr which you received from the start function. 
 -- Tells the Luup engine you have finished enumerating the child devices. 
@@ -306,7 +307,7 @@ local function sync (_, ptr, no_reload)
     local fmt = "deleting [%d] %s"
     _log (fmt:format (devNo, luup.devices[devNo].description or '?'))
     luup.devices[devNo] = nil             -- no finesse required here, ...
-    ptr.reload = true                     -- ...system will be reloaded
+    ptr.reload = true                     -- ...system should be reloaded
   end
   -- now it's safe to link new ones into luup.devices
   for devNo, dev in pairs (ptr.new) do
@@ -315,6 +316,7 @@ local function sync (_, ptr, no_reload)
   if ptr.reload and not no_reload then
     luup.reload() 
   end
+  return ptr.reload
 end
 
 
