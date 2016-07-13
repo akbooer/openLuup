@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.06.09",
+  VERSION       = "2016.07.12",
   DESCRIPTION   = "HTTP/HTTPS GET/PUT requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -28,6 +28,11 @@ local ABOUT = {
 -- 2016.06.01   also look for files in virtualfilesystem
 -- 2016.06.09   also look in files/ directory
 -- 2016.07.06   add 'method' to WSAPI server call
+
+---------------------
+
+-- 2016.07.12   start refactoring: request dispatcher and POST queries
+
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -88,23 +93,32 @@ local myIP = (
 
 -- local functions
 
+-- convert HTTP GET or POST content into query parameters
+local function parse_parameters (content)
+  local p = {}
+  for n,v in content: gmatch "([%w_]+)=([^&]*)" do        -- parameters separated by unescaped "&"
+    if v ~= '' then p[n] = url.unescape(v) end            -- now can unescape parameter values
+  end
+  return p
+end
+
 -- convert HTTP request string into parsed URL with parameter table
 local function http_parse_request (request)
   local URL = url.parse (request)
   if URL and URL.query then
-  local parameters = {}
-    for n,v in URL.query: gmatch "([%w_]+)=([^&]*)" do      -- parameters separated by unescaped "&"
-      if v ~= '' then parameters[n] = url.unescape(v) end   -- now can unescape parameter values
-    end
-    URL.query_parameters = parameters
+    URL.query_parameters = parse_parameters (URL.query)
   end
   return URL
 end
 
--- handle /data_request queries only
-local function http_query (URL)
+-- handle /data_request&id=... queries only
+local function data_request (URL, _, post_content, method)
   local ok, response, mtype
   local parameters = URL.query_parameters
+  if method == "POST" then      -- assume Content-Type="application/x-www-form-urlencoded"
+    parameters = parse_parameters (post_content)
+  end
+  
   local request = parameters.id or ''
   local handler = http_handler[request]
   if handler and handler.callback then 
@@ -117,30 +131,35 @@ local function http_query (URL)
     ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request_name, parameters, format)
     if not ok then _log ("error in callback: " .. request .. ", error is " .. (response or 'nil')) end
   else 
-    response = "No handler for id=" .. request     -- 2016.05.17   log "No handler" responses
+    response = "No handler for data_request&id=" .. request     -- 2016.05.17   log "No handler" responses
     _log (response)
   end
+  -- TODO: status, headers, iterator
   return (response or 'not a data request'), mtype
 end
 
   
 -- handle file requests
 -- parameter is either a path string, or a parsed URL table
-local function http_file (URL, headers)
+local function http_file (URL)
   if type(URL) == "string" then URL = {path = URL} end
   local path = URL.path
+  
   path = path: gsub ("%.%.", '')                    -- ban attempt to move up directory tree
   path = path: gsub ("^/", '')                      -- remove filesystem root from path
   path = path: gsub ("luvd/", '')                   -- no idea how this is handled in Luup, just remove it!
   path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
   path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
+  
   local response_type = MIME (path)
   local info, chunked, response_headers
+  
   local f = io.open(path,'rb')                      -- 2016.03.05  'b' for Windows, thanks @vosmont
     or io.open ("../cmh-lu/" .. path, 'rb')         -- 2016.02.24  also look in /etc/cmh-lu/
     or io.open ("files/" .. path, 'rb')             -- 2016.06.09  also look in files/
     or io.open ("openLuup/" .. path, 'rb')          -- 2016.05.25  also look in openLuup/
     or vfs.open (path, 'rb')                        -- 2016.06.01  also look in virtualfilesystem
+  
   if f then 
     info = (f: read "*a") or ''                   -- should perhaps buffer long files
 --    _log ("file length = "..#info, "openLuup.HTTP.FILE")
@@ -154,35 +173,28 @@ local function http_file (URL, headers)
   else
     _log ("file not found:" .. path, "openLuup.HTTP.FILE")  
   end
+  -- TODO: status, headers, iterator
   return info, response_type, chunked, response_headers
 end
 
--- dispatch to appropriate handler depending on whether query or not
+-- dispatch to appropriate handler depending on request type
 -- URL parameter is parsed table of URL structure (see url.parse)
 
-local is_cgi = {["cgi"] = true, ["cgi-bin"] = true, ["upnp"] = true}       -- root locations of CGI directories
+local dispatcher = {
+  ["cgi"]           = wsapi.cgi,
+  ["cgi-bin"]       = wsapi.cgi,
+  ["upnp"]          = wsapi.cgi,
+  ["data_request"]  = data_request,
+}
 
 local function http_dispatch_request (URL, headers, post_content, method)    
-  local dispatch
--- see: http://forum.micasaverde.com/index.php/topic,34465.msg254637.html#msg254637
--- and: http://forum.micasaverde.com/index.php/topic,34465.msg254650.html#msg254650
-  if URL.query and URL.path:match "/data_request$" then     -- Thanks @vosmont 
-    dispatch = http_query       
-  else
-    local url_parts = url.parse_path (URL.path)    
-    if is_cgi[url_parts[1]] then       -- deal with CGI calls through WSAPI
-      dispatch = wsapi.cgi
-    else
-      if URL.path: match "/$" then URL.path = URL.path .. "index.html" end   -- 2016.02.20
-      dispatch = http_file 
-    end
-  end
+  local url_parts = url.parse_path (URL.path) or {} 
+  if url_parts.is_directory then URL.path = URL.path .. "index.html" end
+  local dispatch = dispatcher [url_parts[1]] or http_file 
   return dispatch (URL, headers or {}, post_content or '', method) 
 end
 
--- issue a GET request, handling local ones without going over HTTP
--- Note: that in THIS CASE, the request might be to port 3480, OR ANY OTHER,
---       in which case the filesystem root will be different.
+-- issue a GET request, handling local ones to port 3480 without going over HTTP
 local function wget (URL, Timeout, Username, Password) 
   if not (URL: match "^https?://") or (URL: match "^//") then URL = "//" .. URL end
   local result, status
@@ -194,10 +206,15 @@ local function wget (URL, Timeout, Username, Password)
   }
   URL = http_parse_request (URL)                      -- break it up into bits  
   if ((URL.port or '') == "3480")                     -- 2016-03-16 check for port #, thanks @reneboer
-  and self_reference [URL.host] then                  -- INTERNAL request
+  and self_reference [URL.host] then
+    
+    -- INTERNAL request
+    -- TODO: status, headers, iterator
     result = http_dispatch_request (URL)
     if result then status = 0 else status = -1 end    -- assume success
-  else                                                -- EXTERNAL request   
+  else
+    
+    -- EXTERNAL request OR not port 3480 
     local scheme = http
     URL.scheme = URL.scheme or "http"                 -- assumed undefined is http request
     if URL.scheme == "https" then scheme = https end  -- 2016.03.20
@@ -212,8 +229,6 @@ local function wget (URL, Timeout, Username, Password)
 end
 
 local function send (sock, data, ...)
---    socket.sleep(0.001) -- TODO: REMOVE SLEEP !!!!
---  socket.select (nil, {sock}, 5)    -- wait for it to be ready.  TODO: fixes timeout error on long strings?
   local ok, err, n = sock: send (data, ...)
   if not ok then
     _log (("error '%s' sending %d bytes to %s"): format (err or "unknown", #data, tostring (sock)))
@@ -300,9 +315,16 @@ local function http_response (sock, response, type, chunked, response_headers)
   return #(response or {}), nc or 0
 end
   
+-- convert individual header name to CamelCaps, for consistency
+local function CamelCaps (text)
+  return text: gsub ("(%a)(%a*)", function (a,b) return a: upper() .. (b or ''): lower() end)
+end
+
+  
 -- convert headers to table with name/value pairs
 local function http_read_headers (sock)
   local n = 0
+  local MAXLINES = 100
   local line, err
   local headers = {}
   local header_format = "([%a%-]+)%s*%:%s*(.+)%s*"   -- essentially,  header:value pairs
@@ -311,8 +333,8 @@ local function http_read_headers (sock)
     line, err = sock:receive()
 --    _log ("Request Headers: "..(line or '')) -- **********
     local hdr, val = (line or ''): match (header_format)
-    if val then headers[hdr] = val end
-  until (not line) or (line == '') or n > 16      -- limit lines to help avoid DOS attack 
+    if val then headers[CamelCaps (hdr)] = val end
+  until (not line) or (line == '') or n > MAXLINES      -- limit lines to help avoid DOS attack 
   return headers, err
 end
  
@@ -368,6 +390,7 @@ local function client_request (sock)
   end
   
   local function exec_request ()
+    -- TODO: status, headers, iterator
     local response, type, chunked, response_headers = http_dispatch_request (URL, headers, post_content, method) 
     local n, nc = http_response (sock, response, type, chunked, response_headers)
     local t = math.floor (1000*(socket.gettime() - start_time))

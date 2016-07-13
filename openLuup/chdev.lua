@@ -300,8 +300,9 @@ end
 -- Pass in the ptr which you received from the start function. 
 -- Tells the Luup engine you have finished enumerating the child devices. 
 -- 
-local function sync (_, ptr, no_reload)
-  _log (table.concat{"syncing children"}, "luup.chdev.sync")
+local function sync (device, ptr, no_reload)
+  local name = luup.devices[device].description or '?'
+  _log (("[%d] %s, syncing children"): format (device, name), "luup.chdev.sync")
   -- check if any existing ones not now required
   for _, devNo in pairs(ptr.old) do
     local fmt = "deleting [%d] %s"

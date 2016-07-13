@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "backup.sh",
-  VERSION       = "2016.06.30",
+  VERSION       = "2016.07.12",
   DESCRIPTION   = "user_data backup script /etc/cmh-ludl/cgi-bin/cmh/backup.sh",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -17,6 +17,7 @@ local DIRECTORY = "backup"      -- change this is you want to backup elsewhere
 -- backup written to ./backups/backup.openLuup-AccessPt-YYYYY-MM-DD
 
 -- 2016.06.30   use new compression module to reduce backup file size.
+-- 2016.07.12   return HTML page with download link
 
 local userdata = require "openLuup.userdata"
 local compress = require "openLuup.compression"
@@ -24,6 +25,17 @@ local lfs = require "lfs"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
+-- template for HTML return page
+local html = [[
+<!DOCTYPE html>
+<html>
+<body>
+backup completed: <p>%s<p>
+and written to <strong>%s</strong><p>
+<a href=../../%s download type="application/octet-stream">DOWNLOAD</a><p>
+</body>
+</html>
+]]
 
 -- global entry point called by WSAPI connector
 
@@ -63,22 +75,24 @@ function run (wsapi_env)
       small = compress.lzap.encode (ok, codec)
       f: write (small)
       f: close ()
-      ok = #ok      -- convert to file sizes
-      small = #small
+      ok = #ok / 1000    -- convert to file sizes
+      small = #small / 1000
     else
       ok = false
     end
   end
   
+  local headers = {["Content-Type"] = "text/plain"}
   local status, return_content
   if ok then 
-    status, return_content = 200, table.concat {"backup completed: ", ok, " bytes compressed to ", small or '?', " and written to ", fname}
+    msg = ("%d kb compressed to %d kb (%0.1f:1)") : format (ok, small, ok/small)
+    local body = html: format (msg, fname, fname)
+    headers["Content-Type"] = "text/html"
+    status, return_content = 200, body
   else
     status, return_content = 500, "backup failed: " .. msg
   end
-  _log (return_content)
-  
-  local headers = {["Content-Type"] = "text/plain"}
+  _log (msg)
   
   local function iterator ()     -- one-shot iterator, returns content, then nil
     local x = return_content
