@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.07.14",
+  VERSION       = "2016.07.15",
   DESCRIPTION   = "HTTP/HTTPS GET/PUT requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -115,7 +115,7 @@ end
 local function http_parse_request (request)
   local URL = url.parse (request)
   if URL and URL.query then
-    URL.query_parameters = parse_parameters (URL.query)
+    URL.query_parameters = parse_parameters (URL.query)   -- extract useful parameters from query string
   end
   return URL
 end
@@ -124,7 +124,7 @@ end
 -- only required parameter is request_URI, others have sensible defaults.
 local function request_object (request_URI, headers, post_content, method, http_version)
   return {
-    URL           = http_parse_request (request_URI),      -- parsed URL (with extra parameters -- TODO: REMOVE extra parameters from here
+    URL           = http_parse_request (request_URI),      -- parsed URL (with extra query_parameters table)
     headers       = headers or {},
     post_content  = post_content or '',
     method        = method or "GET",
@@ -173,7 +173,7 @@ local function data_request (request)
   
   local status = 501
   local id = parameters.id or '?'
-  local content_type = "text/plain"
+  local content_type
   local response = "No handler for data_request?id=" .. id     -- 2016.05.17   log "No handler" responses
   
   local handler = http_handler[id]
@@ -458,8 +458,8 @@ local function client_request (sock)
       local URL = request.URL
       if URL.query and URL.path == "/data_request" then        
         local p = URL.query_parameters
-        Timeout      = tonumber (p.Timeout)
-        MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3
+        Timeout      = tonumber (p.Timeout)                     -- seconds
+        MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3    -- milliseconds
         DataVersion  = tonumber (p.DataVersion)
       end
       
