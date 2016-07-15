@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.07.12",
+  VERSION       = "2016.07.14",
   DESCRIPTION   = "HTTP/HTTPS GET/PUT requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -32,18 +32,18 @@ local ABOUT = {
 ---------------------
 
 -- 2016.07.12   start refactoring: request dispatcher and POST queries
-
+-- 2016.07.14   request object parameter and WSAPI-style returns for all handlers
 
 local socket    = require "socket"
 local url       = require "socket.url"
 local http      = require "socket.http"
 local https     = require "ssl.https"
 local logs      = require "openLuup.logs"
-local devices   = require "openLuup.devices"    -- to access 'dataversion'
+local devices   = require "openLuup.devices"            -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
-local json      = require "openLuup.json"       -- only for non-string response error message
-local wsapi     = require "openLuup.wsapi"      -- WSAPI connector for CGI processing
-local mime      = require "openLuup.mimetypes"
+local json      = require "openLuup.json"               -- for unit testing only
+local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for CGI processing
+local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local vfs       = require "openLuup.virtualfilesystem"
 
 --  local log
@@ -53,21 +53,30 @@ logs.banner (ABOUT)   -- for version control
 
 -- CONSTANTS
 
+local CHUNKED_LENGTH      = 16000     -- size of chunked transfers
 local CLOSE_SOCKET_AFTER  = 90        -- number of seconds idle after which to close socket
+local MAX_HEADER_LINES    = 100       -- limit lines to help mitigate DOS attack or other client errors
 
 -- TABLES
 
+local mime = tables.mimetypes
+local status_codes = tables.status_codes
+
 local iprequests = {}     -- log of incoming requests {ip = ..., mac = ..., time = ...} indexed by ip
 
-local http_handler = {} -- the handler dispatch list
-
+local http_handler = {    -- the data_request?id=... handler dispatch list
+  TEST = {
+      callback = function (...) return json.encode {...}, mime.json end    -- just for testing
+    },
+  }
+  
 local function file_type (filename)
   return filename: match "%.([^%.]+)$"     -- extract extension from filename
 end
 
 -- GLOBAL functions
 
-local function MIME (filename)
+local function mime_type (filename)
   return mime[file_type (filename) or '']                        -- returns nil if unknown
 end
 
@@ -111,39 +120,101 @@ local function http_parse_request (request)
   return URL
 end
 
--- handle /data_request&id=... queries only
-local function data_request (URL, _, post_content, method)
-  local ok, response, mtype
-  local parameters = URL.query_parameters
-  if method == "POST" then      -- assume Content-Type="application/x-www-form-urlencoded"
+-- return a request object containing all the information a handler needs
+-- only required parameter is request_URI, others have sensible defaults.
+local function request_object (request_URI, headers, post_content, method, http_version)
+  return {
+    URL           = http_parse_request (request_URI),      -- parsed URL (with extra parameters -- TODO: REMOVE extra parameters from here
+    headers       = headers or {},
+    post_content  = post_content or '',
+    method        = method or "GET",
+    http_version  = http_version or "HTTP/1.1",
+  }
+end
+
+
+-- turn a content string into a one-shot iterator, returning same (for WSAPI-style handler returns)
+local function make_iterator (content)      -- one-shot iterator (no need for coroutines!)
+  return function ()
+    local x = content
+    content = nil
+    return x
+  end
+end
+
+-- turn an interator into a single content string
+local function make_content (iterator)
+  local content = {}
+  for x in iterator do content[#content+1] = tostring(x) end
+  return table.concat (content)
+end
+
+-- convert individual header names to CamelCaps, for consistency
+local function CamelCaps (text)
+  return text: gsub ("(%a)(%a*)", function (a,b) return a: upper() .. (b or ''): lower() end)
+end
+
+
+----------------------------------------------------
+--
+-- REQUEST HANDLER: /data_request?id=... queries only
+--
+
+local function data_request (request)
+  local ok, mtype
+  local URL = request.URL
+  local post_content = request.post_content
+  local parameters = URL.query_parameters 
+  
+  if request.method == "POST" 
+  and request.headers["Content-Type"] == "application/x-www-form-urlencoded" then
     parameters = parse_parameters (post_content)
   end
   
-  local request = parameters.id or ''
-  local handler = http_handler[request]
+  local status = 501
+  local id = parameters.id or '?'
+  local content_type = "text/plain"
+  local response = "No handler for data_request?id=" .. id     -- 2016.05.17   log "No handler" responses
+  
+  local handler = http_handler[id]
   if handler and handler.callback then 
     local format = parameters.output_format
     parameters.id = nil               -- don't pass on request id to user...
     parameters.output_format = nil    -- ...or output format in parameters
     -- fixed callback request name - thanks @reneboer
     -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
-    local request_name = request: gsub ("^lr_", '')     -- remove leading "lr_"
+    local request_name = id: gsub ("^lr_", '')     -- remove leading "lr_"
     ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request_name, parameters, format)
-    if not ok then _log ("error in callback: " .. request .. ", error is " .. (response or 'nil')) end
-  else 
-    response = "No handler for data_request&id=" .. request     -- 2016.05.17   log "No handler" responses
-    _log (response)
+    if ok then
+      status = 200
+      response = tostring (response)      -- force string type
+      content_type = mtype or content_type
+    else
+      status = 500
+      response = "error in callback [" .. id .. "] : ".. (response or 'nil')
+    end
   end
-  -- TODO: status, headers, iterator
-  return (response or 'not a data request'), mtype
+  
+  if status ~= 200 then
+    _log (response or 'not a data request')
+  end
+  
+  -- WSAPI-style return parameters: status, headers, iterator
+  local response_headers = {
+--      ["Content-Length"] = #response,
+      ["Content-Type"]   = content_type,
+    }
+  return status, response_headers, make_iterator(response)
 end
 
-  
--- handle file requests
--- parameter is either a path string, or a parsed URL table
-local function http_file (URL)
-  if type(URL) == "string" then URL = {path = URL} end
-  local path = URL.path
+
+----------------------------------------------------
+--
+-- REQUEST HANDLER: file requests
+--
+
+local function http_file (request)
+  local path = request.URL.path
   
   path = path: gsub ("%.%.", '')                    -- ban attempt to move up directory tree
   path = path: gsub ("^/", '')                      -- remove filesystem root from path
@@ -151,8 +222,10 @@ local function http_file (URL)
   path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
   path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
   
-  local response_type = MIME (path)
-  local info, chunked, response_headers
+  local content_type = mime_type (path)
+  local content_length
+  local response
+  local status = 500
   
   local f = io.open(path,'rb')                      -- 2016.03.05  'b' for Windows, thanks @vosmont
     or io.open ("../cmh-lu/" .. path, 'rb')         -- 2016.02.24  also look in /etc/cmh-lu/
@@ -161,57 +234,78 @@ local function http_file (URL)
     or vfs.open (path, 'rb')                        -- 2016.06.01  also look in virtualfilesystem
   
   if f then 
-    info = (f: read "*a") or ''                   -- should perhaps buffer long files
---    _log ("file length = "..#info, "openLuup.HTTP.FILE")
+    response = (f: read "*a") or ''                   -- should perhaps buffer long files
     f: close ()
+    status = 200
+    
     -- @explorer:  2016.04.14, Workaround for SONOS not liking chunked MP3 and some headers.       
-    if file_type (path) == "mp3" then    -- 2016.04.28  @akbooer, change this to apply to ALL .mp3 files
-      chunked = false
-      response_headers = {}
+    if file_type (path) == "mp3" then       -- 2016.04.28  @akbooer, change this to apply to ALL .mp3 files
+      content_length = #response            -- specifying Content-Length disables chunked sending
     end
   
   else
-    _log ("file not found:" .. path, "openLuup.HTTP.FILE")  
+    status = 500
+    response = "file not found:" .. path  
   end
-  -- TODO: status, headers, iterator
-  return info, response_type, chunked, response_headers
+ 
+  if status ~= 200 then _log (response) end
+  
+  local response_headers = {
+      ["Content-Length"] = content_length,
+      ["Content-Type"]   = content_type,
+    }
+  
+  return status, response_headers, make_iterator(response)
 end
 
--- dispatch to appropriate handler depending on request type
--- URL parameter is parsed table of URL structure (see url.parse)
 
-local dispatcher = {
+----------------------------------------------------
+--
+-- find_request_handler() returns the appropriate handler depending on request type
+-- BUT NOTE: ... that it doesn't actually call it!
+
+local selector = {
   ["cgi"]           = wsapi.cgi,
   ["cgi-bin"]       = wsapi.cgi,
   ["upnp"]          = wsapi.cgi,
   ["data_request"]  = data_request,
 }
 
-local function http_dispatch_request (URL, headers, post_content, method)    
+local function find_request_handler (request)  
+  local URL = request.URL
   local url_parts = url.parse_path (URL.path) or {} 
   if url_parts.is_directory then URL.path = URL.path .. "index.html" end
-  local dispatch = dispatcher [url_parts[1]] or http_file 
-  return dispatch (URL, headers or {}, post_content or '', method) 
+  return selector [url_parts[1]] or http_file 
 end
 
+
+----------------------------------------------------
+--
+-- HTTP CLIENT request (for luup.inet.wget)
+--
 -- issue a GET request, handling local ones to port 3480 without going over HTTP
-local function wget (URL, Timeout, Username, Password) 
+local function wget (request_URI, Timeout, Username, Password) 
+  local URL = request_URI
   if not (URL: match "^https?://") or (URL: match "^//") then URL = "//" .. URL end
-  local result, status
+  request_URI = URL
   local self_reference = {
     ["localhost"] = true,
     ["127.0.0.1"] = true, 
     ["0.0.0.0"] = true, 
     [myIP] = true,
   }
+  local result, status
   URL = http_parse_request (URL)                      -- break it up into bits  
-  if ((URL.port or '') == "3480")                     -- 2016-03-16 check for port #, thanks @reneboer
-  and self_reference [URL.host] then
+  if self_reference [URL.host]
+  and ((URL.port or '') == "3480") then               -- 2016-03-16 check for port #, thanks @reneboer
     
     -- INTERNAL request
-    -- TODO: status, headers, iterator
-    result = http_dispatch_request (URL)
-    if result then status = 0 else status = -1 end    -- assume success
+    local headers, iterator
+    local request = request_object (request_URI)      -- build the request
+    local handler = find_request_handler (request)    -- find the right handler
+    status, headers, iterator = handler (request)     -- call the handler
+    result = make_content (iterator)                  -- build the return string
+  
   else
     
     -- EXTERNAL request OR not port 3480 
@@ -223,10 +317,18 @@ local function wget (URL, Timeout, Username, Password)
     URL= url.build (URL)                              -- reconstruct request for external use
     scheme.TIMEOUT = Timeout or 5
     result, status = scheme.request (URL)
-    if result and status == 200 then status = 0 end   -- wget has a strange return code
+  
   end
-  return status, result or ''                         -- note reversal of parameter order
+  
+  if result and status == 200 then status = 0 end     -- wget has a strange return code
+  return status, result or ''                         -- note reversal of parameter order cf. http.request()
 end
+
+
+----------------------------------------------------
+--
+-- RESPOND to requests
+--
 
 local function send (sock, data, ...)
   local ok, err, n = sock: send (data, ...)
@@ -249,7 +351,7 @@ local function send_chunked (sock, x, n)
   local Nc = 0
   while i <= N and ok do
     Nc = Nc + 1
-    socket.sleep(0.001) -- TODO: REMOVE SLEEP !!!!
+--    socket.sleep(0.001) -- TODO: REMOVE SLEEP !!!!
     send (sock, hex: format (j-i+1))
     ok, err = send (sock,x,i,j)
     send (sock, "\r\n")
@@ -259,83 +361,49 @@ local function send_chunked (sock, x, n)
   return ok, err, Nc
 end
 
-
-local function http_response (sock, response, type, chunked, response_headers)
-  response = response or ''
-  local t = _G.type(response)
-  if t ~= "string" then -- Thanks @CudaNet
-    -- see: http://forum.micasaverde.com/index.php/topic,34939.msg259460.html#msg259460
-    _log ("WARNING - HTTP response is of type " .. t)
-    response = json.encode (response)
-    _log ("HTTP response: " .. response)
-  end
-  if not type then                                          -- guess missing type
+-- generate response
+local function http_response (sock, status, headers, iterator)
+  
+  local response = make_content (iterator)    -- just for the moment, simply unwrap the iterator
+  
+  local content_type = headers["Content-Type"]
+  if not content_type or content_type == '' then                           -- guess missing type
     if response and response: match "^%s*<!DOCTYPE html" 
-      then type = "text/html"
-      else type = "text/plain"
+      then content_type = "text/html"
+      else content_type = "text/plain"
     end
   end
-  local status = "200 OK"
-  if not response then
-    status = "404 Not Found"
-    response = ''
-  end
-
-  -- @explorer: reworked beyond this point:
-  if response_headers == nil then
-    response_headers = {}
-    response_headers["Accept-Encoding"] = "Identity"        -- added 2015.12.19 to stop chunked responses
-    response_headers["Allow"] = "GET"                       -- added 2015.10.06
-    response_headers["Access-Control-Allow-Origin"] = "*"   -- @d55m14 
-      -- see: http://forum.micasaverde.com/index.php/topic,31078.msg248418.html#msg248418
-    response_headers["Transfer-Encoding"] = "Chunked"
-    response_headers["Connection"] = "keep-alive" 
-  end
-  response_headers["Content-Type"] = type or "text/plain"
-  if chunked == false then
-    response_headers["Content-Length"] = #response
-  else
+  headers["Content-Type"] = content_type
+  
+  headers["Server"] = "openLuup/" .. ABOUT.VERSION
+  headers["Access-Control-Allow-Origin"] = "*"   -- @d55m14 -- see: http://forum.micasaverde.com/index.php/topic,31078.msg248418.html#msg248418
+  headers["Connection"] = "keep-alive" 
+--    headers["Accept-Encoding"] = "Identity"        -- added 2015.12.19 to stop chunked responses
+--    headers["Allow"] = "GET"                       -- added 2015.10.06
+  
+  local chunked
+  if not headers["Content-Length"] then
+    headers["Transfer-Encoding"] = "Chunked"
     chunked = true
-    response_headers["Transfer-Encoding"] = "Chunked"
   end
-  response_headers["Server"] = "openLuup/" .. ABOUT.VERSION
-
+  
   local crlf = "\r\n"
-  local headers = "HTTP/1.1 " .. status .. crlf
-  for k, v in pairs(response_headers) do headers = headers .. k .. ": " .. v .. crlf end
-  headers = headers .. crlf 
-
+  local status_line = "HTTP/1.1 %d %s"
+  local h = { status_line: format (status, status_codes[status] or "Unknown error") }
+  for k, v in pairs(headers) do 
+    h[#h+1] = table.concat { CamelCaps(k), ": ", v }
+  end
+  h[#h+1] = crlf    -- add final blank line delimiting end of headers
+  headers = table.concat (h, crlf) 
   send (sock, headers)
+  
   local ok, err, nc
   if chunked then
-    ok, err, nc= send_chunked (sock, response, 16000)
+    ok, err, nc= send_chunked (sock, response, CHUNKED_LENGTH)
   else
     ok, err, nc = send (sock, response)
   end
-  return #(response or {}), nc or 0
-end
-  
--- convert individual header name to CamelCaps, for consistency
-local function CamelCaps (text)
-  return text: gsub ("(%a)(%a*)", function (a,b) return a: upper() .. (b or ''): lower() end)
-end
-
-  
--- convert headers to table with name/value pairs
-local function http_read_headers (sock)
-  local n = 0
-  local MAXLINES = 100
-  local line, err
-  local headers = {}
-  local header_format = "([%a%-]+)%s*%:%s*(.+)%s*"   -- essentially,  header:value pairs
-  repeat
-    n = n + 1
-    line, err = sock:receive()
---    _log ("Request Headers: "..(line or '')) -- **********
-    local hdr, val = (line or ''): match (header_format)
-    if val then headers[CamelCaps (hdr)] = val end
-  until (not line) or (line == '') or n > MAXLINES      -- limit lines to help avoid DOS attack 
-  return headers, err
+  return #response, nc or 0
 end
  
 ---------
@@ -343,12 +411,25 @@ end
 -- handle each client request by running an asynchronous job
 --
 
+-- convert headers to table with name/value pairs
+local function http_read_headers (sock)
+  local n = 0
+  local line, err
+  local headers = {}
+  local header_format = "(%a[%w%-]*)%s*%:%s*(.+)%s*"   -- essentially,  header:value pairs
+  repeat
+    n = n + 1
+    line, err = sock:receive()
+    local hdr, val = (line or ''): match (header_format)
+    if val then headers[CamelCaps (hdr)] = val end
+  until (not line) or (line == '') or n > MAX_HEADER_LINES 
+  return headers, err
+end
+
 -- if MinimumTime specified, then make initial delay
 local function client_request (sock)
-  local method, path, major, minor        -- this is the structure of an HTTP request line
-  local URL           -- URL table structure with named components (see url.parse in LuaSocket)
-  local headers       -- the request headers
-  local post_content  -- content of POST (if any)
+  local request       -- the request object
+  local handler       -- the request handler
   
   local Timeout       -- (s)  query line parameter 
   local MinimumDelay  -- (ms) ditto
@@ -357,31 +438,35 @@ local function client_request (sock)
  
   -- receive client request
   local function receive ()
+    local headers, post_content
     local line, err = sock:receive()        -- read the request line
     if not err then  
-      method, path, major, minor = line: match "^(%u+)%s+(.-)%s+HTTP/(%d)%.(%d)%s*$"
-      _log ((path or line) .. ' ' .. tostring(sock))
-      URL = http_parse_request (path)           -- ...and break it up into bits  
+      _log (line .. ' ' .. tostring(sock))
+      
+      -- Request-Line = Method SP Request-URI SP HTTP-Version CRLF
+      local method, request_URI, http_version = line: match "^(%u+)%s+(.-)%s+(HTTP/%d%.%d)%s*$"
+      
       headers, err = http_read_headers (sock)
-      --_log ("HTTP request headers : " .. json.encode(headers))
-      if method == "GET" and minor then         -- non-nil 'minor' ensures that request line was correctly parsed
-        if URL.query then                       -- some query parameters have special significance
-          local p = URL.query_parameters
-          Timeout      = tonumber (p.Timeout)
-          MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3
-          DataVersion  = tonumber (p.DataVersion)
-        end
-      elseif method == "POST" then
-        if not err then
-          local content_type = headers["Content-Type"]
-          local length = tonumber(headers["Content-Length"]) or 0
-          post_content, err = sock:receive(length)
-        end
---        _log ("HTTP POST context : " .. json.encode(post_content))
-      else
-        -- TODO: error response to client
-        _log ("Unsupported HTTP request:" .. method)
+      if method == "POST" then
+        local length = tonumber(headers["Content-Length"]) or 0
+        post_content, err = sock:receive(length)
       end
+    
+      request = request_object (request_URI, headers, post_content, method, http_version)
+      
+      -- some /data_request query parameters have special significance
+      local URL = request.URL
+      if URL.query and URL.path == "/data_request" then        
+        local p = URL.query_parameters
+        Timeout      = tonumber (p.Timeout)
+        MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3
+        DataVersion  = tonumber (p.DataVersion)
+      end
+      
+      if not (method == "GET" or method == "POST") then
+        err  ="Unsupported HTTP request:" .. method
+      end
+    
     else
       sock: close ()
       _log (("receive error: %s %s"): format (err or '?', tostring (sock)))
@@ -390,11 +475,11 @@ local function client_request (sock)
   end
   
   local function exec_request ()
-    -- TODO: status, headers, iterator
-    local response, type, chunked, response_headers = http_dispatch_request (URL, headers, post_content, method) 
-    local n, nc = http_response (sock, response, type, chunked, response_headers)
+    local status, headers, iterator = handler (request)   -- call the handler
+    local n, nc = http_response (sock, status, headers, iterator)
     local t = math.floor (1000*(socket.gettime() - start_time))
-    _log (("request completed (%d bytes, %d chunks, %d ms) %s"):format (n, nc, t, tostring(sock)))
+    local completed = "request completed (%d bytes, %d chunks, %d ms) %s"
+    _log (completed:format (n, nc, t, tostring(sock)))
   end
   
   local function job ()
@@ -422,7 +507,10 @@ local function client_request (sock)
   iprequests [ip] = {ip = ip, date = os.time(), mac = "00:00:00:00:00:00"} --TODO: real MAC address?
   local err = receive ()
   if not err then
-    local err, msg, jobNo = scheduler.run_job ({job = job}, {}, nil)  -- nil device number
+    handler = find_request_handler (request)        -- find the right handler
+
+--    local err, msg, jobNo = scheduler.run_job ({job = job}, {}, nil)  -- nil device number
+    local _, _, jobNo = scheduler.run_job ({job = job}, {}, nil)  -- nil device number
     if jobNo and scheduler.job_list[jobNo] then
       scheduler.job_list[jobNo].notes = "HTTP request from " .. tostring(ip)
     end
@@ -449,7 +537,8 @@ local function new_client (sock)
     end
   end
 
-  local function job (devNo, args, job)
+--  local function job (devNo, args, job)
+  local function job ()
     if socket.gettime () > expiry then                            -- close expired connection... 
       _log ("closing client connection: " .. tostring(sock))
       sock: close ()                                -- it may be closed already
@@ -466,7 +555,8 @@ local function new_client (sock)
 --  sock:settimeout(10)                                    -- this is a timeout on the HTTP read
   sock:setoption ("tcp-nodelay", true)            -- TODO: trying to fix timeout error on long strings
   scheduler.socket_watch (sock, incoming)                -- start listening for incoming
-  local err, msg, jobNo = scheduler.run_job {job = job}
+--  local err, msg, jobNo = scheduler.run_job {job = job}
+  local _, _, jobNo = scheduler.run_job {job = job}
   if jobNo and scheduler.job_list[jobNo] then
     scheduler.job_list[jobNo].notes = "HTTP new " .. tostring(sock)
   end
@@ -508,6 +598,16 @@ end
 return {
     ABOUT = ABOUT,
     
+    TEST = {          -- for testing only
+      CamelCaps       = CamelCaps,
+      data_request    = data_request,
+      http_file       = http_file,
+      make_content    = make_content,
+      make_iterator   = make_iterator,
+      request_object  = request_object,
+      wsapi_cgi       = wsapi.cgi,
+    },
+    
     -- constants
     myIP = myIP,
     
@@ -515,9 +615,7 @@ return {
     iprequests = iprequests,
     
     --methods
-    MIME = MIME,
     add_callback_handlers = add_callback_handlers,
-    http_file = http_file,
     wget = wget,
     send = send,
     start = start,

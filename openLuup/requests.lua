@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.06.22",
+  VERSION       = "2016.07.14",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -25,6 +25,7 @@ local ABOUT = {
 -- 2016.06.04  remove luup.reload() from device delete action: AltUI requests reload anyway
 -- 2016.06.20  better comments for plugin updates and openLuup-specific requests
 -- 2016.06.22  move HTTP request plugin update/delete code to here from plugins
+-- 2016.07.14  change 'file' request internal syntax to use server.wget
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -778,7 +779,10 @@ end
 local function alive () return "OK" end
 
 -- file access
-local function file (_,p) return server.http_file (p.parameters or '') end
+local function file (_,p) 
+  local _,f = server.wget ("http://localhost:3480/" .. (p.parameters or '')) 
+  return f 
+end
 
 -- reload openLuup
 local function reload () luup.reload () end

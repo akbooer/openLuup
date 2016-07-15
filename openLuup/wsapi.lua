@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2016.07.05",
+  VERSION       = "2016.07.14",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -22,8 +22,9 @@ local ABOUT = {
 --             ...also util.lua shows that the same is true for the error.write(...) function.
 -- 2016.05.30  look in specified places for some missing CGI files 
 -- 2016.07.05  use "require" for WSAPI files with a .lua extension (enables easy debugging)
--- 2016.07.06   add 'method' to WSAPI server call for REQUEST_METHOD metavariable
-
+-- 2016.07.06  add 'method' to WSAPI server call for REQUEST_METHOD metavariable
+-- 2016.07.14  change cgi() parameter to request object
+-- 2016.07.15  three-parameters WSAPI return: status, headers, iterator
 --[[
 
 Writing WSAPI connectors
@@ -72,6 +73,16 @@ local special = {       -- if not found on the CGI searchpaths, then lookup alte
 -- utilities
 
 local cache = {}       -- cache for compiled CGIs
+
+-- convert individual header names to CamelCaps, for consistency
+local function CamelHeaders (headers)
+  local h = {}
+  for a,b in pairs (headers) do
+    local c = a: gsub ("(%a)(%a*)", function (a,b) return a: upper() .. (b or ''): lower() end)
+    h[c] = b
+  end
+  return h
+end
 
 -- return a dummy WSAPI app with error code and message
 local function dummy_app (status, message)
@@ -158,25 +169,10 @@ end
 local function dispatch (env)
   local script = env["SCRIPT_NAME"]
   cache[script] = cache[script] or build (script) 
-  
   -- guaranteed to be something executable here, even it it's a dummy with error message
-  
   -- three return values: the HTTP status code, a table with headers, and the output iterator.
   local status, headers, iterator = cache[script] (env)
-  
-  -- TODO: return all three parameters... requires further changes to openLuup.server
-  -- print (pretty {script = script, status = status, headers = headers, iterator = iterator})
-  local h = {}
-  for a,b in pairs (headers) do     -- force header names to lower case
-    h[a:lower()] = b
-  end
-  
-  local result = {}
-  for output in iterator do result[#result+1] = output end
-  result = table.concat (result) 
---  print ("result: ", result)
-  return result, h["content-type"]
-  
+  return status, CamelHeaders(headers), iterator  
 end
 
 
@@ -219,8 +215,16 @@ SERVER_SOFTWARE The server software you're using (e.g. Apache 1.3)
 
 
 --]]
--- cgi is called by the server when it receives a CGI request
-local function cgi (URL, headers, post_content, method) 
+-- cgi is called by the server when it receives a GET or POST CGI request
+-- request object parameter:
+-- { {url.parse structure} , {headers}, post_content_string, method_string, http_version_string }
+
+local function cgi (request)
+  
+  local URL = request.URL
+  local headers = request.headers
+  local post_content = request.post_content
+  
   local meta = {
     __index = function () return '' end;  -- return the empty string instead of nil for undefined metavariables
   }
@@ -245,21 +249,29 @@ local function cgi (URL, headers, post_content, method)
   }
   
   local env = {   -- the WSAPI standard (and CGI) is upper case for these metavariables
+    
+    TEST = {headers = headers},
+    
     ["CONTENT_LENGTH"]  = #post_content,
     ["CONTENT_TYPE"]    = headers["Content-Type"] or '',
+    ["HTTP_USER_AGENT"] = headers["User-Agent"],
+    ["HTTP_COOKIE"]     = headers["Cookie"],
     ["REMOTE_HOST"]     = headers ["Host"],
-    ["REQUEST_METHOD"]  = method,
+    ["REMOTE_PORT"]     = headers ["Host"]: match ":%d+$",
+    ["REQUEST_METHOD"]  = request.method,
     ["SCRIPT_NAME"]     = URL.path,
+    ["SERVER_PROTOCOL"] = request.http_version,
     ["PATH_INFO"]       = '/',
     ["QUERY_STRING"]    = URL.query,
+  
     -- methods
     input = input,
     error = error,
   }
   
+  
   local wsapi_env = setmetatable (env, meta)
   
--- Only TWO return values: the full output and content-type (for luup)
   return dispatch (wsapi_env)
 end
 

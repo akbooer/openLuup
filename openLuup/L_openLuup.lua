@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.07.05",
+  VERSION       = "2016.07.15",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.06.30",
+  VERSION       = "2016.07.15",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -148,7 +148,7 @@ luup.log "startup code completed"
 -- pre-installed plugins
 --
 
-local default_plugins_version = "2016.07.01f"  --<<<-- change this to force update of default_plugins
+local default_plugins_version = "2016.07.15"  --<<<-- change this to force update of default_plugins
 
 local preinstalled = {
   
@@ -338,6 +338,34 @@ local preinstalled = {
         pattern   = "[DILS]_Arduino%w*%.%w+",             -- pattern match string for required files
       },
     },
+
+  Razberry =
+
+    {
+      AllowMultiple   = "1",
+      Title           = "RaZberry (ALPHA)",
+      Icon            = "https://raw.githubusercontent.com/amg0/razberry-altui/master/iconRAZB.png", 
+      Instructions    = "https://github.com/amg0/razberry-altui",
+      AutoUpdate      = "1",
+      VersionMajor    = "not",
+      VersionMinor    = "installed",
+      id              = "razberry-altui",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {
+        {
+          DeviceFileName  = "D_RAZB.xml",
+          DeviceType      = "urn:schemas-upnp-org:device:razb:1",
+          ImplFile        = "I_RAZB.xml",
+          Invisible       =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "amg0/razberry-altui",
+        pattern   = "RAZB",
+      },
+    },
   }   -- end of preinstalled plugins
 
 
@@ -346,8 +374,9 @@ local default_plugins = {
     preinstalled.AltUI,
     preinstalled.AltAppStore,
     preinstalled.VeraBridge,
+    preinstalled.Razberry,
+    preinstalled.Arduino,
     preinstalled.DataYours,
---    preinstalled.Arduino,
   }
 
 --
