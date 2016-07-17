@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2016.07.14",
+  VERSION       = "2016.07.17",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -25,6 +25,7 @@ local ABOUT = {
 -- 2016.07.06  add 'method' to WSAPI server call for REQUEST_METHOD metavariable
 -- 2016.07.14  change cgi() parameter to request object
 -- 2016.07.15  three-parameters WSAPI return: status, headers, iterator
+
 --[[
 
 Writing WSAPI connectors
@@ -73,16 +74,6 @@ local special = {       -- if not found on the CGI searchpaths, then lookup alte
 -- utilities
 
 local cache = {}       -- cache for compiled CGIs
-
--- convert individual header names to CamelCaps, for consistency
-local function CamelHeaders (headers)
-  local h = {}
-  for a,b in pairs (headers) do
-    local c = a: gsub ("(%a)(%a*)", function (a,b) return a: upper() .. (b or ''): lower() end)
-    h[c] = b
-  end
-  return h
-end
 
 -- return a dummy WSAPI app with error code and message
 local function dummy_app (status, message)
@@ -163,17 +154,6 @@ local function build (script)
 
   return runner   -- success! return the entry point to the WSAPI application
 end
-  
--- dispatch is called to execute the CGI
--- and build the return results
-local function dispatch (env)
-  local script = env["SCRIPT_NAME"]
-  cache[script] = cache[script] or build (script) 
-  -- guaranteed to be something executable here, even it it's a dummy with error message
-  -- three return values: the HTTP status code, a table with headers, and the output iterator.
-  local status, headers, iterator = cache[script] (env)
-  return status, CamelHeaders(headers), iterator  
-end
 
 
 --[[
@@ -250,14 +230,14 @@ local function cgi (request)
   
   local env = {   -- the WSAPI standard (and CGI) is upper case for these metavariables
     
-    TEST = {headers = headers},
+    TEST = {headers = headers},     -- so that test CGIs (or unit tests) can examine all the headers
     
     ["CONTENT_LENGTH"]  = #post_content,
     ["CONTENT_TYPE"]    = headers["Content-Type"] or '',
     ["HTTP_USER_AGENT"] = headers["User-Agent"],
     ["HTTP_COOKIE"]     = headers["Cookie"],
     ["REMOTE_HOST"]     = headers ["Host"],
-    ["REMOTE_PORT"]     = headers ["Host"]: match ":%d+$",
+    ["REMOTE_PORT"]     = (headers ["Host"] or ''): match ":%d+$",
     ["REQUEST_METHOD"]  = request.method,
     ["SCRIPT_NAME"]     = URL.path,
     ["SERVER_PROTOCOL"] = request.http_version,
@@ -269,10 +249,16 @@ local function cgi (request)
     error = error,
   }
   
-  
   local wsapi_env = setmetatable (env, meta)
+   
+  -- execute the CGI
+  local script = URL.path or ''
+  cache[script] = cache[script] or build (script) 
   
-  return dispatch (wsapi_env)
+  -- guaranteed to be something executable here, even it it's a dummy with error message
+  -- three return values: the HTTP status code, a table with headers, and the output iterator.
+  
+  return cache[script] (wsapi_env)
 end
 
 return {

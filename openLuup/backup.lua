@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "backup.sh",
-  VERSION       = "2016.07.12",
+  VERSION       = "2016.07.17",
   DESCRIPTION   = "user_data backup script /etc/cmh-ludl/cgi-bin/cmh/backup.sh",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -18,6 +18,7 @@ local DIRECTORY = "backup"      -- change this is you want to backup elsewhere
 
 -- 2016.06.30   use new compression module to reduce backup file size.
 -- 2016.07.12   return HTML page with download link
+-- 2016.07.17   add title to HTML page
 
 local userdata = require "openLuup.userdata"
 local compress = require "openLuup.compression"
@@ -29,6 +30,7 @@ local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run
 local html = [[
 <!DOCTYPE html>
 <html>
+<head><title>Backup</title></head>
 <body>
 backup completed: <p>%s<p>
 and written to <strong>%s</strong><p>

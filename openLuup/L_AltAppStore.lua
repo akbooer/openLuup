@@ -243,7 +243,7 @@ function GitHub (archive)     -- global for access by other modules
 end
 
 --
--- End of gitHub module
+-- End of GitHub module
 --
 -------------------------------------------------------
 

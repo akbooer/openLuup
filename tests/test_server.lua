@@ -57,28 +57,30 @@ function TestServerUtilities:test_request_object ()
   local o = ro(u)
   
   local correct = {
-    {
+    URL = {
       authority = "127.0.0.1:3480",
       host = "127.0.0.1",
       path = "/data_request",
       port = "3480",
       query = "id=testing&p1=abc&p2=123",
-      query_parameters = {
+      scheme = "http"
+    },
+    handler = s.TEST.data_request,
+    headers = {},
+    http_version = "HTTP/1.1",
+    internal = true,
+    method = "GET",
+    parameters = {
         id = "testing",
         p1 = "abc",
         p2 = "123"
       },
-      scheme = "http"
-    },
-    headers = {},
-    http_version = "HTTP/1.1",
-    method = "GET",
+    path_list={"data_request", is_absolute=1},
     post_content = ""
     }
 
   t.assertItemsEquals (o, correct)
 end
-
 
 TestServerRequests = {}
 
@@ -86,13 +88,28 @@ TestServerRequests = {}
 function TestServerRequests:test_http_file ()
   local hf = s.TEST.http_file
   local ro = s.TEST.request_object
-  local s,h,i = hf (ro "index.html")
+  local ob = ro "http:localhost:3480/index.html"
+  local s,h,i = hf (ob)
   t.assertIsNumber (s)
   t.assertIsTable (h)
   t.assertIsFunction (i)
   local f = i()
   t.assertIsString (f)
+  print (f)
   t.assertEquals (h["Content-Type"], "text/html")
+end
+
+function TestServerRequests:test_http_file_not_found ()
+  local hf = s.TEST.http_file
+  local ro = s.TEST.request_object
+  local s,h,i = hf (ro "http:localhost:3480/qwertyuiop")
+  t.assertIsNumber (s)
+  t.assertIsTable (h)
+  t.assertIsFunction (i)
+  local f = i()
+  t.assertIsString (f)
+  t.assertEquals (f, "file not found:qwertyuiop")
+  t.assertEquals (s, 404)
 end
 
 function TestServerRequests:test_data_request ()
@@ -129,6 +146,46 @@ function TestServerRequests:test_wsapi_cgi ()
   t.assertEquals (h["Content-Type"], "text/plain")
  end
 
+TestServerResponses = {}
+
+
+function TestServerResponses:test_response_simple ()
+  local re = s.TEST.http_response
+  local mi = s.TEST.make_iterator
+  local status = 200
+  local content = "Test content"
+  local headers = {
+    ["Content-Length"] = #content,
+    ["Content-Type"] = "text/plain",
+  }
+--  headers, response, chunked = http_response (status, headers, iterator)
+  local h,r,c = re (status, headers, mi (content))
+  t.assertIsString (h)
+  t.assertIsString (r)
+  t.assertFalse (c)
+  t.assertNotNil (h:match "%C\r\n\r\n$")    -- headers should end with blank line
+  t.assertEquals (r, content)
+end
+
+
+function TestServerResponses:test_response_chunked ()
+  local re = s.TEST.http_response
+  local mi = s.TEST.make_iterator
+  local status = 200
+  local content = "Test content"
+  local headers = {
+--    ["Content-Length"] = #content,      -- no content lengths signal chunked
+    ["Content-Type"] = "text/plain",
+  }
+--  headers, response, chunked = http_response (status, headers, iterator)
+  local h,r,c = re (status, headers, mi (content))
+  t.assertIsString (h)
+  t.assertIsString (r)
+  t.assertTrue (c)
+  t.assertNotNil (h:match "%C\r\n\r\n$")    -- headers should end with blank line
+  t.assertEquals (r, content)
+end
+
 
 TestServerWGET = {}
 
@@ -136,10 +193,10 @@ TestServerWGET = {}
 function TestServerWGET:test_internal ()    -- same as data_request?id=TEST above, but using WGET API
   local wget = s.wget
   -- special TEST request returns JSON-encoded handler parameter list
-  local s,r = wget "http://localhost:3480/data_request?id=TEST&p1=abc&p2=123"
-  t.assertIsNumber (s)
+  local status,r = wget "http://localhost:3480/data_request?id=TEST&p1=abc&p2=123"
+  t.assertIsNumber (status)
   t.assertIsString (r)
-  t.assertEquals (s, 0)                     -- check the status
+  t.assertEquals (status, 0)                -- check the status
   local p = json.decode (r)                 -- decode the list and check the parameters!
   t.assertEquals (p[1], "TEST")
   t.assertIsTable (p[2])
@@ -149,8 +206,8 @@ end
 
 function TestServerWGET:test_external_http ()
   local wget = s.wget
-  local s,r = wget "http://www.google.com"
-  t.assertEquals (s,0)
+  local status,r = wget "http://www.google.com"
+  t.assertEquals (status,0)
   t.assertIsString (r)
   t.assertTrue (r: match "^<!doctype html>")    -- check start and end of HTML
   t.assertTrue (r: match "</html>%c*$")
@@ -158,8 +215,8 @@ end
 
 function TestServerWGET:test_external_https ()
   local wget = s.wget
-  local s,r = wget "https://www.google.com"
---  t.assertIsNumber (s)
+  local status,r = wget "https://www.google.com"
+--  t.assertIsNumber (status)
   t.assertIsString (r)
 end
 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.06.30",
+  VERSION       = "2016.07.16",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -688,17 +688,34 @@ return {
     if type(y) == "string" then return {mode = "file", size = #y} end
   end,
   
+  open = function (filename, mode)
+    mode = mode or 'r'
+    
+    if mode: match "r" then
+      if manifest[filename] then
+        return {
+          read  = function () return manifest[filename] end,
+          close = function () filename = nil end,
+        }
+      else
+        return nil, "file not found:" .. (filename or '')
+      end
+    end
+    
+    if mode: match "w" then
+      return {
+        write = function (_, contents) manifest[filename] = contents end,
+        close = function () filename = nil end,
+      }
+    end
+    
+    return nil, "unknown mode for vfs.open: " .. mode
+  end,
+
   dir   = function () return next, manifest end,
   read  = function (filename) return manifest[filename] end,
   write = function (filename, contents) manifest[filename] = contents end,
 
-  open  = function (filename)
-            return {
-              read  = function () return manifest[filename] end,
-              write = function (_, contents) manifest[filename] = contents end,
-              close = function () filename = nil end,
-            }
-          end,
 }
 
 -----

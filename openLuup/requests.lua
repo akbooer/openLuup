@@ -495,7 +495,7 @@ SCENES
 When using the 'create' command json must be valid JSON for a scene as documented in Scene_Syntax. 
 The name, room and optional id (if you're overwriting an existing scene) are passed in the json, so nothing is on the command line except the json. 
 
-Because the json data can be long it is recommended to send it as an http POST instead of GET with the data passed with the name "json"  -- TODO: POST for JSON not yet implemented
+Because the json data can be long it is recommended to send it as an http POST instead of GET with the data passed with the name "json" 
 
 list returns the JSON data for an existing scene. 
 
