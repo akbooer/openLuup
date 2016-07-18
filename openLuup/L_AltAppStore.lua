@@ -1,7 +1,7 @@
 
 local ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2016.07.06",
+  VERSION       = "2016.07.18",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2016",
@@ -19,9 +19,9 @@ local ABOUT = {
 -- Plugin for Vera and openLuup
 --
 -- The Alternative App Store is a collaborative effort:
---   Web:      @vosmont
---   (Alt)UI:  @amg0
---   Plugin:   @akbooer
+--   Web/database:  @vosmont
+--   (Alt)UI:       @amg0
+--   Plugin:        @akbooer
 --
 --[[
 
@@ -496,30 +496,36 @@ local jobstate =  {
 
 function update_plugin_job()
   
+  local title = meta.plugin.Title or '?'
   local status, name, content, N, Nfiles = next_file()
   if N and N == 1 then _log "starting <job> phase..." end
   if status then
     if status ~= 200 then
       _log ("download failed, status:", status)
+      display (nil, title .. " failed")
       --tidy up
       return jobstate.Error,0
     end
     local f, err = io.open (downloads .. name, "wb")
     if not f then 
       _log ("failed writing", name, "with error", err)
+      display (nil, title .. " failed")
       return jobstate.Error,0
     end
     f: write (content)
     f: close ()
     local size = #content or 0
     total = total + size
+    local percent = "%s %0.0f%%"
     local column = "(%d of %d) %6d %s"
     _log (column:format (N, Nfiles, size, name))
+    display (nil, percent: format (title, 100 * N / Nfiles))
     return jobstate.WaitingToStart,0        -- reschedule immediately
   else
     -- finish up
     _log "...final <job> phase"
     _log ("Total size", total)
+    display (nil, (title) .. " 100%")
  
     -- copy/compress files to final destination... 
     local target = meta.repository.target or ludl_folder
@@ -580,7 +586,7 @@ function AltAppStore_init (d)
   
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
-    local version = ("%d.%d.%d"): format (y%2000,m,d)
+    local version = ("v%d.%d.%d"): format (y%2000,m,d)
     setVar ("Version", version)
   end
   
