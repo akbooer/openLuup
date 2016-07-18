@@ -693,7 +693,7 @@ function init (lul_device)
   
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
-    local version = ("%d.%d.%d"): format (y%2000,m,d)
+    local version = ("v%d.%d.%d"): format (y%2000,m,d)
     setVar ("Version", version)
   end
   
