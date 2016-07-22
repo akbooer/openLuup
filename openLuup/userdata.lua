@@ -148,7 +148,7 @@ luup.log "startup code completed"
 -- pre-installed plugins
 --
 
-local default_plugins_version = "2016.07.15"  --<<<-- change this to force update of default_plugins
+local default_plugins_version = "2016.07.19"  --<<<-- change this to force update of default_plugins
 
 local preinstalled = {
   
@@ -311,11 +311,11 @@ local preinstalled = {
       },
     },
 
-  Arduino =
+  MySensors =
 
     {
       AllowMultiple   = "1",
-      Title           = "MySensors Arduino",
+      Title           = "MySensors",
       Icon            = "https://www.mysensors.org/icon/MySensors.png", 
       Instructions    = "https://github.com/mysensors/Vera/tree/UI7",
       AutoUpdate      = "0",
@@ -375,7 +375,7 @@ local default_plugins = {
     preinstalled.AltAppStore,
     preinstalled.VeraBridge,
     preinstalled.Razberry,
-    preinstalled.Arduino,
+    preinstalled.MySensors,
     preinstalled.DataYours,
   }
 

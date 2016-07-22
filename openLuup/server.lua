@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.07.17",
+  VERSION       = "2016.07.18",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -34,6 +34,7 @@ local ABOUT = {
 -- 2016.07.12   start refactoring: request dispatcher and POST queries
 -- 2016.07.14   request object parameter and WSAPI-style returns for all handlers
 -- 2016.07.17   HTML error pages
+-- 2016.07.18   add 'actual_status' return to wget (undocumented Vera feature?)
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -332,8 +333,10 @@ local function wget (request_URI, Timeout, Username, Password)
   
   end
   
+  local actual_status = status
   if result and status == 200 then status = 0 end     -- wget has a strange return code
-  return status, result or ''                         -- note reversal of parameter order cf. http.request()
+  return status, result or '', actual_status          -- note reversal of parameter order cf. http.request()
+                                                      -- also 'actual_Status' which seems to be returned in Vera
 end
 
 

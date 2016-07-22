@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.07.14",
+  VERSION       = "2016.07.18",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -26,6 +26,7 @@ local ABOUT = {
 -- 2016.06.20  better comments for plugin updates and openLuup-specific requests
 -- 2016.06.22  move HTTP request plugin update/delete code to here from plugins
 -- 2016.07.14  change 'file' request internal syntax to use server.wget
+-- 2016.07.18  better error returns for action request
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -618,11 +619,12 @@ end
 --]]
 local function action (_,p,f)
   -- notice that the argument list is the full HTTP query including DeviceNum, serviceId, and action
-  local error, error_msg, job, arguments = luup.call_action (p.serviceId, p.action, p, tonumber(p.DeviceNum))
-  local _,_ = error_msg, job    -- unused at present
-  local mime_type = "text/plain"
-  local result = tostring(error)
-  if type (arguments) == "table" then
+  local error, error_msg, _, arguments = luup.call_action (p.serviceId, p.action, p, tonumber(p.DeviceNum))
+  local result, mime_type = '', "text/plain"
+  if error ~= 0 then
+    result = "ERROR: " .. (error_msg or error or '?')
+  else
+    arguments = arguments or {}
     arguments.OK = "OK"
     result = {["u:"..p.action.."Response"] = arguments}
     if f == "json" then
@@ -630,7 +632,7 @@ local function action (_,p,f)
       mime_type = "application/json"
     else
       result = xml.encode (result)
-      result = result: gsub ("^(%s*<u:%w+)", '<?xml version="1.0"?>\n%1 xmlns:u="' .. p.serviceId .. '"')
+      result = result: gsub ("^(%s*<u:[%w_]+)", '<?xml version="1.0"?>\n%1 xmlns:u="' .. p.serviceId .. '"')
       mime_type = "application/xml"
     end
   end

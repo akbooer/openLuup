@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.07.16",
+  VERSION       = "2016.07.19",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -17,6 +17,7 @@ local ABOUT = {
 -- 2016.06.18  add openLuup/ directory to Lua search path
 -- 2016.06.19  switch to L_AltAppStore module for initial AltUI download
 -- 2016.06.30  uncompress user_data file if necessary
+-- 2016.07.19  correcrt syntax error in xml action request response
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 

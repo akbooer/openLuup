@@ -40,7 +40,7 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 
 -- 2016.06.20   use optional target repository parameter for final download destination
 -- 2016.06.21   luup.create_device didn't work for UI7, so use action call for all systems
--- 2016.06.22   slightly better log messages for <run> and <job> phases
+-- 2016.06.22   slightly better log messages for <run> and <job> phases, add test request argument
 
 local https     = require "ssl.https"
 local lfs       = require "lfs"
@@ -429,10 +429,19 @@ local next_file   -- download iterator
 local downloads      -- location for downloads
 local total       -- total file transfer size
 local files       -- files list
+local test
 
 function update_plugin_run(args)
-  _log "starting <run> phase..."
+  
 --  p.metadata = p.metadata or json.encode (AltAppStore)     -- TESTING ONLY!
+  test = false
+  if args.test then
+    _log "test <run> phase..."
+    test =  tostring (args.test)
+    return true
+  end
+
+  _log "starting <run> phase..."
   meta = json.decode (args.metadata)
   
   if type (meta) ~= "table" then 
@@ -495,6 +504,12 @@ local jobstate =  {
  }
 
 function update_plugin_job()
+  
+  if test then 
+    _log ("test <job> phase, parameter = " .. test)
+    display (nil, test)
+    return jobstate.Done,0 
+  end
   
   local title = meta.plugin.Title or '?'
   local status, name, content, N, Nfiles = next_file()
