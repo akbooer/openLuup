@@ -258,11 +258,11 @@ end
 local function request_object (request_URI, headers, post_content, method, http_version)
   -- picks the appropriate handler depending on request type
   local selector = {
-      ["cgi"]           = wsapi.cgi,
-      ["cgi-bin"]       = wsapi.cgi,
-      ["upnp"]          = wsapi.cgi,
-      ["data_request"]  = data_request,
-    }
+    ["cgi"]           = wsapi.cgi,
+    ["cgi-bin"]       = wsapi.cgi,
+    ["upnp"]          = wsapi.cgi,
+    ["data_request"]  = data_request,
+  }
   
   local self_reference = {
     ["localhost"] = true,
@@ -271,7 +271,10 @@ local function request_object (request_URI, headers, post_content, method, http_
     [myIP] = true,
   }
   
-  if not (request_URI: match "^https?://") or (request_URI: match "^//") then request_URI = "//" .. request_URI end
+  if not (request_URI: match "^https?://") 
+  or (request_URI: match "^//") then 
+    request_URI = "//" .. request_URI 
+  end
  
   local URL = url.parse (request_URI)                 -- parse URL
 
@@ -494,7 +497,7 @@ local function client_request (sock)
       request = request_object (request_URI, headers, post_content, method, http_version)
        
       if not (method == "GET" or method == "POST") then
-        err  ="Unsupported HTTP request:" .. method
+        err = "Unsupported HTTP request:" .. method
       end
     
     else

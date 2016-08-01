@@ -17,7 +17,7 @@ local ABOUT = {
 -- 2016.05.26  add device number to CommFailure variables in set_failure (thanks @vosmont)
 -- 2016.06.06  add special handling of top-level "openLuup" attribute
 -- 2016.07.18  improve call_action error messages
--- 2016.07.20  truncate very long values in variable_set log output
+-- 2016.07.20  truncate very long values in variable_set log output and remove control characters
 
 local logs          = require "openLuup.logs"
 
@@ -147,6 +147,12 @@ end
 -- parameters: service (string), variable (string), value (string), device (string or number), [startup (bool)]
 -- returns: nothing 
 local function variable_set (service, name, value, device, startup)
+    -- shorten long variable strings, removing control characters
+    local function truncate (text)
+      text = (text or ''): gsub ("%c", ' ')
+      if #text > 120 then text = text: sub (1,115) .. "..." end    -- truncate long variable values
+      return text
+    end
   device = device or scheduler.current_device()    -- undocumented luup feature!
   local dev = devices[device]
   if not dev then 
@@ -158,11 +164,9 @@ local function variable_set (service, name, value, device, startup)
   value = tostring (value)
   local var = dev:variable_set (service, name, value, not startup) 
   if var then
-    local old = var.old or ''
-    if #old > 120 then old = old: sub (1,120) .. "..." end       -- truncate long variable values
-    if #value > 120 then value = value: sub (1,120) .. "..." end       -- truncate long variable values
+    local old = var.old  or "MISSING"
     local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
-    local msg = info: format (device,service, name, old or "MISSING", value, #var.watchers)
+    local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
     _log (msg, "luup.variable_set")
     _log_altui_variable (var)              -- log for altUI to see
   end 

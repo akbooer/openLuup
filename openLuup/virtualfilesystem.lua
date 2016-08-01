@@ -577,6 +577,57 @@ GOTO loop
 
 -----
 --
+-- Z-Way support
+--
+local D_ZWay_xml = [[
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:akbooer-com:device:ZWay:1</deviceType>
+    <friendlyName>ZWay Network Interface</friendlyName>
+    <manufacturer>akbooer</manufacturer>
+    <manufacturerURL></manufacturerURL>
+    <modelDescription>ZWay Network</modelDescription>
+    <modelName></modelName>
+    <modelNumber></modelNumber>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-micasaverde-org:service:ZWaveNetwork:1</serviceType>
+        <serviceId>urn:micasaverde-com:serviceId:ZWaveNetwork1</serviceId>
+        <controlURL>/upnp/control/ZWaveNetwork1</controlURL>
+        <eventSubURL>/upnp/event/ZWaveNetwork1</eventSubURL>
+        <SCPDURL>S_ZWaveNetwork1.xml</SCPDURL>
+      </service>
+    </serviceList>
+    <implementationList>
+      <implementationFile>I_ZWay.xml</implementationFile>
+    </implementationList>
+  </device>
+</root>
+]]
+
+local D_ZWay_json = [[
+]]
+
+local I_ZWay_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <functions>
+    function startup (lul_device)
+      local m = require "L_ZWay"
+      return m.init (lul_device)
+    end
+  </functions>
+  <startup>startup</startup>
+</implementation>
+]]
+
+-----
+--
 -- DataYours schema and aggregation definitions for AltUI DataStorage Provider
 --
 
@@ -664,6 +715,9 @@ local manifest = {
     ["D_VeraBridge.json"] = D_VeraBridge_json,
     ["I_VeraBridge.xml"]  = I_VeraBridge_impl,
     ["S_VeraBridge.xml"]  = S_VeraBridge_svc,
+    
+    ["D_ZWay.xml"] = D_ZWay_xml,
+    ["I_ZWay.xml"] = I_ZWay_xml,
     
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,
