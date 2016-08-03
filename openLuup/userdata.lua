@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.07.15",
+  VERSION       = "2016.08.03",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -366,6 +366,34 @@ local preinstalled = {
         pattern   = "RAZB",
       },
     },
+
+  ZWay =
+
+    {
+      AllowMultiple   = "1",
+      Title           = "Z-Way",
+      Icon            = "https://raw.githubusercontent.com/akbooer/Z-Way/master/icons/Z-Wave.me.png", 
+      Instructions    = "",
+      AutoUpdate      = "0",
+      VersionMajor    = "not",
+      VersionMinor    = "installed",
+      id              = "Z-Way",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {
+        {
+          DeviceFileName  = "D_ZWay.xml",
+          DeviceType      = "urn:akbooer-com:device:ZWay:1",
+          ImplFile        = "I_ZWay.xml",
+          Invisible       =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/Z-Way",
+--        pattern   = "",
+      },
+    },
   }   -- end of preinstalled plugins
 
 
@@ -377,6 +405,7 @@ local default_plugins = {
     preinstalled.Razberry,
     preinstalled.MySensors,
     preinstalled.DataYours,
+--    preinstalled.ZWay,
   }
 
 --
@@ -645,6 +674,7 @@ return {
   
   attributes      = attributes, 
   default_plugins = default_plugins,
+  preinstalled    = preinstalled,
   
   -- methods  
   

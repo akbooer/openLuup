@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.07.18",
+  VERSION       = "2016.08.02",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -632,7 +632,7 @@ local function action (_,p,f)
       mime_type = "application/json"
     else
       result = xml.encode (result)
-      result = result: gsub ("^(%s*<u:[%w_]+)", '<?xml version="1.0"?>\n%1 xmlns:u="' .. p.serviceId .. '"')
+      result = result: gsub ("^(%s*<u:[%w_]+)", '<?xml version="1.0"?>\n%1 xmlns:u="' .. (p.serviceId or "UnknownService") .. '"')
       mime_type = "application/xml"
     end
   end

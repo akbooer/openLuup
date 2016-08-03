@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.07.16",
+  VERSION       = "2016.08.02",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -606,11 +606,86 @@ local D_ZWay_xml = [[
     <implementationList>
       <implementationFile>I_ZWay.xml</implementationFile>
     </implementationList>
+		<staticJson>D_ZWay.json</staticJson>
   </device>
 </root>
 ]]
 
+
 local D_ZWay_json = [[
+{
+  "default_icon": "http://raw.githubusercontent.com/akbooer/Z-Way/master/icons/Z-Wave.me.png",
+	"Tabs": [
+		{
+			"Label": {
+				"lang_tag": "tabname_control",
+				"text": "Control"
+			},
+			"Position": "0",
+			"TabType": "flash",
+			"ControlGroup":[
+				{
+					"id": "1",
+					"scenegroup": "1"
+				}
+			],
+			"SceneGroup":[
+				{
+					"id": "1",
+					"top": "1.5",
+					"left": "0.25",
+					"x": "1.5",
+					"y": "2"
+				}
+			],
+			"Control": [
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "0",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine1",
+						"Top": 40,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "1",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine2",
+						"Top": 60,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "urn:akbooer-com:serviceId:ZWay1",
+						"Variable": "Version",
+						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				}
+			]
+		}
+  ],
+  "DeviceType": "urn:akbooer-com:device:ZWay:1"
+}
 ]]
 
 local I_ZWay_xml = [[
@@ -716,8 +791,9 @@ local manifest = {
     ["I_VeraBridge.xml"]  = I_VeraBridge_impl,
     ["S_VeraBridge.xml"]  = S_VeraBridge_svc,
     
-    ["D_ZWay.xml"] = D_ZWay_xml,
-    ["I_ZWay.xml"] = I_ZWay_xml,
+    ["D_ZWay.xml"]  = D_ZWay_xml,
+    ["D_ZWay.json"] = D_ZWay_json,
+    ["I_ZWay.xml"]  = I_ZWay_xml,
     
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,

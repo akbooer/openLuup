@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.07.18",
+  VERSION       = "2016.08.03",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -28,6 +28,7 @@ local ABOUT = {
 -- 2016.06.01   also look for files in virtualfilesystem
 -- 2016.06.09   also look in files/ directory
 -- 2016.07.06   add 'method' to WSAPI server call
+-- 2016.08.03   remove optional "lu_" prefix from system callback request names
 
 ---------------------
 
@@ -105,14 +106,16 @@ local myIP = (
 -- return HTML for error given numeric status code and optional extended error message
 local function error_html(status, msg)
   local html = [[
-  <!DOCTYPE html>
-  <html>
-    <head><title>%d - %s</title></head>
-    <body><p>%s</p></body>
-  </html>
-  ]]
-  local content = html: format (status, status_codes[status] or "Error", tostring(msg or "Unknown error"))
-  return content, #content, "text/html"
+<!DOCTYPE html>
+<html>
+  <head><title>%d - %s</title></head>
+  <body><p>%s</p></body>
+</html>
+]]
+  local title = status_codes[status] or "Error"
+  local body = msg and tostring(msg) or "Unknown error"
+  local content = html: format (status, title, body)
+  return content, "text/html"
 end
 
 
@@ -169,7 +172,7 @@ local function data_request (request)
     parameters.output_format = nil    -- ...or output format in parameters
     -- fixed callback request name - thanks @reneboer
     -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
-    local request_name = id: gsub ("^lr_", '')     -- remove leading "lr_"
+    local request_name = id: gsub ("^l[ru]_", '')     -- remove leading "lr_" or "lu_"
     ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request_name, parameters, format)
     if ok then
       status = 200
@@ -361,7 +364,8 @@ local function http_response (status, headers, iterator)
  
   if status ~= 200 then 
     headers = {}
-    response, content_length, content_type = error_html (status, response)
+    response, content_type = error_html (status, response)
+    content_length = #response
   end
   
   -- see https://mimesniff.spec.whatwg.org/
