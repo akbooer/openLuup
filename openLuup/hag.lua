@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 local ABOUT = {
   NAME          = "upnp.control.hag",
-  VERSION       = "2016.06.09",
+  VERSION       = "2016.07.06",
   DESCRIPTION   = "a handler for redirected port_49451 /upnp/control/hag requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -14,6 +14,7 @@ local ABOUT = {
 -- see: http://wiki.micasaverde.com/index.php/ModifyUserData
 
 -- 2016.06.05  add scene processing (for AltUI long scene POST requests)
+-- 2016.07.06  correct calling syntax for wsapi_env.input:read ()
 
 local xml       = require "openLuup.xml"
 local json      = require "openLuup.json"
@@ -62,7 +63,7 @@ function run(wsapi_env)
     return x
   end
   
-  local content = wsapi_env.input.read ()
+  local content = wsapi_env.input:read ()       -- 2016.07.06
   local x = xml.decode(content)
   local m = xml.extract(x, "s:Envelope", "s:Body", "u:ModifyUserData") [1] or {}  -- unpack one-element list
   

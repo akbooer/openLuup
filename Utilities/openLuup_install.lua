@@ -10,6 +10,7 @@ p "openLuup_install   2016.06.08   @akbooer"
 local http  = require "socket.http"
 local https = require "ssl.https"
 local ltn12 = require "ltn12"
+local lfs   = require "lfs"
 
 p "getting latest openLuup version tar file from GitHub..."
 
@@ -34,10 +35,27 @@ _, code = http.request{
 
 assert (code == 200, "GitHub download failed with code " .. code)
 
-p "initialising..."
+p "creating required files and folders"
+lfs.mkdir "files"
+lfs.mkdir "icons"
 
-local o = require "openLuup.plugins"
-o.add_ancillary_files ()
+local vfs = require "openLuup.virtualfilesystem"
+
+local function add_vfs_file (name)  
+  local f = io.open (name, "wb")
+  f: write (vfs.read (name))
+  f: close ()
+end
+
+add_vfs_file "index.html"
+
+local reload = "openLuup_reload"
+local pathSeparator = package.config:sub(1,1)   -- thanks to @vosmont for this Windows/Unix discriminator
+if pathSeparator ~= '/' then reload = reload .. ".bat" end   -- Windows version
+
+add_vfs_file (reload)
+
+p "initialising..."
 
 x "chmod a+x openLuup_reload"
 

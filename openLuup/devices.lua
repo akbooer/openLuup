@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.07.19",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -14,6 +14,7 @@ local ABOUT = {
 -- 2016.03.01  added notes to action jobs
 -- 2016.04.15  added per-device variable numbering (thanks @explorer)
 -- 2016.04.29  added device status
+-- 2016.07.19  improve call_action error handling
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 
@@ -46,7 +47,7 @@ local sys_watchers = {}         -- list of system-wide (ie. non-device-specific)
 -- Note that there is no "get" function, object variables can be read directly (but setting should use the method)
 --
 
-local variable = {}
+local variable = {}             -- variable CLASS
 
 function variable.new (name, serviceId, devNo)    -- factory for new variables
   local device = device_list[devNo] or {}
@@ -83,7 +84,7 @@ end
 -- Services contain variables and actions
 --
 
-local service = {}
+local service = {}              -- service CLASS
   
 function service.new (serviceId, devNo)        -- factory for new services
   local actions   = {}
@@ -256,22 +257,30 @@ local function new (devNo)
   --       if the <handleChildren> tag has been set to 1 in the parent's device file.
 
   local function call_action (self, serviceId, action, arguments, target_device)
-     -- 'act' is an object with (possibly) run / job / timeout / incoming methods
-     -- note that the loader has also added 'name' and 'serviceId' fields to the action object
-    local act = (services[serviceId] or {actions = {}}).actions [action] 
-    if not act and missing_action then
-      -- dynamically link to the supplied action handler
-      act = missing_action (serviceId, action)
+    -- 'act' is an object with (possibly) run / job / timeout / incoming methods
+    -- note that the loader has also added 'name' and 'serviceId' fields to the action object
+    
+    local act, svc
+    svc = services[serviceId]
+    if svc then act = svc.actions [action] end
+    
+    if not act and missing_action then              -- dynamically link to the supplied action handler
+      act = missing_action (serviceId, action)      -- might still return nil action
     end
-    if act then   
-      local e,m,j,a = scheduler.run_job (act, arguments, devNo, target_device or devNo)
-      if j and scheduler.job_list[j] then
-        scheduler.job_list[j].notes = table.concat ({"Action", serviceId or '?', action or '?'}, ' ') -- 2016.03.01
+    
+    if not act then 
+      if not svc then 
+        return 401, "Invalid Service",   0, {} 
+      else
+        return 501, "No implementation", 0, {} 
       end
-      return e,m,j,a
-    else
-      return -1, "no such service"
     end
+
+    local e,m,j,a = scheduler.run_job (act, arguments, devNo, target_device or devNo)
+    if j and scheduler.job_list[j] then
+      scheduler.job_list[j].notes = table.concat ({"Action", serviceId or '?', action or '?'}, ' ') -- 2016.03.01
+    end
+    return e,m,j,a
   end
  
   -- function attr_set ()

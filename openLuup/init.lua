@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.06.21",
+  VERSION       = "2016.07.19",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -16,6 +16,8 @@ local ABOUT = {
 -- 2016.06.09  add files/ directory to Lua search path
 -- 2016.06.18  add openLuup/ directory to Lua search path
 -- 2016.06.19  switch to L_AltAppStore module for initial AltUI download
+-- 2016.06.30  uncompress user_data file if necessary
+-- 2016.07.19  correcrt syntax error in xml action request response
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -33,10 +35,9 @@ local server        = require "openLuup.server"
 local scheduler     = require "openLuup.scheduler"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
+local compress      = require "openLuup.compression"
 local json          = require "openLuup.json"
-local plugins       = require "openLuup.plugins"
 local mime          = require "mime"
-local ltn12         = require "ltn12"
 
 -- what it says...
 local function compile_and_run (lua, name)
@@ -120,30 +121,34 @@ do -- STARTUP
   if init == "reset" then luup.reload () end      -- factory reset
   
   if init == "altui" then                         -- install altui in reset system
-    userdata.attributes.InstalledPlugins2 = userdata.default_plugins
     -- this is a bit tricky, since the scheduler is not running at this stage
     -- but we need to execute a multi-step action with <run> and <job> tags...
-    require "openLuup.L_AltAppStore"              -- manually load the plugin updater
-    AltAppStore_init (2)                          -- give it a device to work with
-    local meta = plugins.metadata (8246)          -- AltUI plugin number
-    update_plugin_run {metadata = meta}    -- <run> phase
-    repeat
-      local status = update_plugin_job ()  -- <job> phase
-    until status ~= 0
+    userdata.attributes.InstalledPlugins2 = userdata.default_plugins
+    require "openLuup.L_AltAppStore"                    -- manually load the plugin updater
+    AltAppStore_init (2)                                -- give it a device to work with
+    local meta = userdata.plugin_metadata (8246)        -- AltUI plugin number
+    update_plugin_run {metadata = json.encode (meta)}   -- <run> phase
+    repeat until update_plugin_job () ~= 0              -- <job> phase
   end
   
-  local f = io.open (init, 'r')
+  local f = io.open (init, 'rb')                          -- may be binary compressed file 
   if f then 
     local code = f:read "*a"
     f:close ()
     if code then
+    
+      if init: match "%.lzap$" then                       -- it's a compressed user_data file
+        local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
+        code = compress.lzap.decode (code, codec)         -- uncompress the file
+      end
+
       local ok = true
-      local json_code = code: match "^%s*{"    -- what sort of code is this?
+      local json_code = code: match "^%s*{"               -- what sort of code is this?
       if json_code then 
         ok = userdata.load (code)
         code = userdata.attributes ["StartupCode"] or ''  -- substitute the Startup Lua
       end
-      compile_and_run (code, "_openLuup_STARTUP_")  -- the given file or the code in user_data
+      compile_and_run (code, "_openLuup_STARTUP_")        -- the given file or the code in user_data
     else
       _log "no init data"
     end

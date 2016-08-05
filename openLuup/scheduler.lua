@@ -306,7 +306,7 @@ local function run_job (action, arguments, devNo, target_device)
     end
   end
   
-  return error, error_msg, jobNo, return_arguments
+  return error, error_msg or '', jobNo, return_arguments
 end
 
 local function device_start (entry_point, devNo)

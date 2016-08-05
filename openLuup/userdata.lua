@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.06.21",
+  VERSION       = "2016.08.03",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -18,12 +18,17 @@ local ABOUT = {
 -- 2016.05.24   update InstalledPlugins2 list
 -- 2016.06.06   fix load error if missing openLuup structure (upgrading from old version)
 -- 2016.06.08   add pre-defined startup code for new systems
+-- 2016.06.22   add metadata routine for plugin install
+-- 2016.06.24   remove defaults from pre-installed repository data (always use "master"
+-- 2016.06.28   change install parameters for VeraBridge (device and icon file locations)
+-- 2016.06.30   split save into two functions: json & save to allow data compression
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
 local logs    = require "openLuup.logs"
 local scenes  = require "openLuup.scenes"
 local chdev   = require "openLuup.chdev"
+local lfs     = require "lfs"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -137,12 +142,13 @@ luup.log "startup code completed"
 }
 
 
-local default_plugins_version = "2016.06.21c" --<<<-- change this if default_plugins changed
 
 -------
 --
 -- pre-installed plugins
 --
+
+local default_plugins_version = "2016.07.19"  --<<<-- change this to force update of default_plugins
 
 local preinstalled = {
   
@@ -154,20 +160,24 @@ local preinstalled = {
       Icon            = "https://avatars.githubusercontent.com/u/4962913",
       Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
       AutoUpdate      = "0",
-      VersionMajor    = "baseline",
-      VersionMinor    = "install",
-      TargetVersion   = default_plugins_version, -- openLuup uses this for the InstalledPlugins2 version number
+      VersionMajor    = '',
+      VersionMinor    = "baseline.",
+      TargetVersion   = default_plugins_version,      -- openLuup uses this for the InstalledPlugins2 version number
       id              = "openLuup",
       timestamp       = os.time(),
-      Files = {},
+      Files           = (function ()                  -- generate this list dynamically
+                          local F = {}
+                          for f in lfs.dir "openLuup/" do
+                            if f: match "^.+%..+$" then F[#F+1] = {SourceName = f} end
+                          end
+                          return F
+                        end) (),
       Devices         = {},                           -- no devices to install!!
       Repository      = {
         type      = "GitHub",
-        source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
+        source    = "akbooer/openLuup",               -- the openLuup repository
         target    = "./openLuup/",                    -- not /etc/cmh-ludl/, like everything else
-        default   = "master",                         -- "development" or "master" or any tagged release
-        versions  = {master = {release = "master"}},
-        pattern   = "%w+%.lua",                       -- pattern match string for required files
+        pattern   = ".+%.lua$",                       -- pattern match string for required files
         folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
        },
     },
@@ -180,8 +190,8 @@ local preinstalled = {
       Icon            = "plugins/icons/8246.png",     -- usage: http://apps.mios.com/icons/8246.png
       Instructions    = "http://forum.micasaverde.com/index.php/board,78.0.html",
       AutoUpdate      = "1",                          -- not really "auto", but will prompt on browser refresh
-      VersionMajor    = "GitHub",
-      VersionMinor    = "master",
+      VersionMajor    = "not",
+      VersionMinor    = "installed",
       id              = 8246,                         -- this is the genuine MiOS plugin number
       timestamp       = os.time(),
       Files           = {},                           -- populated on download from repository
@@ -197,8 +207,6 @@ local preinstalled = {
       Repository      = {     
         type      = "GitHub",
         source    = "amg0/ALTUI",                   -- @amg0 repository
-        default   = "master",                       -- "development" or "master" or any tagged release
-        versions  = {master = {release = "master"}},
         pattern   = "ALTUI",                        -- pattern match string for required files
         folders   = {                               -- these are the bits of the repository that we want
           '',               -- the main folder
@@ -210,16 +218,18 @@ local preinstalled = {
   AltAppStore =
 
     {
-      AllowMultiple   = "1",
+      AllowMultiple   = "0",
       Title           = "Alternate App Store",
       Icon            = "https://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
       Instructions    = "https://github.com/akbooer/AltAppStore",
       AutoUpdate      = "0",
-      VersionMajor    = "baseline",
-      VersionMinor    = "install",
+      VersionMajor    = '',
+      VersionMinor    = "baseline.",
       id              = "AltAppStore",
       timestamp       = os.time(),
-      Files           = {},
+      Files           = {                             -- it's part of the openLuup baseline
+          {SourceName = "L_AltAppStore.lua"},         -- this is a physical file in ./openLuup/
+        },
       Devices         = {
         {
           DeviceFileName  = "D_AltAppStore.xml",
@@ -230,10 +240,10 @@ local preinstalled = {
       },
       Repository      = {
         type      = "GitHub",
-        source    = "akbooer/AltAppStore",
-        default   = "master",                    -- "development" or "master" or any tagged release
-        versions  = {master = {release = "master"}},
-        pattern   = "AltAppStore",                     -- pattern match string for required files
+        source    = "akbooer/openLuup",               -- get this from openLuup, NOT from AltAppStore...
+        folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
+        target    = "./openLuup/",                    -- ...and put it back INTO ./openLuup/ folder
+        pattern   = "L_AltAppStore",                  -- only .lua file (others are in virtualfilesystem)
       },
     },
 
@@ -249,7 +259,9 @@ local preinstalled = {
       VersionMinor    = "installed",
       id              = "VeraBridge",
       timestamp       = os.time(),
-      Files           = {},
+      Files           = {
+          {SourceName = "L_VeraBridge.lua"},          -- this is a physical file in ./openLuup/
+        },
       Devices         = {
         {
           DeviceFileName  = "D_VeraBridge.xml",
@@ -261,10 +273,9 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/openLuup",               -- actually comes from the openLuup repository
-        default   = "master",                         -- "development" or "master" or any tagged release
-        versions  = {master = {release = "master"}},
-        pattern   = "VeraBridge",                     -- pattern match string for required files
-        folders   = {"/VeraBridge"},                  -- these are the bits of the repository that we want
+        target    = "./openLuup/",                    -- ...and put it back INTO ./openLuup/ folder
+        pattern   = "L_VeraBridge",                   -- only .lua file (others are in virtualfilesystem)
+        folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
       },
     },
 
@@ -296,17 +307,15 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "akbooer/Datayours",
-        default   = "development",                     -- "development" or "master" or any tagged release
-        versions  = {development = {release = "development"}},
         pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
       },
     },
 
-  Arduino =
+  MySensors =
 
     {
       AllowMultiple   = "1",
-      Title           = "MySensors Arduino",
+      Title           = "MySensors",
       Icon            = "https://www.mysensors.org/icon/MySensors.png", 
       Instructions    = "https://github.com/mysensors/Vera/tree/UI7",
       AutoUpdate      = "0",
@@ -326,8 +335,63 @@ local preinstalled = {
       Repository      = {
         type      = "GitHub",
         source    = "mysensors/Vera",
-        default   = "UI7",
         pattern   = "[DILS]_Arduino%w*%.%w+",             -- pattern match string for required files
+      },
+    },
+
+  Razberry =
+
+    {
+      AllowMultiple   = "1",
+      Title           = "RaZberry (ALPHA)",
+      Icon            = "https://raw.githubusercontent.com/amg0/razberry-altui/master/iconRAZB.png", 
+      Instructions    = "https://github.com/amg0/razberry-altui",
+      AutoUpdate      = "1",
+      VersionMajor    = "not",
+      VersionMinor    = "installed",
+      id              = "razberry-altui",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {
+        {
+          DeviceFileName  = "D_RAZB.xml",
+          DeviceType      = "urn:schemas-upnp-org:device:razb:1",
+          ImplFile        = "I_RAZB.xml",
+          Invisible       =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "amg0/razberry-altui",
+        pattern   = "RAZB",
+      },
+    },
+
+  ZWay =
+
+    {
+      AllowMultiple   = "1",
+      Title           = "Z-Way",
+      Icon            = "https://raw.githubusercontent.com/akbooer/Z-Way/master/icons/Z-Wave.me.png", 
+      Instructions    = "",
+      AutoUpdate      = "0",
+      VersionMajor    = "not",
+      VersionMinor    = "installed",
+      id              = "Z-Way",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = {
+        {
+          DeviceFileName  = "D_ZWay.xml",
+          DeviceType      = "urn:akbooer-com:device:ZWay:1",
+          ImplFile        = "I_ZWay.xml",
+          Invisible       =  "0",
+        },
+      },
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/Z-Way",
+--        pattern   = "",
       },
     },
   }   -- end of preinstalled plugins
@@ -338,10 +402,15 @@ local default_plugins = {
     preinstalled.AltUI,
     preinstalled.AltAppStore,
     preinstalled.VeraBridge,
+    preinstalled.Razberry,
+    preinstalled.MySensors,
     preinstalled.DataYours,
+--    preinstalled.ZWay,
   }
 
--- utilities
+--
+-- PLUGINS
+--
 
 -- given installed plugin structure, generate index by ID
 local function plugin_index (plugins)
@@ -353,6 +422,49 @@ local function plugin_index (plugins)
   return index
 end
 
+-- find the requested plugin data, and index in structure
+local function find_installed_data (plugin)
+  plugin = tostring(plugin)
+  local installed = luup.attr_get "InstalledPlugins2" or {}
+  local info, idx
+  for i,p in ipairs (installed) do
+    local id = tostring (p.id)
+    if id == plugin then
+      info, idx = p, i
+      break
+    end
+  end
+  return info, idx
+end
+
+-- build update_plugin metadata from InstalledPlugins2 structure
+local function plugin_metadata (id, tag)
+  
+  local IP = find_installed_data (id)    -- get the named InstalledPlugins2 metadata
+  if IP then 
+    local r = IP.Repository
+    local major = r.type or "GitHub"
+    tag = tag or "master"
+    r.versions = {[tag] = {release = tag}}
+    local plugin = {}
+    for a,b in pairs (IP) do
+      if type(b) ~= "table" then plugin[a] = b end    -- copy all the scalar data
+    end
+    return  {                             -- reformat for update_plugin request
+        devices     = IP.Devices,
+        plugin      = plugin,
+        repository  = IP.Repository,
+        version     = {major = major, minor = tag},
+        versionid   = tag,
+      }
+  end
+  return nil, table.concat {"metadata for'", id or '?', "' not found"}
+end
+
+
+--
+-- LOAD and SAVE
+--
 
 -- load user_data (persistence for attributes, rooms, devices and scenes)
 local function load_user_data (user_data_json)  
@@ -434,28 +546,31 @@ local function load_user_data (user_data_json)
     -- PLUGINS
     _log "loading installed plugin info..."
     
-    local new = user_data.InstalledPlugins2 or {}
-    local index = plugin_index (new)
+    local installed = user_data.InstalledPlugins2 or {}
+    local index = plugin_index (installed)
     
-    -- check TargetVersion of openLuup to see if InstalledPlugins2 is current   
-    local ol = new[index.openLuup] or {}
-    local refresh = not ol or (ol.TargetVersion ~= default_plugins_version)
-    local ref = "InstalledPlugins2, user_data: %s, openLuup: %s"
-    _log (ref: format (ol.TargetVersion or '?', default_plugins_version))
+    -- check TargetVersion of openLuup to see if InstalledPlugins2 defaults are current   
+    local ol = installed[index.openLuup] or {}
+    local refresh = ol.TargetVersion ~= default_plugins_version
     
-    if refresh then     -- replace the lot (so losing current version information and installed status)
-      new = default_plugins
-    else                -- just fill in any missing ones
-      for _, plugin in ipairs (default_plugins) do  -- copy any missing defaults to the new list
-        if not index[tostring(plugin.id)] then new[#new+1] = plugin end
+    -- copy any missing defaults (may have been deleted) to the new list
+    for _, default_plugin in ipairs (default_plugins) do
+      local existing = index[tostring(default_plugin.id)]
+      if not existing then 
+        installed[#installed+1] = default_plugin          -- add any missing defaults
+      elseif refresh then 
+      default_plugin.VersionMajor = installed[existing].VersionMajor  -- preserve version info
+      default_plugin.VersionMinor = installed[existing].VersionMinor
+      installed[existing] = default_plugin                -- out of date, so replace info anyway
       end
     end
-    for _, plugin in ipairs (new) do
+    -- log the full list of installed plugins
+    for _, plugin in ipairs (installed) do
       local version = table.concat {plugin.VersionMajor or '?', '.', plugin.VersionMinor or '?'}
       local ver = "[%s] %s (%s)"
       _log (ver: format (plugin.id, plugin.Title, version))
     end
-    attr.InstalledPlugins2 = new
+    attr.InstalledPlugins2 = installed
   end
   _log "...user_data loading completed"
   return not msg, msg
@@ -504,11 +619,10 @@ local function devices_table (device_list)
   return info
 end
 
--- save ()
+-- json ()
 -- top-level attributes and key tables: devices, rooms, scenes
-local function save_user_data (localLuup, filename)   -- refactored thanks to @explorer
+local function json_user_data (localLuup)   -- refactored thanks to @explorer
   local luup = localLuup or luup
-  local result, message
   local data = {rooms = {}, scenes = {}}
   -- scalar attributes
   for a,b in pairs (attributes) do
@@ -529,7 +643,14 @@ local function save_user_data (localLuup, filename)   -- refactored thanks to @e
     scenes[#scenes+1] = s: user_table ()
   end    
   --
-  local j, msg = json.encode (data)
+  return json.encode (data)   -- json text or nil, error message if any
+end
+ 
+-- save ()
+local function save_user_data (localLuup, filename)   -- refactored thanks to @explorer
+  local result, message
+  local j, msg = json_user_data (localLuup)
+
   if not j then
     message = "syntax error in user_data: " .. (msg or '?')
   else
@@ -547,15 +668,22 @@ local function save_user_data (localLuup, filename)   -- refactored thanks to @e
   return result, message
 end
 
+
 return {
   ABOUT           = ABOUT,
   
   attributes      = attributes, 
-  devices_table   = devices_table, 
   default_plugins = default_plugins,
+  preinstalled    = preinstalled,
   
   -- methods  
-  load            = load_user_data,
-  save            = save_user_data,
+  
+  devices_table       = devices_table, 
+  plugin_metadata     = plugin_metadata,
+  find_installed_data = find_installed_data, 
+
+  json  = json_user_data,
+  load  = load_user_data,
+  save  = save_user_data,
 }
 

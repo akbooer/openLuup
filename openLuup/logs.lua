@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2016.06.09",
+  VERSION       = "2016.08.01",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -12,6 +12,7 @@ local ABOUT = {
 -- 2016.05.14   add logging for AltUI workflows
 -- 2016.05.26   fix error on nil message
 -- 2016.06.09   fix numeric message error
+-- 2016.08.01   truncate long variable values in AltUI log
 
 local socket = require "socket"
 
@@ -79,6 +80,13 @@ local function formatted_time (date_format, now)
   local date = os.date (date_format, now)
   local ms = math.floor (1000 * (now % 1)) 
   return ('%s.%03d'):format (date, ms)
+end
+
+-- shorten long variable strings, removing control characters
+local function truncate (text)
+  text = (text or ''): gsub ("%c", ' ')
+  if #text > 120 then text = text: sub (1,115) .. "..." end    -- truncate long variable values
+  return text
 end
 
 
@@ -281,7 +289,7 @@ local function altui_logger (info)
     local vfmt =   "%02d\t%s\tDevice_Variable::m_szValue_set device: %d service: %s " ..
                     "variable: \027[35;1m%s\027[0m was: %s now: %s #hooks: %d \n"
     local msg = vfmt: format (6, now, var.dev, var.srv, var.name, 
-                var.old or "MISSING", var.value, #var.watchers)
+                truncate (var.old or "MISSING"), truncate (var.value), #var.watchers)
     write (msg)
     return msg    -- for testing
   end
