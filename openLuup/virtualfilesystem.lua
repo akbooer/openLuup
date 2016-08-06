@@ -114,7 +114,7 @@ local D_openLuup_json = [[
 					"left": "0",
 					"Label": {
 						"lang_tag": "donate",
-						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like this plugin, you could DONATE to Cancer Research UK right here</a>"
+						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
 					},
 					"Display": {
 						"Top": 140,
