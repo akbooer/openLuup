@@ -106,6 +106,22 @@ local D_openLuup_json = [[
 						"Width": 75,
 						"Height": 20
 					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "label",
+					"top": "4",
+					"left": "0",
+					"Label": {
+						"lang_tag": "donate",
+						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
+					},
+					"Display": {
+						"Top": 140,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
 				}
 			]
 		}
