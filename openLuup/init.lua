@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.07.19",
+  VERSION       = "2016.08.10",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -86,7 +86,7 @@ do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, repl
     "ZWave", "D_ZWaveNetwork.xml", nil, nil, nil, nil, invisible)
 --  luup.create_device ("urn:schemas-micasaverde-com:device:SceneController:1", '',
 --                      "_SceneController", "D_SceneController1.xml", nil, nil, nil, nil, invisible, 1)
-  luup.create_device ("openLuup", '', " openLuup", "D_openLuup.xml")
+  luup.create_device ("openLuup", '', "   openLuup", "D_openLuup.xml")
 end
 
 do -- set attributes, possibly decoding if required

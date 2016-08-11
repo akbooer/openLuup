@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.08.02",
+  VERSION       = "2016.08.09",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -27,6 +27,7 @@ local ABOUT = {
 -- 2016.06.22  move HTTP request plugin update/delete code to here from plugins
 -- 2016.07.14  change 'file' request internal syntax to use server.wget
 -- 2016.07.18  better error returns for action request
+-- 2016.08.09  even better error returns for action request!
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -622,6 +623,7 @@ local function action (_,p,f)
   local error, error_msg, _, arguments = luup.call_action (p.serviceId, p.action, p, tonumber(p.DeviceNum))
   local result, mime_type = '', "text/plain"
   if error ~= 0 then
+    if error == -1 then error_msg = "Device does not handle service/action" end
     result = "ERROR: " .. (error_msg or error or '?')
   else
     arguments = arguments or {}
