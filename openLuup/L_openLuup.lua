@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.08.09",
+  VERSION       = "2016.08.22",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -276,6 +276,12 @@ function init (devNo)
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
     luup.variable_set (SID.openLuup, "Version", version,  ole)
+    local installed = luup.attr_get "InstalledPlugins2" or {}
+    local info = installed[1] or {}
+    if info.Title == "openLuup" then
+      info.VersionMajor = tostring(y%2000)
+      info.VersionMinor = m .. '.' .. d
+    end
   end
 
   luup.register_handler ("HTTP_openLuup", "openLuup")

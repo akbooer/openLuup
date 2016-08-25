@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.08.23",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -483,11 +483,13 @@ end
 
 return {
     ABOUT = ABOUT,
-    TEST = {step = task_callbacks},      -- for testing only
+    TEST = {                      -- for testing only
+      delay_list  = delay_list,
+      step        = task_callbacks,
+    },
     
     -- constants
     state             = state,
-    version           = banner,
     -- variables
     job_list          = job_list,
     --methods

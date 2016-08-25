@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.08.09",
+  VERSION       = "2016.08.22",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -608,16 +608,6 @@ end
 -- with response:
 --{"u:SetHouseModeResponse": {"OK": "OK"}}
 
---TODO: return arguments
---[[
-  HTTP:
-  ERROR: Invalid Service
-  ERROR: No implementation
-  Luup:
-   401 Invalid service/action/device
-   401 "Invalid Service"  
-   501 "No implementation"
---]]
 local function action (_,p,f)
   -- notice that the argument list is the full HTTP query including DeviceNum, serviceId, and action
   local error, error_msg, _, arguments = luup.call_action (p.serviceId, p.action, p, tonumber(p.DeviceNum))
