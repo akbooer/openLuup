@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.08.03",
+  VERSION       = "2016.08.29",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -22,6 +22,7 @@ local ABOUT = {
 -- 2016.06.24   remove defaults from pre-installed repository data (always use "master"
 -- 2016.06.28   change install parameters for VeraBridge (device and icon file locations)
 -- 2016.06.30   split save into two functions: json & save to allow data compression
+-- 2016.08.29   update plugin versions on load
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -461,6 +462,39 @@ local function plugin_metadata (id, tag)
   return nil, table.concat {"metadata for'", id or '?', "' not found"}
 end
 
+-- go through the devices to see if any advertise their versions
+local function update_plugin_versions (installed)
+  
+  -- index by plugin id and device type
+  local index_by_plug = plugin_index (installed)
+  local index_by_type = {}
+  for i,p in ipairs (installed) do
+    local id
+    if p.Devices and p.Devices[1] then
+      id = p.Devices[1].DeviceType
+    end
+    if id then index_by_type[tostring(id)] = i end
+  end
+  
+  -- go through devices looking for plugins with ABOUT.VERSION
+  for _, d in pairs (luup.devices or {}) do 
+    local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
+    local a = d.environment.ABOUT
+    if i and a then
+      local v1,v2,v3 = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)"
+      if v3 then
+--        print (d.id,"v1,v2,v3", ("'%s', '%s', '%s'"): format (v1,v2,v3))
+        local IP = installed[i]
+        IP.VersionMajor = v1 % 2000
+        if v3 == '' then
+          IP.VersionMinor = tonumber(v2)
+        else
+          IP.VersionMinor = table.concat ({tonumber(v2),tonumber(v3)}, '.')
+        end
+      end
+    end
+  end
+end
 
 --
 -- LOAD and SAVE
@@ -565,6 +599,7 @@ local function load_user_data (user_data_json)
       end
     end
     -- log the full list of installed plugins
+    update_plugin_versions (installed)
     for _, plugin in ipairs (installed) do
       local version = table.concat {plugin.VersionMajor or '?', '.', plugin.VersionMinor or '?'}
       local ver = "[%s] %s (%s)"
@@ -678,10 +713,11 @@ return {
   
   -- methods  
   
-  devices_table       = devices_table, 
-  plugin_metadata     = plugin_metadata,
-  find_installed_data = find_installed_data, 
-
+  devices_table           = devices_table, 
+  plugin_metadata         = plugin_metadata,
+  find_installed_data     = find_installed_data, 
+  update_plugin_versions  = update_plugin_versions,
+  
   json  = json_user_data,
   load  = load_user_data,
   save  = save_user_data,

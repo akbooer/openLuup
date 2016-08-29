@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.08.10",
+  VERSION       = "2016.08.29",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -17,7 +17,7 @@ local ABOUT = {
 -- 2016.06.18  add openLuup/ directory to Lua search path
 -- 2016.06.19  switch to L_AltAppStore module for initial AltUI download
 -- 2016.06.30  uncompress user_data file if necessary
--- 2016.07.19  correcrt syntax error in xml action request response
+-- 2016.07.19  correct syntax error in xml action request response
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -81,7 +81,7 @@ do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, repl
   local invisible = true
   luup.attr_set ("Device_Num_Next", 1)  -- this may get overwritten by a subsequent user_data load
 
-  -- create (device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, ...)
+  -- create (device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum, ...)
   luup.create_device ("urn:schemas-micasaverde-com:device:ZWaveNetwork:1", '',
     "ZWave", "D_ZWaveNetwork.xml", nil, nil, nil, nil, invisible)
 --  luup.create_device ("urn:schemas-micasaverde-com:device:SceneController:1", '',

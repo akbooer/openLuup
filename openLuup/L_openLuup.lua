@@ -1,6 +1,6 @@
-local ABOUT = {
+ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.08.22",
+  VERSION       = "2016.08.29",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -280,7 +280,7 @@ function init (devNo)
     local info = installed[1] or {}
     if info.Title == "openLuup" then
       info.VersionMajor = tostring(y%2000)
-      info.VersionMinor = m .. '.' .. d
+      info.VersionMinor = tonumber(m) .. '.' .. tonumber(d)
     end
   end
 

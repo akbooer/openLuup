@@ -1,7 +1,6 @@
-
-local ABOUT = {
+ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2016.07.18",
+  VERSION       = "2016.08.29",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2016",

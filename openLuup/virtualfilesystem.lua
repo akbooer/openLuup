@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.08.02",
+  VERSION       = "2016.08.29",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -708,9 +708,10 @@ local I_ZWay_xml = [[
 <?xml version="1.0"?>
 <implementation>
   <functions>
-    function startup (lul_device)
-      local m = require "L_ZWay"
-      return m.init (lul_device)
+    local M = require "L_ZWay"
+    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
+    function startup (...)
+      return M.init (...)
     end
   </functions>
   <startup>startup</startup>
