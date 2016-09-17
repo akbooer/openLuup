@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.08.12",
+  VERSION       = "2016.08.31",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -638,6 +638,12 @@ function GetVeraFiles ()
   lfs.mkdir "icons"
   local _,b,_ = BuildVersion: match "(%d+)%.(%d+)%.(%d+)"    -- branch, major minor
   local major = tonumber(b)
+
+  local icon_directories = {
+    [5] = "/www/cmh/skins/default/icons/",                        -- UI5 icons
+    [6] = "/www/cmh_ui6/skins/default/icons/",                    -- UI6 icons, thanks to @reneboer for this information
+    [7] = "/www/cmh/skins/default/img/devices/device_states/",    -- UI7 icons
+  }
  
   if major then  
     if major > 5 then     -- UI7

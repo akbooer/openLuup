@@ -78,15 +78,18 @@ do -- change search paths for Lua require
 end
 
 do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, replaced by openLuup)
-  local invisible = true
   luup.attr_set ("Device_Num_Next", 1)  -- this may get overwritten by a subsequent user_data load
 
-  -- create (device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum, ...)
+  local device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum
+  
+  invisible = true
   luup.create_device ("urn:schemas-micasaverde-com:device:ZWaveNetwork:1", '',
-    "ZWave", "D_ZWaveNetwork.xml", nil, nil, nil, nil, invisible)
+    "ZWave", "D_ZWaveNetwork.xml", upnp_impl, ip, mac, hidden, invisible)
 --  luup.create_device ("urn:schemas-micasaverde-com:device:SceneController:1", '',
 --                      "_SceneController", "D_SceneController1.xml", nil, nil, nil, nil, invisible, 1)
-  luup.create_device ("openLuup", '', "   openLuup", "D_openLuup.xml")
+  invisible = false
+  luup.create_device ("openLuup", '', "   openLuup", "D_openLuup.xml",
+                        upnp_impl, ip, mac, hidden, invisible, parent, room, "openLuup")
 end
 
 do -- set attributes, possibly decoding if required

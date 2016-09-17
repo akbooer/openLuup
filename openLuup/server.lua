@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.08.03",
+  VERSION       = "2016.09.17",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -36,6 +36,9 @@ local ABOUT = {
 -- 2016.07.14   request object parameter and WSAPI-style returns for all handlers
 -- 2016.07.17   HTML error pages
 -- 2016.07.18   add 'actual_status' return to wget (undocumented Vera feature?)
+-- 2016.09.16   remove /port_3480 redirects from parsed URI - thanks @explorer
+-- 2016.09.17   increase BACKLOG parameter to solve stalled updates - thanks @explorer (again!) 
+--              see: http://forum.micasaverde.com/index.php/topic,39129.msg293629.html#msg293629
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -56,6 +59,7 @@ logs.banner (ABOUT)   -- for version control
 
 -- CONSTANTS
 
+local BACKLOG             = 255       -- used in socket.bind() for queue length
 local CHUNKED_LENGTH      = 16000     -- size of chunked transfers
 local CLOSE_SOCKET_AFTER  = 90        -- number of seconds idle after which to close socket
 local MAX_HEADER_LINES    = 100       -- limit lines to help mitigate DOS attack or other client errors
@@ -279,8 +283,9 @@ local function request_object (request_URI, headers, post_content, method, http_
     request_URI = "//" .. request_URI 
   end
  
-  local URL = url.parse (request_URI)                 -- parse URL
-
+  local URL = url.parse (request_URI)               -- parse URL
+  URL.path = URL.path:gsub ("/port_3480", '')       -- 2016.09.16, thanks @explorer
+  
   -- construct parameters from query string or POST content
   local parameters
   method = method or "GET"
@@ -617,7 +622,7 @@ end
 -- returns list of utility function(s)
 -- 
 local function start (port, backlog)
-  local server, msg = socket.bind ('*', port, backlog or 64) 
+  local server, msg = socket.bind ('*', port, backlog or BACKLOG) 
    
   -- new client connection
   local function server_incoming (server)

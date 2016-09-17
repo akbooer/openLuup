@@ -258,8 +258,6 @@ function openLuup_synchronise ()
   local recurring = true                -- reschedule automatically, definitely not a Vera luup option! ... 
                           -- ...it ensures that rescheduling is always on time and does not 'slip' between calls.
   luup.call_timer ("openLuup_ticker", timer_type, MINUTES, days, data, recurring)
---  TODO: local latest = "latest: " .. (plugins.latest_version () or '?')
---  display (nil, latest)
   calc_stats ()
 end
 
@@ -276,12 +274,6 @@ function init (devNo)
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
     luup.variable_set (SID.openLuup, "Version", version,  ole)
-    local installed = luup.attr_get "InstalledPlugins2" or {}
-    local info = installed[1] or {}
-    if info.Title == "openLuup" then
-      info.VersionMajor = tostring(y%2000)
-      info.VersionMinor = tonumber(m) .. '.' .. tonumber(d)
-    end
   end
 
   luup.register_handler ("HTTP_openLuup", "openLuup")

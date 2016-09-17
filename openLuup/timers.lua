@@ -258,7 +258,8 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
         for i,n in ipairs (d) do offset[i] = (n - t.wday - 1) % 7 + 1 end
         table.sort (offset)
         next_time = target_time (now, time)
-        if next_time <= now then     -- too late!, so schedule some future day...
+--        if next_time <= now then     -- too late!, so schedule some future day...
+          if ((offset[1] ~= 7) or (next_time <= now)) then     -- too late!, so schedule some future day...
           next_time = target_time (now + offset[1] * day_offset, time)
         end
         return next_time 

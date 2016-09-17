@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.08.29",
+  VERSION       = "2016.09.17",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -149,7 +149,7 @@ luup.log "startup code completed"
 -- pre-installed plugins
 --
 
-local default_plugins_version = "2016.07.19"  --<<<-- change this to force update of default_plugins
+local default_plugins_version = "2016.09.17"  --<<<-- change this to force update of default_plugins
 
 local preinstalled = {
   
@@ -403,10 +403,10 @@ local default_plugins = {
     preinstalled.AltUI,
     preinstalled.AltAppStore,
     preinstalled.VeraBridge,
-    preinstalled.Razberry,
+    preinstalled.ZWay,
+--    preinstalled.Razberry,
     preinstalled.MySensors,
     preinstalled.DataYours,
---    preinstalled.ZWay,
   }
 
 --
@@ -481,7 +481,7 @@ local function update_plugin_versions (installed)
     local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
     local a = d.environment.ABOUT
     if i and a then
-      local v1,v2,v3 = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)"
+      local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
       if v3 then
 --        print (d.id,"v1,v2,v3", ("'%s', '%s', '%s'"): format (v1,v2,v3))
         local IP = installed[i]
@@ -489,7 +489,7 @@ local function update_plugin_versions (installed)
         if v3 == '' then
           IP.VersionMinor = tonumber(v2)
         else
-          IP.VersionMinor = table.concat ({tonumber(v2),tonumber(v3)}, '.')
+          IP.VersionMinor = table.concat ({tonumber(v2),tonumber(v3)}, '.') .. prerelease
         end
       end
     end
