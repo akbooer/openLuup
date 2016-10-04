@@ -5,6 +5,21 @@ local ABOUT = {
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- This module implements a WSAPI application connector for the openLuup port 3480 server.
@@ -69,6 +84,14 @@ local special = {       -- if not found on the CGI searchpaths, then lookup alte
   ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
   ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
   ["upnp/control/hag"]          = "openLuup/hag.lua",
+  
+  -- graphite_api support
+  ["dashboard"]           = "graphite_web.lua",
+  ["metrics"]             = "graphite_cgi.lua",
+  ["metrics/find"]        = "graphite_cgi.lua",
+  ["metrics/expand"]      = "graphite_cgi.lua",
+  ["metrics/index.json"]  = "graphite_cgi.lua",
+  ["render"]              = "graphite_cgi.lua",
 }
 
 -- utilities
@@ -94,7 +117,8 @@ end
 
 -- build makes an application function for the connector
 local function build (script)
-  local file = script: match "/(.+)"      -- ignore leading '/'
+--  local file = script: match "/?(.+)"      -- ignore leading '/'
+  local file = script
   local alternative = special[file]     -- 2016.05.30
   if alternative then
     _log (table.concat {"using ", alternative, " for ", file})
@@ -252,7 +276,10 @@ local function cgi (request)
   local wsapi_env = setmetatable (env, meta)
    
   -- execute the CGI
-  local script = URL.path or ''
+  local script = URL.path or ''  
+  
+  script = script: match "^/?(.-)/?$"      -- ignore leading and trailing '/'
+  
   cache[script] = cache[script] or build (script) 
   
   -- guaranteed to be something executable here, even it it's a dummy with error message

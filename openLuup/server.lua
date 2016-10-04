@@ -5,6 +5,21 @@ local ABOUT = {
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 --
@@ -267,6 +282,9 @@ local function request_object (request_URI, headers, post_content, method, http_
   local selector = {
     ["cgi"]           = wsapi.cgi,
     ["cgi-bin"]       = wsapi.cgi,
+    ["dashboard"]     = wsapi.cgi,    -- for graphite_api
+    ["metrics"]       = wsapi.cgi,    -- ditto
+    ["render"]        = wsapi.cgi,    -- ditto
     ["upnp"]          = wsapi.cgi,
     ["data_request"]  = data_request,
   }
@@ -360,7 +378,7 @@ end
 local function http_response (status, headers, iterator)
   
   local Hdrs = {}           -- force CamelCaps-style header names
-  for a,b in pairs (headers) do Hdrs[CamelCaps(a)] = b end
+  for a,b in pairs (headers or {}) do Hdrs[CamelCaps(a)] = b end
   headers = Hdrs        
   
   local response = make_content (iterator)    -- just for the moment, simply unwrap the iterator
