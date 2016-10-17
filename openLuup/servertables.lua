@@ -8,6 +8,7 @@
 -- feel free to add what you need
 
 -- 2016.07.14  added status_codes for server response
+-- 2016.10.17  added CGI prefixes and aliases
 
 local mimetypes = {
   css  = "text/css", 
@@ -72,7 +73,48 @@ local status_codes = {
    [505] = "HTTP Version not supported",
 }
 
+-- CGI prefixes: any HTTP request with these path roots are treated as CGIs
+local cgi_prefix = {
+    "cgi",          -- standard CGI directory
+    "cgi-bin",      -- ditto
+    
+    "dashboard",    -- for graphite_api (requires DataYours plugin)
+    "metrics",      -- ditto
+    "render",       -- ditto
+    
+    "upnp",         -- for Luup HAG requests
+    
+    "ZWaveAPI",     -- Z-Wave.me advanced API (requires Z-Way plugin)
+    "ZAutomation",  -- Z-Wave.me Virtual Device API
+  }
+
+-- CGI aliases: any matching full CGI path is redirected accordingly
+local cgi_alias = setmetatable ({
+    
+    ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
+    ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
+    ["upnp/control/hag"]          = "openLuup/hag.lua",
+    
+    -- graphite_api support
+    ["dashboard"]           = "graphite_web.lua",
+    ["metrics"]             = "graphite_cgi.lua",
+    ["metrics/find"]        = "graphite_cgi.lua",
+    ["metrics/expand"]      = "graphite_cgi.lua",
+    ["metrics/index.json"]  = "graphite_cgi.lua",
+    ["render"]              = "graphite_cgi.lua",
+  },
+  { __index = function (_, path)    -- special handling of Zway requests (all directed to same handler)
+      if path: match "^ZWaveAPI"
+      or path: match "^ZAutomation" then
+        return "cgi/zway_cgi.lua"
+      end
+    end
+  })
+
+
 return {
+    cgi_prefix    = cgi_prefix,
+    cgi_alias     = cgi_alias,
     mimetypes     = mimetypes,
     status_codes  = status_codes,
   }

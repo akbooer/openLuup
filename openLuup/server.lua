@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.09.17",
+  VERSION       = "2016.10.17",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -44,6 +44,7 @@ local ABOUT = {
 -- 2016.06.09   also look in files/ directory
 -- 2016.07.06   add 'method' to WSAPI server call
 -- 2016.08.03   remove optional "lu_" prefix from system callback request names
+-- 2016.10.17   use CGI prefixes from external servertables module
 
 ---------------------
 
@@ -276,25 +277,25 @@ end
 --
 -- return a request object containing all the information a handler needs
 -- only required parameter is request_URI, others have sensible defaults.
+  
+-- define the appropriate handler depending on request type
+local selector = {
+  ["data_request"]  = data_request,
+}
+
+-- add those defined in the server tables
+for _,prefix in pairs (tables.cgi_prefix) do
+  selector[prefix] = wsapi.cgi
+end
+
+local self_reference = {
+  ["localhost"] = true,
+  ["127.0.0.1"] = true, 
+  ["0.0.0.0"] = true, 
+  [myIP] = true,
+}
 
 local function request_object (request_URI, headers, post_content, method, http_version)
-  -- picks the appropriate handler depending on request type
-  local selector = {
-    ["cgi"]           = wsapi.cgi,
-    ["cgi-bin"]       = wsapi.cgi,
-    ["dashboard"]     = wsapi.cgi,    -- for graphite_api
-    ["metrics"]       = wsapi.cgi,    -- ditto
-    ["render"]        = wsapi.cgi,    -- ditto
-    ["upnp"]          = wsapi.cgi,
-    ["data_request"]  = data_request,
-  }
-  
-  local self_reference = {
-    ["localhost"] = true,
-    ["127.0.0.1"] = true, 
-    ["0.0.0.0"] = true, 
-    [myIP] = true,
-  }
   
   if not (request_URI: match "^https?://") 
   or (request_URI: match "^//") then 
