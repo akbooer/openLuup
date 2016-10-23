@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.09.17",
+  VERSION       = "2016.10.23",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -99,7 +99,7 @@ attr ("longitude", "0.0")
 -- other parameters
 attr ("TemperatureFormat", "C")
 attr ("PK_AccessPoint", "88800000")
-attr ("currency", "Â£")
+attr ("currency", "£")
 attr ("date_format", "dd/mm/yy")
 attr ("model", "Not a Vera")
 attr ("timeFormat", "24hr")
@@ -116,7 +116,7 @@ luup.log "startup code completed"
 --  Using_2G = 0,
 --  breach_delay = "30",
 --  category_filter = {},
-  currency = "Â£",
+  currency = "£",
   date_format = "dd/mm/yy",
 --  device_sync = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21",
 --  devices = {},
@@ -326,6 +326,27 @@ local preinstalled = {
         pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
       },
     },
+  
+  Graphite_CGI =
+
+    {
+      AllowMultiple   = "0",
+      Title           = "Graphite_CGI",
+      Icon            = "https://raw.githubusercontent.com/akbooer/DataYours/master/icons/Graphite_CGI.png",
+      Instructions    = "https://github.com/akbooer/DataYours/tree/master/Documentation",
+      AutoUpdate      = "0",
+      VersionMajor    = "not",
+      VersionMinor    = 'installed',
+      id              = "graphite_cgi",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = { },
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/Datayours",
+        pattern   = "graphite_cgi.lua",             -- pattern match string for required files
+      },
+    },
 
   MySensors =
 
@@ -419,9 +440,9 @@ local default_plugins = {
     preinstalled.AltAppStore,
     preinstalled.VeraBridge,
     preinstalled.ZWay,
---    preinstalled.Razberry,
     preinstalled.MySensors,
     preinstalled.DataYours,
+    preinstalled.Graphite_CGI,
   }
 
 --
