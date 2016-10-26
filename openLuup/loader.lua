@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2016.06.09",
+  VERSION       = "2016.06.18",
   DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 --
@@ -26,6 +41,7 @@ local ABOUT = {
 -- 2016.05.21  fix for invalid argument list in parse_service_xml
 -- 2016.05.24  virtual file system for system .xml and .json files
 -- 2016.06.09  also look in files/ directory
+-- 2016.06.18  also look in openLuup/ directory (for AltAppStore)
 
 ------------------
 --
@@ -137,8 +153,9 @@ end
 
 local function raw_read (filename)
   local f = io.open (filename) 
-    or io.open ("../cmh-lu/" .. filename)           -- look in 'cmh-lu/' directory
-    or io.open ("files/" .. filename, 'rb')             -- 2016.06.09  also look in files/
+    or io.open ("../cmh-lu/" .. filename)             -- look in 'cmh-lu/' directory
+    or io.open ("files/" .. filename, 'rb')           -- 2016.06.09  also look in files/
+    or io.open ("openLuup/" .. filename, 'rb')        -- 2016.06.18  also look in openLuup/ (for AltAppStore)
   if f then 
     local data = f: read "*a"
     f: close () 

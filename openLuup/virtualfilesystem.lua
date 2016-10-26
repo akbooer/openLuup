@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.06.03",
+  VERSION       = "2016.08.29",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- the loader cache is preset with these files
@@ -12,9 +27,9 @@ local ABOUT = {
 -- the local references mean that these files will not be removed from the 
 -- ephemeral cache table by garbage collection 
 --
--- device files for "openLuup" (aka. Extensions)
--- this also provides the files for some unit tests
---
+-- openLuup reload script files and index.html to redirect to AltUI.
+-- device files for "openLuup", "AltAppStore", and "VeraBridge". 
+-- DataYours configuration files.
 
 local D_openLuup_dev = [[
 <?xml version="1.0"?>
@@ -40,7 +55,92 @@ local D_openLuup_dev = [[
 
 local D_openLuup_json = [[
 {
-  "default_icon": "https:\/\/avatars.githubusercontent.com\/u\/4962913",
+  "default_icon": "https://avatars.githubusercontent.com/u/4962913",
+	"Tabs": [
+		{
+			"Label": {
+				"lang_tag": "tabname_control",
+				"text": "Control"
+			},
+			"Position": "0",
+			"TabType": "flash",
+			"ControlGroup":[
+				{
+					"id": "1",
+					"scenegroup": "1"
+				}
+			],
+			"SceneGroup":[
+				{
+					"id": "1",
+					"top": "1.5",
+					"left": "0.25",
+					"x": "1.5",
+					"y": "2"
+				}
+			],
+			"Control": [
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "0",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine1",
+						"Top": 40,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "1",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine2",
+						"Top": 60,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "openLuup",
+						"Variable": "Version",
+						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "label",
+					"top": "4",
+					"left": "0",
+					"Label": {
+						"lang_tag": "donate",
+						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
+					},
+					"Display": {
+						"Top": 140,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				}
+			]
+		}
+  ],
   "DeviceType": "openLuup"
 }
 ]]
@@ -48,7 +148,7 @@ local D_openLuup_json = [[
 local I_openLuup_impl = [[
 <?xml version="1.0"?>
 <implementation>
-  <files>openLuup/extensions.lua</files>
+  <files>openLuup/L_openLuup.lua</files>
   <startup>init</startup>
   <actionList>
     
@@ -124,6 +224,335 @@ local S_openLuup_svc = [[
 </scpd>
 ]]
 
+-----
+--
+-- AltAppStore device files
+--
+
+local D_AltAppStore_dev = [[
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:AltAppStore:1</deviceType>
+    <friendlyName>Alternate App Store</friendlyName>
+    <manufacturer></manufacturer>
+    <manufacturerURL></manufacturerURL>
+    <modelDescription>AltUI App Store</modelDescription>
+    <modelName></modelName>
+    <modelNumber></modelNumber>
+    <Category_Num>1</Category_Num>
+    <UDN></UDN>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:AltAppStore:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:AltAppStore1</serviceId>
+        <SCPDURL>S_AltAppStore.xml</SCPDURL>
+      </service>
+    </serviceList>
+		<staticJson>D_AltAppStore.json</staticJson>
+    <implementationList>
+      <implementationFile>I_AltAppStore.xml</implementationFile>
+    </implementationList>
+  </device>
+</root>
+]]
+
+local D_AltAppStore_json = [[
+{
+	"flashicon": "http://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
+	"default_icon": "http://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
+	"x": "2",
+	"y": "3",
+	"Tabs": [
+		{
+			"Label": {
+				"lang_tag": "tabname_control",
+				"text": "Control"
+			},
+			"Position": "0",
+			"TabType": "flash",
+			"ControlGroup":[
+				{
+					"id": "1",
+					"scenegroup": "1"
+				}
+			],
+			"SceneGroup":[
+				{
+					"id": "1",
+					"top": "1.5",
+					"left": "0.25",
+					"x": "1.5",
+					"y": "2"
+				}
+			],
+			"Control": [
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "0",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine1",
+						"Top": 40,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "1",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine2",
+						"Top": 60,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:AltAppStore1",
+						"Variable": "Version",
+						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "label",
+					"top": "4",
+					"left": "0",
+					"Label": {
+						"lang_tag": "icons8",
+						"text": "<a href='https://icons8.com/license/' target='_blank'>icon by icons8</a>"
+					},
+					"Display": {
+						"Top": 120,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				}
+			]
+		}
+  ],
+	"DeviceType": "urn:schemas-upnp-org:device:AltAppStore:1"
+}
+]]
+
+local I_AltAppStore_impl = [[
+<?xml version="1.0"?>
+<implementation>
+  <files>openLuup/L_AltAppStore.lua</files>
+  <startup>AltAppStore_init</startup>
+  <actionList>
+    <action>
+  		<serviceId>urn:upnp-org:serviceId:AltAppStore1</serviceId>
+  		<name>update_plugin</name>
+  		<run>
+  			-- lul_device, lul_settings
+        return update_plugin_run (lul_settings)
+  		</run>
+  		<job>
+  			return update_plugin_job (lul_settings)
+  		</job>
+    </action>
+  </actionList>
+</implementation>
+]]
+
+local S_AltAppStore_svc = [[
+<?xml version="1.0"?>
+<scpd xmlns="urn:schemas-upnp-org:service-1-0">
+  <specVersion>
+      <major>1</major>
+      <minor>0</minor>
+  </specVersion>
+	<serviceStateTable>
+    <stateVariable sendEvents="no">
+      <name>metadata</name>
+      <dataType>string</dataType>
+    </stateVariable>	
+	</serviceStateTable>
+  <actionList>
+    <action>
+      <name>update_plugin</name>
+      <argumentList>
+        <argument>
+          <name>metadata</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+	</actionList>
+</scpd>
+]]
+
+
+-----
+--
+-- VeraBridge device files
+--
+
+local D_VeraBridge_dev = [[
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>VeraBridge</deviceType>
+    <friendlyName>Vera Bridge</friendlyName>
+    <manufacturer>akbooer</manufacturer>
+    <manufacturerURL></manufacturerURL>
+    <modelDescription>Vera Bridge for openLuup</modelDescription>
+    <modelName>v2.0</modelName>
+    <modelNumber>1</modelNumber>
+    <handleChildren>1</handleChildren>
+    <Category_Num>1</Category_Num>
+    <UDN></UDN>
+    <serviceList>
+      <service>
+        <serviceType>urn:akbooer-com:service:VeraBridge:1</serviceType>
+        <serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+        <SCPDURL>S_VeraBridge.xml</SCPDURL>
+      </service>
+    </serviceList>
+		<staticJson>D_VeraBridge.json</staticJson>
+    <implementationList>
+      <implementationFile>I_VeraBridge.xml</implementationFile>
+    </implementationList>
+  </device>
+</root>
+]]
+
+-- TODO: switch to icons/ directory once this release is in the master branch
+local D_VeraBridge_json = [[
+{
+	"default_icon": "http://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
+	"Tabs": [
+		{
+			"Label": {
+				"lang_tag": "tabname_control",
+				"text": "Control"
+			},
+			"Position": "0",
+			"TabType": "flash",
+			"ControlGroup":[
+				{
+					"id": "1",
+					"scenegroup": "1"
+				}
+			],
+			"SceneGroup":[
+				{
+					"id": "1",
+					"top": "1.5",
+					"left": "0.25",
+					"x": "1.5",
+					"y": "2"
+				}
+			],
+			"Control": [
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "0",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine1",
+						"Top": 40,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "1",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine2",
+						"Top": 60,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "urn:akbooer-com:serviceId:VeraBridge1",
+						"Variable": "Version",
+						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				}
+			]
+		}
+  ],
+	"DeviceType": "VeraBridge"
+}
+]]
+
+local I_VeraBridge_impl = [[
+<?xml version="1.0"?>
+<implementation>
+  <files>openLuup/L_VeraBridge.lua</files>
+  <startup>init</startup>
+  <actionList>
+    <action>
+  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+  		<name>GetVeraFiles</name>
+  		<job>
+  			GetVeraFiles ()
+  			return 4,0
+  		</job>
+    </action>
+  </actionList>
+</implementation>
+]]
+
+local S_VeraBridge_svc = [[
+<?xml version="1.0"?>
+<scpd xmlns="urn:schemas-upnp-org:service-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <actionList>
+    <action>
+      <name>GetVeraFiles</name>
+    </action>
+  </actionList>
+</scpd>
+]]
+
 
 -----
 
@@ -176,6 +605,133 @@ GOTO loop
 :exit
 ]]
 
+
+-----
+--
+-- Z-Way support
+--
+local D_ZWay_xml = [[
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion>
+    <major>1</major>
+    <minor>0</minor>
+  </specVersion>
+  <device>
+    <deviceType>urn:akbooer-com:device:ZWay:1</deviceType>
+    <friendlyName>ZWay Network Interface</friendlyName>
+    <manufacturer>akbooer</manufacturer>
+    <manufacturerURL></manufacturerURL>
+    <modelDescription>ZWay Network</modelDescription>
+    <modelName></modelName>
+    <modelNumber></modelNumber>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-micasaverde-org:service:ZWaveNetwork:1</serviceType>
+        <serviceId>urn:micasaverde-com:serviceId:ZWaveNetwork1</serviceId>
+        <controlURL>/upnp/control/ZWaveNetwork1</controlURL>
+        <eventSubURL>/upnp/event/ZWaveNetwork1</eventSubURL>
+        <SCPDURL>S_ZWaveNetwork1.xml</SCPDURL>
+      </service>
+    </serviceList>
+    <implementationList>
+      <implementationFile>I_ZWay.xml</implementationFile>
+    </implementationList>
+		<staticJson>D_ZWay.json</staticJson>
+  </device>
+</root>
+]]
+
+
+local D_ZWay_json = [[
+{
+  "default_icon": "http://raw.githubusercontent.com/akbooer/Z-Way/master/icons/Z-Wave.me.png",
+	"Tabs": [
+		{
+			"Label": {
+				"lang_tag": "tabname_control",
+				"text": "Control"
+			},
+			"Position": "0",
+			"TabType": "flash",
+			"ControlGroup":[
+				{
+					"id": "1",
+					"scenegroup": "1"
+				}
+			],
+			"SceneGroup":[
+				{
+					"id": "1",
+					"top": "1.5",
+					"left": "0.25",
+					"x": "1.5",
+					"y": "2"
+				}
+			],
+			"Control": [
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "0",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine1",
+						"Top": 40,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"1",
+					"ControlType": "variable",
+					"top": "1",
+					"left": "0",
+					"Display": {
+						"Service": "urn:upnp-org:serviceId:altui1",
+						"Variable": "DisplayLine2",
+						"Top": 60,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "urn:akbooer-com:serviceId:ZWay1",
+						"Variable": "Version",
+						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				}
+			]
+		}
+  ],
+  "DeviceType": "urn:akbooer-com:device:ZWay:1"
+}
+]]
+
+local I_ZWay_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <functions>
+    local M = require "L_ZWay"
+    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
+    function startup (...)
+      return M.init (...)
+    end
+  </functions>
+  <startup>startup</startup>
+</implementation>
+]]
 
 -----
 --
@@ -241,6 +797,13 @@ aggregationMethod = average
 
 ]]
 
+local unknown_wsp = [[
+          1,      86400,        0.5,          1
+         84,      86400,          1
+          0,                      0
+]]
+
+
 -----
 
 local manifest = {
@@ -250,12 +813,27 @@ local manifest = {
     ["I_openLuup.xml"]  = I_openLuup_impl,
     ["S_openLuup.xml"]  = S_openLuup_svc,
     
+    ["D_AltAppStore.xml"]  = D_AltAppStore_dev,
+    ["D_AltAppStore.json"] = D_AltAppStore_json,
+    ["I_AltAppStore.xml"]  = I_AltAppStore_impl,
+    ["S_AltAppStore.xml"]  = S_AltAppStore_svc,
+    
+    ["D_VeraBridge.xml"]  = D_VeraBridge_dev,
+    ["D_VeraBridge.json"] = D_VeraBridge_json,
+    ["I_VeraBridge.xml"]  = I_VeraBridge_impl,
+    ["S_VeraBridge.xml"]  = S_VeraBridge_svc,
+    
+    ["D_ZWay.xml"]  = D_ZWay_xml,
+    ["D_ZWay.json"] = D_ZWay_json,
+    ["I_ZWay.xml"]  = I_ZWay_xml,
+    
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,
     ["openLuup_reload.bat"] = openLuup_reload_bat,
 
     ["storage-schemas.conf"]      = storage_schemas_conf,
     ["storage-aggregation.conf"]  = storage_aggregation_conf,
+    ["unknown.wsp"]               = unknown_wsp,
     
   }
 
@@ -269,20 +847,37 @@ return {
   
   attributes = function (filename) 
     local y = manifest[filename]
-    if type(y) == "string" then return {type = "file", size = #y} end
+    if type(y) == "string" then return {mode = "file", size = #y} end
   end,
   
+  open = function (filename, mode)
+    mode = mode or 'r'
+    
+    if mode: match "r" then
+      if manifest[filename] then
+        return {
+          read  = function () return manifest[filename] end,
+          close = function () filename = nil end,
+        }
+      else
+        return nil, "file not found:" .. (filename or '')
+      end
+    end
+    
+    if mode: match "w" then
+      return {
+        write = function (_, contents) manifest[filename] = contents end,
+        close = function () filename = nil end,
+      }
+    end
+    
+    return nil, "unknown mode for vfs.open: " .. mode
+  end,
+
   dir   = function () return next, manifest end,
   read  = function (filename) return manifest[filename] end,
   write = function (filename, contents) manifest[filename] = contents end,
 
-  open  = function (filename)
-            return {
-              read  = function () return manifest[filename] end,
-              write = function (_, contents) manifest[filename] = contents end,
-              close = function () filename = nil end,
-            }
-          end,
 }
 
 -----

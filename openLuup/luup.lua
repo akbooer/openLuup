@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.06.06",
+  VERSION       = "2016.07.20",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 --
@@ -16,6 +31,8 @@ local ABOUT = {
 -- 2016.05.17  set_failure sets urn:micasaverde-com:serviceId:HaDevice1 / CommFailure variable in device
 -- 2016.05.26  add device number to CommFailure variables in set_failure (thanks @vosmont)
 -- 2016.06.06  add special handling of top-level "openLuup" attribute
+-- 2016.07.18  improve call_action error messages
+-- 2016.07.20  truncate very long values in variable_set log output and remove control characters
 
 local logs          = require "openLuup.logs"
 
@@ -123,7 +140,7 @@ end
 --
 
 -- log message for missing dev / srv/ var
-local function missing_dev_srv_name (dev, srv, name, tag)
+local function log_missing_dev_srv_name (dev, srv, name, tag)
     local fmt = "No such device/serviceId/name %s.%s.%s"
     local msg = fmt: format (tostring(dev or '?'),srv or '?', name or '?')
     _log (msg, tag or ABOUT.NAME)
@@ -145,10 +162,16 @@ end
 -- parameters: service (string), variable (string), value (string), device (string or number), [startup (bool)]
 -- returns: nothing 
 local function variable_set (service, name, value, device, startup)
+    -- shorten long variable strings, removing control characters
+    local function truncate (text)
+      text = (text or ''): gsub ("%c", ' ')
+      if #text > 120 then text = text: sub (1,115) .. "..." end    -- truncate long variable values
+      return text
+    end
   device = device or scheduler.current_device()    -- undocumented luup feature!
   local dev = devices[device]
   if not dev then 
-    missing_dev_srv_name (device, service, name, "luup.variable_set")
+    log_missing_dev_srv_name (device, service, name, "luup.variable_set")
     return
   end
   service = tostring (service)
@@ -156,8 +179,9 @@ local function variable_set (service, name, value, device, startup)
   value = tostring (value)
   local var = dev:variable_set (service, name, value, not startup) 
   if var then
-    local msg = ("%s.%s.%s was: %s now: %s #hooks:%d"): format (device,service, name, 
-                var.old or "MISSING", value, #var.watchers)
+    local old = var.old  or "MISSING"
+    local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
+    local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
     _log (msg, "luup.variable_set")
     _log_altui_variable (var)              -- log for altUI to see
   end 
@@ -170,7 +194,7 @@ local function variable_get (service, name, device)
   device = device or scheduler.current_device()    -- undocumented luup feature!
   local dev = devices[device]
   if not dev then 
-    missing_dev_srv_name (device, service, name, "luup.variable_get")
+    log_missing_dev_srv_name (device, service, name, "luup.variable_get")
     return
   end
   local var = dev:variable_get (service, name) or {}
@@ -193,7 +217,7 @@ local function device_supports_service (serviceId, device)
   if dev then
     support = dev:supports_service (serviceId)
   else
-    missing_dev_srv_name (device, serviceId, '', "luup.device_supports_service")
+    log_missing_dev_srv_name (device, serviceId, '', "luup.device_supports_service")
   end
   return support
 end
@@ -241,7 +265,7 @@ local function attr_set (attribute, value, device)
       dev: attr_set (attribute, value)
       _log (("%s.%s = %s"): format (tostring (device), attribute, value), "luup.attr_set")
     else
-      missing_dev_srv_name (device, "ATTRIBUTE", attribute, "luup.attr_set")
+      log_missing_dev_srv_name (device, "ATTRIBUTE", attribute, "luup.attr_set")
     end
   end
 end
@@ -269,7 +293,7 @@ local function attr_get (attribute, device)
     if dev then
       attr = dev: attr_get (attribute)
     else
-      missing_dev_srv_name (device, "ATTRIBUTE", attribute, "luup.attr_get")
+      log_missing_dev_srv_name (device, "ATTRIBUTE", attribute, "luup.attr_get")
     end
   end
   return attr
@@ -376,20 +400,32 @@ local function call_action (service, action, arguments, device)
   
   local devNo = tonumber (device) or 0
   _log (("%d.%s.%s "): format (devNo, service, action), "luup.call_action")
+  
+  local function missing_action ()
+    log_missing_dev_srv_name (devNo, service, action, "luup.call_action")
+    return 401, "Invalid service/action/device", 0, {}
+  end
+  
+  -- action returns: error, mesage, jobNo, arrguments
+  local e,m,j,a
+  
   if devNo == 0 then
-    return Device_0: call_action (service, action, arguments) 
+    e,m,j,a = Device_0: call_action (service, action, arguments) 
   else
     local target_device = devices[devNo]
-    if not target_device then
-      missing_dev_srv_name (devNo, service, action, "luup.call_action")
-    end
-    local dev = find_handler (target_device)
-    if dev then   
-      return dev: call_action (service, action, arguments, devNo) 
+    if target_device then
+      local dev = find_handler (target_device)
+      if dev then   
+        e,m,j,a = dev: call_action (service, action, arguments, devNo) 
+      else
+        e,m,j,a = missing_action ()
+      end
     else
-      missing_dev_srv_name (devNo, service, action, "luup.call_action")
+      e,m,j,a = missing_action ()
     end
   end
+  
+  return e,m,j,a
  end
 
 -- function: call_delay
@@ -505,8 +541,7 @@ local inet = {
  -- Optionally append "user" and "pass" arguments for http authentication, 
  -- and "timeout" to specify the maximum time to wait in seconds.
   wget = function (URL, Timeout, Username, Password)
-  local status, result = server.wget (URL, Timeout, Username, Password)
-  return status, result
+  return server.wget (URL, Timeout, Username, Password)
   end
 }
 

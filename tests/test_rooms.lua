@@ -44,24 +44,6 @@ function TestRooms:test_room_delete ()
   t.assertIsNil (luup.rooms[n])
 end
 
-function TestRooms:test_room_save_load ()
-  local roomfile = "tests/data/testroom.json"
-  local a = room.create "A room to be written"
-  local b = room.create "A room to be saved"
-  local c = room.create "A room to be deleted"
-  local d = room.create "A toom to be loaded"
-  local e = room.create "A room with a view"
-  room.delete (c)         -- make a hole in the contiguous run of rooms
-  local ok, err = room.save (roomfile)
-  t.assertIsNil (err)
-  t.assertTrue (ok)
-  local n = #luup.rooms
-  ok, err = room.load (roomfile)
-  t.assertIsNil (err)
-  t.assertTrue (ok)
-  t.assertEquals (#ok, n)
-  t.assertItemsEquals (luup.rooms, ok)
-end
 
 ---------------------
 

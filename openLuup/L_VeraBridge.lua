@@ -1,10 +1,25 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.06.01",
+  VERSION       = "2016.08.31",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- bi-directional monitor/control link to remote Vera system
@@ -36,6 +51,8 @@ ABOUT = {
 -- 2016.05.21   @explorer fix for missing Zwave device children when ZWaveOnly selected
 -- 2016.05.23   HouseModeMirror for mirroring either way (thanks @konradwalsh)
 -- 2016.06.01   Add GetVeraFiles action to replace openLuup_getfiles separate utility
+-- 2016.06.20   Do not re-parent device #2 (now openLuup device) if not child of #1 (_SceneController)
+-- 2016.08.12   Add CloneRooms option (set to 'true' to use same rooms as remote Vera)
 
 local devNo                      -- our device number
 
@@ -76,7 +93,7 @@ local HouseModeOptions = {      -- 2016.05.23
 
 -- @explorer options for device filtering
 
-local ZWaveOnly, Included, Excluded
+local CloneRooms, ZWaveOnly, Included, Excluded
 
 -- LUUP utility functions 
 
@@ -152,6 +169,18 @@ end
 local function index_rooms (rooms)
   local room_index = {}
   for number, name in pairs (rooms) do
+    local roomNo = tonumber (number)      -- user_data may return string, not number
+    room_index[roomNo] = name
+    room_index[name] = roomNo
+  end
+  return room_index
+end
+
+-- create bi-directional indices of REMOTE rooms: room name <--> room number
+local function index_remote_rooms (rooms)    --<-- different structure
+  local room_index = {}
+  for _, room in pairs (rooms) do
+    local number, name = room.id, room.name
     local roomNo = tonumber (number)      -- user_data may return string, not number
     room_index[roomNo] = name
     room_index[name] = roomNo
@@ -255,7 +284,7 @@ end
 --]]
 
 -- create the child devices managed by the bridge
-local function create_children (devices, room)
+local function create_children (devices, room_0)
   local N = 0
   local list = {}           -- list of created or deleted devices (for logging)
   local something_changed = false
@@ -264,12 +293,19 @@ local function create_children (devices, room)
     dev.id = tonumber(dev.id)
     if is_to_be_cloned (dev) then
       N = N + 1
+      local room = room_0
       local cloneId = local_by_remote_id (dev.id)
       if not current[cloneId] then 
         something_changed = true
       else
-        local old_room = luup.devices[cloneId].room_num
-        room = (old_room ~= 0) and old_room or room   -- use room number
+        local new_room
+        local remote_room = tonumber(dev.room)
+        if CloneRooms then    -- force openLuup to use the same room as Vera
+          new_room = local_room_index[remote_room_index[remote_room]] or 0
+        else
+          new_room = luup.devices[cloneId].room_num
+        end
+        room = (new_room ~= 0) and new_room or room_0   -- use room number
       end
       create_new (cloneId, dev, room) -- recreate the device anyway to set current attributes and variables
       list[#list+1] = cloneId
@@ -352,9 +388,22 @@ local function GetUserData ()
       luup.log (new_room_name)
       rooms.create (new_room_name)
   
-      remote_room_index = index_rooms (Vera.rooms or {})
+      remote_room_index = index_remote_rooms (Vera.rooms or {})
       local_room_index  = index_rooms (luup.rooms or {})
       luup.log ("new room number: " .. (local_room_index[new_room_name] or '?'))
+      
+      if CloneRooms then    -- check individual rooms too...
+        for room_name in pairs (remote_room_index) do
+          if type(room_name) == "string" then
+            if not local_room_index[room_name] then 
+              luup.log ("creating room: " .. room_name)
+              local new = rooms.create (room_name) 
+              local_room_index[new] = room_name
+              local_room_index[room_name] = new
+            end
+          end
+        end
+      end
   
       version = Vera.BuildVersion
       luup.log ("BuildVersion = " .. version)
@@ -604,6 +653,12 @@ function GetVeraFiles ()
   lfs.mkdir "icons"
   local _,b,_ = BuildVersion: match "(%d+)%.(%d+)%.(%d+)"    -- branch, major minor
   local major = tonumber(b)
+
+  local icon_directories = {
+    [5] = "/www/cmh/skins/default/icons/",                        -- UI5 icons
+    [6] = "/www/cmh_ui6/skins/default/icons/",                    -- UI6 icons, thanks to @reneboer for this information
+    [7] = "/www/cmh/skins/default/img/devices/device_states/",    -- UI7 icons
+  }
  
   if major then  
     if major > 5 then     -- UI7
@@ -660,16 +715,19 @@ function init (lul_device)
 
   -- User configuration parameters: @explorer and @logread options
   
-  ZWaveOnly = uiVar ("ZWaveOnly", '')         -- if set to true then only Z-Wave devices are considered by VeraBridge.
-  Included  = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
-  Excluded  = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge, 
+  CloneRooms  = uiVar ("CloneRooms", '')        -- if set to 'true' then clone rooms and place devices there
+  ZWaveOnly   = uiVar ("ZWaveOnly", '')         -- if set to 'true' then only Z-Wave devices are considered by VeraBridge.
+  Included    = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
+  Excluded    = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge, 
                                               -- ...takes precedence over the first two.
   
   local hmm = uiVar ("HouseModeMirror",HouseModeOptions['0'])   -- 2016.05.23
   HouseModeMirror = hmm: match "^([012])" or '0'
   setVar ("HouseModeMirror", HouseModeOptions[HouseModeMirror]) -- replace with full string
   
-  ZWaveOnly = ZWaveOnly == "true"                         -- convert to logical
+  CloneRooms = CloneRooms == "true"                        -- convert to logical
+  ZWaveOnly  = ZWaveOnly  == "true" 
+  
   Included = convert_to_set (Included)
   Excluded = convert_to_set (Excluded)  
   Mirrored, MirrorHash = set_of_mirrored_devices ()       -- create set and hash of remote device IDs which are mirrored
@@ -678,7 +736,10 @@ function init (lul_device)
   if OFFSET == BLOCKSIZE then 
     Zwave = {1}                   -- device IDs for mapping (same value on local and remote)
     set_parent (1, devNo)         -- ensure Zwave controller is an existing child 
-    set_parent (2, 0)             -- unhook local scene controller (remote will have its own)
+    local d2 = luup.devices[2]
+    if d2.device_num_parent ~= 0 then   --   2016.06.20
+      set_parent (2, 0)           -- unhook local scene controller (remote will have its own)
+    end
     luup.log "VeraBridge maps remote Zwave controller"
   end
 
@@ -687,7 +748,12 @@ function init (lul_device)
   local Ndev, Nscn
   Ndev, Nscn, BuildVersion = GetUserData ()
   
-  setVar ("Version", ABOUT.VERSION)
+  do -- version number
+    local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
+    local version = ("v%d.%d.%d"): format (y%2000,m,d)
+    setVar ("Version", version)
+  end
+  
   setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
   setVar ("DisplayLine2", ip, SID.altui)
   

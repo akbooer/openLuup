@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2016.06.02",
+  VERSION       = "2016.07.12",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- This file not only contains the luup.chdev submodule, 
@@ -20,6 +35,8 @@ local ABOUT = {
 -- 2016.05.12  use luup.attr_get and set, rather than a dependence on openLuup.userdata
 -- 2016.05.24  fix 'nil' plugin attribute
 -- 2016.06.02  undo @explorer string mods (interim solution not now needed) and revert to standard Vera syntax
+-- 2016.07.10  add extra 'no_reload' parameter to luup.chdev.sync (for ZWay plugin)
+-- 2016.07.12  add 'reload' return parameter to luup.chdev.sync (ditto)
 
 local logs      = require "openLuup.logs"
 
@@ -292,27 +309,30 @@ end
   
 -- function: sync
 -- parameters: device (string or number), ptr (binary object),
--- returns: nothing
+--    Note extra parameter 'no_reload' cf. luup 
+-- returns: nothing  [CHANGED to return true if a reload WOULD have occurred and no_reload is set]
 --
 -- Pass in the ptr which you received from the start function. 
 -- Tells the Luup engine you have finished enumerating the child devices. 
 -- 
-local function sync (_, ptr)
-  _log (table.concat{"syncing children"}, "luup.chdev.sync")
+local function sync (device, ptr, no_reload)
+  local name = luup.devices[device].description or '?'
+  _log (("[%d] %s, syncing children"): format (device, name), "luup.chdev.sync")
   -- check if any existing ones not now required
   for _, devNo in pairs(ptr.old) do
     local fmt = "deleting [%d] %s"
     _log (fmt:format (devNo, luup.devices[devNo].description or '?'))
     luup.devices[devNo] = nil             -- no finesse required here, ...
-    ptr.reload = true                     -- ...system will be reloaded
+    ptr.reload = true                     -- ...system should be reloaded
   end
   -- now it's safe to link new ones into luup.devices
   for devNo, dev in pairs (ptr.new) do
     luup.devices[devNo] = dev  
   end
-  if ptr.reload then
+  if ptr.reload and not no_reload then
     luup.reload() 
   end
+  return ptr.reload
 end
 
 

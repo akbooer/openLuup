@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2016.05.30",
+  VERSION       = "2016.10.17",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- This module implements a WSAPI application connector for the openLuup port 3480 server.
@@ -21,6 +36,11 @@ local ABOUT = {
 -- 2016.02.26  add self parameter to input.read(), seems to be called from wsapi.request with colon syntax
 --             ...also util.lua shows that the same is true for the error.write(...) function.
 -- 2016.05.30  look in specified places for some missing CGI files 
+-- 2016.07.05  use "require" for WSAPI files with a .lua extension (enables easy debugging)
+-- 2016.07.06  add 'method' to WSAPI server call for REQUEST_METHOD metavariable
+-- 2016.07.14  change cgi() parameter to request object
+-- 2016.07.15  three-parameters WSAPI return: status, headers, iterator
+-- 2016.10.17  use CGI aliases from external servertables module
 
 --[[
 
@@ -51,21 +71,14 @@ The connectors are careful to treat errors gracefully: if they occur before send
 
 --]]
 
-local loader  = require "openLuup.loader"     -- to create new environment in which to execute CGI script 
-local logs    = require "openLuup.logs"       -- used for wsapi_env.error:write()
+local loader  = require "openLuup.loader"       -- to create new environment in which to execute CGI script 
+local logs    = require "openLuup.logs"         -- used for wsapi_env.error:write()
+local tables  = require "openLuup.servertables" -- used for CGI aliases
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 
 logs.banner (ABOUT)   -- for version control
-
---
-
-local special = {       -- if not found on the CGI searchpaths, then lookup alternatives here
-  ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
-  ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
-  ["upnp/control/hag"]          = "openLuup/hag.lua",
-}
 
 -- utilities
 
@@ -90,17 +103,17 @@ end
 
 -- build makes an application function for the connector
 local function build (script)
-  local file = script: match ".(.+)"      -- ignore leading '/'
+  local file = script
+  -- CGI aliases: any matching full CGI path is redirected
+  local alternative = tables.cgi_alias[file]     -- 2016.05.30 and 2016.10.17
+  if alternative then
+    _log (table.concat {"using ", alternative, " for ", file})
+    file = alternative
+  end
+  
   local f = io.open (file) 
   if not f then 
-    local alternative = special[file]     -- 2016.05.30
-    if alternative then
-      _log (table.concat {"using ", alternative, " for ", file})
-      f = io.open (alternative)
-    end
-  end
-  if not f then 
-    return dummy_app (404, "file not found: " .. (script or '?')) 
+    return dummy_app (404, "file not found: " .. (file or '?')) 
   end
   local line = f: read "*l"
   
@@ -109,19 +122,38 @@ local function build (script)
   if not line:match "^%s*#!/usr/bin/env%s+wsapi.cgi%s*$" then 
     return dummy_app (501, "file is not a WSAPI application: " .. (script or '?')) 
   end
-  code = f:read "*a"
-  f: close ()
+  
+  -- if it has a .lua extension, then we can use 'require' and this means that
+  -- it can be easily debugged because the file is recognised by the IDE
+  
+  local lua_env
+  local lua_file = file: match "(.*)%.lua$"
+  if lua_file then
+    _log "using REQUIRE to load .lua CGI"
+    f: close ()                               -- don't need it open
+    lua_file = lua_file: gsub ('/','.')       -- replace path separators with periods, for require path
+    lua_env = require (lua_file)
+    if type(lua_env) ~= "table" then
+      _log ("error - require failed: " .. lua_file)
+      lua_env = nil
+    end
     
-  -- compile and load
-  local a, error_msg = loadstring (code, script)    -- load it
-  if not a or error_msg then
-    return dummy_app (500, error_msg)               -- 'internal server error'
-  end
-  local lua_env = loader.new_environment (script)   -- use new environment
-  setfenv (a, lua_env)                              -- Lua 5.1 specific function environment handling
-  a, error_msg = pcall(a)                           -- instantiate it
-  if not a then
-    return dummy_app (500, error_msg)               -- 'internal server error'
+  else
+    -- do it the hard way...
+    code = f:read "*a"
+    f: close ()
+      
+    -- compile and load
+    local a, error_msg = loadstring (code, script)    -- load it
+    if not a or error_msg then
+      return dummy_app (500, error_msg)               -- 'internal server error'
+    end
+    lua_env = loader.new_environment (script)         -- use new environment
+    setfenv (a, lua_env)                              -- Lua 5.1 specific function environment handling
+    a, error_msg = pcall(a)                           -- instantiate it
+    if not a then
+      return dummy_app (500, error_msg)               -- 'internal server error'
+    end
   end
   
   -- find application entry point
@@ -131,32 +163,6 @@ local function build (script)
   end
 
   return runner   -- success! return the entry point to the WSAPI application
-end
-  
--- dispatch is called to execute the CGI
--- and build the return results
-local function dispatch (env)
-  local script = env["SCRIPT_NAME"]
-  cache[script] = cache[script] or build (script) 
-  
-  -- guaranteed to be something executable here, even it it's a dummy with error message
-  
-  -- three return values: the HTTP status code, a table with headers, and the output iterator.
-  local status, headers, iterator = cache[script] (env)
-  
-  -- TODO: return all three parameters... requires further changes to openLuup.server
-  -- print (pretty {script = script, status = status, headers = headers, iterator = iterator})
-  local h = {}
-  for a,b in pairs (headers) do     -- force header names to lower case
-    h[a:lower()] = b
-  end
-  
-  local result = {}
-  for output in iterator do result[#result+1] = output end
-  result = table.concat (result) 
---  print ("result: ", result)
-  return result, h["content-type"]
-  
 end
 
 
@@ -199,8 +205,16 @@ SERVER_SOFTWARE The server software you're using (e.g. Apache 1.3)
 
 
 --]]
--- cgi is called by the server when it receives a CGI request
-local function cgi (URL, headers, post_content) 
+-- cgi is called by the server when it receives a GET or POST CGI request
+-- request object parameter:
+-- { {url.parse structure} , {headers}, post_content_string, method_string, http_version_string }
+
+local function cgi (request)
+  
+  local URL = request.URL
+  local headers = request.headers
+  local post_content = request.post_content
+  
   local meta = {
     __index = function () return '' end;  -- return the empty string instead of nil for undefined metavariables
   }
@@ -225,21 +239,39 @@ local function cgi (URL, headers, post_content)
   }
   
   local env = {   -- the WSAPI standard (and CGI) is upper case for these metavariables
+    
+    TEST = {headers = headers},     -- so that test CGIs (or unit tests) can examine all the headers
+    
     ["CONTENT_LENGTH"]  = #post_content,
     ["CONTENT_TYPE"]    = headers["Content-Type"] or '',
+    ["HTTP_USER_AGENT"] = headers["User-Agent"],
+    ["HTTP_COOKIE"]     = headers["Cookie"],
     ["REMOTE_HOST"]     = headers ["Host"],
+    ["REMOTE_PORT"]     = (headers ["Host"] or ''): match ":%d+$",
+    ["REQUEST_METHOD"]  = request.method,
     ["SCRIPT_NAME"]     = URL.path,
+    ["SERVER_PROTOCOL"] = request.http_version,
     ["PATH_INFO"]       = '/',
     ["QUERY_STRING"]    = URL.query,
+  
     -- methods
     input = input,
     error = error,
   }
   
   local wsapi_env = setmetatable (env, meta)
+   
+  -- execute the CGI
+  local script = URL.path or ''  
   
--- Only TWO return values: the full output and content-type (for luup)
-  return dispatch (wsapi_env)
+  script = script: match "^/?(.-)/?$"      -- ignore leading and trailing '/'
+  
+  cache[script] = cache[script] or build (script) 
+  
+  -- guaranteed to be something executable here, even it it's a dummy with error message
+  -- three return values: the HTTP status code, a table with headers, and the output iterator.
+  
+  return cache[script] (wsapi_env)
 end
 
 return {

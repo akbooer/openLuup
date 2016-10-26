@@ -4,16 +4,32 @@ module(..., package.seeall)
 
 local ABOUT = {
   NAME          = "upnp.control.hag",
-  VERSION       = "2016.06.09",
+  VERSION       = "2016.07.06",
   DESCRIPTION   = "a handler for redirected port_49451 /upnp/control/hag requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- see: http://wiki.micasaverde.com/index.php/ModifyUserData
 
 -- 2016.06.05  add scene processing (for AltUI long scene POST requests)
+-- 2016.07.06  correct calling syntax for wsapi_env.input:read ()
 
 local xml       = require "openLuup.xml"
 local json      = require "openLuup.json"
@@ -62,7 +78,7 @@ function run(wsapi_env)
     return x
   end
   
-  local content = wsapi_env.input.read ()
+  local content = wsapi_env.input:read ()       -- 2016.07.06
   local x = xml.decode(content)
   local m = xml.extract(x, "s:Envelope", "s:Body", "u:ModifyUserData") [1] or {}  -- unpack one-element list
   

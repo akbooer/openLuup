@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2016.06.09",
+  VERSION       = "2016.08.01",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- log handling - basic at the moment
@@ -12,6 +27,7 @@ local ABOUT = {
 -- 2016.05.14   add logging for AltUI workflows
 -- 2016.05.26   fix error on nil message
 -- 2016.06.09   fix numeric message error
+-- 2016.08.01   truncate long variable values in AltUI log
 
 local socket = require "socket"
 
@@ -79,6 +95,13 @@ local function formatted_time (date_format, now)
   local date = os.date (date_format, now)
   local ms = math.floor (1000 * (now % 1)) 
   return ('%s.%03d'):format (date, ms)
+end
+
+-- shorten long variable strings, removing control characters
+local function truncate (text)
+  text = (text or ''): gsub ("%c", ' ')
+  if #text > 120 then text = text: sub (1,115) .. "..." end    -- truncate long variable values
+  return text
 end
 
 
@@ -281,7 +304,7 @@ local function altui_logger (info)
     local vfmt =   "%02d\t%s\tDevice_Variable::m_szValue_set device: %d service: %s " ..
                     "variable: \027[35;1m%s\027[0m was: %s now: %s #hooks: %d \n"
     local msg = vfmt: format (6, now, var.dev, var.srv, var.name, 
-                var.old or "MISSING", var.value, #var.watchers)
+                truncate (var.old or "MISSING"), truncate (var.value), #var.watchers)
     write (msg)
     return msg    -- for testing
   end

@@ -8,14 +8,10 @@ local vfs = require "openLuup.virtualfilesystem"
 TestVFS = {}
 
 
-function TestVFS.test_io ()
+function TestVFS:test_io ()
   local test_string = "this is only a test"
-  local f = vfs.open "vfs_test"
-  local no = f:read ()
-  t.assertNil (no)
-  f:close ()
-  
-  f = vfs.open "vfs_test"
+
+  f = vfs.open ("vfs_test", 'w')
   f:write (test_string)
   f:close ()
   
@@ -25,6 +21,19 @@ function TestVFS.test_io ()
   t.assertEquals (x, test_string)
 end
 
+function TestVFS:test_open_for_read_fail ()
+  local f, m = vfs.open "xyz"
+  t.assertIsNil (f)
+  t.assertIsString (m)
+end
+
+function TestVFS:test_open_for_read_ok ()
+  local f, m = vfs.open "index.html"
+  t.assertIsTable (f)
+  t.assertIsFunction (f.read)
+  t.assertIsFunction (f.close)
+  t.assertIsNil (m)
+end
 
 -------------------
 

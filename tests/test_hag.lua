@@ -36,7 +36,7 @@ local content = [[
 function Test_hag:test_startup ()
     
   local status,headers,iterator = hag.run {
-      error = {write = function (_, ...) print (...) end},
+      error = {write = function (_, ...) print (...) end},    -- TODO: use internal buffer and check contents
       input = {read  = function () return content end}, 
     }
 
