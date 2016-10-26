@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.10.13",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -25,15 +25,18 @@ local ABOUT = {
 -- openLuup TIMERS modules
 -- TIMER related API
 -- all time-related functions (aside from the scheduler itself)
+-- see: http://aa.usno.navy.mil/faq/docs/SunApprox.php for sun position calculation
 
 -- 2016.04.14  @explorer: Added timezone offset to the rise_set return value 
+-- 2016.10.13  add TEST structure with useful hooks for testing
+-- 2016.10.21  change DST handling method
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
 -- The data parameter can also be any type, not just string
 --
--- NB: earth coordinates (latitude & longitude) are pick up from the global luup variables
+-- NB: earth coordinates (latitude & longitude) are picked up from the global luup variables
 
 local scheduler = require "openLuup.scheduler"
 local socket    = require "socket"
@@ -76,11 +79,11 @@ end
 -- sunrise, sunset times given date (and lat + long as globals)
 -- see: http://aa.usno.navy.mil/faq/docs/SunApprox.php
 -- rise and set are nil if the sun does not rise or set on that day.
-local function rise_set (date)
+local function rise_set (date, latitude, longitude)
   
   -- earth coordinates
-  local luup = luup or {latitude = 0, longitude = 0}
-  local latitude, longitude = luup.latitude, luup.longitude
+  latitude  = latitude  or luup.latitude
+  longitude = longitude or luup.longitude
 
   local dr = math.pi / 180
   local function sin(x) return math.sin(x*dr) end
@@ -91,8 +94,8 @@ local function rise_set (date)
   local function atan2(x,y) return math.atan2(x,y)/dr end 
   
   local t = date or os.time()
-  if type (t) == "number" then t = os.date ("*t", t) end
-  t = os.time {year = t.year, month = t.month, day = t.day, hour = 12}  -- approximate noon
+  if type (t) ~= "table" then t = os.date ("*t", t) end
+  t = os.time {year = t.year, month = t.month, day = t.day, hour = 12, isdst = false}  -- approximate noon
   local J2000 = os.time {year = 2000, month=1, day=1, hour = 12}  -- Julian 2000.0 epoch
   local D = (t - J2000) / (24 * 60 * 60)                  -- days since Julian epoch "J2000.0"
 
@@ -105,11 +108,7 @@ local function rise_set (date)
   local RA = atan2 (cos(e) * sin_L, cos(L))               -- right ascension (-180..+180)
   
   local noon = t - 240*(q - RA + longitude)               -- actual noon (seconds)
---  TODO: check if this fixes DST issue ???
-  noon = os.date("*t",noon)
-  noon.isdst = false
-  noon = os.time(noon)
---
+  
   local sin_d = sin(e) * sin_L                            -- declination (sine of)
   local cos_d = cos(asin(sin_d))
   local sin_p = sin(latitude)
@@ -273,8 +272,8 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
         for i,n in ipairs (d) do offset[i] = (n - t.wday - 1) % 7 + 1 end
         table.sort (offset)
         next_time = target_time (now, time)
---        if next_time <= now then     -- too late!, so schedule some future day...
-          if ((offset[1] ~= 7) or (next_time <= now)) then     -- too late!, so schedule some future day...
+        if next_time <= now then     -- too late!, so schedule some future day...
+--          if ((offset[1] ~= 7) or (next_time <= now)) then     -- too late!, so schedule some future day...
           next_time = target_time (now + offset[1] * day_offset, time)
         end
         return next_time 
@@ -361,6 +360,10 @@ end
 
 return {
   ABOUT = ABOUT,
+  TEST = {
+    rise_set  = rise_set,
+    time2unix = time2unix,
+  },
   
   cpu_clock   = cpu_clock,
   sleep       = sleep,
