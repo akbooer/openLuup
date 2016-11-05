@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.10.23",
+  VERSION       = "2016.11.05",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -38,12 +38,14 @@ local ABOUT = {
 -- 2016.06.28   change install parameters for VeraBridge (device and icon file locations)
 -- 2016.06.30   split save into two functions: json & save to allow data compression
 -- 2016.08.29   update plugin versions on load
+-- 2016.11.05   added gmt_offset: thanks @jswim788 and @logread
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
 local logs    = require "openLuup.logs"
 local scenes  = require "openLuup.scenes"
 local chdev   = require "openLuup.chdev"
+local timers  = require "openLuup.timers"   -- for gmt_offset
 local lfs     = require "lfs"
 
 --  local log
@@ -122,7 +124,7 @@ luup.log "startup code completed"
 --  devices = {},
 --  energy_dev_log = "41,",
 --  firmware_version = "1",
-  gmt_offset = "0",
+  gmt_offset = tostring (timers.gmt_offset()),   -- see: http://forum.micasaverde.com/index.php/topic,40035.0.html
 --  ip_requests = {},
 --  ir = 0,
   latitude = "51.48",
@@ -143,7 +145,8 @@ luup.log "startup code completed"
 --  static_data = {},
 --  sync_kit = "0000-00-00 00:00:00",
   timeFormat = "24hr",
-  timezone = "0",
+  timezone = "0",     -- apparently not used, and always "0", 
+                      -- see: http://forum.micasaverde.com/index.php/topic,10276.msg70562.html#msg70562
 --  users = {},
 --  weatherSettings = {
 --    weatherCountry = "UNITED KINGDOM",

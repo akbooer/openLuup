@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.07.20",
+  VERSION       = "2016.11.02",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -33,6 +33,7 @@ local ABOUT = {
 -- 2016.06.06  add special handling of top-level "openLuup" attribute
 -- 2016.07.18  improve call_action error messages
 -- 2016.07.20  truncate very long values in variable_set log output and remove control characters
+-- 2016.11.02  add job type to timer calls
 
 local logs          = require "openLuup.logs"
 
@@ -458,7 +459,8 @@ local function call_timer (global_function_name, timer_type, time, days, ...)
     _log (msg, "luup.call_timer")
     local e,_,j = timers.call_timer(fct, timer_type, time, days, ...)      -- 2016.03.01   
     if j and scheduler.job_list[j] then
-      scheduler.job_list[j].notes = "Timer: " .. msg
+      local text = "job#%d :timer, %s"
+      scheduler.job_list[j].type = text: format (j, msg)
     end
     return e
   end

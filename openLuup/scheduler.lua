@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2016.08.23",
+  VERSION       = "2016.11.02",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -34,6 +34,8 @@ local ABOUT = {
 -- by lookup in the relevant module or the global table.
 --
 
+-- 2016.11.02  add startup_list handling, kill_job
+
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
 
@@ -58,6 +60,7 @@ local socket_list = {}                -- table of socket watch callbacks (for in
 local function add_to_delay_list (fct, seconds, data, devNo)  
   delay_list[#delay_list+1] = {
     callback = fct,
+    delay = seconds,
     devNo = devNo or current_device,
     time = socket.gettime() + seconds, 
     parameter = data, 
@@ -186,6 +189,7 @@ local wait_state = {
 -- LOCALS
 
 local next_job_number = 1
+local startup_list = {}
 
 local job_list = setmetatable ( 
     {},      -- jobs indexed by job number
@@ -324,19 +328,42 @@ local function run_job (action, arguments, devNo, target_device)
   return error, error_msg or '', jobNo, return_arguments
 end
 
-local function device_start (entry_point, devNo)
+-- kill given jobNo
+local function kill_job (jobNo)
+  local job = job_list[jobNo]
+  local msg
+  if job then
+    job.status = state.Aborted
+    job.expiry = 0
+    msg = "killed job#" .. jobNo
+  else
+    msg = "no such job#" .. jobNo
+  end
+  _log (msg, "openLuup.kill_job") 
+end
+
+
+local function device_start (entry_point, devNo, name)
   -- job wrapper for device initialisation
-  local function startup_job ()       -- note that user code is run in protected mode
-    local label = ("[%s] device startup"): format (tostring(devNo))
+  local function startup_job (_,_,job)       -- note that user code is run in protected mode
+    local label = ("[%s] %s device startup"): format (tostring(devNo), name or '')
     _log (label)
     local a,b,c = entry_point (devNo)       -- call the startup code 
-    _log (("%s completed: status=%s, msg=%s, name=%s" ): format (label, tostring(a),tostring(b), tostring(c)))
+    local completion = "%s completed: status=%s, msg=%s, name=%s"
+    local text = completion: format (label, tostring(a),tostring(b), tostring(c))
+    _log (text)
+--    if job.notes == '' then
+--      job.notes = text      -- use this as the startup job comments
+--    end
+  -- TODO: remove successful startup jobs from startup list
     return state.Done, 0  
   end
   
   local jobNo = create_job ({job = startup_job}, {}, devNo)
-  job_list[jobNo].type = table.concat {'[', devNo, '] ', "device"}  -- TODO: embellish with description
-  -- TODO: put this into the startup job list too (ephemeral)
+  local job = job_list[jobNo]
+  local text = "job#%d :device [%d] %s"
+  job.type = text: format (jobNo, devNo, name or '')
+  startup_list[jobNo] = job  -- put this into the startup job list too 
   return jobNo
 end    
     -- TODO: device startup status and messages
@@ -396,7 +423,7 @@ local function task_callbacks ()
       end
 
       if exit_state[job.status] and job.now > job.expiry then 
-        job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local copy)
+        job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local_job_list)
       end
     end
   until njn == next_job_number        -- keep going until no more new jobs queued
@@ -507,12 +534,14 @@ return {
     state             = state,
     -- variables
     job_list          = job_list,
+    startup_list      = startup_list,
     --methods
     add_to_delay_list = add_to_delay_list,
     current_context   = function() return current_device end, -- TODO: deprecated
     current_device    = function() return current_device end, 
     context_switch    = context_switch,
     device_start      = device_start,
+    kill_job          = kill_job,
     run_job           = run_job,
     status            = status,   
     watch_callback    = watch_callback,

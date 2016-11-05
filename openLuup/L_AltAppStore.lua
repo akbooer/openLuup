@@ -198,7 +198,6 @@ function GitHub (archive)     -- global for access by other modules
     return latest
   end
   
-  
   -- get specific parts of tagged release
   local function get_release_by_file (v, subdirectories, pattern)
     local files, N = {}, 0

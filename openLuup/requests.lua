@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.08.22",
+  VERSION       = "2016.11.02",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -43,6 +43,7 @@ local ABOUT = {
 -- 2016.07.14  change 'file' request internal syntax to use server.wget
 -- 2016.07.18  better error returns for action request
 -- 2016.08.09  even better error returns for action request!
+-- 2016.11.02  use startup_list (not job_list) in status response
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -337,7 +338,7 @@ local function status_startup_table ()
       ]
     },
 ]]--
-  for id, job in pairs (scheduler.job_list) do
+  for id, job in pairs (scheduler.startup_list) do
     tasks[#tasks + 1] = {
       id = id,
       status = job.status,

@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "backup.sh",
-  VERSION       = "2016.07.17",
+  VERSION       = "2016.10.27",
   DESCRIPTION   = "user_data backup script /etc/cmh-ludl/cgi-bin/cmh/backup.sh",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -34,6 +34,7 @@ local DIRECTORY = "backup"      -- change this is you want to backup elsewhere
 -- 2016.06.30   use new compression module to reduce backup file size.
 -- 2016.07.12   return HTML page with download link
 -- 2016.07.17   add title to HTML page
+-- 2016.10.27   changed formatting of backup message to handle fractional file sizes
 
 local userdata = require "openLuup.userdata"
 local compress = require "openLuup.compression"
@@ -102,7 +103,7 @@ function run (wsapi_env)
   local headers = {["Content-Type"] = "text/plain"}
   local status, return_content
   if ok then 
-    msg = ("%d kb compressed to %d kb (%0.1f:1)") : format (ok, small, ok/small)
+    msg = ("%0.0f kb compressed to %0.0f kb (%0.1f:1)") : format (ok, small, ok/small)
     local body = html: format (msg, fname, fname)
     headers["Content-Type"] = "text/html"
     status, return_content = 200, body

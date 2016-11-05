@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2016.07.12",
+  VERSION       = "2016.11.02",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -37,6 +37,7 @@ local ABOUT = {
 -- 2016.06.02  undo @explorer string mods (interim solution not now needed) and revert to standard Vera syntax
 -- 2016.07.10  add extra 'no_reload' parameter to luup.chdev.sync (for ZWay plugin)
 -- 2016.07.12  add 'reload' return parameter to luup.chdev.sync (ditto)
+-- 2016.11.02  add device name to device_startup code
 
 local logs      = require "openLuup.logs"
 
@@ -131,9 +132,10 @@ local function create (x)
   end
 
   -- schedule device startup code
+  local device_name = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?'))
   if d.entry_point then 
     if tonumber (x.disabled) ~= 1 then
-      scheduler.device_start (d.entry_point, x.devNo)         -- schedule startup in device context
+      scheduler.device_start (d.entry_point, x.devNo, device_name)         -- schedule startup in device context
     else
       local fmt = "[%d] is DISABLED"
       _log (fmt: format (x.devNo), "luup.create_device")
@@ -155,7 +157,7 @@ local function create (x)
     local_udn       = UUID,
     manufacturer    = d.manufacturer or '',
     model           = d.modelName or '',
-    name            = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?')), 
+    name            = device_name, 
     plugin          = tostring(x.pluginnum or ''),
     password        = x.password,
     room            = tostring(tonumber (x.room or 0)),   -- why it's a string, I have no idea

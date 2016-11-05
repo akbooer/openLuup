@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2016.05.19",
+  VERSION       = "2016.11.01",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -33,11 +33,15 @@ local ABOUT = {
 -- 2016.04.20   make pause work
 -- 2016.05.19   allow trigger data to be stored (for PLEG / RTS)
 --              see: http://forum.micasaverde.com/index.php/topic,34476.msg282148.html#msg282148
-                
+-- 2016.10.29   add notes to timer jobs (changed to job.type)
+-- 2016.11.01   add new_userdata_dataversion() to successful scene execution
+ 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
 local timers    = require "openLuup.timers"
 local loader    = require "openLuup.loader"
+local scheduler = require "openLuup.scheduler"    -- simply for adding notes to the timer jobs
+local devutil   = require "openLuup.devices"      -- for new_userdata_dataversion
 
 --  local logs
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -86,16 +90,14 @@ end
 
 -- run all the actions in one delay group
 local function group_runner (actions)
-  local jobs = {}
   for _, a in ipairs (actions) do
     local args = {}
     for _, arg in pairs(a.arguments) do   -- fix parameters handling.  Thanks @delle !
       args[arg.name] = arg.value
     end
-    local _, _, job = luup.call_action (a.service, a.action, args, tonumber (a.device))
-    jobs[#jobs] = job
+    luup.call_action (a.service, a.action, args, tonumber (a.device))
   end
-  return jobs     -- return list of jobs created
+
 end
 
 -- return true if scene can run in current house mode
@@ -114,7 +116,6 @@ local function create (scene_json)
   local function scene_finisher (started)         -- called at end of scene
     if scene.last_run == started then 
       luup_scene.running = false                  -- clear running flag only if we set it
-      luup_scene.jobs = {}                        -- clear list of running jobs
     end
   end
   
@@ -135,6 +136,7 @@ local function create (scene_json)
     if ok ~= false then
       scene.last_run = os.time()                -- scene run time
       luup_scene.running = true
+      devutil.new_userdata_dataversion ()               -- 2016.11.01
       local runner = "command"
       if t then
         t.last_run = scene.last_run             -- timer or trigger specific run time
@@ -156,6 +158,9 @@ local function create (scene_json)
   
   local function scene_stopper ()
     -- TODO: cancel timers on scene delete, etc..?
+--    for _,j in ipairs (jobs) do
+--      scheduler.kill_job (j.
+--    end
     -- can't easily kill the timer jobs, but can disable all timers and triggers
     for _, t in ipairs (scene.timers or {}) do
       t.enabled = 0
@@ -226,14 +231,14 @@ local function create (scene_json)
   scene.paused      = scn.paused or "0"              -- 2016.04.30
   scene.room        = tonumber (scn.room) or 0       -- TODO: ensure room number valid
   scene.timers      = scn.timers or {}
-  scene.triggers    = scn.triggers or {},            -- 2016.05.19
+  scene.triggers    = scn.triggers or {}             -- 2016.05.19
   
   verify()   -- check that non-existent devices are not referenced
   
   local meta = {
     -- variables
     running     = false,    -- set to true when run and reset 30 seconds after last action
-    jobs        = {},       -- list of jobs that scene is running
+    jobs        = {},       -- list of jobs that scene is running (ie. timers)
     -- methods
     rename      = scene_rename,
     run         = scene_runner,
@@ -250,12 +255,19 @@ local function create (scene_json)
       remote = 0,
       room_num = scene.room,
     }
-   
+  
   -- start the timers
   local recurring = true
+  local jobs = meta.jobs
+  local info = "job#%d :timer '%s' for scene [%d] %s"
   for _, t in ipairs (scene.timers or {}) do
-    timers.call_timer (scene_runner, t.type, t.time or t.interval, 
+    local _,_,j = timers.call_timer (scene_runner, t.type, t.time or t.interval, 
                           t.days_of_week or t.days_of_month, t, recurring)
+    if j and scheduler.job_list[j] then
+      local text = info: format (j, t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
+      scheduler.job_list[j].type = text
+      jobs[#jobs+1] = j           -- save the jobs we're running
+    end
   end
 
 -- luup.scenes contains all the scenes in the system as a table indexed by the scene number. 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.10.17",
+  VERSION       = "2016.11.02",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -43,8 +43,6 @@ local ABOUT = {
 -- 2016.06.01   also look for files in virtualfilesystem
 -- 2016.06.09   also look in files/ directory
 -- 2016.07.06   add 'method' to WSAPI server call
--- 2016.08.03   remove optional "lu_" prefix from system callback request names
--- 2016.10.17   use CGI prefixes from external servertables module
 
 ---------------------
 
@@ -52,9 +50,12 @@ local ABOUT = {
 -- 2016.07.14   request object parameter and WSAPI-style returns for all handlers
 -- 2016.07.17   HTML error pages
 -- 2016.07.18   add 'actual_status' return to wget (undocumented Vera feature?)
+-- 2016.08.03   remove optional "lu_" prefix from system callback request names
 -- 2016.09.16   remove /port_3480 redirects from parsed URI - thanks @explorer
 -- 2016.09.17   increase BACKLOG parameter to solve stalled updates - thanks @explorer (again!) 
 --              see: http://forum.micasaverde.com/index.php/topic,39129.msg293629.html#msg293629
+-- 2016.10.17   use CGI prefixes from external servertables module
+-- 2016.11.02   change job.notes to job.type for new connections and requests
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -279,13 +280,9 @@ end
 -- only required parameter is request_URI, others have sensible defaults.
   
 -- define the appropriate handler depending on request type
-local selector = {
-  ["data_request"]  = data_request,
-}
-
--- add those defined in the server tables
+local selector = {data_request = data_request}
 for _,prefix in pairs (tables.cgi_prefix) do
-  selector[prefix] = wsapi.cgi
+  selector[prefix] = wsapi.cgi    -- add those defined in the server tables
 end
 
 local self_reference = {
@@ -585,7 +582,8 @@ local function client_request (sock)
     --  err, msg, jobNo = scheduler.run_job ()
     local _, _, jobNo = scheduler.run_job ({job = job}, {}, nil)  -- nil device number
     if jobNo and scheduler.job_list[jobNo] then
-      scheduler.job_list[jobNo].notes = "HTTP request from " .. tostring(ip)
+      local info = "job#%d :HTTP request from %s"
+      scheduler.job_list[jobNo].type = info: format (jobNo, tostring(ip))
     end
   end
   return err
@@ -631,7 +629,8 @@ local function new_client (sock)
 --  local err, msg, jobNo = scheduler.run_job {job = job}
   local _, _, jobNo = scheduler.run_job {job = job}
   if jobNo and scheduler.job_list[jobNo] then
-    scheduler.job_list[jobNo].notes = "HTTP new " .. tostring(sock)
+    local info = "job#%d :HTTP new connection %s"
+    scheduler.job_list[jobNo].type = info: format (jobNo, tostring(sock))
   end
 end
 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2016.10.13",
+  VERSION       = "2016.11.05",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -30,7 +30,8 @@ local ABOUT = {
 -- 2016.04.14  @explorer: Added timezone offset to the rise_set return value 
 -- 2016.10.13  add TEST structure with useful hooks for testing
 -- 2016.10.21  change DST handling method
-
+-- 2016.11.05  add gmt_offset see thread http://forum.micasaverde.com/index.php/topic,40035.0.html
+--             with thanks to @jswim788 and @logread
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
@@ -356,6 +357,12 @@ local function timenow ()
   return socket.gettime()
 end
 
+local function gmt_offset ()
+  local now = os.time()
+  local localdate = os.date("*t", now)
+  return os.difftime(os.time(localdate), now) / 3600
+end
+
 ---- return methods
 
 return {
@@ -366,6 +373,7 @@ return {
   },
   
   cpu_clock   = cpu_clock,
+  gmt_offset  = gmt_offset,
   sleep       = sleep,
   sunrise     = sunrise,
   sunset      = sunset,
