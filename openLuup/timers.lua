@@ -359,8 +359,8 @@ end
 
 local function gmt_offset ()
   local now = os.time()
-  local localdate = os.date("*t", now)
-  return os.difftime(os.time(localdate), now) / 3600
+  local localdate = os.date("!*t", now)
+  return os.difftime(now, os.time(localdate)) / 3600
 end
 
 ---- return methods
