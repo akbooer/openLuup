@@ -264,8 +264,10 @@ local function create (scene_json)
     local _,_,j = timers.call_timer (scene_runner, t.type, t.time or t.interval, 
                           t.days_of_week or t.days_of_month, t, recurring)
     if j and scheduler.job_list[j] then
+      local job = scheduler.job_list[j]
       local text = info: format (j, t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
-      scheduler.job_list[j].type = text
+      job.type = text
+      t.next_run = math.floor(job.expiry)   -- TODO: this is still wrong (expiry not yet updated)
       jobs[#jobs+1] = j           -- save the jobs we're running
     end
   end

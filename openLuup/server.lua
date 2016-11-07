@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.11.02",
+  VERSION       = "2016.11.07",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -43,6 +43,7 @@ local ABOUT = {
 -- 2016.06.01   also look for files in virtualfilesystem
 -- 2016.06.09   also look in files/ directory
 -- 2016.07.06   add 'method' to WSAPI server call
+-- 2016.11.07   add requester IP to new connection log message
 
 ---------------------
 
@@ -620,7 +621,9 @@ local function new_client (sock)
     end
   end
   
-  _log ("new client connection: " .. tostring(sock))
+  local ip = sock:getpeername() or '?'                    -- who's asking?
+  local connect = "new client connection from %s: %s"
+  _log (connect:format (ip, tostring(sock)))
   expiry = socket.gettime () + CLOSE_SOCKET_AFTER         -- set initial socket expiry 
   sock:settimeout(nil)                                    -- this is a timeout on the HTTP read
 --  sock:settimeout(10)                                   -- this is a timeout on the HTTP read

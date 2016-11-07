@@ -164,6 +164,27 @@ local function is_night ()
   return now < rise or now > set
 end
 
+-- target_time()  given a Unix time representing a date, and a time string 
+-- (which may be relative to sunrise/sunset on that day) return the actual Unix time.
+-- eg. target_time ({year=t, month=m, day=d}, "-2:30:00r")
+local function target_time (date, time)
+  local t
+  local sign,H,M,S,rt = (time or ''): match (relative_time_format) -- syntax checked previously
+  if type (date) == "number" then date = os.date ("*t", date) end
+  if rt == '' then                           -- absolute time
+    t = os.time {year=date.year, month=date.month, day=date.day, hour=H, min=M, sec=S}
+  else                                      -- relative to sunrise/sunset
+    local offset = (H * 60 + M) * 60 + S
+    local rise,set = rise_set {year=date.year, month=date.month, day=date.day,}
+    local event = (rise + set) / 2          -- noon, but should never be this
+    if rt == 'r' then event = rise end
+    if rt == 't' then event = set  end
+    if sign == '-' then offset = -offset end
+    t = event + offset
+  end
+  return t
+end
+
 -- function: call_delay
 -- parameters: function_name (string), seconds (number), data (string)
 -- returns: result (number)
@@ -210,27 +231,6 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
         return scheduler.state.WaitingToStart, next_time - socket.gettime()    -- calculate delta time
       end
     }
-
-  -- target_time()  given a Unix time representing a date, and a time string 
-  -- (which may be relative to sunrise/sunset on that day) return the actual Unix time.
-  -- eg. target_time ({year=t, month=m, day=d}, "-2:30:00r")
-  local function target_time (date, time)
-    local t
-    local sign,H,M,S,rt = (time or ''): match (relative_time_format) -- syntax checked previously
-    if type (date) == "number" then date = os.date ("*t", date) end
-    if rt == '' then                           -- absolute time
-      t = os.time {year=date.year, month=date.month, day=date.day, hour=H, min=M, sec=S}
-    else                                      -- relative to sunrise/sunset
-      local offset = (H * 60 + M) * 60 + S
-      local rise,set = rise_set {year=date.year, month=date.month, day=date.day,}
-      local event = (rise + set) / 2          -- noon, but should never be this
-      if rt == 'r' then event = rise end
-      if rt == 't' then event = set  end
-      if sign == '-' then offset = -offset end
-      t = event + offset
-    end
-    return t
-  end
 
   -- (1) interval timer
   -- to avoid time drift, schedule on base time plus multiples of the delay
@@ -357,6 +357,7 @@ local function timenow ()
   return socket.gettime()
 end
 
+-- see: http://lua-users.org/wiki/TimeZone
 local function gmt_offset ()
   local now = os.time()
   local localdate = os.date("!*t", now)
@@ -368,8 +369,9 @@ end
 return {
   ABOUT = ABOUT,
   TEST = {
-    rise_set  = rise_set,
-    time2unix = time2unix,
+    rise_set    = rise_set,
+    target_time = target_time,
+    time2unix   = time2unix,
   },
   
   cpu_clock   = cpu_clock,
