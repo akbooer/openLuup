@@ -81,14 +81,14 @@ local function read_raw (sock)
   return sock: receive (1)             -- single byte only
 end
 
-local function read_cr (sock)          -- 2016.11.09  
+local function read_cr (sock)          -- 2016.11.09 
   local buffer = {}
   local data, err, ch
   repeat
     ch, err = sock: receive (1)
     local cr = (ch == "\r")
     if not cr then buffer[#buffer+1] = ch end
-  until err or cr
+  until (err and (err ~= "timeout")) or cr      -- this is not ideal, since it may genuinely timeout
   if not err then data = table.concat (buffer) end
   return data, err
 end
