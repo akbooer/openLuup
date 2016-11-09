@@ -752,6 +752,7 @@ function init (lul_device)
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
     setVar ("Version", version)
+    luup.log (version)
   end
   
   setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)

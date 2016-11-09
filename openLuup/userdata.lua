@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.11.05",
+  VERSION       = "2016.11.09",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -39,6 +39,7 @@ local ABOUT = {
 -- 2016.06.30   split save into two functions: json & save to allow data compression
 -- 2016.08.29   update plugin versions on load
 -- 2016.11.05   added gmt_offset: thanks @jswim788 and @logread
+-- 2016.11.09   preserve device #2 (openLuup) room allocation across reloads (tahnks @DesT)
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -566,7 +567,12 @@ local function load_user_data (user_data_json)
     -- DEVICES  
     _log "loading devices..."    
     for _, d in ipairs (user_data.devices or {}) do
-      if d.id ~= 2 then               -- device #2 is reserved
+      if d.id == 2 then               -- device #2 is special (it's the openLuup plugin, and already exists)
+        local ol = luup.devices[2]
+        local room = tonumber (d.room) or 0
+        ol:attr_set {room = room}     -- set the device attribute...
+        ol.room_num = room            -- ... AND the device table (Luup is SO bad...)
+      else
         local dev = chdev.create {      -- the variation in naming within luup is appalling
             devNo = d.id, 
             device_type     = d.device_type, 

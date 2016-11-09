@@ -601,6 +601,7 @@ function AltAppStore_init (d)
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
     setVar ("Version", version)
+    _log (version)
   end
   
   set_failure (0)
