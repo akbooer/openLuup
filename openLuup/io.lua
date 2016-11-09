@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.11.09",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -37,6 +37,8 @@ local ABOUT = {
 -- 2016.01.30 @cybrmage log fix for device number
 -- 2016.01.31 socket.select() timeouts, 0 mapped to nil for infinite wait
 -- 2016.02.15 'keepalive' option for socket - thanks to @martynwendon for testing the solution
+-- 2016.11.09 implement version of @vosmont's "cr" protocol in io.read()
+--            see: http://forum.micasaverde.com/index.php/topic,40120.0.html
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
@@ -75,18 +77,37 @@ local function get_dev_and_socket (device)
   return dev, (dev or {io = {}}).io.socket, devNo
 end
 
-local function receive (sock, protocol)
-  local data, err
-  if protocol == "raw" then                   -- TODO: 'stxetx' mode for read NOT currently supported
-    data, err = sock: receive (1)             -- single byte only
-  else 
-    -- From the LuaSocket documentation: 
-    -- The line is terminated by a LF character (ASCII 10), optionally preceded by a CR character (ASCII 13). 
-    -- The CR and LF characters are not included in the returned line. 
-    -- In fact, all CR characters are ignored by the pattern. 
-    data, err = sock: receive "*l"
-  end
+local function read_raw (sock)
+  return sock: receive (1)             -- single byte only
+end
+
+local function read_cr (sock)          -- 2016.11.09  
+  local buffer = {}
+  local data, err, ch
+  repeat
+    ch, err = sock: receive (1)
+    local cr = (ch == "\r")
+    if not cr then buffer[#buffer+1] = ch end
+  until err or cr
+  if not err then data = table.concat (buffer) end
   return data, err
+end
+
+local function read_crlf (sock)
+  -- From the LuaSocket documentation: 
+  -- The line is terminated by a LF character (ASCII 10), optionally preceded by a CR character (ASCII 13). 
+  -- The CR and LF characters are not included in the returned line. 
+  -- In fact, all CR characters are ignored by the pattern. 
+  return sock: receive "*l"
+end
+
+local function read_nothing () end
+
+local reader = {raw = read_raw, cr = read_cr, crlf = read_crlf}   
+-- TODO: 'stxetx' mode for read NOT currently supported
+
+local function receive (sock, protocol)
+  return (reader [protocol] or read_nothing) (sock)
 end
 
 local function send (sock, data, protocol)
