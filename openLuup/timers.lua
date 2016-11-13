@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2016.11.05",
+  VERSION       = "2016.11.13",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -32,6 +32,9 @@ local ABOUT = {
 -- 2016.10.21  change DST handling method
 -- 2016.11.05  add gmt_offset see thread http://forum.micasaverde.com/index.php/topic,40035.0.html
 --             with thanks to @jswim788 and @logread
+-- 2016.11.07  added return argument 'due' for scene timers
+-- 2016.11.13  refactor day-of-week and day-of-month timers (fixing old bug?)
+
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
@@ -185,6 +188,26 @@ local function target_time (date, time)
   return t
 end
 
+-- given a list of day offsets, and a time specification (possibly relative to sun rise/set)
+-- find the NEXT event time that can be scheduled.  This works for day-of-week or day-of-month timers.
+-- blocksize depends on the type of timer, being 7 (days) for a DOW timer, or number of days in month for DOM.
+local function next_scheduled_time (offset, time, blocksize)
+  local day_offset = 24 * 60 * 60
+  table.sort (offset)
+  local now = os.time ()
+  local target_day = offset[1] * day_offset
+  local next_time = target_time (now + target_day, time)
+  if next_time <= now then     -- too late!, so schedule some future day...
+    if #offset > 1 then 
+      target_day = offset[2] * day_offset   -- simply move to the next one
+    else
+      target_day = blocksize * day_offset -- only one day scheduled, so move to next week/month
+    end
+    next_time = target_time (now + target_day, time)
+  end
+  return next_time 
+end
+
 -- function: call_delay
 -- parameters: function_name (string), seconds (number), data (string)
 -- returns: result (number)
@@ -203,6 +226,8 @@ end
 --
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- Returns 0 if successful. 
+-- NOTE: that in the event of the timer creating a job (rather than a delay) then the
+-- returned parameters are: error (number), error_msg (string), job (number), arguments (table)
 --
 -- Type is 1=Interval timer, 2=Day of week timer, 3=Day of month timer, 4=Absolute timer. 
 -- For a day of week timer, Days is a comma separated list with the days of the week where 1=Monday and 7=Sunday. 
@@ -232,6 +257,20 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
       end
     }
 
+  -- used to start all timers
+  -- returns: error (number), error_msg (string), job (number), arguments (table)
+  -- and additional argument 'due', being the first scheduled time (used by scene timers)
+  local function start_timer ()
+    local due = target ()
+    local e,m,j,a
+    if recurring then
+      e,m,j,a = scheduler.run_job (timer, {}, 0)      -- this starts a recurring job
+    else
+      e = call_delay (fct, due - socket.gettime(), data)        -- this is one-shot
+    end
+    return e,m,j,a, math.floor (due)  -- 2016.11.07 scene time only deals with integers
+  end
+  
   -- (1) interval timer
   -- to avoid time drift, schedule on base time plus multiples of the delay
   -- For an interval timer, days is not used, and 
@@ -244,8 +283,7 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
       local base = os.time()
       local increment = v * multiplier[u]
       target = function () base = base + increment return base end
-      if recurring then return scheduler.run_job (timer, {}, 0) end     -- this runs a recurring job
-      return call_delay (fct, target() - socket.gettime(), data)        -- this is one-shot
+      return start_timer () 
     end
   end
   
@@ -257,30 +295,20 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   -- and the time is relative to sunrise/sunset. 
   local function day_of_week ()
     local d = {}
-    local day_offset = 24 * 60 * 60
     local _,_,_,S = (time or ''): match (relative_time_format)  -- syntax check
     -- wrap day range 1-7 from Luup Monday-Sunday to Lua Sunday-Saturday
     for x in (days or ''):gmatch "(%d),?" do d[#d+1] = x % 7 + 1 end
     -- valid days and H:M:S time
     if #d > 0 and S then   
       target = function ()
-        local next_time
         -- components of current time, including "wday" (day of week)
-        local now = os.time()
-        local t = os.date ("*t", now)  
+        local t = os.date "*t"  
         -- table with zero or positive offsets to the target days
         local offset = {}
         for i,n in ipairs (d) do offset[i] = (n - t.wday - 1) % 7 + 1 end
-        table.sort (offset)
-        next_time = target_time (now, time)
-        if next_time <= now then     -- too late!, so schedule some future day...
---          if ((offset[1] ~= 7) or (next_time <= now)) then     -- too late!, so schedule some future day...
-          next_time = target_time (now + offset[1] * day_offset, time)
-        end
-        return next_time 
+        return next_scheduled_time (offset, time, 7) 
       end
-      if recurring then return scheduler.run_job (timer, {}, 0) end     -- this runs a recurring job
-      return call_delay (fct, target() - socket.gettime(), data)        -- this is one-shot
+      return start_timer () 
     end
   end
   
@@ -289,31 +317,22 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   -- Days is a comma separated list of days of the month, such as "15,20,30". 
   local function day_of_month ()
     local d = {}
-    local day_offset = 24 * 60 * 60
     local _,_,_,S = (time or ''): match (relative_time_format)  -- syntax check
     for x in (days or ''):gmatch "(%d%d?),?" do d[#d+1] = tonumber (x) end 
     -- valid days and H:M:S time
     if #d > 0 and S then 
       target = function ()
-        local next_time
         -- components of current time, including "day" (day of month) and "month" (number)
-        local now = os.time()
-        local t = os.date ("*t", now)  
+        local t = os.date "*t"  
         local days_in_month = {31, 28 or 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
         if t.year % 4 == 0 then days_in_month[2] = 29 end  -- leap year
         local month_offset = days_in_month[t.month]
         -- table with zero or positive offsets to the target days
         local offset = {}
         for i,day in ipairs (d) do offset[i] = (day - t.day - 1) % month_offset + 1 end
-        table.sort (offset)
-        next_time = target_time (now, time)
-        if next_time <= now then     -- too late!, so schedule some future day...
-          next_time = target_time (now + offset[1] * day_offset, time)
-        end
-        return next_time 
+        return next_scheduled_time (offset, time, month_offset) 
       end
-      if recurring then return scheduler.run_job (timer, {}, 0) end     -- this runs a recurring job
-      return call_delay (fct, target() - socket.gettime(), data)        -- this is one-shot
+      return start_timer () 
     end
   end
 
@@ -369,9 +388,10 @@ end
 return {
   ABOUT = ABOUT,
   TEST = {
-    rise_set    = rise_set,
-    target_time = target_time,
-    time2unix   = time2unix,
+    next_scheduled_time = next_scheduled_time,
+    rise_set            = rise_set,
+    target_time         = target_time,
+    time2unix           = time2unix,
   },
   
   cpu_clock   = cpu_clock,
