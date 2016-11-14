@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.11.09",
+  VERSION       = "2016.11.14",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -54,7 +54,7 @@ local ole               -- our own device ID
 local _log = function (...) luup.log (table.concat ({...}, ' ')) end
 
 --
--- uitlities
+-- utilities
 --
 
 local function round (x, p)

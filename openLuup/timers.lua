@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2016.11.13",
+  VERSION       = "2016.11.14",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -34,7 +34,7 @@ local ABOUT = {
 --             with thanks to @jswim788 and @logread
 -- 2016.11.07  added return argument 'due' for scene timers
 -- 2016.11.13  refactor day-of-week and day-of-month timers (fixing old bug?)
-
+-- 2016.11.14  bug fix in DOW and DOM timers! (knew I shouldn't have done previous fix on the 13-th!)
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
@@ -305,7 +305,7 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
         local t = os.date "*t"  
         -- table with zero or positive offsets to the target days
         local offset = {}
-        for i,n in ipairs (d) do offset[i] = (n - t.wday - 1) % 7 + 1 end
+        for i,n in ipairs (d) do offset[i] = (n - t.wday) % 7 end
         return next_scheduled_time (offset, time, 7) 
       end
       return start_timer () 
@@ -329,7 +329,7 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
         local month_offset = days_in_month[t.month]
         -- table with zero or positive offsets to the target days
         local offset = {}
-        for i,day in ipairs (d) do offset[i] = (day - t.day - 1) % month_offset + 1 end
+        for i,day in ipairs (d) do offset[i] = (day - t.day) % month_offset end
         return next_scheduled_time (offset, time, month_offset) 
       end
       return start_timer () 
