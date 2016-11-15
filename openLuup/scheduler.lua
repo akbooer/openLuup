@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2016.11.02",
+  VERSION       = "2016.11.15",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -526,7 +526,6 @@ end
 return {
     ABOUT = ABOUT,
     TEST = {                      -- for testing only
-      delay_list  = delay_list,
       step        = task_callbacks,
     },
     
@@ -540,6 +539,7 @@ return {
     current_context   = function() return current_device end, -- TODO: deprecated
     current_device    = function() return current_device end, 
     context_switch    = context_switch,
+    delay_list        = function () return delay_list end,
     device_start      = device_start,
     kill_job          = kill_job,
     run_job           = run_job,

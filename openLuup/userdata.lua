@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.11.09",
+  VERSION       = "2016.11.15",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -39,7 +39,7 @@ local ABOUT = {
 -- 2016.06.30   split save into two functions: json & save to allow data compression
 -- 2016.08.29   update plugin versions on load
 -- 2016.11.05   added gmt_offset: thanks @jswim788 and @logread
--- 2016.11.09   preserve device #2 (openLuup) room allocation across reloads (tahnks @DesT)
+-- 2016.11.09   preserve device #2 (openLuup) room allocation across reloads (thanks @DesT)
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -106,7 +106,6 @@ attr ("currency", "£")
 attr ("date_format", "dd/mm/yy")
 attr ("model", "Not a Vera")
 attr ("timeFormat", "24hr")
-attr ("timezone", "0")
 
 -- Any other startup processing may be inserted here...
 luup.log "startup code completed"
@@ -168,7 +167,7 @@ luup.log "startup code completed"
 -- pre-installed plugins
 --
 
-local default_plugins_version = "2016.09.17"  --<<<-- change this to force update of default_plugins
+local default_plugins_version = "2016.11.15"  --<<<-- change this to force update of default_plugins
 
 local preinstalled = {
   
@@ -272,7 +271,7 @@ local preinstalled = {
     {
       AllowMultiple   = "1",
       Title           = "VeraBridge",
-      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
+      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
       Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
       AutoUpdate      = "0",
       VersionMajor    = "not",
@@ -446,7 +445,7 @@ local default_plugins = {
     preinstalled.ZWay,
     preinstalled.MySensors,
     preinstalled.DataYours,
-    preinstalled.Graphite_CGI,
+--    preinstalled.Graphite_CGI,
   }
 
 --

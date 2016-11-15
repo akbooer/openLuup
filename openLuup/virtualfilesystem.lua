@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.08.29",
+  VERSION       = "2016.11.15",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -443,10 +443,10 @@ local D_VeraBridge_dev = [[
 </root>
 ]]
 
--- TODO: switch to icons/ directory once this release is in the master branch
+
 local D_VeraBridge_json = [[
 {
-	"default_icon": "http://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
+	"default_icon": "http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
 	"Tabs": [
 		{
 			"Label": {

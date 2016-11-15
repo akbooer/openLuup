@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.11.14",
+  VERSION       = "2016.11.15",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -37,7 +37,7 @@ ABOUT = {
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local vfs         = require "openLuup.virtualfilesystem"
-
+local scheduler   = require "openLuup.scheduler"    -- for job_list, delay_list, and startup_jobs
 local lfs         = require "lfs"
 local url         = require "socket.url"
 
@@ -120,20 +120,83 @@ end
 -- HTTP requests
 --
 
+
 --function HTTP_openLuup (r, p, f)
+-- currently, just return some useful status info
 function HTTP_openLuup ()
-  local x = {}
+  
+  local lines = {}
+  local function print (a,b)
+    local fmt = "%5s %s"
+    lines[#lines+1] = fmt: format (a, b or '')
+  end
+  
+  -- format job_list, delay_list, and startup_jobs listing
+  local function list_jobs ()
+    local job_list = scheduler.job_list
+    local startup_list = scheduler.startup_list
+    local delay_list = scheduler.delay_list ()
+    
+    local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
+    local line = "%20s  %8s  %8s  %s %s"
+    local date = "%Y-%m-%d %H:%M:%S"
+
+    local function joblist (job_list)
+      local jlist = {}
+      for _,b in pairs (job_list) do
+        jlist[#jlist+1] = {
+          t = b.expiry,
+          l = line: format (os.date (date, b.expiry + 0.5), b.devNo or 'system', 
+                              state[b.status] or '?', b.type, b.notes or '')
+        }
+      end
+      return jlist
+    end
+
+    local jlist = joblist (job_list)
+    local slist = joblist (startup_list)
+
+    local dlist = {}
+    for _,b in pairs (delay_list) do
+      local dtype = math.floor(b.delay) .. "s :callback "
+      local name = (luup.devices[b.devNo] or {description = ''}).description
+      dlist[#dlist+1] = {
+        t = b.time,
+        l = line: format (os.date (date, b.time), b.devNo, "Delay", dtype .. ' ' .. name, '')
+      }
+    end
+
+    local function listit (list, title)
+      print (title .. ", " .. os.date "%c")
+      table.sort (list, function (a,b) return a.t < b.t end)
+      print ('#', (line: format ("date       time    ", "device", "status","info", '')))
+      for i,x in ipairs (list) do print (i, x.l) end
+      print ''
+    end
+
+    listit (jlist, "Scheduled Jobs")
+    listit (dlist, "Delayed Callbacks")
+    listit (slist, "Startup Jobs")
+  end
+
+  -- HTTP request
   local fmt = "%-16s   %s   "
   for a,b in pairs (ABOUT) do
-    x[#x+1] = fmt:format (a, tostring(b))
+    print (fmt:format (a, tostring(b)))
   end
+  
+    print "----------\n"
+print "openLuup attributes"
   local info = luup.attr_get "openLuup"
-  x[#x+1] = "----------"
   for a,b in pairs (info or {}) do
-    x[#x+1] = table.concat {a, " : ", tostring(b)} 
+    print (table.concat {a, " : ", tostring(b)} )
   end
-  x = table.concat (x, '\n')
-  return x
+  
+  print "----------\n"
+  list_jobs ()
+  
+  print "----------\n"
+  return table.concat (lines, '\n')
 end
 
 
