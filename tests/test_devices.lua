@@ -184,22 +184,41 @@ function TestOtherMethods:test_version ()
   t.assertEquals (var.version, v2)                    -- and that variable has same version
  end
 
-function TestOtherMethods:test_call_action ()
-  local srv = "testService"
-  self.d0.services[srv] = {
-    actions = {
-      action1 = { 
+--
+-- ACTIONS
+--
+
+TestDeviceActions = {}
+
+function TestDeviceActions:setUp ()
+  self.d0 = d.new (0)
+
+-- add an action or two
+--
+
+local action1 = {
         run = function (lul_device, lul_settings) 
           return true
         end, 
-      },
-      action2 = { 
+      }
+
+local action2 = {
         job = function (lul_device, lul_settings, lul_job) 
           return 4, 0     -- job done status
         end, 
-      },
-    }
-  }
+      }
+ 
+self.d0:action_set ( "testService", "action1", action1)
+self.d0:action_set ( "testService", "action2", action2)
+
+end
+
+function TestDeviceActions:tearDown ()
+  self.d0 = nil
+end
+
+function TestDeviceActions:test_call_action ()
+  local srv = "testService"
   local error, error_msg, jobNo, return_arguments = self.d0:call_action (srv, "action1", {})
   t.assertEquals (error, 0)
   t.assertIsNumber (jobNo)
@@ -213,7 +232,7 @@ function TestOtherMethods:test_call_action ()
   t.assertIsTable (return_arguments)
 end
 
-function TestOtherMethods:test_missing_action ()
+function TestDeviceActions:test_missing_action_handler ()
   local result
   local function missing ()
     return { 
@@ -226,11 +245,26 @@ function TestOtherMethods:test_missing_action ()
   self.d0:action_callback (missing)
   local error, error_msg, jobNo, return_arguments = self.d0:call_action ("garp", "foo", {value=12345})
   t.assertEquals (error, 0)
+  t.assertEquals (error_msg, '')
+  t.assertEquals (jobNo, 0)
   t.assertIsTable (return_arguments)
   t.assertEquals (result, 12345)
 end
 
-function TestOtherMethods:test_ ()
+function TestDeviceActions:test_missing_service ()
+  local e,m,j,a = self.d0:call_action ("foo", "garp", {}, 4321)
+  t.assertEquals (e, 401)
+  t.assertEquals (m, "Invalid Service")
+  t.assertEquals (j, 0)
+  t.assertIsTable (a)
+end
+
+function TestDeviceActions:test_missing_action ()
+  local e,m,j,a = self.d0:call_action ("testService", "garp", {}, 4321)
+  t.assertEquals (e, 501)
+  t.assertEquals (m, "No implementation")
+  t.assertEquals (j, 0)
+  t.assertIsTable (a)
 end
 
 --------------------

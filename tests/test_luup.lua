@@ -305,17 +305,79 @@ function TestOtherLuupMethods:test_version ()
   t.assertTrue (v2 > v1)                         -- check version number increments
  end
 
-
-function TestOtherLuupMethods:test_action () 
-  local srv="urn:micasaverde-com:serviceId:HomeAutomationGateway1"
-  local act = "SetHouseMode"
-  local par = {Mode="2"}
-
-  local error, error_msg, job, arguments = luup.call_action (srv, act, par, 0)
-  
+function TestOtherLuupMethods:test_sleep ()  
+  luup.sleep (2000)   -- time in milliseconds
 end
 
-function TestOtherLuupMethods:test_action_0 ()    -- test on device 0
+
+
+TestLuupActions = {}
+
+function TestLuupActions:setUp ()
+  local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
+  self.devType = devType
+  self.devNo = luup.create_device (devType)   -- minimal device description!!
+  self.d = luup.devices[self.devNo]
+
+
+-- add an action or two
+--
+
+local action1 = {
+        run = function (lul_device, lul_settings) 
+          return true
+        end, 
+      }
+
+local action2 = {
+        job = function (lul_device, lul_settings, lul_job) 
+          return 4, 0     -- job done status
+        end, 
+      }
+ 
+self.d:action_set ( "testService", "action1", action1)
+self.d:action_set ( "testService", "action2", action2)
+
+end
+
+function TestLuupActions:test_missing_device ()
+  local e,m,j,a = luup.call_action ("foo", "garp", {}, 4321)
+  t.assertEquals (e, 401)
+  t.assertEquals (m, "Invalid service/action/device")
+  t.assertEquals (j, 0)
+  t.assertIsTable (a)
+end
+
+function TestLuupActions:test_missing_service ()
+  local e,m,j,a = luup.call_action ("foo", "garp", {}, self.devNo)
+  t.assertEquals (e, 401)
+  t.assertEquals (m, "Invalid Service")
+  t.assertEquals (j, 0)
+  t.assertIsTable (a)
+end
+
+function TestLuupActions:test_missing_action ()
+  local e,m,j,a = luup.call_action ("testService", "garp", {}, self.devNo)
+  t.assertEquals (e, 501)
+  t.assertEquals (m, "No implementation")
+  t.assertEquals (j, 0)
+  t.assertIsTable (a)
+end
+
+
+function TestLuupActions:test_action () 
+  local srv="testService"
+  local act = "action1"
+  local par = {Mode="2"}
+
+  local error, error_msg, job, arguments = luup.call_action (srv, act, par, self.devNo)
+  t.assertEquals (error, 0)
+  t.assertEquals (error_msg, "")
+  t.assertEquals (job, 0)
+  t.assertIsTable (arguments)  
+end
+
+function TestLuupActions:test_action_0 ()    -- test on device 0
   local srv="urn:micasaverde-com:serviceId:HomeAutomationGateway1"
   local act = "SetHouseMode"
   local par = {Mode="2"}
@@ -330,7 +392,7 @@ function TestOtherLuupMethods:test_action_0 ()    -- test on device 0
 
   local error, error_msg, job, arguments = luup.call_action (srv, act, {Mode = "1"}, 0)
   t.assertEquals (error, 0)
---  t.assertIsNil (error_msg)   -- perhaps should be string?
+  t.assertIsString (error_msg)   -- probably blank string
   t.assertEquals(job, 0)
   t.assertIsTable (arguments)
   local mode = luup.attr_get "Mode"
@@ -339,7 +401,7 @@ function TestOtherLuupMethods:test_action_0 ()    -- test on device 0
 end
 
 
-function TestOtherLuupMethods:test_missing_action ()
+function TestLuupActions:test_missing_action_handler ()
   local result
   local function missing ()
     return { 
@@ -351,15 +413,14 @@ function TestOtherLuupMethods:test_missing_action ()
   end
   self.d:action_callback (missing)
   local error, error_msg, jobNo, ret_args = luup.call_action ("garp", "foo", {value=12345}, self.devNo)
+  
   t.assertEquals (error, 0)
-  t.assertIsTable (ret_args)
+  t.assertEquals (error_msg, '')
+  t.assertEquals(jobNo, 0)
+  t.assertIsTable (ret_args)    -- empty table
   t.assertEquals (result, 12345)
 end
 
-
-function TestOtherLuupMethods:test_sleep ()  
-  luup.sleep (2000)   -- time in milliseconds
-end
 
 
 function TestOtherLuupMethods:test_ ()   
