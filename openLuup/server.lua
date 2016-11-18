@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.11.07",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -43,7 +43,6 @@ local ABOUT = {
 -- 2016.06.01   also look for files in virtualfilesystem
 -- 2016.06.09   also look in files/ directory
 -- 2016.07.06   add 'method' to WSAPI server call
--- 2016.11.07   add requester IP to new connection log message
 
 ---------------------
 
@@ -57,6 +56,8 @@ local ABOUT = {
 --              see: http://forum.micasaverde.com/index.php/topic,39129.msg293629.html#msg293629
 -- 2016.10.17   use CGI prefixes from external servertables module
 -- 2016.11.02   change job.notes to job.type for new connections and requests
+-- 2016.11.07   add requester IP to new connection log message
+-- 2016.11.18  test for nil URL.path 
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -301,8 +302,9 @@ local function request_object (request_URI, headers, post_content, method, http_
   end
  
   local URL = url.parse (request_URI)               -- parse URL
-  URL.path = URL.path:gsub ("/port_3480", '')       -- 2016.09.16, thanks @explorer
-  
+  if URL.path then                                  -- 2016.11.18
+    URL.path = URL.path:gsub ("/port_3480", '')     -- 2016.09.16, thanks @explorer
+  end
   -- construct parameters from query string or POST content
   local parameters
   method = method or "GET"

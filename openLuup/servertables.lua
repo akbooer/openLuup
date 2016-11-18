@@ -10,6 +10,7 @@
 -- 2016.07.14  added status_codes for server response
 -- 2016.10.17  added CGI prefixes and aliases
 -- 2016.11.17  change location of graphite_cgi to openLuup folder
+-- 2016.11.18  added CGI console.lua
 
 local mimetypes = {
   css  = "text/css", 
@@ -79,6 +80,8 @@ local cgi_prefix = {
     "cgi",          -- standard CGI directory
     "cgi-bin",      -- ditto
     
+    "console",      -- openLuup console interface
+    
     "dashboard",    -- for graphite_api (requires DataYours plugin)
     "metrics",      -- ditto
     "render",       -- ditto
@@ -98,6 +101,7 @@ local cgi_alias = setmetatable ({
     ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
     ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
     ["upnp/control/hag"]          = "openLuup/hag.lua",
+    ["console"]                   = "openLuup/console.lua",
     
     -- graphite_api support
     ["metrics"]             = graphite_cgi,

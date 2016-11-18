@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.11.02",
+  VERSION       = "2016.11.15",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -44,6 +44,7 @@ local ABOUT = {
 -- 2016.07.18  better error returns for action request
 -- 2016.08.09  even better error returns for action request!
 -- 2016.11.02  use startup_list (not job_list) in status response
+-- 2016.11.15  only show non-successful startup jobs
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -339,12 +340,14 @@ local function status_startup_table ()
     },
 ]]--
   for id, job in pairs (scheduler.startup_list) do
-    tasks[#tasks + 1] = {
-      id = id,
-      status = job.status,
-      type = job.type or ("device_no_" .. (job.devNo or '(system)')), 
-      comments = job.notes,
-    }
+    if job.status ~= scheduler.state.Done then
+      tasks[#tasks + 1] = {
+        id = id,
+        status = job.status,
+        type = job.type or ("device_no_" .. (job.devNo or '(system)')), 
+        comments = job.notes,
+      }
+    end
   end
   return startup
 end

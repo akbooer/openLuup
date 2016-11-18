@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.11.15",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -33,11 +33,11 @@ ABOUT = {
 -- 2016.06.18  add AltAppStore as child device
 -- 2016.06.22  remove some dependencies on other modules
 --             ...also add DataYours install configuration
+-- 2016.11.18  remove HTTP handler
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local vfs         = require "openLuup.virtualfilesystem"
-local scheduler   = require "openLuup.scheduler"    -- for job_list, delay_list, and startup_jobs
 local lfs         = require "lfs"
 local url         = require "socket.url"
 
@@ -82,7 +82,6 @@ local function copy_if_missing (source, destination)
 end
 
 
-
 --------------------------------------------------
 
 --
@@ -115,89 +114,6 @@ local function calc_stats ()
   set_attr ["Uptime"]  = days .. " days"
 end
 
---------------------------------------------------
---
--- HTTP requests
---
-
-
---function HTTP_openLuup (r, p, f)
--- currently, just return some useful status info
-function HTTP_openLuup ()
-  
-  local lines = {}
-  local function print (a,b)
-    local fmt = "%5s %s"
-    lines[#lines+1] = fmt: format (a, b or '')
-  end
-  
-  -- format job_list, delay_list, and startup_jobs listing
-  local function list_jobs ()
-    local job_list = scheduler.job_list
-    local startup_list = scheduler.startup_list
-    local delay_list = scheduler.delay_list ()
-    
-    local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
-    local line = "%20s  %8s  %8s  %s %s"
-    local date = "%Y-%m-%d %H:%M:%S"
-
-    local function joblist (job_list)
-      local jlist = {}
-      for _,b in pairs (job_list) do
-        jlist[#jlist+1] = {
-          t = b.expiry,
-          l = line: format (os.date (date, b.expiry + 0.5), b.devNo or 'system', 
-                              state[b.status] or '?', b.type, b.notes or '')
-        }
-      end
-      return jlist
-    end
-
-    local jlist = joblist (job_list)
-    local slist = joblist (startup_list)
-
-    local dlist = {}
-    for _,b in pairs (delay_list) do
-      local dtype = math.floor(b.delay) .. "s :callback "
-      local name = (luup.devices[b.devNo] or {description = ''}).description
-      dlist[#dlist+1] = {
-        t = b.time,
-        l = line: format (os.date (date, b.time), b.devNo, "Delay", dtype .. ' ' .. name, '')
-      }
-    end
-
-    local function listit (list, title)
-      print (title .. ", " .. os.date "%c")
-      table.sort (list, function (a,b) return a.t < b.t end)
-      print ('#', (line: format ("date       time    ", "device", "status","info", '')))
-      for i,x in ipairs (list) do print (i, x.l) end
-      print ''
-    end
-
-    listit (jlist, "Scheduled Jobs")
-    listit (dlist, "Delayed Callbacks")
-    listit (slist, "Startup Jobs")
-  end
-
-  -- HTTP request
-  local fmt = "%-16s   %s   "
-  for a,b in pairs (ABOUT) do
-    print (fmt:format (a, tostring(b)))
-  end
-  
-    print "----------\n"
-print "openLuup attributes"
-  local info = luup.attr_get "openLuup"
-  for a,b in pairs (info or {}) do
-    print (table.concat {a, " : ", tostring(b)} )
-  end
-  
-  print "----------\n"
-  list_jobs ()
-  
-  print "----------\n"
-  return table.concat (lines, '\n')
-end
 
 
 --------------------------------------------------
@@ -353,10 +269,12 @@ function init (devNo)
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
     luup.variable_set (SID.openLuup, "Version", version,  ole)
     luup.log (version)
+    local info = luup.attr_get "openLuup"
+    info.Version = version      -- put it into openLuup table too.
   end
 
-  luup.register_handler ("HTTP_openLuup", "openLuup")
-  luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
+--  luup.register_handler ("HTTP_openLuup", "openLuup")
+--  luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
   
   luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
 

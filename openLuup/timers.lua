@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2016.11.14",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -35,6 +35,7 @@ local ABOUT = {
 -- 2016.11.07  added return argument 'due' for scene timers
 -- 2016.11.13  refactor day-of-week and day-of-month timers (fixing old bug?)
 -- 2016.11.14  bug fix in DOW and DOM timers! (knew I shouldn't have done previous fix on the 13-th!)
+-- 2016.11.18  add callback type (string) to scheduler delay_list calls
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
@@ -209,13 +210,13 @@ local function next_scheduled_time (offset, time, blocksize)
 end
 
 -- function: call_delay
--- parameters: function_name (string), seconds (number), data (string)
+-- parameters: function_name (string), seconds (number), data (string) [,type (string)]
 -- returns: result (number)
 --
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- The function returns 0 if successful. 
-local function call_delay (fct, seconds, data)
-  scheduler.add_to_delay_list (fct, seconds, data) 
+local function call_delay (fct, seconds, data, type)
+  scheduler.add_to_delay_list (fct, seconds, data, nil, type) -- note intervening nil parameter!
   return 0
 end
 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.11.02",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -34,6 +34,7 @@ local ABOUT = {
 -- 2016.07.18  improve call_action error messages
 -- 2016.07.20  truncate very long values in variable_set log output and remove control characters
 -- 2016.11.02  add job type to timer calls
+-- 2016.11.18  add call_delay function name as timer type
 
 local logs          = require "openLuup.logs"
 
@@ -435,11 +436,11 @@ local function call_action (service, action, arguments, device)
 --
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- The function returns 0 if successful. 
-local function call_delay (global_function_name, ...) 
+local function call_delay (global_function_name, seconds, data) 
   local fct = entry_point (global_function_name, "luup.call_delay")
   if fct then 
     -- don't bother to log call_delay, since it happens rather frequently
-    return timers.call_delay(fct, ...) 
+    return timers.call_delay(fct, seconds, data, global_function_name) 
   end
 end
 

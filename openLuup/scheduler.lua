@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2016.11.15",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -35,6 +35,7 @@ local ABOUT = {
 --
 
 -- 2016.11.02  add startup_list handling, kill_job
+-- 2016.11.18  add delay callback type (string) parameter
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
@@ -56,12 +57,14 @@ local watch_list = {}                 -- list of watch callbacks
 local socket_list = {}                -- table of socket watch callbacks (for incoming data) 
 
 -- adds a function to the delay list
--- note optional final parameters which defines device context in which to run
-local function add_to_delay_list (fct, seconds, data, devNo)  
+-- note optional final parameters which define:
+--    device context in which to run, and text name
+local function add_to_delay_list (fct, seconds, data, devNo, type)  
   delay_list[#delay_list+1] = {
     callback = fct,
     delay = seconds,
     devNo = devNo or current_device,
+    type = type,
     time = socket.gettime() + seconds, 
     parameter = data, 
   }
@@ -361,8 +364,8 @@ local function device_start (entry_point, devNo, name)
   
   local jobNo = create_job ({job = startup_job}, {}, devNo)
   local job = job_list[jobNo]
-  local text = "job#%d :device [%d] %s"
-  job.type = text: format (jobNo, devNo, name or '')
+  local text = "job#%d :plugin '%s'"
+  job.type = text: format (jobNo, name or '')
   startup_list[jobNo] = job  -- put this into the startup job list too 
   return jobNo
 end    
