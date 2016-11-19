@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2016.11.01",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -35,7 +35,8 @@ local ABOUT = {
 --              see: http://forum.micasaverde.com/index.php/topic,34476.msg282148.html#msg282148
 -- 2016.10.29   add notes to timer jobs (changed to job.type)
 -- 2016.11.01   add new_userdata_dataversion() to successful scene execution
- 
+-- 2016.11.18   add scene finisher type to final delay.
+
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
 local timers    = require "openLuup.timers"
@@ -147,12 +148,14 @@ local function create (scene_json)
       _log (msg, "luup.scenes")
       _log_altui_scene (scene)                  -- log for altUI to see
       local max_delay = 0
+      local label = "scene#" .. scene.id
       for _, group in ipairs (scene.groups) do  -- schedule the various delay groups
         local delay = tonumber (group.delay) or 0
         if delay > max_delay then max_delay = delay end
-        timers.call_delay (group_runner, delay, group.actions)
+        timers.call_delay (group_runner, delay, group.actions, label .. "group delay")
       end
-      timers.call_delay (scene_finisher, max_delay + 30, scene.last_run)    -- say we're finished
+      timers.call_delay (scene_finisher, max_delay + 30, scene.last_run, 
+        label .. " finisher")    -- say we're finished
     end
   end
   
@@ -161,13 +164,20 @@ local function create (scene_json)
 --    for _,j in ipairs (jobs) do
 --      scheduler.kill_job (j.
 --    end
-    -- can't easily kill the timer jobs, but can disable all timers and triggers
+    -- disable all timers and triggers
     for _, t in ipairs (scene.timers or {}) do
       t.enabled = 0
     end
     for _, t in ipairs (scene.triggers or {}) do
       t.enabled = 0
     end
+  end
+
+  -- called if SOMEBODY changes ANY device variable in ANY service used in this scene's actions
+  local function scene_watcher (...)
+    luup.log ("SCENE_WATCHER: " .. json.encode {
+              {scene=scene.id, name=scene.name}, ...})
+    -- TODO: use this to clear scene 'running' flag
   end
 
   local function scene_rename (name, room)
@@ -182,13 +192,19 @@ local function create (scene_json)
   end
 
   -- delete any actions which refer to non-existent devices
+  -- also, add listeners to the device AND service to watch for changes
   local function verify ()
+    local silent = true     -- don't log watch callbacks
     for _, g in ipairs (scene.groups or {}) do
       local actions = g.actions or {}
       local n = #actions 
       for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
         local a = actions[i]
-        if not luup.devices[tonumber(a.device)] then
+        local dev = luup.devices[tonumber(a.device)]
+        if dev then
+          local name = "_scene" .. scene.id
+          devutil.variable_watch (dev, scene_watcher, a.service, nil, name, silent) -- NB: ALL variables in service
+        else
           table.remove (actions,i)
         end
       end
@@ -261,13 +277,13 @@ local function create (scene_json)
   local jobs = meta.jobs
   local info = "job#%d :timer '%s' for scene [%d] %s"
   for _, t in ipairs (scene.timers or {}) do
-    local _,_,j = timers.call_timer (scene_runner, t.type, t.time or t.interval, 
+    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, t.time or t.interval, 
                           t.days_of_week or t.days_of_month, t, recurring)
     if j and scheduler.job_list[j] then
       local job = scheduler.job_list[j]
       local text = info: format (j, t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
       job.type = text
-      t.next_run = math.floor(job.expiry)   -- TODO: this is still wrong (expiry not yet updated)
+      t.next_run = due
       jobs[#jobs+1] = j           -- save the jobs we're running
     end
   end

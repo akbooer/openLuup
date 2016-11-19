@@ -73,8 +73,10 @@ end
 
 
 -- heartbeat monitor for memory usage and checkpointing
+local chkpt = 1
 local function openLuupPulse ()
-  timers.call_delay(openLuupPulse, 6*60, '', 'openLuup checkpoint')      -- periodic pulse (6 minutes)  
+  chkpt = chkpt + 1
+  timers.call_delay(openLuupPulse, 6*60, '', 'openLuup checkpoint #' .. chkpt)      -- periodic pulse (6 minutes)  
   -- CHECKPOINT !
   local ok, msg = userdata.save (luup)
   if not ok then

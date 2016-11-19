@@ -526,7 +526,7 @@ local function variable_watch (global_function_name, service, variable, device)
   local dev = devices[device or '']
   -- NB: following call deals with missing device/service/variable,
   --     so CAN'T use the dev:variable_watch (...) syntax, since dev may not be defined!
-  devutil.variable_watch (dev, fct, service, variable)
+  devutil.variable_watch (dev, fct, service, variable, global_function_name)
   
   local fmt = "callback=%s, watching=%s.%s.%s"
   local msg = fmt: format (global_function_name, (dev and device) or '*', service or '*', variable or '*')

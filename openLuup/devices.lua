@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2016.07.19",
+  VERSION       = "2016.11.19",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -30,6 +30,7 @@ local ABOUT = {
 -- 2016.04.15  added per-device variable numbering (thanks @explorer)
 -- 2016.04.29  added device status
 -- 2016.07.19  improve call_action error handling
+-- 2016.11.19  addeed callback name to watch callback structure
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 
@@ -142,8 +143,13 @@ end
 -- thanks @vosmont for clarification of undocumented feature
 --
 
-local function variable_watch (dev, fct, serviceId, variable)  
-  local callback = {callback = fct, devNo = scheduler.current_context()}    -- devNo is current context
+local function variable_watch (dev, fct, serviceId, variable, name, silent)  
+  local callback = {
+    callback = fct, 
+    devNo = scheduler.current_device (),    -- devNo is current device context
+    name = name,
+    silent = silent,                            -- avoid logging some system callbacks (eg. scene watchers)
+  }
   if dev then
     -- a specfic device
     local srv = dev.services[serviceId]
@@ -366,6 +372,7 @@ return {
   -- variables
   dataversion           = dataversion,
   device_list           = device_list,
+  sys_watchers          = sys_watchers,         -- only for use by console routine
   userdata_dataversion  = userdata_dataversion,
   
   -- methods

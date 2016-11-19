@@ -35,7 +35,7 @@ local ABOUT = {
 --
 
 -- 2016.11.02  add startup_list handling, kill_job
--- 2016.11.18  add delay callback type (string) parameter
+-- 2016.11.18  add delay callback type (string) parameter, and silent mode
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
@@ -475,8 +475,10 @@ local function luup_callbacks ()
     for _, callback in ipairs (old_watch_list) do
       for _, watcher in ipairs (callback.watchers) do   -- single variable may have multiple watchers
         local var = callback.var
-        _log (("%s.%s.%s %s"): format(var.dev, var.srv, var.name, tostring (watcher.callback)), 
+        if not watcher.silent then
+          _log (("%s.%s.%s %s"): format(var.dev, var.srv, var.name, tostring (watcher.callback)), 
                   "luup.watch_callback") 
+        end
         local ok, msg = context_switch ( 
           watcher.devNo, watcher.callback, var.dev, var.srv, var.name, var.old, var.value) 
         if not ok then

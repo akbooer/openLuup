@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2016.11.18",
+  VERSION       = "2016.11.19",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -62,6 +62,7 @@ local console_html = [[
       <a target="Output" class="left" href="/console?page=parameters">Parameters</a>
       <a target="Output" class="left" href="/console?page=jobs">Jobs</a>
       <a target="Output" class="left" href="/console?page=delays">Delays</a>
+      <a target="Output" class="left" href="/console?page=watches">Watches</a>
       <a target="Output" class="left" href="/console?page=startup">Startup Jobs</a>
     </div>
     <div id="OutputFrame">
@@ -119,6 +120,35 @@ function run (wsapi_env)
     return jlist
   end
 
+  local function watchlist ()
+    local W = {}
+    local line = "%3s   :watch   %s (%s.%s.%s)"
+    local function isW (w, d,s,v)
+      if next (w.watchers) then
+        for _, what in ipairs (w.watchers) do
+          W[#W+1] = line:format (what.devNo, what.name or '?', d,s or '*',v or '*')
+        end
+      end
+    end
+
+    for d,D in pairs (luup.devices) do
+      isW (D, d)
+      for s,S in pairs (D.services) do
+        isW (S, d,s)
+        for v,V in pairs (S.variables) do
+          isW (V, d,s,v)
+        end
+      end
+    end
+
+    print ("Variable Watches, " .. os.date "%c")
+    print ('#', line: format ('dev', 'callback', "device","serviceId","variable"))
+    table.sort (W)
+    for i,w in ipairs (W) do
+      print (i,w)
+    end    
+  end
+  
   local jlist = joblist (job_list)
   local slist = joblist (startup_list)
 
@@ -144,6 +174,7 @@ function run (wsapi_env)
     jobs    = function () listit (jlist, "Scheduled Jobs") end,
     delays  = function () listit (dlist, "Delayed Callbacks") end,
     startup = function () listit (slist, "Startup Jobs") end,
+    watches = watchlist,
     about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
     
     parameters = function ()
