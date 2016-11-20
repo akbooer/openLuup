@@ -34,6 +34,7 @@ ABOUT = {
 -- 2016.06.22  remove some dependencies on other modules
 --             ...also add DataYours install configuration
 -- 2016.11.18  remove HTTP handler
+-- 2016.11.20  add system memory stats
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
@@ -89,6 +90,21 @@ end
 --
 local cpu_prev = 0
 
+local function set (name, value)
+  luup.variable_set (SID.openLuup, name,   value,  ole)
+end
+
+local function mem_stats ()
+  local y = {}
+  for x in io.lines "/proc/meminfo" do 
+    local a,b = x:match "([^:%s]+):%s+(%d+)" 
+    if a and b then y[a] = tonumber(b) end
+  end
+  y.MemUsed  = y.Total  and y.MemFree and y.Total  - y.MemFree
+  y.MemAvail = y.Cached and y.MemFree and y.Cached + y.MemFree
+  return y
+end
+
 local function calc_stats ()
   local AppMemoryUsed =  math.floor(collectgarbage "count")   -- openLuup's memory usage in kB
   local now, cpu = timers.timenow(), timers.cpu_clock()
@@ -100,9 +116,9 @@ local function calc_stats ()
   
   cpu_prev= cpu
 
-  luup.variable_set (SID.openLuup, "Memory_Mb",   memory,  ole)
-  luup.variable_set (SID.openLuup, "CpuLoad",     cpuload, ole)
-  luup.variable_set (SID.openLuup, "Uptime_Days", days,    ole)
+  set ("Memory_Mb",   memory)
+  set ("CpuLoad",     cpuload)
+  set ("Uptime_Days", days)
 
   local line1 = ("%0.0f Mb, cpu %s%%, %s days"): format (memory, cpuload, days)
   display (line1)
@@ -112,8 +128,20 @@ local function calc_stats ()
   set_attr ["Memory"]  = memory .. " Mbyte"
   set_attr ["CpuLoad"] = cpuload .. '%'
   set_attr ["Uptime"]  = days .. " days"
+  
+  local y = mem_stats()
+  local memused, memavail = y.mused, y.memavail
+  if memused and memavail then
+    local mu = round (memused  / 1000, 0.1)
+    local ma = round (memavail / 1000, 0.1)
+    
+    set ("MemUsed_Mb", mu)
+    set ("MemAvail_Mb", ma)
+    
+    set_attr["MemUsed"]  = mu .. " Mbyte"
+    set_attr["MemAvail"] = ma .. " Mbyte"
+  end
 end
-
 
 
 --------------------------------------------------
