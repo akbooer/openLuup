@@ -130,7 +130,7 @@ local function calc_stats ()
   set_attr ["Uptime"]  = days .. " days"
   
   local y = mem_stats()
-  local memused, memavail = y.mused, y.memavail
+  local memused, memavail = y.MemUsed, y.MemAvail
   if memused and memavail then
     local mu = round (memused  / 1000, 0.1)
     local ma = round (memavail / 1000, 0.1)
