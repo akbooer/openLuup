@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2016.11.18",
+  VERSION       = "2016.11.20",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -175,8 +175,8 @@ local function create (scene_json)
 
   -- called if SOMEBODY changes ANY device variable in ANY service used in this scene's actions
   local function scene_watcher (...)
-    luup.log ("SCENE_WATCHER: " .. json.encode {
-              {scene=scene.id, name=scene.name}, ...})
+--    luup.log ("SCENE_WATCHER: " .. json.encode {
+--              {scene=scene.id, name=scene.name}, ...})
     -- TODO: use this to clear scene 'running' flag
   end
 

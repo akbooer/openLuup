@@ -122,7 +122,7 @@ function run (wsapi_env)
 
   local function watchlist ()
     local W = {}
-    local line = "%3s   :watch   %s (%s.%s.%s)"
+    local line = "%5s   :watch   %s (%s.%s.%s)"
     local function isW (w, d,s,v)
       if next (w.watchers) then
         for _, what in ipairs (w.watchers) do
