@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.11.20",
+  VERSION       = "2016.11.21",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -100,8 +100,8 @@ local function mem_stats ()
     local a,b = x:match "([^:%s]+):%s+(%d+)" 
     if a and b then y[a] = tonumber(b) end
   end
-  y.MemUsed  = y.Total  and y.MemFree and y.Total  - y.MemFree
-  y.MemAvail = y.Cached and y.MemFree and y.Cached + y.MemFree
+  y.MemUsed  = y.MemTotal and y.MemFree and y.MemTotal - y.MemFree
+  y.MemAvail = y.Cached   and y.MemFree and y.Cached   + y.MemFree
   return y
 end
 
