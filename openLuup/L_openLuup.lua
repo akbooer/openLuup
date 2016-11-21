@@ -130,17 +130,17 @@ local function calc_stats ()
   set_attr ["Uptime"]  = days .. " days"
   
   local y = mem_stats()
-  local memused, memavail, memtotal = y.MemUsed, y.MemAvail, y.MemTotal
-  if memused and memavail then
-    local mu = round (memused  / 1000, 0.1)
+  local memfree, memavail, memtotal = y.MemFree, y.MemAvail, y.MemTotal
+  if memfree and memavail then
+    local mf = round (memfree  / 1000, 0.1)
     local ma = round (memavail / 1000, 0.1)
     local mt = round (memtotal / 1000, 0.1)
     
-    set ("MemUsed_Mb", mu)
+    set ("MemFree_Mb", mf)
     set ("MemAvail_Mb", ma)
     set ("MemTotal", mt)
     
-    set_attr["MemUsed"]  = mu .. " Mbyte"
+    set_attr["MemFree" = mf .. " Mbyte"
     set_attr["MemAvail"] = ma .. " Mbyte"
     set_attr["MemTotal"] = mt .. " Mbyte"
   end
