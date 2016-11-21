@@ -140,7 +140,7 @@ local function calc_stats ()
     set ("MemAvail_Mb", ma)
     set ("MemTotal", mt)
     
-    set_attr["MemFree" = mf .. " Mbyte"
+    set_attr["MemFree"]  = mf .. " Mbyte"
     set_attr["MemAvail"] = ma .. " Mbyte"
     set_attr["MemTotal"] = mt .. " Mbyte"
   end
