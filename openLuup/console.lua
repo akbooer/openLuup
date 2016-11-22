@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2016.11.19",
+  VERSION       = "2016.11.22",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -64,6 +64,7 @@ local console_html = [[
       <a target="Output" class="left" href="/console?page=delays">Delays</a>
       <a target="Output" class="left" href="/console?page=watches">Watches</a>
       <a target="Output" class="left" href="/console?page=startup">Startup Jobs</a>
+      <a target="Output" class="left" href="/console?page=log">Log</a>
     </div>
     <div id="OutputFrame">
       <iframe name="Output" height="400px"> </iframe>
@@ -170,12 +171,20 @@ function run (wsapi_env)
     print ''
   end
 
+  local function printlog ()
+    local f = io.open "LuaUPnP.log"
+    local x = f:read "*a"
+    f: close()
+    print (x)
+  end
+  
   local pages = {
     jobs    = function () listit (jlist, "Scheduled Jobs") end,
     delays  = function () listit (dlist, "Delayed Callbacks") end,
     startup = function () listit (slist, "Startup Jobs") end,
     watches = watchlist,
     about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
+    log     = printlog,
     
     parameters = function ()
       local info = luup.attr_get "openLuup"
