@@ -9,6 +9,8 @@
 
 -- 2016.07.14  added status_codes for server response
 -- 2016.10.17  added CGI prefixes and aliases
+-- 2016.11.17  change location of graphite_cgi to openLuup folder
+-- 2016.11.18  added CGI console.lua
 
 local mimetypes = {
   css  = "text/css", 
@@ -73,10 +75,12 @@ local status_codes = {
    [505] = "HTTP Version not supported",
 }
 
--- CGI prefixes: any HTTP request with these path roots are treated as CGIs
+-- CGI prefixes: HTTP requests with any of these path roots are treated as CGIs
 local cgi_prefix = {
     "cgi",          -- standard CGI directory
     "cgi-bin",      -- ditto
+    
+    "console",      -- openLuup console interface
     
     "dashboard",    -- for graphite_api (requires DataYours plugin)
     "metrics",      -- ditto
@@ -84,26 +88,31 @@ local cgi_prefix = {
     
     "upnp",         -- for Luup HAG requests
     
-    "ZWaveAPI",     -- Z-Wave.me advanced API (requires Z-Way plugin)
+    "ZWaveAPI",     -- Z-Wave.me Advanced API (requires Z-Way plugin)
     "ZAutomation",  -- Z-Wave.me Virtual Device API
   }
 
 -- CGI aliases: any matching full CGI path is redirected accordingly
+
+local graphite_cgi = "openLuup/graphite_cgi.lua"
+
 local cgi_alias = setmetatable ({
     
     ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
     ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
     ["upnp/control/hag"]          = "openLuup/hag.lua",
+    ["console"]                   = "openLuup/console.lua",
     
     -- graphite_api support
-    ["dashboard"]           = "graphite_web.lua",
-    ["metrics"]             = "graphite_cgi.lua",
-    ["metrics/find"]        = "graphite_cgi.lua",
-    ["metrics/expand"]      = "graphite_cgi.lua",
-    ["metrics/index.json"]  = "graphite_cgi.lua",
-    ["render"]              = "graphite_cgi.lua",
+    ["metrics"]             = graphite_cgi,
+    ["metrics/find"]        = graphite_cgi,
+    ["metrics/expand"]      = graphite_cgi,
+    ["metrics/index.json"]  = graphite_cgi,
+    ["render"]              = graphite_cgi,
   },
-  { __index = function (_, path)    -- special handling of Zway requests (all directed to same handler)
+  
+  -- special handling of Zway requests (all directed to same handler)
+  { __index = function (_, path)
       if path: match "^ZWaveAPI"
       or path: match "^ZAutomation" then
         return "cgi/zway_cgi.lua"

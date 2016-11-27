@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.08.31",
+  VERSION       = "2016.11.20",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -53,7 +53,9 @@ ABOUT = {
 -- 2016.06.01   Add GetVeraFiles action to replace openLuup_getfiles separate utility
 -- 2016.06.20   Do not re-parent device #2 (now openLuup device) if not child of #1 (_SceneController)
 -- 2016.08.12   Add CloneRooms option (set to 'true' to use same rooms as remote Vera)
-
+-- 2016.11.12   only set LastUpdate when remote variable changes to avoid triggering a local status response
+--              thanks @delle, see: http://forum.micasaverde.com/index.php/topic,40434.0.html
+ 
 local devNo                      -- our device number
 
 local chdev     = require "openLuup.chdev"
@@ -423,6 +425,7 @@ end
 -- updates existing device variables with new values
 -- this devices table is from the "status" request
 local function UpdateVariables(devices)
+  local update = false
   for _, dev in pairs (devices) do
   dev.id = tonumber (dev.id)
     local i = local_by_remote_id(dev.id)
@@ -430,15 +433,15 @@ local function UpdateVariables(devices)
     if device and (type (dev.states) == "table") then
       device: status_set (dev.status)      -- 2016.04.29 set the overall device status
       for _, v in ipairs (dev.states) do
---        setVar (v.variable, v.service, v.value, i)    -- only actually changes if it's different from current value
         local value = luup.variable_get (v.service, v.variable, i)
         if v.value ~= value then
---          print ("update", dev.id, i, v.variable)    -- TODO: TEST ONLY
           luup.variable_set (v.service, v.variable, v.value, i)
+          update = true
         end
       end
     end
   end
+  return update
 end
 
 -- update HouseMode variable and, possibly, the actual openLuup Mode
@@ -478,9 +481,10 @@ function VeraBridge_delay_callback (DataVersion)
   if status == 0 then s = json.decode (j) end
   if s and s.devices then
     UpdateHouseMode (s.Mode)
-    UpdateVariables (s.devices)
     DataVersion = s.DataVersion
-    luup.devices[devNo]:variable_set (SID.gateway, "LastUpdate", os.time(), true) -- 2016.03.20 set without log entry
+    if UpdateVariables (s.devices) then -- 2016.11.20 only update if any variable changes
+      luup.devices[devNo]:variable_set (SID.gateway, "LastUpdate", os.time(), true) -- 2016.03.20 set without log entry
+    end 
   end 
   luup.call_delay ("VeraBridge_delay_callback", POLL_DELAY, DataVersion)
 end
@@ -752,6 +756,7 @@ function init (lul_device)
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
     setVar ("Version", version)
+    luup.log (version)
   end
   
   setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)

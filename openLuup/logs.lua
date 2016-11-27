@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2016.08.01",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -28,6 +28,7 @@ local ABOUT = {
 -- 2016.05.26   fix error on nil message
 -- 2016.06.09   fix numeric message error
 -- 2016.08.01   truncate long variable values in AltUI log
+-- 2016.11.18   convert parameter to string  in truncate
 
 local socket = require "socket"
 
@@ -99,7 +100,7 @@ end
 
 -- shorten long variable strings, removing control characters
 local function truncate (text)
-  text = (text or ''): gsub ("%c", ' ')
+  text = (tostring(text)): gsub ("%c", ' ')
   if #text > 120 then text = text: sub (1,115) .. "..." end    -- truncate long variable values
   return text
 end

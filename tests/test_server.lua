@@ -95,7 +95,6 @@ function TestServerRequests:test_http_file ()
   t.assertIsFunction (i)
   local f = i()
   t.assertIsString (f)
-  print (f)
   t.assertEquals (h["Content-Type"], "text/html")
 end
 

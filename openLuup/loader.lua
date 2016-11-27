@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2016.06.18",
+  VERSION       = "2016.11.06",
   DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -42,6 +42,8 @@ local ABOUT = {
 -- 2016.05.24  virtual file system for system .xml and .json files
 -- 2016.06.09  also look in files/ directory
 -- 2016.06.18  also look in openLuup/ directory (for AltAppStore)
+-- 2016.11.06  make "crlf" the default I/O protocol
+--             see: http://forum.micasaverde.com/index.php/topic,37661.msg298022.html#msg298022
 
 ------------------
 --
@@ -456,7 +458,7 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   end
 
   -- look for protocol in both device and implementation files 
-  d.protocol = d.protocol or i.protocol
+  d.protocol = d.protocol or i.protocol or "crlf"   -- 2015.11.06
 
   -- set up code environment (for context switching)
   code = code or {}

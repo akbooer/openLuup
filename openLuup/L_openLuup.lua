@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.10.23",
+  VERSION       = "2016.11.26",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -33,11 +33,12 @@ ABOUT = {
 -- 2016.06.18  add AltAppStore as child device
 -- 2016.06.22  remove some dependencies on other modules
 --             ...also add DataYours install configuration
+-- 2016.11.18  remove HTTP handler
+-- 2016.11.20  add system memory stats
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local vfs         = require "openLuup.virtualfilesystem"
-
 local lfs         = require "lfs"
 local url         = require "socket.url"
 
@@ -54,7 +55,7 @@ local ole               -- our own device ID
 local _log = function (...) luup.log (table.concat ({...}, ' ')) end
 
 --
--- uitlities
+-- utilities
 --
 
 local function round (x, p)
@@ -82,13 +83,31 @@ local function copy_if_missing (source, destination)
 end
 
 
-
 --------------------------------------------------
 
 --
 -- vital statistics
 --
 local cpu_prev = 0
+
+local function set (name, value)
+  luup.variable_set (SID.openLuup, name,   value,  ole)
+end
+
+local function mem_stats ()
+  local y = {}
+  local f = io.open "/proc/meminfo"
+  if f then
+    local x = f: read "*a"
+    f: close ()
+    for a,b in x:gmatch "([^:%s]+):%s+(%d+)"  do
+      if a and b then y[a] = tonumber(b) end
+    end
+  end
+  y.MemUsed  = y.MemTotal and y.MemFree and y.MemTotal - y.MemFree
+  y.MemAvail = y.Cached   and y.MemFree and y.Cached   + y.MemFree
+  return y
+end
 
 local function calc_stats ()
   local AppMemoryUsed =  math.floor(collectgarbage "count")   -- openLuup's memory usage in kB
@@ -101,9 +120,9 @@ local function calc_stats ()
   
   cpu_prev= cpu
 
-  luup.variable_set (SID.openLuup, "Memory_Mb",   memory,  ole)
-  luup.variable_set (SID.openLuup, "CpuLoad",     cpuload, ole)
-  luup.variable_set (SID.openLuup, "Uptime_Days", days,    ole)
+  set ("Memory_Mb",   memory)
+  set ("CpuLoad",     cpuload)
+  set ("Uptime_Days", days)
 
   local line1 = ("%0.0f Mb, cpu %s%%, %s days"): format (memory, cpuload, days)
   display (line1)
@@ -113,27 +132,22 @@ local function calc_stats ()
   set_attr ["Memory"]  = memory .. " Mbyte"
   set_attr ["CpuLoad"] = cpuload .. '%'
   set_attr ["Uptime"]  = days .. " days"
-end
-
---------------------------------------------------
---
--- HTTP requests
---
-
---function HTTP_openLuup (r, p, f)
-function HTTP_openLuup ()
-  local x = {}
-  local fmt = "%-16s   %s   "
-  for a,b in pairs (ABOUT) do
-    x[#x+1] = fmt:format (a, tostring(b))
+  
+  local y = mem_stats()
+  local memfree, memavail, memtotal = y.MemFree, y.MemAvail, y.MemTotal
+  if memfree and memavail then
+    local mf = round (memfree  / 1000, 0.1)
+    local ma = round (memavail / 1000, 0.1)
+    local mt = round (memtotal / 1000, 0.1)
+    
+    set ("MemFree_Mb",  mf)
+    set ("MemAvail_Mb", ma)
+    set ("MemTotal_Mb", mt)
+    
+    set_attr["MemFree"]  = mf .. " Mbyte"
+    set_attr["MemAvail"] = ma .. " Mbyte"
+    set_attr["MemTotal"] = mt .. " Mbyte"
   end
-  local info = luup.attr_get "openLuup"
-  x[#x+1] = "----------"
-  for a,b in pairs (info or {}) do
-    x[#x+1] = table.concat {a, " : ", tostring(b)} 
-  end
-  x = table.concat (x, '\n')
-  return x
 end
 
 
@@ -289,10 +303,13 @@ function init (devNo)
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
     luup.variable_set (SID.openLuup, "Version", version,  ole)
+    luup.log (version)
+    local info = luup.attr_get "openLuup"
+    info.Version = version      -- put it into openLuup table too.
   end
 
-  luup.register_handler ("HTTP_openLuup", "openLuup")
-  luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
+--  luup.register_handler ("HTTP_openLuup", "openLuup")
+--  luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
   
   luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
 

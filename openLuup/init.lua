@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.08.29",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -33,6 +33,7 @@ local ABOUT = {
 -- 2016.06.19  switch to L_AltAppStore module for initial AltUI download
 -- 2016.06.30  uncompress user_data file if necessary
 -- 2016.07.19  correct syntax error in xml action request response
+-- 2016.11.18  add delay callback name
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -72,8 +73,10 @@ end
 
 
 -- heartbeat monitor for memory usage and checkpointing
+local chkpt = 1
 local function openLuupPulse ()
-  timers.call_delay(openLuupPulse, 6*60)                      -- periodic pulse (6 minutes)  
+  chkpt = chkpt + 1
+  timers.call_delay(openLuupPulse, 6*60, '', 'openLuup checkpoint #' .. chkpt)      -- periodic pulse (6 minutes)  
   -- CHECKPOINT !
   local ok, msg = userdata.save (luup)
   if not ok then
@@ -185,7 +188,7 @@ do -- SERVER and SCHEDULER
   end
 
   -- start the heartbeat
-  timers.call_delay(openLuupPulse, 6 * 60)      -- it's alive! it's alive!!
+  timers.call_delay(openLuupPulse, 6 * 60, '', "first checkpoint")      -- it's alive! it's alive!!
 
   status = scheduler.start ()                   -- this is the main scheduling loop!
 end
