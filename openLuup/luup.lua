@@ -460,8 +460,8 @@ local function call_timer (global_function_name, timer_type, time, days, ...)
     _log (msg, "luup.call_timer")
     local e,_,j = timers.call_timer(fct, timer_type, time, days, ...)      -- 2016.03.01   
     if j and scheduler.job_list[j] then
-      local text = "job#%d :timer %s"
-      scheduler.job_list[j].type = text: format (j, msg)
+      local text = "job#%d :timer %s (%s)"
+      scheduler.job_list[j].type = text: format (j, global_function_name, msg)
     end
     return e
   end

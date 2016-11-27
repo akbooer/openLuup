@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.11.21",
+  VERSION       = "2016.11.26",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -96,9 +96,13 @@ end
 
 local function mem_stats ()
   local y = {}
-  for x in io.lines "/proc/meminfo" do 
-    local a,b = x:match "([^:%s]+):%s+(%d+)" 
-    if a and b then y[a] = tonumber(b) end
+  local f = io.open "/proc/meminfo"
+  if f then
+    local x = f: read "*a"
+    f: close ()
+    for a,b in x:gmatch "([^:%s]+):%s+(%d+)"  do
+      if a and b then y[a] = tonumber(b) end
+    end
   end
   y.MemUsed  = y.MemTotal and y.MemFree and y.MemTotal - y.MemFree
   y.MemAvail = y.Cached   and y.MemFree and y.Cached   + y.MemFree
@@ -136,9 +140,9 @@ local function calc_stats ()
     local ma = round (memavail / 1000, 0.1)
     local mt = round (memtotal / 1000, 0.1)
     
-    set ("MemFree_Mb", mf)
+    set ("MemFree_Mb",  mf)
     set ("MemAvail_Mb", ma)
-    set ("MemTotal", mt)
+    set ("MemTotal_Mb", mt)
     
     set_attr["MemFree"]  = mf .. " Mbyte"
     set_attr["MemAvail"] = ma .. " Mbyte"

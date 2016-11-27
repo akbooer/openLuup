@@ -364,7 +364,7 @@ local function device_start (entry_point, devNo, name)
   
   local jobNo = create_job ({job = startup_job}, {}, devNo)
   local job = job_list[jobNo]
-  local text = "job#%d :plugin '%s'"
+  local text = "job#%d :plugin %s"
   job.type = text: format (jobNo, name or '')
   startup_list[jobNo] = job  -- put this into the startup job list too 
   return jobNo

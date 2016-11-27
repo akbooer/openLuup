@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.json",
-  VERSION       = "2016.06.19",
+  VERSION       = "2016.10.17",
   DESCRIPTION   = "JSON encode/decode with unicode escapes to UTF-8 encoding and pretty-printing",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -28,6 +28,7 @@ local ABOUT = {
 -- 2015.04.10   allow comma before closing '}' or ']'
 -- 2015.11.29   improve formatting of nested objects, cache encoded strings
 -- 2016.06.19   encode "/" as "/" not "\/" in strings
+-- 2016.10.18   add json.null
 
   local default   = 
     {
@@ -36,6 +37,7 @@ local ABOUT = {
                                   -- since arrays are enumerated from starting index 1 with every intervening 'nil' 
     }
     
+  local json_null = {}            -- unique object, may be used to represent null when encoding arrays
     
   -- encode (), Lua to JSON
   local function encode (Lua)
@@ -114,6 +116,7 @@ local ABOUT = {
     end
   
     local function object_or_array (x)
+      if x == json_null then return "null" end
       local index, result = {}
       local only_numbers, only_strings = true, true
       if encoding[x] then json_error "table structure has self-reference" end
@@ -303,11 +306,12 @@ local ABOUT = {
     return Lua, message
 
   end  -- decode ()
-  
+ 
 return {
     ABOUT = ABOUT,
     
-    decode = decode, 
+    decode  = decode, 
     default = default,
-    encode = encode, 
+    encode  = encode, 
+    null    = json_null,
   }

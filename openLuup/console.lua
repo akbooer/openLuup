@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2016.11.22",
+  VERSION       = "2016.11.24",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -154,7 +154,7 @@ function run (wsapi_env)
   local slist = joblist (startup_list)
 
   local dlist = {}
-  local delays = "%4.0fs :callback '%s'"
+  local delays = "%4.0fs :callback %s"
   for _,b in pairs (delay_list) do
     local dtype = delays: format (b.delay, b.type or '')
     dlist[#dlist+1] = {
