@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.11.15",
+  VERSION       = "2016.12.11",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -129,10 +129,26 @@ local D_openLuup_json = [[
 					"left": "0",
 					"Label": {
 						"lang_tag": "donate",
-						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
+						"text": "<a href='console' target='_blank'>CONSOLE interface</a>"
 					},
 					"Display": {
 						"Top": 140,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "label",
+					"top": "4",
+					"left": "0",
+					"Label": {
+						"lang_tag": "donate",
+						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
+					},
+					"Display": {
+						"Top": 180,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
