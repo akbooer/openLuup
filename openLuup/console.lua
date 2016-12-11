@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2016.11.24",
+  VERSION       = "2016.12.10",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -29,50 +29,128 @@ ABOUT = {
 
 --  WSAPI Lua implementation
 
+local lfs       = require "lfs"                   -- for backup file listing
 local url       = require "socket.url"            -- for url unescape
 local luup      = require "openLuup.luup"
+local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
 
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
-local console_html = [[
+local console_html = {
+
+prefix = [[
 <!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
-    <title>openLuup</title>
-    <style> 
-    body            {font-family:Arial;  font-size:10pt; background:LightGray; } 
-    div             {vertical-align:middle; clear:both; }
-    span.blank      {width:60px; float:left; }
-    a:hover         {background-color:Brown; }
-    a               {width:100px; font-weight:bold; color:White; background-color:RosyBrown; text-align:center; 
-                     padding:2px; margin:6px; margin-left:0; float:left; text-decoration:none;}
-    a.left          {border-radius:20px; }
-    iframe          {border:none; width:100%; background:Gray; }
-    #Menu           {margin-left:auto; margin-right:auto; width:80%; }
-    #Output         {background:LightSteelBlue; padding:8px; padding-top:0;  width:100%;}
-    
+    <title>Console</title>
+    <style>
+      body {font-family:Arial; background:LightGray; }
+      
+      .dropbtn {
+        background-color: Sienna;
+        color: white;
+        padding: 16px;
+        font-size: 16px;
+        border: none;
+        cursor: pointer;
+      }
+
+      .dropdown {
+        position: relative;
+        display: inline-block;
+      }
+
+      .dropdown-content {
+        display: none;
+        position: absolute;
+        background-color: Sienna;
+        min-width: 160px;
+        border-top:1px solid Gray;
+        box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
+      }
+
+      .dropdown-content a {
+        color: white;
+        padding: 12px 16px;
+        text-decoration: none;
+        display: block;
+      }
+
+      .dropdown-content a:hover {background-color: SaddleBrown}
+
+      .dropdown:hover .dropdown-content {
+        display: block;
+      }
+
+      .dropdown:hover .dropbtn {
+        background-color: SaddleBrown;
+      }
     </style>
   </head>
-  <body>
-    <div id="Menu">
-      <a target="Output" class="left" href="/console?page=about">About</a>
-      <a target="Output" class="left" href="/console?page=parameters">Parameters</a>
-      <a target="Output" class="left" href="/console?page=jobs">Jobs</a>
-      <a target="Output" class="left" href="/console?page=delays">Delays</a>
-      <a target="Output" class="left" href="/console?page=watches">Watches</a>
-      <a target="Output" class="left" href="/console?page=startup">Startup Jobs</a>
-      <a target="Output" class="left" href="/console?page=log">Log</a>
+    <body>
+    
+    <div style="background:DarkGrey;">
+    
+      <div class="dropdown" >
+        <img src="https://avatars.githubusercontent.com/u/4962913" alt="X"  
+                style="width:60px;height:60px;border:0;vertical-align:middle;">
+      </div>
+
+      <div class="dropdown">
+        <button class="dropbtn">openLuup</button>
+        <div class="dropdown-content">
+          <a class="left" href="/console?page=about">About</a>
+          <a class="left" href="/console?page=parameters">Parameters</a>
+        </div>
+      </div>
+
+      <div class="dropdown">
+        <button class="dropbtn">Scheduler</button>
+        <div class="dropdown-content">
+          <a class="left" href="/console?page=jobs">Jobs</a>
+          <a class="left" href="/console?page=delays">Delays</a>
+          <a class="left" href="/console?page=watches">Watches</a>
+          <a class="left" href="/console?page=startup">Startup Jobs</a>
+        </div>
+      </div>
+
+      <div class="dropdown">
+        <button class="dropbtn">Logs</button>
+        <div class="dropdown-content">
+          <a class="left" href="/console?page=log">Log</a>
+          <a class="left" href="/console?page=log&version=1">Log.1</a>
+          <a class="left" href="/console?page=log&version=2">Log.2</a>
+          <a class="left" href="/console?page=log&version=3">Log.3</a>
+          <a class="left" href="/console?page=log&version=4">Log.4</a>
+          <a class="left" href="/console?page=log&version=5">Log.5</a>
+          <a class="left" href="/console?page=log&version=startup">Startup Log</a>
+        </div>
+      </div>
+
+      <div class="dropdown">
+        <button class="dropbtn">Backups</button>
+        <div class="dropdown-content">
+          <a class="left" href="/console?page=backups">Files</a>
+        </div>
+      </div>
     </div>
-    <div id="OutputFrame">
-      <iframe name="Output" height="400px"> </iframe>
+    <div style="overflow:scroll;">
+    <pre><code>
+]],
+--     <div style="overflow:scroll; height:500px;">
+
+  postfix = [[
+    </code></pre>
     </div>
+
   </body>
 </html>
-]]
 
+]]
+}
 
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
 local line = "%20s  %8s  %8s  %s %s"
@@ -171,26 +249,47 @@ function run (wsapi_env)
     print ''
   end
 
-  local function printlog ()
-    local f = io.open "LuaUPnP.log"
-    local x = f:read "*a"
-    f: close()
-    print (x)
+  local function printlog (p)
+    local name = luup.attr_get "openLuup.Logfile.Name" or "LuaUPnP.log"
+    local ver = p.version
+    if ver then
+      if ver == "startup" then
+        name = "logs/LuaUPnP_startup.log"
+      else
+        name = table.concat {name, '.', ver}
+      end
+    end
+    local f = io.open (name)
+    if f then
+      local x = f:read "*a"
+      f: close()
+      print (x)
+    end
   end
   
+  local function backups (p)
+    local dir = luup.attr_get "openLuup.Backup.Directory" or "backup/"
+    print ("Backup directory: ", dir)
+    print ''
+    for f in lfs.dir (dir) do
+      if not f: match "^%." then print(f) end   -- ignore hidden files
+    end
+  end
+  
+  
   local pages = {
-    jobs    = function () listit (jlist, "Scheduled Jobs") end,
+    about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
+    backups = backups,
     delays  = function () listit (dlist, "Delayed Callbacks") end,
+    jobs    = function () listit (jlist, "Scheduled Jobs") end,
+    log     = printlog,
     startup = function () listit (slist, "Startup Jobs") end,
     watches = watchlist,
-    about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
-    log     = printlog,
     
     parameters = function ()
       local info = luup.attr_get "openLuup"
-      for a,b in pairs (info or {}) do
-        print (table.concat {a, " : ", tostring(b)} )
-      end
+      local p = json.encode (info or {})
+      print (p or "--- none ---")
     end,
   }
 
@@ -201,18 +300,19 @@ function run (wsapi_env)
     p[a] = url.unescape (b)
   end
   
-  lines = {}
+  lines = {console_html.prefix}
   local status = 200
   local headers = {}
   
-  local page = p.page 
-  if page then
-    (pages[page] or pages.info) () 
-    headers["Content-Type"] = "text/plain"
-  else
-    lines = {console_html}
+  local page = p.page or ''
+--  if page then
+    do (pages[page] or function () end) (p) end
+--    headers["Content-Type"] = "text/plain"
+--  else
+--    lines = {console_html}
     headers["Content-Type"] = "text/html"
-  end
+--  end
+  print (console_html.postfix)
   local return_content = table.concat (lines)
 
   

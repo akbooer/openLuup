@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2016.11.18",
+  VERSION       = "2016.12.10",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -29,10 +29,20 @@ local ABOUT = {
 -- 2016.06.09   fix numeric message error
 -- 2016.08.01   truncate long variable values in AltUI log
 -- 2016.11.18   convert parameter to string  in truncate
+-- 2016.12.05   add log file configurations parameters (thanks @logread)
+--              see: http://forum.micasaverde.com/index.php/topic,34476.msg300645.html#msg300645
 
-local socket = require "socket"
+local socket  = require "socket"
+local lfs     = require "lfs"       -- for creating default log firectory
 
 local start_time = os.time()
+
+-- openLuup configuration options:
+local Logfile         = "logs/LuaUPnP.log"  -- full path to log file
+local LogfileLines    = 2000                -- number of logfile lines before rotation
+local LogfileVersions = 5                   -- number of versions to retain
+
+local StartupLogfile  = "logs/LuaUPnP_startup.log"
 
 --[[
 
@@ -106,7 +116,7 @@ local function truncate (text)
 end
 
 
--- dummy io modiule for missing files
+-- dummy io module for missing files
 local function dummy_io (functions)
   local function noop () end
   functions = functions or {}
@@ -118,39 +128,6 @@ local function dummy_io (functions)
 end
 
 --
--- syslog
---[[
-
-local syslog = {
-  
---emergency, alert, critical, error, warning, notice, info, debug = 0,1,2,3,4,5,6,7,
-
-
-server = function (ip_and_port, tag, hostname)
-  local sock = socket.udp()
-  local facility = 1    -- 'user'
-  local ip, port = ip_and_port: match "^(%d+%.%d+%.%d+%.%d+):(%d+)$"
-  if not ip or not port then return nil, "invalid IP or PORT" end
-  if not tag or tag == '' then tag = "Plugin" end
-  tag = tag: gsub("[^%w]","") or "XXX"  -- only alphanumeric, no spaces or other
-  
-  local function send (self, content, severity)
-    content  = tostring (content)
-    severity = tonumber (severity) or info
-    local priority = facility*8 + (severity%8)
-    local msg = ("<%d>%s %s %s: %s\n"):format (priority, os.date "%b %d %H:%M:%S", hostname, tag, content)
-    sock:send (msg) 
-  end
-  
-  local ok, err = sock:setpeername(ip, port)
-  if ok then ok = {send = send} end
-  return ok, err
-end
-
-}
---]]
-
---
 -- log message to luup.log file
 --
 
@@ -158,7 +135,7 @@ end
 -- returns table with send function to actually log new data
 local function openLuup_logger (info)
   local f
-  local logfile_name, versions, maxLines = info.name, info.versions or 0, info.lines or 2000
+  local logfile_name, versions, maxLines = info.name, info.versions or 0, info.lines or LogfileLines
   local N = 0                                 -- current line number
   local formatted_time = formatted_time
   local altui = info.altui
@@ -174,27 +151,34 @@ local function openLuup_logger (info)
   end
 
   -- rename old files
-  local function rotate_logs ()
+  local function rename_files ()
     for i = versions-1,1,-1 do
       os.rename (logfile_name..'.'..(i), logfile_name..'.'..(i+1))
     end
     os.rename (logfile_name, logfile_name..'.'..(1))
   end
 
+  -- rotate files, possibly having been given new file info
+  local function rotate (info)
+    info = info or {}
+    logfile_name = info.Name or logfile_name
+    versions     = info.Versions or versions
+    maxLines     = info.Lines or maxLines
+    local runtime = (os.time() - start_time) / 60 / 60 / 24
+    local fmt = "%s   :: openLuup LOG ROTATION :: (runtime %0.1f days) \n"
+    local message = fmt: format (formatted_time "%Y-%m-%d %H:%M:%S", runtime)
+    f:write (message)
+    f: close ()
+    rename_files () 
+    f = open_log ()
+    f:write (message)
+  end
+
   -- write data
   local function write (message)
     f:write (message)
     N = N + 1
-    if (N % maxLines) == 0 then 
-      local runtime = (os.time() - start_time) / 60 / 60 / 24
-      local fmt = "%s   :: openLuup LOG ROTATION :: (runtime %0.1f days) \n"
-      local message = fmt: format (formatted_time "%Y-%m-%d %H:%M:%S", runtime)
-      f:write (message)
-      f: close ()
-      rotate_logs () 
-      f = open_log ()
-      f:write (message)
-    end
+    if (N % maxLines) == 0 then rotate () end
   end
 
   -- format and write log
@@ -211,9 +195,9 @@ local function openLuup_logger (info)
   end
   
   -- logfile init
-  rotate_logs ()       -- save the old ones
+  rename_files ()       -- save the old ones
   f = open_log ()      -- start anew
-  return {send = send}
+  return {send = send, rotate = rotate}
 end
 
 --
@@ -274,7 +258,7 @@ luup_log:216: ALTUI: Wkflow - Workflow: 0-3, Valid Transition found:Timer:5s, Ac
 
 local function altui_logger (info)
   local f
-  local logfile_name, maxLines = info.name, info.lines or 2000
+  local logfile_name, maxLines = info.name, info.lines or LogfileLines
   local N = 0                                 -- current line number
   local formatted_time = formatted_time
     
@@ -340,12 +324,20 @@ end
 
 -- INIT
 
+lfs.mkdir "logs"      -- default location for startup and regular log
+
 -- altui log (for variable and scene history)
 -- note that altui reads from /var/log/cmh/LuaUPnP.log
-local altui  = altui_logger {name = "/var/log/cmh/LuaUPnP.log", lines = 5000}
+local altui  = altui_logger {
+  name = "/var/log/cmh/LuaUPnP.log", 
+  lines = 5000}
 
 -- openLuup log
-local normal = openLuup_logger {name = "LuaUPnP.log", versions = 5, lines =2000, altui = altui}
+local normal = openLuup_logger {
+  name      = StartupLogfile, 
+  versions  = LogfileVersions, 
+  lines     = LogfileLines, 
+  altui     = altui}
 
 -- display module banner
 local function banner (ABOUT)
@@ -359,6 +351,7 @@ return {
   ABOUT = ABOUT,
   
   banner          = banner,
+  rotate          = normal.rotate,
   send            = normal.send,
   altui_variable  = altui.variable,
   altui_scene     = altui.scene,

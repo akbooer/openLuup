@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "backup.sh",
-  VERSION       = "2016.10.27",
+  VERSION       = "2016.12.10",
   DESCRIPTION   = "user_data backup script /etc/cmh-ludl/cgi-bin/cmh/backup.sh",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -26,7 +26,7 @@ ABOUT = {
 ]]
 }
 
-local DIRECTORY = "backup"      -- change this is you want to backup elsewhere
+local DIRECTORY_DEFAULT = "backup"      -- default backup directory
 
 -- WSAPI Lua implementation of backup.sh
 -- backup written to ./backups/backup.openLuup-AccessPt-YYYYY-MM-DD
@@ -35,6 +35,7 @@ local DIRECTORY = "backup"      -- change this is you want to backup elsewhere
 -- 2016.07.12   return HTML page with download link
 -- 2016.07.17   add title to HTML page
 -- 2016.10.27   changed formatting of backup message to handle fractional file sizes
+-- 2016.12.10   use directory path from openLuuup system attribute
 
 local userdata = require "openLuup.userdata"
 local compress = require "openLuup.compression"
@@ -75,12 +76,13 @@ return values: the HTTP status code, a table with headers, and the output iterat
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
   
+  local DIRECTORY = (luup.attr_get "openLuup.Backup.Directory") or DIRECTORY_DEFAULT
   lfs.mkdir (DIRECTORY)
    
   local PK = userdata.attributes.PK_AccessPoint or "AccessPt"
   local DATE = os.date "%Y-%m-%d" or "0000-00-00"
   local fmt = "%s/backup.openLuup-%s-%s.lzap"
-  local fname = fmt: format (DIRECTORY, PK, DATE)  
+  local fname = fmt: format (DIRECTORY: gsub('/$',''), PK, DATE)  
   _log ("backing up user_data to " .. fname)
   
   local ok, msg = userdata.json (nil)   -- save current luup environment

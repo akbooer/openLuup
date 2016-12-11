@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.11.18",
+  VERSION       = "2016.12.06",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -35,6 +35,7 @@ local ABOUT = {
 -- 2016.07.20  truncate very long values in variable_set log output and remove control characters
 -- 2016.11.02  add job type to timer calls
 -- 2016.11.18  add call_delay function name as timer type
+-- 2016.12.06  change attr_get/set for structured openLuup attributes
 
 local logs          = require "openLuup.logs"
 
@@ -249,9 +250,16 @@ local function attr_set (attribute, value, device)
   value = tostring (value  or '')
   attribute = tostring (attribute or '')
   if device == 0 then
-    local item =  attribute: match "^openLuup%.(.+)$"     -- 2016.06.06
-    if item then 
-      userdata.attributes.openLuup [item] = value
+    if attribute: match "^openLuup%." then                    -- 2016.12.06 
+      local x = userdata.attributes
+      for y,z in attribute: gmatch "([^%.]+)(%.?)" do
+        if (z == '.') then
+          x[y] = x[y] or {}
+          x = x[y]
+        else
+          x[y] = value
+        end
+      end
     else
       userdata.attributes [attribute] = value
       local special = special_name[attribute] 
@@ -284,9 +292,15 @@ local function attr_get (attribute, device)
   device = device or 0
   attribute = tostring (attribute or '')
   if device == 0 then
-    local item =  attribute: match "^openLuup%.(.+)$"     -- 2016.06.06
-    if item then 
-      attr = userdata.attributes.openLuup [item]
+    if attribute: match "^openLuup%." then                    -- 2016.12.06 
+      local x = userdata.attributes
+      for y,z in attribute: gmatch "([^%.]+)(%.?)" do
+        if (z == '.') then
+          x = x[y] or {}
+        else
+          attr = x[y]
+        end
+      end
     else
       attr = userdata.attributes [attribute]
     end
