@@ -21,7 +21,7 @@ What **openLuup** does:
 *    supports scenes with timers and ALTUI-style triggers
 *    has its own port 3480 HTTP server supporting multiple asynchronous client requests
 *    has a fairly complete implementation of the Luup API and the HTTP requests
-*    has a simple to understand log structure - written to LuaUPnP.log in the current directory - most events generate just one entry each in the log.
+*    has a simple to understand log structure.
 *    writes variables to a separate log file for ALTUI to display variable and scene changes. 
 
 
