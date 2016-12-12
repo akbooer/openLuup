@@ -3,13 +3,13 @@
  
  **openLuup** is an environment which supports the running of some MiOS (Vera) plugins on generic Unix systems (or, indeed, Windows systems.) Processors such as Raspberry Pi and BeagleBone Black are ideal for running this environment, although it can also run on Apple Mac, Microsoft Windows PCs, anything, in fact, which can run Lua code (most things can - even an Arduino Yún board.) The intention is to offload processing (cpu and memory use) from a running Vera to a remote machine to increase system reliability.
 
-Running on non-specific hardware means that there is no native support for Z-wave, although plugins to handle Z-wave USB sticks may support this. The full range of MySensors (http://www.mysensors.org/) Arduino devices are supported though the Ethernet Bridge plugin available on that site. A plugin to provide a bi-directional ‘bridge’ (monitoring / control) to remote MiOS (Vera) systems is provided in the openLuup installation.
+Running on non-specific hardware means that there is no native support for Z-wave, although plugins to handle Z-wave USB sticks can support this. The full range of MySensors (http://www.mysensors.org/) Arduino devices are supported though the Ethernet Bridge plugin available on that site. A plugin to provide a bi-directional ‘bridge’ (monitoring / control) to remote MiOS (Vera) systems is provided in the openLuup installation.
 
 **openLuup** is extremely fast to start (a few seconds before it starts running any created devices startup code) has very low cpu load, and has a very compact memory footprint. Whereas each plugin on a Vera system might take ~4 Mbytes, it’s far less than this under openLuup, in fact, the whole system can fit into that sort of space. Since the hardware on which it runs is anyway likely to have much more physical memory than current Vera systems, memory is not really an issue.
 
 There is no built-in user interface, but we have, courtesy of @amg0, the most excellent altUI: Alternate UI to UI7 (see the Vera forum board http://forum.micasaverde.com/index.php/board,78.0.html) An automated way of installing and updating the ALTUI environment is now built-in to openLuup. There’s actually no requirement for any user interface if all that’s needed is an environment to run plugins.
 
-Devices, scenes, rooms and attributes are persisted across restarts. The startup initialisation process supports both the option of starting with a ‘factory-reset’ system, or any saved image, or continuing seamlessly with the previously saved environment. A separate utility is provided to transfer a complete set of uncompressed device files and icons from any Vera on your network to the openLuup target machine.
+Devices, scenes, rooms and attributes are persisted across restarts. The startup initialisation process supports both the option of starting with a ‘factory-reset’ system, or any saved image, or continuing seamlessly with the previously saved environment. A built-in utility is provided to transfer a complete set of uncompressed device files and icons from any Vera on your network to the openLuup target machine.
 
 What **openLuup** does:
 
