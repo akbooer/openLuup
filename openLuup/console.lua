@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2016.12.10",
+  VERSION       = "2016.12.12",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -271,8 +271,21 @@ function run (wsapi_env)
     local dir = luup.attr_get "openLuup.Backup.Directory" or "backup/"
     print ("Backup directory: ", dir)
     print ''
+    local pattern = "backup%.openLuup%-%w+%-([%d%-]+)%.%w+"
+    local files = {}
     for f in lfs.dir (dir) do
-      if not f: match "^%." then print(f) end   -- ignore hidden files
+      local date = f: match (pattern)
+      if date then
+        local attr = lfs.attributes (dir .. f) or {}
+        local size = tostring (math.floor ((attr.size or 0) / 1e3))
+        files[#files+1] = {date = date, name = f, size = size}
+      end
+    end
+    table.sort (files, function (a,b) return a.date > b.date end)       -- newest to oldest
+    local list = "%-12s %4s   %s"
+    print (list:format ("yyyy-mm-dd", "(kB)", "filename"))
+    for _,f in ipairs (files) do 
+      print (list:format (f.date, f.size, f.name)) 
     end
   end
   
