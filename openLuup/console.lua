@@ -271,13 +271,13 @@ function run (wsapi_env)
     local dir = luup.attr_get "openLuup.Backup.Directory" or "backup/"
     print ("Backup directory: ", dir)
     print ''
-    local pattern = "backup%.openLuup%-%w+%-([%d%-]+)%.%w+"
+    local pattern = "backup%.openLuup%-%w+%-([%d%-]+)%.?%w*"
     local files = {}
     for f in lfs.dir (dir) do
       local date = f: match (pattern)
       if date then
         local attr = lfs.attributes (dir .. f) or {}
-        local size = tostring (math.floor ((attr.size or 0) / 1e3))
+        local size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))
         files[#files+1] = {date = date, name = f, size = size}
       end
     end
