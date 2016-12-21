@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.json",
-  VERSION       = "2016.06.19",
+  VERSION       = "2016.10.17",
   DESCRIPTION   = "JSON encode/decode with unicode escapes to UTF-8 encoding and pretty-printing",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- JSON encode/decode with full functionality including unicode escapes to UTF-8 encoding.
@@ -13,6 +28,7 @@ local ABOUT = {
 -- 2015.04.10   allow comma before closing '}' or ']'
 -- 2015.11.29   improve formatting of nested objects, cache encoded strings
 -- 2016.06.19   encode "/" as "/" not "\/" in strings
+-- 2016.10.18   add json.null
 
   local default   = 
     {
@@ -21,6 +37,7 @@ local ABOUT = {
                                   -- since arrays are enumerated from starting index 1 with every intervening 'nil' 
     }
     
+  local json_null = {}            -- unique object, may be used to represent null when encoding arrays
     
   -- encode (), Lua to JSON
   local function encode (Lua)
@@ -99,6 +116,7 @@ local ABOUT = {
     end
   
     local function object_or_array (x)
+      if x == json_null then return "null" end
       local index, result = {}
       local only_numbers, only_strings = true, true
       if encoding[x] then json_error "table structure has self-reference" end
@@ -288,11 +306,12 @@ local ABOUT = {
     return Lua, message
 
   end  -- decode ()
-  
+ 
 return {
     ABOUT = ABOUT,
     
-    decode = decode, 
+    decode  = decode, 
     default = default,
-    encode = encode, 
+    encode  = encode, 
+    null    = json_null,
   }

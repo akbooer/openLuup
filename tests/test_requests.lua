@@ -20,7 +20,20 @@ local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
 local devNo = luup.create_device (devType)
 luup.variable_set ("myService","name1", 42, devNo)     -- add a couple of variables
 luup.variable_set ("myService","name2", 88, devNo)     -- add a couple of variables
-  
+
+-- add an action
+--
+
+local myAction = {
+        run = function (lul_device, lul_settings) 
+          return true
+        end, 
+      }
+ 
+luup.devices[1]:action_set ( "testService", "myAction", myAction)
+
+-- add scene
+
 local example_scene = {
   id = 42,
   name = "test_scene_name",
@@ -345,6 +358,7 @@ function TestSceneRequests:test_scene_list ()
   lua.triggers = nil              -- remove triggers
   lua.modeStatus = nil            -- ditto
   lua.favorite = nil
+  for a,b in pairs (lua.timers) do b.next_run = nil end
   
   local s2 = json.encode (lua)    -- re-encode
   t.assertEquals (s2, json_example_scene)
@@ -366,13 +380,79 @@ function TestSceneRequests:test_wget_scene_list ()
   lua.triggers = nil              -- remove triggers
   lua.modeStatus = nil            -- ditto
   lua.favorite = nil
+  for a,b in pairs (lua.timers) do b.next_run = nil end
   
   local s2 = json.encode (lua)    -- re-encode
   t.assertEquals (s2, json_example_scene)
 end
 
-function TestSceneRequests:test_ ()
+--[[
+TODO: implement these
+
+
+Results from Vera Edge:
+
+0 	ERROR: Invalid service/action/device 	200
+0 	ERROR: Invalid Service 	200
+0 	ERROR: No implementation 	200
+0 	{ "u:update_pluginResponse": { "JobID": "13356" } } 	200
+
+
+local d = 4
+
+-- c
+local function request_action (svc, act, arg, dev)
+    local request = "http://localhost:3480/data_request?id=action&output_format=json&serviceId=%s&action=%s&DeviceNum=%s&test=%s"
+    return luup.inet.wget (request: format (svc, act, dev, arg.test))
 end
+
+print (request_action ("foo", "garp", {}, 4321))
+print (request_action ("foo", "garp", {}, d))
+print (request_action ("urn:upnp-org:serviceId:AltAppStore1", "garp", {}, d))
+print (request_action ("urn:upnp-org:serviceId:AltAppStore1", "update_plugin", {test="request_action"}, d))
+--]]
+
+TestActionRequests = {}
+
+local function request_action (svc, act, arg, dev)
+    local request = "http://localhost:3480/data_request?id=action&output_format=json&serviceId=%s&action=%s&DeviceNum=%s&test=%s"
+    return luup.inet.wget (request: format (svc, act, dev, arg.test))
+end
+
+
+function TestActionRequests:test_missing_device ()
+  local ok, s, x = request_action ("foo", "garp", {}, 4321)
+  t.assertEquals (ok, 0)
+  t.assertEquals (s, "ERROR: Invalid service/action/device")
+  t.assertEquals (x, 200)
+end
+
+function TestActionRequests:test_missing_service ()
+  local ok, s, x = request_action ("foo", "garp", {}, 1)
+  t.assertEquals (ok, 0)
+  t.assertEquals (s, "ERROR: Invalid Service")
+  t.assertEquals (x, 200)
+end
+
+function TestActionRequests:test_missing_action ()
+  local ok, s, x = request_action ("testService", "garp", {}, 1)
+  t.assertEquals (ok, 0)
+  t.assertEquals (s, "ERROR: No implementation")
+  t.assertEquals (x, 200)
+end
+
+function TestActionRequests:test_action () 
+   local ok, s, x = request_action ("testService", "myAction", {}, 1)
+  t.assertEquals (ok, 0)
+  t.assertIsString (s)
+  t.assertTrue (#s > 20)
+  t.assertEquals (x, 200)
+end
+
+
+function TestActionRequests:test_ ()
+end
+
 
 --------------------
 

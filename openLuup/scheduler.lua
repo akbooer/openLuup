@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2016.04.30",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 --
@@ -18,6 +33,9 @@ local ABOUT = {
 -- Callbacks which use named global functions are resolved using the appropriate device context
 -- by lookup in the relevant module or the global table.
 --
+
+-- 2016.11.02  add startup_list handling, kill_job
+-- 2016.11.18  add delay callback type (string) parameter, and silent mode
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
@@ -39,11 +57,14 @@ local watch_list = {}                 -- list of watch callbacks
 local socket_list = {}                -- table of socket watch callbacks (for incoming data) 
 
 -- adds a function to the delay list
--- note optional final parameters which defines device context in which to run
-local function add_to_delay_list (fct, seconds, data, devNo)  
+-- note optional final parameters which define:
+--    device context in which to run, and text name
+local function add_to_delay_list (fct, seconds, data, devNo, type)  
   delay_list[#delay_list+1] = {
     callback = fct,
+    delay = seconds,
     devNo = devNo or current_device,
+    type = type,
     time = socket.gettime() + seconds, 
     parameter = data, 
   }
@@ -171,6 +192,7 @@ local wait_state = {
 -- LOCALS
 
 local next_job_number = 1
+local startup_list = {}
 
 local job_list = setmetatable ( 
     {},      -- jobs indexed by job number
@@ -309,19 +331,42 @@ local function run_job (action, arguments, devNo, target_device)
   return error, error_msg or '', jobNo, return_arguments
 end
 
-local function device_start (entry_point, devNo)
+-- kill given jobNo
+local function kill_job (jobNo)
+  local job = job_list[jobNo]
+  local msg
+  if job then
+    job.status = state.Aborted
+    job.expiry = 0
+    msg = "killed job#" .. jobNo
+  else
+    msg = "no such job#" .. jobNo
+  end
+  _log (msg, "openLuup.kill_job") 
+end
+
+
+local function device_start (entry_point, devNo, name)
   -- job wrapper for device initialisation
-  local function startup_job ()       -- note that user code is run in protected mode
-    local label = ("[%s] device startup"): format (tostring(devNo))
+  local function startup_job (_,_,job)       -- note that user code is run in protected mode
+    local label = ("[%s] %s device startup"): format (tostring(devNo), name or '')
     _log (label)
     local a,b,c = entry_point (devNo)       -- call the startup code 
-    _log (("%s completed: status=%s, msg=%s, name=%s" ): format (label, tostring(a),tostring(b), tostring(c)))
+    local completion = "%s completed: status=%s, msg=%s, name=%s"
+    local text = completion: format (label, tostring(a),tostring(b), tostring(c))
+    _log (text)
+--    if job.notes == '' then
+--      job.notes = text      -- use this as the startup job comments
+--    end
+  -- TODO: remove successful startup jobs from startup list
     return state.Done, 0  
   end
   
   local jobNo = create_job ({job = startup_job}, {}, devNo)
-  job_list[jobNo].type = table.concat {'[', devNo, '] ', "device"}  -- TODO: embellish with description
-  -- TODO: put this into the startup job list too (ephemeral)
+  local job = job_list[jobNo]
+  local text = "job#%d :plugin %s"
+  job.type = text: format (jobNo, name or '')
+  startup_list[jobNo] = job  -- put this into the startup job list too 
   return jobNo
 end    
     -- TODO: device startup status and messages
@@ -381,7 +426,7 @@ local function task_callbacks ()
       end
 
       if exit_state[job.status] and job.now > job.expiry then 
-        job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local copy)
+        job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local_job_list)
       end
     end
   until njn == next_job_number        -- keep going until no more new jobs queued
@@ -430,8 +475,10 @@ local function luup_callbacks ()
     for _, callback in ipairs (old_watch_list) do
       for _, watcher in ipairs (callback.watchers) do   -- single variable may have multiple watchers
         local var = callback.var
-        _log (("%s.%s.%s %s"): format(var.dev, var.srv, var.name, tostring (watcher.callback)), 
+        if not watcher.silent then
+          _log (("%s.%s.%s %s"): format(var.dev, var.srv, var.name, tostring (watcher.callback)), 
                   "luup.watch_callback") 
+        end
         local ok, msg = context_switch ( 
           watcher.devNo, watcher.callback, var.dev, var.srv, var.name, var.old, var.value) 
         if not ok then
@@ -483,19 +530,23 @@ end
 
 return {
     ABOUT = ABOUT,
-    TEST = {step = task_callbacks},      -- for testing only
+    TEST = {                      -- for testing only
+      step        = task_callbacks,
+    },
     
     -- constants
     state             = state,
-    version           = banner,
     -- variables
     job_list          = job_list,
+    startup_list      = startup_list,
     --methods
     add_to_delay_list = add_to_delay_list,
     current_context   = function() return current_device end, -- TODO: deprecated
     current_device    = function() return current_device end, 
     context_switch    = context_switch,
+    delay_list        = function () return delay_list end,
     device_start      = device_start,
+    kill_job          = kill_job,
     run_job           = run_job,
     status            = status,   
     watch_callback    = watch_callback,

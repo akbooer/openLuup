@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2016.07.17",
+  VERSION       = "2016.10.17",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- This module implements a WSAPI application connector for the openLuup port 3480 server.
@@ -25,6 +40,7 @@ local ABOUT = {
 -- 2016.07.06  add 'method' to WSAPI server call for REQUEST_METHOD metavariable
 -- 2016.07.14  change cgi() parameter to request object
 -- 2016.07.15  three-parameters WSAPI return: status, headers, iterator
+-- 2016.10.17  use CGI aliases from external servertables module
 
 --[[
 
@@ -55,21 +71,14 @@ The connectors are careful to treat errors gracefully: if they occur before send
 
 --]]
 
-local loader  = require "openLuup.loader"     -- to create new environment in which to execute CGI script 
-local logs    = require "openLuup.logs"       -- used for wsapi_env.error:write()
+local loader  = require "openLuup.loader"       -- to create new environment in which to execute CGI script 
+local logs    = require "openLuup.logs"         -- used for wsapi_env.error:write()
+local tables  = require "openLuup.servertables" -- used for CGI aliases
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 
 logs.banner (ABOUT)   -- for version control
-
---
-
-local special = {       -- if not found on the CGI searchpaths, then lookup alternatives here
-  ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
-  ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
-  ["upnp/control/hag"]          = "openLuup/hag.lua",
-}
 
 -- utilities
 
@@ -94,8 +103,9 @@ end
 
 -- build makes an application function for the connector
 local function build (script)
-  local file = script: match "/(.+)"      -- ignore leading '/'
-  local alternative = special[file]     -- 2016.05.30
+  local file = script
+  -- CGI aliases: any matching full CGI path is redirected
+  local alternative = tables.cgi_alias[file]     -- 2016.05.30 and 2016.10.17
   if alternative then
     _log (table.concat {"using ", alternative, " for ", file})
     file = alternative
@@ -103,7 +113,7 @@ local function build (script)
   
   local f = io.open (file) 
   if not f then 
-    return dummy_app (404, "file not found: " .. (script or '?')) 
+    return dummy_app (404, "file not found: " .. (file or '?')) 
   end
   local line = f: read "*l"
   
@@ -252,7 +262,10 @@ local function cgi (request)
   local wsapi_env = setmetatable (env, meta)
    
   -- execute the CGI
-  local script = URL.path or ''
+  local script = URL.path or ''  
+  
+  script = script: match "^/?(.-)/?$"      -- ignore leading and trailing '/'
+  
   cache[script] = cache[script] or build (script) 
   
   -- guaranteed to be something executable here, even it it's a dummy with error message

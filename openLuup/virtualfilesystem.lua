@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.08.02",
+  VERSION       = "2016.12.11",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- the loader cache is preset with these files
@@ -114,10 +129,26 @@ local D_openLuup_json = [[
 					"left": "0",
 					"Label": {
 						"lang_tag": "donate",
-						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
+						"text": "<a href='console' target='_blank'>CONSOLE interface</a>"
 					},
 					"Display": {
 						"Top": 140,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "label",
+					"top": "4",
+					"left": "0",
+					"Label": {
+						"lang_tag": "donate",
+						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
+					},
+					"Display": {
+						"Top": 180,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -428,10 +459,10 @@ local D_VeraBridge_dev = [[
 </root>
 ]]
 
--- TODO: switch to icons/ directory once this release is in the master branch
+
 local D_VeraBridge_json = [[
 {
-	"default_icon": "http://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
+	"default_icon": "http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
 	"Tabs": [
 		{
 			"Label": {
@@ -708,9 +739,10 @@ local I_ZWay_xml = [[
 <?xml version="1.0"?>
 <implementation>
   <functions>
-    function startup (lul_device)
-      local m = require "L_ZWay"
-      return m.init (lul_device)
+    local M = require "L_ZWay"
+    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
+    function startup (...)
+      return M.init (...)
     end
   </functions>
   <startup>startup</startup>

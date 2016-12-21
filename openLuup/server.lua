@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.08.03",
+  VERSION       = "2016.11.18",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 --
@@ -28,7 +43,6 @@ local ABOUT = {
 -- 2016.06.01   also look for files in virtualfilesystem
 -- 2016.06.09   also look in files/ directory
 -- 2016.07.06   add 'method' to WSAPI server call
--- 2016.08.03   remove optional "lu_" prefix from system callback request names
 
 ---------------------
 
@@ -36,6 +50,14 @@ local ABOUT = {
 -- 2016.07.14   request object parameter and WSAPI-style returns for all handlers
 -- 2016.07.17   HTML error pages
 -- 2016.07.18   add 'actual_status' return to wget (undocumented Vera feature?)
+-- 2016.08.03   remove optional "lu_" prefix from system callback request names
+-- 2016.09.16   remove /port_3480 redirects from parsed URI - thanks @explorer
+-- 2016.09.17   increase BACKLOG parameter to solve stalled updates - thanks @explorer (again!) 
+--              see: http://forum.micasaverde.com/index.php/topic,39129.msg293629.html#msg293629
+-- 2016.10.17   use CGI prefixes from external servertables module
+-- 2016.11.02   change job.notes to job.type for new connections and requests
+-- 2016.11.07   add requester IP to new connection log message
+-- 2016.11.18  test for nil URL.path 
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -56,6 +78,7 @@ logs.banner (ABOUT)   -- for version control
 
 -- CONSTANTS
 
+local BACKLOG             = 255       -- used in socket.bind() for queue length
 local CHUNKED_LENGTH      = 16000     -- size of chunked transfers
 local CLOSE_SOCKET_AFTER  = 90        -- number of seconds idle after which to close socket
 local MAX_HEADER_LINES    = 100       -- limit lines to help mitigate DOS attack or other client errors
@@ -257,30 +280,31 @@ end
 --
 -- return a request object containing all the information a handler needs
 -- only required parameter is request_URI, others have sensible defaults.
+  
+-- define the appropriate handler depending on request type
+local selector = {data_request = data_request}
+for _,prefix in pairs (tables.cgi_prefix) do
+  selector[prefix] = wsapi.cgi    -- add those defined in the server tables
+end
+
+local self_reference = {
+  ["localhost"] = true,
+  ["127.0.0.1"] = true, 
+  ["0.0.0.0"] = true, 
+  [myIP] = true,
+}
 
 local function request_object (request_URI, headers, post_content, method, http_version)
-  -- picks the appropriate handler depending on request type
-  local selector = {
-    ["cgi"]           = wsapi.cgi,
-    ["cgi-bin"]       = wsapi.cgi,
-    ["upnp"]          = wsapi.cgi,
-    ["data_request"]  = data_request,
-  }
-  
-  local self_reference = {
-    ["localhost"] = true,
-    ["127.0.0.1"] = true, 
-    ["0.0.0.0"] = true, 
-    [myIP] = true,
-  }
   
   if not (request_URI: match "^https?://") 
   or (request_URI: match "^//") then 
     request_URI = "//" .. request_URI 
   end
  
-  local URL = url.parse (request_URI)                 -- parse URL
-
+  local URL = url.parse (request_URI)               -- parse URL
+  if URL.path then                                  -- 2016.11.18
+    URL.path = URL.path:gsub ("/port_3480", '')     -- 2016.09.16, thanks @explorer
+  end
   -- construct parameters from query string or POST content
   local parameters
   method = method or "GET"
@@ -355,7 +379,7 @@ end
 local function http_response (status, headers, iterator)
   
   local Hdrs = {}           -- force CamelCaps-style header names
-  for a,b in pairs (headers) do Hdrs[CamelCaps(a)] = b end
+  for a,b in pairs (headers or {}) do Hdrs[CamelCaps(a)] = b end
   headers = Hdrs        
   
   local response = make_content (iterator)    -- just for the moment, simply unwrap the iterator
@@ -561,7 +585,8 @@ local function client_request (sock)
     --  err, msg, jobNo = scheduler.run_job ()
     local _, _, jobNo = scheduler.run_job ({job = job}, {}, nil)  -- nil device number
     if jobNo and scheduler.job_list[jobNo] then
-      scheduler.job_list[jobNo].notes = "HTTP request from " .. tostring(ip)
+      local info = "job#%d :HTTP request from %s"
+      scheduler.job_list[jobNo].type = info: format (jobNo, tostring(ip))
     end
   end
   return err
@@ -598,7 +623,9 @@ local function new_client (sock)
     end
   end
   
-  _log ("new client connection: " .. tostring(sock))
+  local ip = sock:getpeername() or '?'                    -- who's asking?
+  local connect = "new client connection from %s: %s"
+  _log (connect:format (ip, tostring(sock)))
   expiry = socket.gettime () + CLOSE_SOCKET_AFTER         -- set initial socket expiry 
   sock:settimeout(nil)                                    -- this is a timeout on the HTTP read
 --  sock:settimeout(10)                                   -- this is a timeout on the HTTP read
@@ -607,7 +634,8 @@ local function new_client (sock)
 --  local err, msg, jobNo = scheduler.run_job {job = job}
   local _, _, jobNo = scheduler.run_job {job = job}
   if jobNo and scheduler.job_list[jobNo] then
-    scheduler.job_list[jobNo].notes = "HTTP new " .. tostring(sock)
+    local info = "job#%d :HTTP new connection %s"
+    scheduler.job_list[jobNo].type = info: format (jobNo, tostring(sock))
   end
 end
 
@@ -617,7 +645,7 @@ end
 -- returns list of utility function(s)
 -- 
 local function start (port, backlog)
-  local server, msg = socket.bind ('*', port, backlog or 64) 
+  local server, msg = socket.bind ('*', port, backlog or BACKLOG) 
    
   -- new client connection
   local function server_incoming (server)

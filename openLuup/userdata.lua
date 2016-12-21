@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.08.03",
+  VERSION       = "2016.11.15",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- user_data
@@ -22,12 +37,16 @@ local ABOUT = {
 -- 2016.06.24   remove defaults from pre-installed repository data (always use "master"
 -- 2016.06.28   change install parameters for VeraBridge (device and icon file locations)
 -- 2016.06.30   split save into two functions: json & save to allow data compression
+-- 2016.08.29   update plugin versions on load
+-- 2016.11.05   added gmt_offset: thanks @jswim788 and @logread
+-- 2016.11.09   preserve device #2 (openLuup) room allocation across reloads (thanks @DesT)
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
 local logs    = require "openLuup.logs"
 local scenes  = require "openLuup.scenes"
 local chdev   = require "openLuup.chdev"
+local timers  = require "openLuup.timers"   -- for gmt_offset
 local lfs     = require "lfs"
 
 --  local log
@@ -83,11 +102,10 @@ attr ("longitude", "0.0")
 -- other parameters
 attr ("TemperatureFormat", "C")
 attr ("PK_AccessPoint", "88800000")
-attr ("currency", "Â£")
+attr ("currency", "£")
 attr ("date_format", "dd/mm/yy")
 attr ("model", "Not a Vera")
 attr ("timeFormat", "24hr")
-attr ("timezone", "0")
 
 -- Any other startup processing may be inserted here...
 luup.log "startup code completed"
@@ -100,13 +118,13 @@ luup.log "startup code completed"
 --  Using_2G = 0,
 --  breach_delay = "30",
 --  category_filter = {},
-  currency = "Â£",
+  currency = "£",
   date_format = "dd/mm/yy",
 --  device_sync = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21",
 --  devices = {},
 --  energy_dev_log = "41,",
 --  firmware_version = "1",
-  gmt_offset = "0",
+  gmt_offset = tostring (timers.gmt_offset()),   -- see: http://forum.micasaverde.com/index.php/topic,40035.0.html
 --  ip_requests = {},
 --  ir = 0,
   latitude = "51.48",
@@ -127,7 +145,8 @@ luup.log "startup code completed"
 --  static_data = {},
 --  sync_kit = "0000-00-00 00:00:00",
   timeFormat = "24hr",
-  timezone = "0",
+  timezone = "0",     -- apparently not used, and always "0", 
+                      -- see: http://forum.micasaverde.com/index.php/topic,10276.msg70562.html#msg70562
 --  users = {},
 --  weatherSettings = {
 --    weatherCountry = "UNITED KINGDOM",
@@ -148,7 +167,7 @@ luup.log "startup code completed"
 -- pre-installed plugins
 --
 
-local default_plugins_version = "2016.07.19"  --<<<-- change this to force update of default_plugins
+local default_plugins_version = "2016.11.15"  --<<<-- change this to force update of default_plugins
 
 local preinstalled = {
   
@@ -252,7 +271,7 @@ local preinstalled = {
     {
       AllowMultiple   = "1",
       Title           = "VeraBridge",
-      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/VeraBridge/VeraBridge.png",
+      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
       Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
       AutoUpdate      = "0",
       VersionMajor    = "not",
@@ -308,6 +327,27 @@ local preinstalled = {
         type      = "GitHub",
         source    = "akbooer/Datayours",
         pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
+      },
+    },
+  
+  Graphite_CGI =
+
+    {
+      AllowMultiple   = "0",
+      Title           = "Graphite_CGI",
+      Icon            = "https://raw.githubusercontent.com/akbooer/DataYours/master/icons/Graphite_CGI.png",
+      Instructions    = "https://github.com/akbooer/DataYours/tree/master/Documentation",
+      AutoUpdate      = "0",
+      VersionMajor    = "not",
+      VersionMinor    = 'installed',
+      id              = "graphite_cgi",
+      timestamp       = os.time(),
+      Files           = {},
+      Devices         = { },
+      Repository      = {
+        type      = "GitHub",
+        source    = "akbooer/Datayours",
+        pattern   = "graphite_cgi.lua",             -- pattern match string for required files
       },
     },
 
@@ -402,10 +442,10 @@ local default_plugins = {
     preinstalled.AltUI,
     preinstalled.AltAppStore,
     preinstalled.VeraBridge,
-    preinstalled.Razberry,
+    preinstalled.ZWay,
     preinstalled.MySensors,
     preinstalled.DataYours,
---    preinstalled.ZWay,
+--    preinstalled.Graphite_CGI,
   }
 
 --
@@ -461,6 +501,39 @@ local function plugin_metadata (id, tag)
   return nil, table.concat {"metadata for'", id or '?', "' not found"}
 end
 
+-- go through the devices to see if any advertise their versions
+local function update_plugin_versions (installed)
+  
+  -- index by plugin id and device type
+  local index_by_plug = plugin_index (installed)
+  local index_by_type = {}
+  for i,p in ipairs (installed) do
+    local id
+    if p.Devices and p.Devices[1] then
+      id = p.Devices[1].DeviceType
+    end
+    if id then index_by_type[tostring(id)] = i end
+  end
+  
+  -- go through devices looking for plugins with ABOUT.VERSION
+  for _, d in pairs (luup.devices or {}) do 
+    local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
+    local a = d.environment.ABOUT
+    if i and a then
+      local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
+      if v3 then
+--        print (d.id,"v1,v2,v3", ("'%s', '%s', '%s'"): format (v1,v2,v3))
+        local IP = installed[i]
+        IP.VersionMajor = v1 % 2000
+        if v3 == '' then
+          IP.VersionMinor = tonumber(v2)
+        else
+          IP.VersionMinor = table.concat ({tonumber(v2),tonumber(v3)}, '.') .. prerelease
+        end
+      end
+    end
+  end
+end
 
 --
 -- LOAD and SAVE
@@ -493,7 +566,12 @@ local function load_user_data (user_data_json)
     -- DEVICES  
     _log "loading devices..."    
     for _, d in ipairs (user_data.devices or {}) do
-      if d.id ~= 2 then               -- device #2 is reserved
+      if d.id == 2 then               -- device #2 is special (it's the openLuup plugin, and already exists)
+        local ol = luup.devices[2]
+        local room = tonumber (d.room) or 0
+        ol:attr_set {room = room}     -- set the device attribute...
+        ol.room_num = room            -- ... AND the device table (Luup is SO bad...)
+      else
         local dev = chdev.create {      -- the variation in naming within luup is appalling
             devNo = d.id, 
             device_type     = d.device_type, 
@@ -565,6 +643,7 @@ local function load_user_data (user_data_json)
       end
     end
     -- log the full list of installed plugins
+    update_plugin_versions (installed)
     for _, plugin in ipairs (installed) do
       local version = table.concat {plugin.VersionMajor or '?', '.', plugin.VersionMinor or '?'}
       local ver = "[%s] %s (%s)"
@@ -678,10 +757,11 @@ return {
   
   -- methods  
   
-  devices_table       = devices_table, 
-  plugin_metadata     = plugin_metadata,
-  find_installed_data = find_installed_data, 
-
+  devices_table           = devices_table, 
+  plugin_metadata         = plugin_metadata,
+  find_installed_data     = find_installed_data, 
+  update_plugin_versions  = update_plugin_versions,
+  
   json  = json_user_data,
   load  = load_user_data,
   save  = save_user_data,

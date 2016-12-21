@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2016.07.19",
+  VERSION       = "2016.11.19",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 --
@@ -15,6 +30,7 @@ local ABOUT = {
 -- 2016.04.15  added per-device variable numbering (thanks @explorer)
 -- 2016.04.29  added device status
 -- 2016.07.19  improve call_action error handling
+-- 2016.11.19  addeed callback name to watch callback structure
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 
@@ -127,8 +143,13 @@ end
 -- thanks @vosmont for clarification of undocumented feature
 --
 
-local function variable_watch (dev, fct, serviceId, variable)  
-  local callback = {callback = fct, devNo = scheduler.current_context()}    -- devNo is current context
+local function variable_watch (dev, fct, serviceId, variable, name, silent)  
+  local callback = {
+    callback = fct, 
+    devNo = scheduler.current_device (),    -- devNo is current device context
+    name = name,
+    silent = silent,                            -- avoid logging some system callbacks (eg. scene watchers)
+  }
   if dev then
     -- a specfic device
     local srv = dev.services[serviceId]
@@ -351,6 +372,7 @@ return {
   -- variables
   dataversion           = dataversion,
   device_list           = device_list,
+  sys_watchers          = sys_watchers,         -- only for use by console routine
   userdata_dataversion  = userdata_dataversion,
   
   -- methods

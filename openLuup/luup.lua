@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.07.20",
+  VERSION       = "2016.12.06",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 --
@@ -18,6 +33,9 @@ local ABOUT = {
 -- 2016.06.06  add special handling of top-level "openLuup" attribute
 -- 2016.07.18  improve call_action error messages
 -- 2016.07.20  truncate very long values in variable_set log output and remove control characters
+-- 2016.11.02  add job type to timer calls
+-- 2016.11.18  add call_delay function name as timer type
+-- 2016.12.06  change attr_get/set for structured openLuup attributes
 
 local logs          = require "openLuup.logs"
 
@@ -232,9 +250,16 @@ local function attr_set (attribute, value, device)
   value = tostring (value  or '')
   attribute = tostring (attribute or '')
   if device == 0 then
-    local item =  attribute: match "^openLuup%.(.+)$"     -- 2016.06.06
-    if item then 
-      userdata.attributes.openLuup [item] = value
+    if attribute: match "^openLuup%." then                    -- 2016.12.06 
+      local x = userdata.attributes
+      for y,z in attribute: gmatch "([^%.]+)(%.?)" do
+        if (z == '.') then
+          x[y] = x[y] or {}
+          x = x[y]
+        else
+          x[y] = value
+        end
+      end
     else
       userdata.attributes [attribute] = value
       local special = special_name[attribute] 
@@ -267,9 +292,15 @@ local function attr_get (attribute, device)
   device = device or 0
   attribute = tostring (attribute or '')
   if device == 0 then
-    local item =  attribute: match "^openLuup%.(.+)$"     -- 2016.06.06
-    if item then 
-      attr = userdata.attributes.openLuup [item]
+    if attribute: match "^openLuup%." then                    -- 2016.12.06 
+      local x = userdata.attributes
+      for y,z in attribute: gmatch "([^%.]+)(%.?)" do
+        if (z == '.') then
+          x = x[y] or {}
+        else
+          attr = x[y]
+        end
+      end
     else
       attr = userdata.attributes [attribute]
     end
@@ -419,11 +450,11 @@ local function call_action (service, action, arguments, device)
 --
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- The function returns 0 if successful. 
-local function call_delay (global_function_name, ...) 
+local function call_delay (global_function_name, seconds, data) 
   local fct = entry_point (global_function_name, "luup.call_delay")
   if fct then 
     -- don't bother to log call_delay, since it happens rather frequently
-    return timers.call_delay(fct, ...) 
+    return timers.call_delay(fct, seconds, data, global_function_name) 
   end
 end
 
@@ -443,7 +474,8 @@ local function call_timer (global_function_name, timer_type, time, days, ...)
     _log (msg, "luup.call_timer")
     local e,_,j = timers.call_timer(fct, timer_type, time, days, ...)      -- 2016.03.01   
     if j and scheduler.job_list[j] then
-      scheduler.job_list[j].notes = "Timer: " .. msg
+      local text = "job#%d :timer %s (%s)"
+      scheduler.job_list[j].type = text: format (j, global_function_name, msg)
     end
     return e
   end
@@ -508,7 +540,7 @@ local function variable_watch (global_function_name, service, variable, device)
   local dev = devices[device or '']
   -- NB: following call deals with missing device/service/variable,
   --     so CAN'T use the dev:variable_watch (...) syntax, since dev may not be defined!
-  devutil.variable_watch (dev, fct, service, variable)
+  devutil.variable_watch (dev, fct, service, variable, global_function_name)
   
   local fmt = "callback=%s, watching=%s.%s.%s"
   local msg = fmt: format (global_function_name, (dev and device) or '*', service or '*', variable or '*')

@@ -4,14 +4,29 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "backup.sh",
-  VERSION       = "2016.07.17",
+  VERSION       = "2016.12.10",
   DESCRIPTION   = "user_data backup script /etc/cmh-ludl/cgi-bin/cmh/backup.sh",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
-local DIRECTORY = "backup"      -- change this is you want to backup elsewhere
+local DIRECTORY_DEFAULT = "backup"      -- default backup directory
 
 -- WSAPI Lua implementation of backup.sh
 -- backup written to ./backups/backup.openLuup-AccessPt-YYYYY-MM-DD
@@ -19,6 +34,8 @@ local DIRECTORY = "backup"      -- change this is you want to backup elsewhere
 -- 2016.06.30   use new compression module to reduce backup file size.
 -- 2016.07.12   return HTML page with download link
 -- 2016.07.17   add title to HTML page
+-- 2016.10.27   changed formatting of backup message to handle fractional file sizes
+-- 2016.12.10   use directory path from openLuuup system attribute
 
 local userdata = require "openLuup.userdata"
 local compress = require "openLuup.compression"
@@ -59,12 +76,13 @@ return values: the HTTP status code, a table with headers, and the output iterat
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
   
+  local DIRECTORY = (luup.attr_get "openLuup.Backup.Directory") or DIRECTORY_DEFAULT
   lfs.mkdir (DIRECTORY)
    
   local PK = userdata.attributes.PK_AccessPoint or "AccessPt"
   local DATE = os.date "%Y-%m-%d" or "0000-00-00"
   local fmt = "%s/backup.openLuup-%s-%s.lzap"
-  local fname = fmt: format (DIRECTORY, PK, DATE)  
+  local fname = fmt: format (DIRECTORY: gsub('/$',''), PK, DATE)  
   _log ("backing up user_data to " .. fname)
   
   local ok, msg = userdata.json (nil)   -- save current luup environment
@@ -87,7 +105,7 @@ function run (wsapi_env)
   local headers = {["Content-Type"] = "text/plain"}
   local status, return_content
   if ok then 
-    msg = ("%d kb compressed to %d kb (%0.1f:1)") : format (ok, small, ok/small)
+    msg = ("%0.0f kb compressed to %0.0f kb (%0.1f:1)") : format (ok, small, ok/small)
     local body = html: format (msg, fname, fname)
     headers["Content-Type"] = "text/html"
     status, return_content = 200, body

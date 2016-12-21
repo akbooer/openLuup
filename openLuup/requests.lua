@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.08.02",
+  VERSION       = "2016.11.15",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 --
@@ -27,6 +42,9 @@ local ABOUT = {
 -- 2016.06.22  move HTTP request plugin update/delete code to here from plugins
 -- 2016.07.14  change 'file' request internal syntax to use server.wget
 -- 2016.07.18  better error returns for action request
+-- 2016.08.09  even better error returns for action request!
+-- 2016.11.02  use startup_list (not job_list) in status response
+-- 2016.11.15  only show non-successful startup jobs
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -321,13 +339,15 @@ local function status_startup_table ()
       ]
     },
 ]]--
-  for id, job in pairs (scheduler.job_list) do
-    tasks[#tasks + 1] = {
-      id = id,
-      status = job.status,
-      type = job.type or ("device_no_" .. (job.devNo or '(system)')), 
-      comments = job.notes,
-    }
+  for id, job in pairs (scheduler.startup_list) do
+    if job.status ~= scheduler.state.Done then
+      tasks[#tasks + 1] = {
+        id = id,
+        status = job.status,
+        type = job.type or ("device_no_" .. (job.devNo or '(system)')), 
+        comments = job.notes,
+      }
+    end
   end
   return startup
 end
@@ -607,21 +627,12 @@ end
 -- with response:
 --{"u:SetHouseModeResponse": {"OK": "OK"}}
 
---TODO: return arguments
---[[
-  HTTP:
-  ERROR: Invalid Service
-  ERROR: No implementation
-  Luup:
-   401 Invalid service/action/device
-   401 "Invalid Service"  
-   501 "No implementation"
---]]
 local function action (_,p,f)
   -- notice that the argument list is the full HTTP query including DeviceNum, serviceId, and action
   local error, error_msg, _, arguments = luup.call_action (p.serviceId, p.action, p, tonumber(p.DeviceNum))
   local result, mime_type = '', "text/plain"
   if error ~= 0 then
+    if error == -1 then error_msg = "Device does not handle service/action" end
     result = "ERROR: " .. (error_msg or error or '?')
   else
     arguments = arguments or {}

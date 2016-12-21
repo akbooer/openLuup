@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2016.05.19",
+  VERSION       = "2016.11.20",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 -- openLuup SCENES module
@@ -18,11 +33,16 @@ local ABOUT = {
 -- 2016.04.20   make pause work
 -- 2016.05.19   allow trigger data to be stored (for PLEG / RTS)
 --              see: http://forum.micasaverde.com/index.php/topic,34476.msg282148.html#msg282148
-                
+-- 2016.10.29   add notes to timer jobs (changed to job.type)
+-- 2016.11.01   add new_userdata_dataversion() to successful scene execution
+-- 2016.11.18   add scene finisher type to final delay.
+
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
 local timers    = require "openLuup.timers"
 local loader    = require "openLuup.loader"
+local scheduler = require "openLuup.scheduler"    -- simply for adding notes to the timer jobs
+local devutil   = require "openLuup.devices"      -- for new_userdata_dataversion
 
 --  local logs
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -71,16 +91,14 @@ end
 
 -- run all the actions in one delay group
 local function group_runner (actions)
-  local jobs = {}
   for _, a in ipairs (actions) do
     local args = {}
     for _, arg in pairs(a.arguments) do   -- fix parameters handling.  Thanks @delle !
       args[arg.name] = arg.value
     end
-    local _, _, job = luup.call_action (a.service, a.action, args, tonumber (a.device))
-    jobs[#jobs] = job
+    luup.call_action (a.service, a.action, args, tonumber (a.device))
   end
-  return jobs     -- return list of jobs created
+
 end
 
 -- return true if scene can run in current house mode
@@ -99,7 +117,6 @@ local function create (scene_json)
   local function scene_finisher (started)         -- called at end of scene
     if scene.last_run == started then 
       luup_scene.running = false                  -- clear running flag only if we set it
-      luup_scene.jobs = {}                        -- clear list of running jobs
     end
   end
   
@@ -120,6 +137,7 @@ local function create (scene_json)
     if ok ~= false then
       scene.last_run = os.time()                -- scene run time
       luup_scene.running = true
+      devutil.new_userdata_dataversion ()               -- 2016.11.01
       local runner = "command"
       if t then
         t.last_run = scene.last_run             -- timer or trigger specific run time
@@ -130,24 +148,36 @@ local function create (scene_json)
       _log (msg, "luup.scenes")
       _log_altui_scene (scene)                  -- log for altUI to see
       local max_delay = 0
+      local label = "scene#" .. scene.id
       for _, group in ipairs (scene.groups) do  -- schedule the various delay groups
         local delay = tonumber (group.delay) or 0
         if delay > max_delay then max_delay = delay end
-        timers.call_delay (group_runner, delay, group.actions)
+        timers.call_delay (group_runner, delay, group.actions, label .. "group delay")
       end
-      timers.call_delay (scene_finisher, max_delay + 30, scene.last_run)    -- say we're finished
+      timers.call_delay (scene_finisher, max_delay + 30, scene.last_run, 
+        label .. " finisher")    -- say we're finished
     end
   end
   
   local function scene_stopper ()
     -- TODO: cancel timers on scene delete, etc..?
-    -- can't easily kill the timer jobs, but can disable all timers and triggers
+--    for _,j in ipairs (jobs) do
+--      scheduler.kill_job (j.
+--    end
+    -- disable all timers and triggers
     for _, t in ipairs (scene.timers or {}) do
       t.enabled = 0
     end
     for _, t in ipairs (scene.triggers or {}) do
       t.enabled = 0
     end
+  end
+
+  -- called if SOMEBODY changes ANY device variable in ANY service used in this scene's actions
+  local function scene_watcher (...)
+--    luup.log ("SCENE_WATCHER: " .. json.encode {
+--              {scene=scene.id, name=scene.name}, ...})
+    -- TODO: use this to clear scene 'running' flag
   end
 
   local function scene_rename (name, room)
@@ -162,13 +192,19 @@ local function create (scene_json)
   end
 
   -- delete any actions which refer to non-existent devices
+  -- also, add listeners to the device AND service to watch for changes
   local function verify ()
+    local silent = true     -- don't log watch callbacks
     for _, g in ipairs (scene.groups or {}) do
       local actions = g.actions or {}
       local n = #actions 
       for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
         local a = actions[i]
-        if not luup.devices[tonumber(a.device)] then
+        local dev = luup.devices[tonumber(a.device)]
+        if dev then
+          local name = "_scene" .. scene.id
+          devutil.variable_watch (dev, scene_watcher, a.service, nil, name, silent) -- NB: ALL variables in service
+        else
           table.remove (actions,i)
         end
       end
@@ -199,6 +235,8 @@ local function create (scene_json)
       lua       = "....",
       paused    = "0",        -- also this! "1" == paused
     }
+    
+    -- also notification_only = device_no,  which hides the scene ???
 --]]
 
   scene = scn   -- there may be other data there than that which is possibly modified below...
@@ -211,14 +249,14 @@ local function create (scene_json)
   scene.paused      = scn.paused or "0"              -- 2016.04.30
   scene.room        = tonumber (scn.room) or 0       -- TODO: ensure room number valid
   scene.timers      = scn.timers or {}
-  scene.triggers    = scn.triggers or {},            -- 2016.05.19
+  scene.triggers    = scn.triggers or {}             -- 2016.05.19
   
   verify()   -- check that non-existent devices are not referenced
   
   local meta = {
     -- variables
     running     = false,    -- set to true when run and reset 30 seconds after last action
-    jobs        = {},       -- list of jobs that scene is running
+    jobs        = {},       -- list of jobs that scene is running (ie. timers)
     -- methods
     rename      = scene_rename,
     run         = scene_runner,
@@ -235,12 +273,21 @@ local function create (scene_json)
       remote = 0,
       room_num = scene.room,
     }
-   
+  
   -- start the timers
   local recurring = true
+  local jobs = meta.jobs
+  local info = "job#%d :timer '%s' for scene [%d] %s"
   for _, t in ipairs (scene.timers or {}) do
-    timers.call_timer (scene_runner, t.type, t.time or t.interval, 
+    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, t.time or t.interval, 
                           t.days_of_week or t.days_of_month, t, recurring)
+    if j and scheduler.job_list[j] then
+      local job = scheduler.job_list[j]
+      local text = info: format (j, t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
+      job.type = text
+      t.next_run = due
+      jobs[#jobs+1] = j           -- save the jobs we're running
+    end
   end
 
 -- luup.scenes contains all the scenes in the system as a table indexed by the scene number. 

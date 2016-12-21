@@ -1,10 +1,25 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.07.19",
+  VERSION       = "2016.12.10",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  LICENSE       = [[
+  Copyright 2016 AK Booer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+]]
 }
 
 --
@@ -17,7 +32,8 @@ local ABOUT = {
 -- 2016.06.18  add openLuup/ directory to Lua search path
 -- 2016.06.19  switch to L_AltAppStore module for initial AltUI download
 -- 2016.06.30  uncompress user_data file if necessary
--- 2016.07.19  correcrt syntax error in xml action request response
+-- 2016.07.19  correct syntax error in xml action request response
+-- 2016.11.18  add delay callback name
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -57,10 +73,14 @@ end
 
 
 -- heartbeat monitor for memory usage and checkpointing
+local chkpt = 1
 local function openLuupPulse ()
-  timers.call_delay(openLuupPulse, 6*60)                      -- periodic pulse (6 minutes)  
+  chkpt = chkpt + 1
+  local delay = tonumber (luup.attr_get "openLuup.UserData.Checkpoint") or 6  -- periodic pulse ( default 6 minutes)
+  timers.call_delay(openLuupPulse, delay*60, '', 'openLuup checkpoint #' .. chkpt)  
   -- CHECKPOINT !
-  local ok, msg = userdata.save (luup)
+  local name = (luup.attr_get "openLuup.UserData.Name") or "user_data.json"
+  local ok, msg = userdata.save (luup, name)
   if not ok then
     _log (msg or "error writing user_data")
   end
@@ -78,20 +98,40 @@ do -- change search paths for Lua require
 end
 
 do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, replaced by openLuup)
-  local invisible = true
   luup.attr_set ("Device_Num_Next", 1)  -- this may get overwritten by a subsequent user_data load
 
-  -- create (device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, ...)
+  local device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum
+  local _ = {device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum}
+  invisible = true
   luup.create_device ("urn:schemas-micasaverde-com:device:ZWaveNetwork:1", '',
-    "ZWave", "D_ZWaveNetwork.xml", nil, nil, nil, nil, invisible)
+    "ZWave", "D_ZWaveNetwork.xml", upnp_impl, ip, mac, hidden, invisible)
 --  luup.create_device ("urn:schemas-micasaverde-com:device:SceneController:1", '',
 --                      "_SceneController", "D_SceneController1.xml", nil, nil, nil, nil, invisible, 1)
-  luup.create_device ("openLuup", '', " openLuup", "D_openLuup.xml")
+  invisible = false
+  luup.create_device ("openLuup", '', "   openLuup", "D_openLuup.xml",
+                        upnp_impl, ip, mac, hidden, invisible, parent, room, "openLuup")
 end
 
 do -- set attributes, possibly decoding if required
   local set_attr = userdata.attributes 
-  set_attr["openLuup"] = {StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime)}
+  set_attr["openLuup"] = {
+    Backup = {
+      Compress = "LZAP",
+      Directory = "backup/",
+    },
+    Logfile = {
+      Name      = "logs/LuaUPnP.log",  -- note that these may be changed by Lua Startup before being used
+      Lines     = 2000,
+      Versions  = 5,
+    },
+    Status = {
+      StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime),
+    },
+    UserData = {
+      Checkpoint  = 60,                   -- checkpoint every sixty minutes
+      Name        = "user_data.json",     -- not recommended to change
+    },
+  }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
   local attr = string.char(unpack (attrs))
   loader.shared_environment[attr] = function (info)
@@ -155,6 +195,12 @@ do -- STARTUP
   else
     _log "init file not found"
   end
+end
+
+do -- log rotate and possible rename
+  _log "init phase completed"
+  local config = userdata.attributes.openLuup or {}
+  logs.rotate (config.Logfile or {})
   _log "init phase completed"
 end
 
@@ -167,7 +213,7 @@ do -- SERVER and SCHEDULER
   end
 
   -- start the heartbeat
-  timers.call_delay(openLuupPulse, 6 * 60)      -- it's alive! it's alive!!
+  timers.call_delay(openLuupPulse, 6 * 60, '', "first checkpoint")      -- it's alive! it's alive!!
 
   status = scheduler.start ()                   -- this is the main scheduling loop!
 end
