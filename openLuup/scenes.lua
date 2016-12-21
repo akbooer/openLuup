@@ -235,6 +235,8 @@ local function create (scene_json)
       lua       = "....",
       paused    = "0",        -- also this! "1" == paused
     }
+    
+    -- also notification_only = device_no,  which hides the scene ???
 --]]
 
   scene = scn   -- there may be other data there than that which is possibly modified below...
