@@ -34,6 +34,7 @@ local ABOUT = {
 -- 2016.06.30  uncompress user_data file if necessary
 -- 2016.07.19  correct syntax error in xml action request response
 -- 2016.11.18  add delay callback name
+-- 2017.01.05  add new line before end of Startup Lua (to guard against unterminated filnal comment line)
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -59,7 +60,7 @@ local mime          = require "mime"
 local function compile_and_run (lua, name)
   _log ("running " .. name)
   local startup_env = loader.shared_environment    -- shared with scenes
-  local source = table.concat {"function ", name, " () ", lua, "end" }
+  local source = table.concat {"function ", name, " () ", lua, '\n', "end" }
   local code, error_msg = 
   loader.compile_lua (source, name, startup_env) -- load, compile, instantiate
   if not code then 

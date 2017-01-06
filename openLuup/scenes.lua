@@ -36,6 +36,7 @@ local ABOUT = {
 -- 2016.10.29   add notes to timer jobs (changed to job.type)
 -- 2016.11.01   add new_userdata_dataversion() to successful scene execution
 -- 2016.11.18   add scene finisher type to final delay.
+-- 2017.01.05   add lul_scene to the scope of the scene Lua (to contain the scene Id)
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
@@ -75,7 +76,7 @@ local function load_lua_code (lua, id)
   local scene_lua, error_msg, code
   if lua then
     local scene_name = "scene_" .. id
-    local wrapper = table.concat ({"function ", scene_name, " ()", lua, "end"}, '\n')
+    local wrapper = table.concat ({"function ", scene_name, " (lul_scene)", lua, "end"}, '\n')  -- 2017.01.05
     local name = "scene_" .. id .. "_lua"
     code, error_msg = loader.compile_lua (wrapper, name, scene_environment) -- load, compile, instantiate
     scene_lua = (code or {}) [scene_name]
@@ -133,7 +134,7 @@ local function create (scene_json)
       _log "timer disabled"
       return 
     end   -- timer or trigger disabled
-    local ok = not lua_code or lua_code ()
+    local ok = not lua_code or lua_code (scene.id)    -- 2017.01.05
     if ok ~= false then
       scene.last_run = os.time()                -- scene run time
       luup_scene.running = true
