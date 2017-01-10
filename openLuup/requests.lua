@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.11.15",
+  VERSION       = "2017.01.10",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -45,6 +45,9 @@ local ABOUT = {
 -- 2016.08.09  even better error returns for action request!
 -- 2016.11.02  use startup_list (not job_list) in status response
 -- 2016.11.15  only show non-successful startup jobs
+
+-- 2017.01.10  fix non-integer values in live_energy_usage, thanks @reneboer
+--             see: http://forum.micasaverde.com/index.php/topic,41249.msg306290.html#msg306290
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -613,7 +616,7 @@ local function live_energy_usage ()
     local svc = dev.services[sid]
     if svc then
       local Watts = svc.variables.Watts 
-      if Watts then
+      if Watts and tonumber (Watts.value)then       -- 2017.01.10 thanks @reneboer
         local room = luup.rooms[dev.room_num or 0] or ''
         local line = fmt: format (devNo, dev.description, room, dev.category_num, Watts.value)
         live_energy_usage[#live_energy_usage+1] = line
