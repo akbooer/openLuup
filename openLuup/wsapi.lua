@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2016.10.17",
+  VERSION       = "2017.01.12",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -41,6 +41,8 @@ local ABOUT = {
 -- 2016.07.14  change cgi() parameter to request object
 -- 2016.07.15  three-parameters WSAPI return: status, headers, iterator
 -- 2016.10.17  use CGI aliases from external servertables module
+
+-- 2017.01.12  remove leading colon from REMOTE_PORT metavariable value
 
 --[[
 
@@ -247,7 +249,7 @@ local function cgi (request)
     ["HTTP_USER_AGENT"] = headers["User-Agent"],
     ["HTTP_COOKIE"]     = headers["Cookie"],
     ["REMOTE_HOST"]     = headers ["Host"],
-    ["REMOTE_PORT"]     = (headers ["Host"] or ''): match ":%d+$",
+    ["REMOTE_PORT"]     = (headers ["Host"] or ''): match ":(%d+)$",
     ["REQUEST_METHOD"]  = request.method,
     ["SCRIPT_NAME"]     = URL.path,
     ["SERVER_PROTOCOL"] = request.http_version,

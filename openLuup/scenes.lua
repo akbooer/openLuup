@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2016.11.20",
+  VERSION       = "2017.01.15",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -36,7 +36,10 @@ local ABOUT = {
 -- 2016.10.29   add notes to timer jobs (changed to job.type)
 -- 2016.11.01   add new_userdata_dataversion() to successful scene execution
 -- 2016.11.18   add scene finisher type to final delay.
+
 -- 2017.01.05   add lul_scene to the scope of the scene Lua (to contain the scene Id)
+-- 2017.01.15   remove scene triggers which refer to missing devices (thanks @reneboer)
+--              see: http://forum.micasaverde.com/index.php/topic,41249.msg306385.html#msg306385
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
@@ -194,6 +197,7 @@ local function create (scene_json)
 
   -- delete any actions which refer to non-existent devices
   -- also, add listeners to the device AND service to watch for changes
+  -- also, remove any triggers reltated to unkown devices
   local function verify ()
     local silent = true     -- don't log watch callbacks
     for _, g in ipairs (scene.groups or {}) do
@@ -208,6 +212,15 @@ local function create (scene_json)
         else
           table.remove (actions,i)
         end
+      end      
+    end
+    -- triggers
+    local triggers = scene.triggers or {}
+    local n = #triggers
+    for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
+      local t = triggers[i]
+      if not luup.devices[t.device] then
+        table.remove (triggers, i)
       end
     end
   end
