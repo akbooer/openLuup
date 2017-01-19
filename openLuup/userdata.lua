@@ -41,6 +41,9 @@ local ABOUT = {
 -- 2016.11.05   added gmt_offset: thanks @jswim788 and @logread
 -- 2016.11.09   preserve device #2 (openLuup) room allocation across reloads (thanks @DesT)
 
+-- 2017.01.18   add HouseMode variable to openLuup device, to mirror attribute, so this can be used as a trigger
+
+
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
 local logs    = require "openLuup.logs"
@@ -571,6 +574,8 @@ local function load_user_data (user_data_json)
         local room = tonumber (d.room) or 0
         ol:attr_set {room = room}     -- set the device attribute...
         ol.room_num = room            -- ... AND the device table (Luup is SO bad...)
+        -- 2017.01.18 create openLuup HouseMode variable
+        ol:variable_set ("openLuup", "HouseMode", luup.attr_get "Mode")  
       else
         local dev = chdev.create {      -- the variation in naming within luup is appalling
             devNo = d.id, 
