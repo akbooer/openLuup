@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.11.18",
+  VERSION       = "2017.02.08",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -57,7 +57,10 @@ local ABOUT = {
 -- 2016.10.17   use CGI prefixes from external servertables module
 -- 2016.11.02   change job.notes to job.type for new connections and requests
 -- 2016.11.07   add requester IP to new connection log message
--- 2016.11.18  test for nil URL.path 
+-- 2016.11.18   test for nil URL.path 
+
+-- 2017.02.06   allow request parameters from URL and POST request body (rather than one or other)
+-- 2017.02.08   thanks to @amg0 for finding error in POST parameter handling
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -308,10 +311,14 @@ local function request_object (request_URI, headers, post_content, method, http_
   -- construct parameters from query string or POST content
   local parameters
   method = method or "GET"
-  if method == "GET" and URL.query then
+  if URL.query then
     parameters = parse_parameters (URL.query)   -- extract useful parameters from query string
-  elseif method == "POST" and headers["Content-Type"] == "application/x-www-form-urlencoded" then
-    parameters = parse_parameters (post_content)
+    if method == "POST" and (headers["Content-Type"] or ''): match "application/x-www-form-urlencoded" then
+      local p2 = parse_parameters (post_content)
+      for a,b in pairs (p2) do        -- 2017.02.06  combine URL and POST parameters
+        parameters[a] = b
+      end
+    end
   end
 
   local path_list = url.parse_path (URL.path) or {}   -- split out individual parts of the path

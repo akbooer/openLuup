@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.12.11",
+  VERSION       = "2017.01.20",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -186,7 +186,7 @@ local I_openLuup_impl = [[
       </run>
     </action>
   
-  <actionList>
+  </actionList>
 </implementation>
 ]]
 
@@ -221,7 +221,7 @@ local S_openLuup_svc = [[
         <argument>
           <name>CPU</name>
           <direction>out</direction>
-          <relatedStateVariable>CpuLoad_Hours</relatedStateVariable>
+          <relatedStateVariable>CpuLoad</relatedStateVariable>
         </argument>
         <argument>
           <name>Memory</name>

@@ -3,10 +3,10 @@ local ABOUT = {
   VERSION       = "2016.12.10",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ local ABOUT = {
 -- 2016.06.30  uncompress user_data file if necessary
 -- 2016.07.19  correct syntax error in xml action request response
 -- 2016.11.18  add delay callback name
--- 2017.01.05  add new line before end of Startup Lua (to guard against unterminated filnal comment line)
+-- 2017.01.05  add new line before end of Startup Lua (to guard against unterminated final comment line)
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
