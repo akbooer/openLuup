@@ -313,7 +313,7 @@ local function request_object (request_URI, headers, post_content, method, http_
   method = method or "GET"
   if URL.query then
     parameters = parse_parameters (URL.query)   -- extract useful parameters from query string
-    if method == "POST" and (headers["Content-Type"] or ''): match "application/x-www-form-urlencoded" then
+    if method == "POST" and (headers["Content-Type"] or ''): match "application/x%-www%-form%-urlencoded" then
       local p2 = parse_parameters (post_content)
       for a,b in pairs (p2) do        -- 2017.02.06  combine URL and POST parameters
         parameters[a] = b
