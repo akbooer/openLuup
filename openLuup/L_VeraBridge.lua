@@ -1,12 +1,12 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.11.20",
+  VERSION       = "2017.02.12",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -56,6 +56,8 @@ ABOUT = {
 -- 2016.11.12   only set LastUpdate when remote variable changes to avoid triggering a local status response
 --              thanks @delle, see: http://forum.micasaverde.com/index.php/topic,40434.0.html
  
+-- 2017.02.12   add BridgeScenes flag (thanks @DesT) 
+ 
 local devNo                      -- our device number
 
 local chdev     = require "openLuup.chdev"
@@ -95,7 +97,7 @@ local HouseModeOptions = {      -- 2016.05.23
 
 -- @explorer options for device filtering
 
-local CloneRooms, ZWaveOnly, Included, Excluded
+local BridgeScenes, CloneRooms, ZWaveOnly, Included, Excluded
 
 -- LUUP utility functions 
 
@@ -342,7 +344,13 @@ end
 -- create a link to remote scenes
 local function create_scenes (remote_scenes, room)
   local N,M = 0,0
---  remove_old_scenes ()
+
+  if not BridgeScenes then        -- 2017.02.12
+    remove_old_scenes ()
+    luup.log "remote scenes not linked"
+    return 0
+  end
+  
   luup.log "linking to remote scenes..."
   
   local action = "RunScene"
@@ -704,6 +712,10 @@ local function generic_action (serviceId, name)
   return {run = job}    -- TODO: job or run ?
 end
 
+-- make either "1" or "true" work the same way
+local function logical_true (flag)
+  return flag == "1" or flag == "true"
+end
 
 -- plugin startup
 function init (lul_device)
@@ -719,6 +731,7 @@ function init (lul_device)
 
   -- User configuration parameters: @explorer and @logread options
   
+  BridgeScenes = uiVar ("BridgeScenes", "true")
   CloneRooms  = uiVar ("CloneRooms", '')        -- if set to 'true' then clone rooms and place devices there
   ZWaveOnly   = uiVar ("ZWaveOnly", '')         -- if set to 'true' then only Z-Wave devices are considered by VeraBridge.
   Included    = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
@@ -729,8 +742,9 @@ function init (lul_device)
   HouseModeMirror = hmm: match "^([012])" or '0'
   setVar ("HouseModeMirror", HouseModeOptions[HouseModeMirror]) -- replace with full string
   
-  CloneRooms = CloneRooms == "true"                        -- convert to logical
-  ZWaveOnly  = ZWaveOnly  == "true" 
+  BridgeScenes = logical_true (BridgeScenes) 
+  CloneRooms = logical_true (CloneRooms)                        -- convert to logical
+  ZWaveOnly  = logical_true (ZWaveOnly) 
   
   Included = convert_to_set (Included)
   Excluded = convert_to_set (Excluded)  
