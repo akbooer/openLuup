@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2017.02.12",
+  VERSION       = "2017.02.22",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -57,6 +57,7 @@ ABOUT = {
 --              thanks @delle, see: http://forum.micasaverde.com/index.php/topic,40434.0.html
  
 -- 2017.02.12   add BridgeScenes flag (thanks @DesT) 
+-- 2017.02.22   add 'remote_ip' request using new extra_returns action parameter
  
 local devNo                      -- our device number
 
@@ -709,6 +710,16 @@ local function generic_action (serviceId, name)
     wget (url)
     return 4,0
   end
+  
+  -- This action call to ANY child device of this bridge:
+  -- luup.call_action ("urn:akbooer-com:serviceId:VeraBridge1","remote_ip",{},10123)
+  -- will return something like: 
+  -- {IP = "172.16.42.14"}
+
+  if serviceId == SID.gateway and name == "remote_ip" then     -- 2017.02.22  add remote_ip request
+    return {serviceId = serviceId, name = name, extra_returns = {IP = ip} }
+  end
+  
   return {run = job}    -- TODO: job or run ?
 end
 

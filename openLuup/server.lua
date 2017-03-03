@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2017.02.08",
+  VERSION       = "2017.03.03",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -61,6 +61,8 @@ local ABOUT = {
 
 -- 2017.02.06   allow request parameters from URL and POST request body (rather than one or other)
 -- 2017.02.08   thanks to @amg0 for finding error in POST parameter handling
+-- 2017.02.21   use find, not match, with plain string option for POST parameter encoding test
+-- 2017.03.03   fix embedded spaces in POST url-encoded parameters (thanks @jswim788)
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -313,8 +315,9 @@ local function request_object (request_URI, headers, post_content, method, http_
   method = method or "GET"
   if URL.query then
     parameters = parse_parameters (URL.query)   -- extract useful parameters from query string
-    if method == "POST" and (headers["Content-Type"] or ''): match "application/x%-www%-form%-urlencoded" then
-      local p2 = parse_parameters (post_content)
+    if method == "POST" 
+    and (headers["Content-Type"] or ''): find ("application/x-www-form-urlencoded",1,true) then -- 2017.02.21
+      local p2 = parse_parameters (post_content:gsub('+', ' '))   -- 2017.03.03 fix embedded spaces
       for a,b in pairs (p2) do        -- 2017.02.06  combine URL and POST parameters
         parameters[a] = b
       end
