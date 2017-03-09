@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2016.11.18",
+  VERSION       = "2017.02.22",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -36,6 +36,8 @@ local ABOUT = {
 
 -- 2016.11.02  add startup_list handling, kill_job
 -- 2016.11.18  add delay callback type (string) parameter, and silent mode
+
+-- 2017.02.22  add extra (non-variable) returns to action calls (used by generic action handlers)
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
@@ -328,6 +330,9 @@ local function run_job (action, arguments, devNo, target_device)
     end
   end
   
+  -- 2017.02.22 add any extra (non-device-variable) returns
+  for a,b in pairs (action.extra_returns or {}) do return_arguments[a] = b end
+
   return error, error_msg or '', jobNo, return_arguments
 end
 
@@ -358,7 +363,6 @@ local function device_start (entry_point, devNo, name)
 --    if job.notes == '' then
 --      job.notes = text      -- use this as the startup job comments
 --    end
-  -- TODO: remove successful startup jobs from startup list
     return state.Done, 0  
   end
   

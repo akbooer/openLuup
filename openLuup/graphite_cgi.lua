@@ -4,13 +4,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2016.10.24",
+  VERSION       = "2017.02.21",
   DESCRIPTION   = "Graphite",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -448,9 +448,8 @@ local function get_parameters (env)
   if env.REQUEST_METHOD == "POST" then 
     local content = env.input:read ()
  
-    if env.CONTENT_TYPE == "application/x-www-form-urlencoded" 
-      or env.CONTENT_TYPE == "application/www-form-urlencoded" then
-        p2 = parse_parameters (content)
+    if env.CONTENT_TYPE: find ("www-form-urlencoded", 1, true) then   -- 2017.02.21, plain text search
+      p2 = parse_parameters (content)
     
     elseif env.CONTENT_TYPE == "application/json" then
       p2 = json.decode (content)
@@ -464,7 +463,6 @@ local function get_parameters (env)
   
   for name,value in pairs (p) do
     if #value == 1 then p[name] = value[1] end    -- convert single instances to scalar values
---    print (name, p[name])
   end
   
   if type (p.target) ~= "table" then p.target= {p.target} end -- target is ALWAYS an array

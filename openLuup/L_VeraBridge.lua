@@ -1,12 +1,12 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2016.11.20",
+  VERSION       = "2017.03.09",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -56,6 +56,11 @@ ABOUT = {
 -- 2016.11.12   only set LastUpdate when remote variable changes to avoid triggering a local status response
 --              thanks @delle, see: http://forum.micasaverde.com/index.php/topic,40434.0.html
  
+-- 2017.02.12   add BridgeScenes flag (thanks @DesT) 
+-- 2017.02.22   add 'remote_ip' request using new extra_returns action parameter
+-- 2017.03.07   add Mirror as AltUI Data Service Provider
+-- 2017.03.09   add wildcard '*' in Mirror syntax to preserve existing serviceId or variable name
+
 local devNo                      -- our device number
 
 local chdev     = require "openLuup.chdev"
@@ -95,7 +100,7 @@ local HouseModeOptions = {      -- 2016.05.23
 
 -- @explorer options for device filtering
 
-local CloneRooms, ZWaveOnly, Included, Excluded
+local BridgeScenes, CloneRooms, ZWaveOnly, Included, Excluded
 
 -- LUUP utility functions 
 
@@ -342,7 +347,13 @@ end
 -- create a link to remote scenes
 local function create_scenes (remote_scenes, room)
   local N,M = 0,0
---  remove_old_scenes ()
+
+  if not BridgeScenes then        -- 2017.02.12
+    remove_old_scenes ()
+    luup.log "remote scenes not linked"
+    return 0
+  end
+  
   luup.log "linking to remote scenes..."
   
   local action = "RunScene"
@@ -701,7 +712,90 @@ local function generic_action (serviceId, name)
     wget (url)
     return 4,0
   end
+  
+  -- This action call to ANY child device of this bridge:
+  -- luup.call_action ("urn:akbooer-com:serviceId:VeraBridge1","remote_ip",{},10123)
+  -- will return something like: 
+  -- {IP = "172.16.42.14"}
+
+  if serviceId == SID.gateway and name == "remote_ip" then     -- 2017.02.22  add remote_ip request
+    return {serviceId = serviceId, name = name, extra_returns = {IP = ip} }
+  end
+  
   return {run = job}    -- TODO: job or run ?
+end
+
+-- make either "1" or "true" work the same way
+local function logical_true (flag)
+  return flag == "1" or flag == "true"
+end
+
+--------------
+--
+-- Mirror Data Storage Provider, 2017.03.07
+--
+
+---- MIRROR with AltUI Data Storage Provider functionality
+local function MirrorHandler (_,x) 
+  local tag = x.mirror
+  if tag then
+    local dev, srv, var = tag:match "^(%d+)%.?([^%.]*)%.?([^%.]*)"    -- blank if field missing
+    srv = ((srv ~= '') and (srv ~= '*')) and srv or x.lul_service     -- use default if not defined or wildcard
+    var = ((var ~= '') and (var ~= '*')) and var or x.lul_variable
+    
+    local sysNo, devNo = (x.lul_device or ''): match "(%d+)%-(%d+)"
+    if dev and sysNo == "0" then    -- only mirror local devices
+      local message = "VeraBridge DSP Mirror: %s.%s.%s --> %s.%s.%s@" .. ip
+      luup.log (message: format(devNo, x.lul_service, x.lul_variable, dev, srv, var))
+      local request = "http://%s:3480/data_request?id=variableset&DeviceNum=%s&serviceId=%s&Variable=%s&Value=%s"
+      luup.log (request: format(ip, dev, srv, var, url.escape(x.new or '')))
+      luup.inet.wget (request: format(ip, dev, srv, var, url.escape(x.new or '')))
+    end
+  end
+  return "OK", "text/plain"
+end
+
+
+-- register VeraBridge as an AltUI Data Storage Provider
+local function register_AltUI_Data_Storage_Provider ()
+  local MirrorCallback    = "HTTP_VeraBridgeMirror_" .. ip
+  local MirrorCallbackURL = "http://127.0.0.1:3480/data_request?id=lr_" .. MirrorCallback
+  
+  local AltUI
+  for devNo, d in pairs (luup.devices) do
+    if d.device_type == "urn:schemas-upnp-org:device:altui:1" 
+    and d.device_num_parent == 0 then   -- look for it on the LOCAL machine (might be bridged to another!)
+      AltUI = devNo
+      break
+    end
+  end
+  
+  if not AltUI then return end
+  
+  luup.log ("registering with AltUI [" .. AltUI .. "] as Data Storage Provider")
+  _G[MirrorCallback] = MirrorHandler
+  luup.register_handler (MirrorCallback, MirrorCallback)
+  
+  local newJsonParameters = {
+    {
+        default = "device.serviceId.name",
+        key = "mirror",
+        label = "Mirror",
+        type = "text"
+--      },{
+--        default = "/data_request?id=lr_" .. MirrorCallback,
+--        key = "graphicurl",
+--        label = "Graphic Url",
+--        type = "url"
+      }
+    }
+  local arguments = {
+    newName = "Vera@" .. ip,
+    newUrl = MirrorCallbackURL,
+    newJsonParameters = json.encode (newJsonParameters),
+  }
+
+  luup.call_action ("urn:upnp-org:serviceId:altui1", "RegisterDataProvider", arguments, AltUI)
 end
 
 
@@ -719,6 +813,7 @@ function init (lul_device)
 
   -- User configuration parameters: @explorer and @logread options
   
+  BridgeScenes = uiVar ("BridgeScenes", "true")
   CloneRooms  = uiVar ("CloneRooms", '')        -- if set to 'true' then clone rooms and place devices there
   ZWaveOnly   = uiVar ("ZWaveOnly", '')         -- if set to 'true' then only Z-Wave devices are considered by VeraBridge.
   Included    = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
@@ -729,8 +824,9 @@ function init (lul_device)
   HouseModeMirror = hmm: match "^([012])" or '0'
   setVar ("HouseModeMirror", HouseModeOptions[HouseModeMirror]) -- replace with full string
   
-  CloneRooms = CloneRooms == "true"                        -- convert to logical
-  ZWaveOnly  = ZWaveOnly  == "true" 
+  BridgeScenes = logical_true (BridgeScenes) 
+  CloneRooms = logical_true (CloneRooms)                        -- convert to logical
+  ZWaveOnly  = logical_true (ZWaveOnly) 
   
   Included = convert_to_set (Included)
   Excluded = convert_to_set (Excluded)  
@@ -769,6 +865,9 @@ function init (lul_device)
   else
     luup.set_failure (2)                      -- say it's an authentication error
   end
+
+  register_AltUI_Data_Storage_Provider ()     -- register with AltUI as MIRROR data storage provider
+  
   return true, "OK", ABOUT.NAME
 end
 

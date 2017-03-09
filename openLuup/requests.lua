@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2016.11.15",
+  VERSION       = "2017.02.05",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -45,6 +45,10 @@ local ABOUT = {
 -- 2016.08.09  even better error returns for action request!
 -- 2016.11.02  use startup_list (not job_list) in status response
 -- 2016.11.15  only show non-successful startup jobs
+
+-- 2017.01.10  fix non-integer values in live_energy_usage, thanks @reneboer
+--             see: http://forum.micasaverde.com/index.php/topic,41249.msg306290.html#msg306290
+-- 2017.02.05  add 'test' request (for testing!)
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -613,7 +617,7 @@ local function live_energy_usage ()
     local svc = dev.services[sid]
     if svc then
       local Watts = svc.variables.Watts 
-      if Watts then
+      if Watts and tonumber (Watts.value)then       -- 2017.01.10 thanks @reneboer
         local room = luup.rooms[dev.room_num or 0] or ''
         local line = fmt: format (devNo, dev.description, room, dev.category_num, Watts.value)
         live_energy_usage[#live_energy_usage+1] = line
@@ -803,6 +807,13 @@ local function reload () luup.reload () end
 --
 -- openLuup additions
 --
+local function test (r,p)
+  local d = {"data_request=" .. r}
+  for a,b in pairs (p) do
+    d[#d+1] = table.concat {a,'=',b}
+  end
+  return table.concat (d,'\n')
+end
 
 -- easy HTTP request to force a download of AltUI
 local function altui (_,p) return update_plugin (_, {PluginNum = "8246", Version= p.Version}) end
@@ -849,6 +860,7 @@ return {
   altui               = altui,              -- download AltUI version from GitHub
   debug               = debug,              -- toggle debug flag
   exit                = exit,               -- shutdown
+  test                = test,               -- for testing!
   update              = update,             -- download openLuup version from GitHub
 }
 

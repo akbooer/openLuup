@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2016.12.11",
+  VERSION       = "2017.02.21",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -186,7 +186,7 @@ local I_openLuup_impl = [[
       </run>
     </action>
   
-  <actionList>
+  </actionList>
 </implementation>
 ]]
 
@@ -221,7 +221,7 @@ local S_openLuup_svc = [[
         <argument>
           <name>CPU</name>
           <direction>out</direction>
-          <relatedStateVariable>CpuLoad_Hours</relatedStateVariable>
+          <relatedStateVariable>CpuLoad</relatedStateVariable>
         </argument>
         <argument>
           <name>Memory</name>
@@ -785,6 +785,41 @@ retentions = 1h:90d
 [year]
 pattern = \.y$
 retentions = 6h:1y
+
+#  2017.02.14  @akbooer
+#  EXTENDED (10 year) patterns for AltUI Data Storage Provider
+
+[1minute]
+pattern = \.1m$
+retentions = 1m:1d,10m:7d,1h:30d,3h:1y,1d:10y
+
+[5minute]
+pattern = \.5m$
+retentions = 5m:7d,1h:30d,3h:1y,1d:10y
+
+[10minute]
+pattern = \.10m$
+retentions = 5m:7d,1h:30d,3h:1y,1d:10y
+
+[20minute]
+pattern = \.20m$
+retentions = 20m:30d,3h:1y,1d:10y
+
+[1hour]
+pattern = \.1h$
+retentions = 1h:90d,3h:1y,1d:10y
+
+[3hour]
+pattern = \.3h$
+retentions = 3h:1y,1d:10y
+
+[6hour]
+pattern = \.6h$
+retentions = 6h:1y,1d:10y
+
+[1day]
+pattern = \.1d$
+retentions = 1d:10y
 
 ]]
 
