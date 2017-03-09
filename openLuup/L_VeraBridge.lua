@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2017.03.07",
+  VERSION       = "2017.03.09",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -59,7 +59,8 @@ ABOUT = {
 -- 2017.02.12   add BridgeScenes flag (thanks @DesT) 
 -- 2017.02.22   add 'remote_ip' request using new extra_returns action parameter
 -- 2017.03.07   add Mirror as AltUI Data Service Provider
- 
+-- 2017.03.09   add wildcard '*' in Mirror syntax to preserve existing serviceId or variable name
+
 local devNo                      -- our device number
 
 local chdev     = require "openLuup.chdev"
@@ -739,8 +740,8 @@ local function MirrorHandler (_,x)
   local tag = x.mirror
   if tag then
     local dev, srv, var = tag:match "^(%d+)%.?([^%.]*)%.?([^%.]*)"    -- blank if field missing
-    srv = srv ~= '' and srv or x.lul_service                          -- use default if not defined
-    var = var ~= '' and var or x.lul_variable
+    srv = ((srv ~= '') and (srv ~= '*')) and srv or x.lul_service     -- use default if not defined or wildcard
+    var = ((var ~= '') and (var ~= '*')) and var or x.lul_variable
     
     local sysNo, devNo = (x.lul_device or ''): match "(%d+)%-(%d+)"
     if dev and sysNo == "0" then    -- only mirror local devices
