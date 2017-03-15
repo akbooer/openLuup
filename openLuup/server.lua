@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2017.03.03",
+  VERSION       = "2017.03.15",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -43,9 +43,6 @@ local ABOUT = {
 -- 2016.06.01   also look for files in virtualfilesystem
 -- 2016.06.09   also look in files/ directory
 -- 2016.07.06   add 'method' to WSAPI server call
-
----------------------
-
 -- 2016.07.12   start refactoring: request dispatcher and POST queries
 -- 2016.07.14   request object parameter and WSAPI-style returns for all handlers
 -- 2016.07.17   HTML error pages
@@ -63,6 +60,7 @@ local ABOUT = {
 -- 2017.02.08   thanks to @amg0 for finding error in POST parameter handling
 -- 2017.02.21   use find, not match, with plain string option for POST parameter encoding test
 -- 2017.03.03   fix embedded spaces in POST url-encoded parameters (thanks @jswim788)
+-- 2017.03.15   add Server table structure to startup call
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -81,12 +79,12 @@ local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 
 logs.banner (ABOUT)   -- for version control
 
--- CONSTANTS
+-- CONFIGURATION DEFAULTS
 
-local BACKLOG             = 255       -- used in socket.bind() for queue length
-local CHUNKED_LENGTH      = 16000     -- size of chunked transfers
-local CLOSE_SOCKET_AFTER  = 90        -- number of seconds idle after which to close socket
-local MAX_HEADER_LINES    = 100       -- limit lines to help mitigate DOS attack or other client errors
+local BACKLOG                   = 2000      -- used in socket.bind() for queue length
+local CHUNKED_LENGTH            = 16000     -- size of chunked transfers
+local CLOSE_IDLE_SOCKET_AFTER   = 90        -- number of seconds idle after which to close socket
+local MAX_HEADER_LINES          = 100       -- limit lines to help mitigate DOS attack or other client errors
 
 -- TABLES
 
@@ -612,7 +610,7 @@ local function new_client (sock)
   
   local function incoming (sock)
     local err = client_request (sock)                  -- launch new job to handle request 
-    expiry = socket.gettime () + CLOSE_SOCKET_AFTER      -- update socket expiry 
+    expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER      -- update socket expiry 
     if err and (err ~= "closed") then 
       _log ("read error: " ..  tostring(err) .. ' ' .. tostring(sock))
       sock: close ()                                -- it may be closed already
@@ -636,7 +634,7 @@ local function new_client (sock)
   local ip = sock:getpeername() or '?'                    -- who's asking?
   local connect = "new client connection from %s: %s"
   _log (connect:format (ip, tostring(sock)))
-  expiry = socket.gettime () + CLOSE_SOCKET_AFTER         -- set initial socket expiry 
+  expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER         -- set initial socket expiry 
   sock:settimeout(nil)                                    -- this is a timeout on the HTTP read
 --  sock:settimeout(10)                                   -- this is a timeout on the HTTP read
   sock:setoption ("tcp-nodelay", true)                    -- trying to fix timeout error on long strings
@@ -654,8 +652,13 @@ end
 -- start (), sets up the HTTP request handler
 -- returns list of utility function(s)
 -- 
-local function start (port, backlog)
-  local server, msg = socket.bind ('*', port, backlog or BACKLOG) 
+local function start (port, config)
+  config = config or {}               -- 2017.03.15 server configuration table
+  BACKLOG = config.Backlog or BACKLOG
+  CHUNKED_LENGTH = config.ChunkedLength or CHUNKED_LENGTH
+  CLOSE_IDLE_SOCKET_AFTER = config.CloseIdleSocketAfter or CLOSE_IDLE_SOCKET_AFTER
+  
+  local server, msg = socket.bind ('*', port, BACKLOG) 
    
   -- new client connection
   local function server_incoming (server)

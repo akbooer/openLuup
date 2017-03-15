@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.12.10",
+  VERSION       = "2017.03.15",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -35,6 +35,7 @@ local ABOUT = {
 -- 2016.07.19  correct syntax error in xml action request response
 -- 2016.11.18  add delay callback name
 -- 2017.01.05  add new line before end of Startup Lua (to guard against unterminated final comment line)
+-- 2017.03.15  add Server.Backlog parameter to openLuup attribute (thanks @explorer)
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -132,6 +133,11 @@ do -- set attributes, possibly decoding if required
       Checkpoint  = 60,                   -- checkpoint every sixty minutes
       Name        = "user_data.json",     -- not recommended to change
     },
+    Server = {
+      Backlog = 2000,                     -- used in socket.bind() for queue length
+      ChunkedLength = 16000,              -- size of chunked transfers
+      CloseIdleSocketAfter  = 90 ,        -- number of seconds idle after which to close socket
+   },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
   local attr = string.char(unpack (attrs))
@@ -208,7 +214,7 @@ end
 local status
 
 do -- SERVER and SCHEDULER
-  local s = server.start "3480"                 -- start the port 3480 Web server
+  local s = server.start ("3480", userdata.attributes.Server)     -- start the port 3480 Web server
   if not s then 
     error "openLuup - is another copy already running?  Unable to start port 3480 server" 
   end
