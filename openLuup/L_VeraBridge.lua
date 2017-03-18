@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2017.03.09",
+  VERSION       = "2017.03.17",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -60,6 +60,7 @@ ABOUT = {
 -- 2017.02.22   add 'remote_ip' request using new extra_returns action parameter
 -- 2017.03.07   add Mirror as AltUI Data Service Provider
 -- 2017.03.09   add wildcard '*' in Mirror syntax to preserve existing serviceId or variable name
+-- 2017.03.17   don't override existing user attibutes (thanks @explorer)
 
 local devNo                      -- our device number
 
@@ -397,7 +398,7 @@ local function GetUserData ()
     local t = ("%ss"): format (atr)
     if Vera.devices then
       local new_room_name = "MiOS-" .. (Vera.PK_AccessPoint: gsub ("%c",''))  -- stray control chars removed!!
-      if Vera[t] then userdata.attributes [t] = Vera[t] end
+      userdata.attributes [t] = userdata.attributes [t] or Vera[t]
       luup.log (new_room_name)
       rooms.create (new_room_name)
   
