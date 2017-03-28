@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2017.02.12",
+  VERSION       = "2017.03.28",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -138,12 +138,12 @@ prefix = [[
       </div>
     </div>
     <div style="overflow:scroll;">
-    <pre><code>
+    <pre>
 ]],
 --     <div style="overflow:scroll; height:500px;">
 
   postfix = [[
-    </code></pre>
+    </pre>
     </div>
 
   </body>
