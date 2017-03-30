@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2017.03.28",
+  VERSION       = "2017.03.31",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -34,7 +34,7 @@ local url       = require "socket.url"            -- for url unescape
 local luup      = require "openLuup.luup"
 local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
-
+local xml       = require "openLuup.xml"          -- for escape()
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -263,7 +263,7 @@ function run (wsapi_env)
     if f then
       local x = f:read "*a"
       f: close()
-      print (x)
+      print (xml.escape (x))       -- thanks @a-lurker
     end
   end
   
