@@ -48,11 +48,11 @@ local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;",
 local rev = {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'}
 
 local function unescape(x)
-  return x: gsub ("&(%w+);", rev)
+  return (x: gsub ("&(%w+);", rev))   -- extra parentheses to remove second return parameter
 end
 
 local function escape (x)
-  return x: gsub ([=[[<>"'&]]=], fwd)
+  return (x: gsub ([=[[<>"'&]]=], fwd))
 end
 
 
