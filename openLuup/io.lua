@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2016.11.09",
+  VERSION       = "2017.04.10",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -39,6 +39,8 @@ local ABOUT = {
 -- 2016.02.15 'keepalive' option for socket - thanks to @martynwendon for testing the solution
 -- 2016.11.09 implement version of @vosmont's "cr" protocol in io.read()
 --            see: http://forum.micasaverde.com/index.php/topic,40120.0.html
+
+-- 2017.04.10  add Logfile.Incoming option
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
@@ -141,11 +143,15 @@ end
 local function open (device, ip, port)
   local dev, sock, devNo = get_dev_and_socket (device)  
   local protocol = dev.io.protocol
+  local openLuup = luup.attr_get "openLuup"
   
   local function incoming (sock)
     local data, err = receive (sock, protocol)        -- get data
     if data then
-      _log (("bytes received: %d, status: %s %s"): format ((#data or 0), err or "OK", tostring(sock)), "luup.io.incoming")
+      if openLuup.Logfile.Incoming == "true" then
+        _log (("bytes received: %d, status: %s %s"): format ((#data or 0), 
+            err or "OK", tostring(sock)), "luup.io.incoming")
+      end
       local ok, msg = scheduler.context_switch (devNo, dev.io.incoming, devNo, data) 
       if not ok then _log(msg) end
     else

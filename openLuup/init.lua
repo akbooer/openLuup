@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2017.03.31",
+  VERSION       = "2017.04.10",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -34,8 +34,10 @@ local ABOUT = {
 -- 2016.06.30  uncompress user_data file if necessary
 -- 2016.07.19  correct syntax error in xml action request response
 -- 2016.11.18  add delay callback name
+
 -- 2017.01.05  add new line before end of Startup Lua (to guard against unterminated final comment line)
 -- 2017.03.15  add Server.Backlog parameter to openLuup attribute (thanks @explorer)
+-- 2017.04.10  add Logfile.Incoming parameter to openLuup attribute (thanks @a-lurker)
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -125,6 +127,7 @@ do -- set attributes, possibly decoding if required
       Name      = "logs/LuaUPnP.log",  -- note that these may be changed by Lua Startup before being used
       Lines     = 2000,
       Versions  = 5,
+      Incoming  = "true",
     },
     Status = {
       StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime),
