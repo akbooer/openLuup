@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.12.06",
+  VERSION       = "2017.04.12",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -36,6 +36,8 @@ local ABOUT = {
 -- 2016.11.02  add job type to timer calls
 -- 2016.11.18  add call_delay function name as timer type
 -- 2016.12.06  change attr_get/set for structured openLuup attributes
+
+-- 2017.10.12  make luup.sunrise/sunset() return integer (thanks @a-lurker)
 
 local logs          = require "openLuup.logs"
 
@@ -710,8 +712,8 @@ return {
 --    require             = "what is this?"  --the redefined 'require' which deals with pluto.lzo ??
     set_failure         = set_failure,
     sleep               = timers.sleep,
-    sunrise             = timers.sunrise,
-    sunset              = timers.sunset,
+    sunrise             = function () return math.floor(timers.sunrise ()) end, -- 2017.04.12
+    sunset              = function () return math.floor(timers.sunset ()) end,
     task                = task,
     variable_get        = variable_get,
     variable_set        = variable_set,
