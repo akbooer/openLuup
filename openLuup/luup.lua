@@ -38,6 +38,8 @@ local ABOUT = {
 -- 2016.12.06  change attr_get/set for structured openLuup attributes
 
 -- 2017.10.12  make luup.sunrise/sunset() return integer (thanks @a-lurker)
+-- 2017.10.15  check parameter types for callback functions (thanks @a-lurker)
+-- 2017.04.16  add missing luup.ir.pronto_to_gc100() (thanks @a-lurker)
 
 local logs          = require "openLuup.logs"
 
@@ -88,6 +90,39 @@ local scenes = {}
 -- The members are: remote_file (string), room_num (number), description(string)
 
 local remotes = {}
+
+-----
+--
+-- parameter checking routine
+--
+-- a,b,c = parameters ({list of types}, parameters)
+-- where types can include the usual, but also "number_or_string"
+-- throws an error pointing to the caller's caller (ie. where the wrong parameter actually is)
+-- eg.
+--     a,b,c = parameters ({"string", "number", "table"}, ...)
+--
+local parameters
+  do
+    local class = {
+        string = {string = 1},
+        table  = {table = 1},
+        number = {number = 1},
+        number_or_string = {string = 1, number = 1},
+      }
+    local message = "parameter #%d should be type %s but is %s"
+
+    parameters = function (syntax, ...)
+      for i,p in ipairs {...} do
+        local t = type(p)
+        local s = syntax[i] or t
+        if not class [s] [t] then
+          error (message: format (i, s, t), 3)
+        end
+      end
+      return ...  -- note that this even works for embedded nil parameters
+    end
+  end
+
 
 -----
 --
@@ -452,7 +487,8 @@ local function call_action (service, action, arguments, device)
 --
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- The function returns 0 if successful. 
-local function call_delay (global_function_name, seconds, data) 
+local function call_delay (...) 
+  local global_function_name, seconds, data = parameters ({"string"}, ...) 
   local fct = entry_point (global_function_name, "luup.call_delay")
   if fct then 
     -- don't bother to log call_delay, since it happens rather frequently
@@ -467,14 +503,15 @@ end
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- Returns 0 if successful. 
 
-local function call_timer (global_function_name, timer_type, time, days, ...)
+local function call_timer (...)
+  local global_function_name, timer_type, time, days, recurring = parameters ({"string", "number"}, ...)
   local ttype = {"interval", "day of week", "day of month", "absolute"}
   local fmt = "%s: time=%s, days={%s}"
   local msg = fmt: format (ttype[timer_type or ''] or '?', time or '', days or '')
   local fct = entry_point (global_function_name, "luup.call_timer")
   if fct then
     _log (msg, "luup.call_timer")
-    local e,_,j = timers.call_timer(fct, timer_type, time, days, ...)      -- 2016.03.01   
+    local e,_,j = timers.call_timer(fct, timer_type, time, days, recurring)      -- 2016.03.01   
     if j and scheduler.job_list[j] then
       local text = "job#%d :timer %s (%s)"
       scheduler.job_list[j].type = text: format (j, global_function_name, msg)
@@ -493,7 +530,8 @@ end
 -- If the device is nil or not specified, function_name will be called for all jobs, 
 -- otherwise only for jobs that involve the specified device.
 
-local function job_watch (global_function_name, device)
+local function job_watch (...)
+  local global_function_name, device = parameters ({"string"}, ...)
   local fct = entry_point (global_function_name "luup.job_watch")
   -- TODO: implement job_watch
   error "luup.job_watch not implemented"
@@ -509,7 +547,8 @@ end
 --
 -- The request is made with the URL: data_request?id=lr_[the registered name] on port 3480. 
 
-local function register_handler (global_function_name, request_name)
+local function register_handler (...)
+  local global_function_name, request_name = parameters ({"string", "string"}, ...)
   local fct = entry_point (global_function_name, "luup.register_handler")
   if fct then
     -- fixed callback context - thanks @reneboer
@@ -532,7 +571,8 @@ end
 -- If variable is nil, function_name will be called whenever any variable in the service is changed. 
 -- If device is nil see: http://forum.micasaverde.com/index.php/topic,34567.0.html
 -- thanks @vosmont for clarification of undocumented feature
-local function variable_watch (global_function_name, service, variable, device)
+local function variable_watch (...)
+  local global_function_name, service, variable, device = parameters ({"string", "string"}, ...)
   local fct = entry_point (global_function_name, "luup.variable_watch")
   if not fct then
     _log ("callback function '" .. global_function_name .. "' not found", "luup.variable_watch")
@@ -656,6 +696,22 @@ local job = {   -- TODO: implement luup.job module
   
 }
 
+-- IR module
+-- thanks to @a-lurker for this.
+-- see: http://forum.micasaverde.com/index.php/topic,37268.0.html
+
+local ir = {
+  pronto_to_gc100 = function (prontoCode)
+    -- replace the pronto code preamble with the GC100 preamble
+    local strTab = {'40000','1','1'}
+    prontoCode = prontoCode: gsub ('^%x+%s+%x+%s+%x+%s+%x+%s+', '')
+    for hexStr in string.gmatch(prontoCode, '([^%s]+)') do
+      strTab[#strTab+1] = tonumber(hexStr, 16)
+    end
+    return table.concat(strTab, ',')
+  end
+}
+
 -----
 --
 -- export values and methods
@@ -721,7 +777,7 @@ return {
 
     -- tables 
     
-    ir                  = {},
+    ir                  = ir,
     remotes             = remotes,
     rooms               = rooms,
     scenes              = scenes,
