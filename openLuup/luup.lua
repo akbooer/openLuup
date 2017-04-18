@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2017.04.12",
+  VERSION       = "2017.04.18",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -40,6 +40,7 @@ local ABOUT = {
 -- 2017.10.12  make luup.sunrise/sunset() return integer (thanks @a-lurker)
 -- 2017.10.15  check parameter types for callback functions (thanks @a-lurker)
 -- 2017.04.16  add missing luup.ir.pronto_to_gc100() (thanks @a-lurker)
+-- 2017.04.18  check parameter types in chdev calls (thanks to @a-lurker)
 
 local logs          = require "openLuup.logs"
 
@@ -108,6 +109,7 @@ local parameters
         table  = {table = 1},
         number = {number = 1},
         number_or_string = {string = 1, number = 1},
+        string_or_number = {string = 1, number = 1},
       }
     local message = "parameter #%d should be type %s but is %s"
 
@@ -193,7 +195,8 @@ end
 -- Checks whether a device has successfully completed its startup sequence. If so, is_ready returns true. 
 -- If your device shouldn't process incoming data until the startup sequence is finished, 
 -- you may want to add a condition to the <incoming> block that only processes data if is_ready(lul_device) is true.
-local function is_ready (device)
+local function is_ready (...)
+  local device = parameters ({"number_or_string"}, ...)
   local dev = devices[device]
   return dev and dev:is_ready() 
 end
@@ -251,7 +254,8 @@ end
 -- BUT...
 -- Setting UPnP variables is unrestricted and free form, 
 -- and the engine doesn't really know if a device actually uses it or does anything with it. 
-local function device_supports_service (serviceId, device)
+local function device_supports_service (...)
+  local serviceId, device = parameters ({"string", "number_or_string"}, ...)
   local support
   local dev = devices[device]
   if dev then
@@ -360,7 +364,8 @@ end
 -- Sets the IP address for a device. 
 -- This is better than setting the "ip" attribute using attr_set 
 -- because it updates internal values additionally, so a reload isn't required.
-local function ip_set (value, device)
+local function ip_set (...)
+  local value, device = parameters ({"string", "number_or_string"}, ...)
   attr_set ("ip", value, device)
   local dev = devices[device]
   if dev then
@@ -375,7 +380,8 @@ end
 -- Sets the mac address for a device. 
 -- This is better than setting the "mac" attribute using attr_set 
 -- because it updates internal values additionally, so a reload isn't required. 
-local function mac_set (value, device)
+local function mac_set (...)
+  local value, device = parameters ({"string", "number_or_string"}, ...)
   attr_set ("mac", value, device)
   local dev = devices[device]
   if dev then
@@ -392,7 +398,8 @@ end
 -- You can set the flag to 1 if the device is failing, 0 if it's working, 
 -- and 2 if the device is reachable but there's an authentication error. 
 -- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
-local function set_failure (status, device)
+local function set_failure (...)
+  local status, device = parameters({"number", "number_or_string"}, ...)
   local map = {[0] = -1, 2,2}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
   _log ("status = " .. tostring(status), "luup.set_failure")
   local devNo = device or scheduler.current_device()
@@ -488,7 +495,7 @@ local function call_action (service, action, arguments, device)
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- The function returns 0 if successful. 
 local function call_delay (...) 
-  local global_function_name, seconds, data = parameters ({"string"}, ...) 
+  local global_function_name, seconds, data = parameters ({"string", "number"}, ...) 
   local fct = entry_point (global_function_name, "luup.call_delay")
   if fct then 
     -- don't bother to log call_delay, since it happens rather frequently
@@ -669,6 +676,29 @@ local function reload (exit_status)
   os.exit (exit_status) 
 end 
 
+
+-- 2017.04.18   CHDEV module with parameter checking
+
+local chdev_module = {
+  
+  start = function (...)
+    parameters ({"number"}, ...)
+    return chdev.chdev.start (...)
+  end,
+  
+  append = function (device, ptr, altid, ...)
+    parameters ({"number", "table", "number_or_string"}, device, ptr, altid)
+    return chdev.chdev.append (device, ptr, tostring(altid), ...)   -- force string type for altid
+  end,
+  
+  sync = function (...)
+    parameters ({"number", "table"}, ...)
+    return chdev.chdev.sync (...)
+  end,
+  
+}
+
+
 -- JOB module
 
 local job = {   -- TODO: implement luup.job module
@@ -703,9 +733,9 @@ local job = {   -- TODO: implement luup.job module
 local ir = {
   pronto_to_gc100 = function (prontoCode)
     -- replace the pronto code preamble with the GC100 preamble
-    local strTab = {'40000','1','1'}
-    prontoCode = prontoCode: gsub ('^%x+%s+%x+%s+%x+%s+%x+%s+', '')
-    for hexStr in string.gmatch(prontoCode, '([^%s]+)') do
+    local strTab = {40000, 1, 1}
+    prontoCode = prontoCode: gsub ("^%s*%x+%s+%x+%s+%x+%s+%x+%s+", '')
+    for hexStr in prontoCode: gmatch "%x+" do
       strTab[#strTab+1] = tonumber(hexStr, 16)
     end
     return table.concat(strTab, ',')
@@ -750,7 +780,7 @@ return {
     call_action         = call_action,  
     call_delay          = call_delay,
     call_timer          = call_timer,
-    chdev               = chdev.chdev,
+    chdev               = chdev_module,
     create_device       = create_device,    
     device_supports_service = device_supports_service,    
     devices_by_service  = devices_by_service,   
