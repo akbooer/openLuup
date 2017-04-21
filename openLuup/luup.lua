@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2017.04.18",
+  VERSION       = "2017.04.21",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -40,7 +40,8 @@ local ABOUT = {
 -- 2017.10.12  make luup.sunrise/sunset() return integer (thanks @a-lurker)
 -- 2017.10.15  check parameter types for callback functions (thanks @a-lurker)
 -- 2017.04.16  add missing luup.ir.pronto_to_gc100() (thanks @a-lurker)
--- 2017.04.18  check parameter types in chdev calls (thanks to @a-lurker)
+-- 2017.04.18  check parameter types in chdev calls (thanks @a-lurker)
+-- 2017.04.21  allow both integer AND boolean parameter to set failure (thanks @a-lurker)
 
 local logs          = require "openLuup.logs"
 
@@ -105,9 +106,6 @@ local remotes = {}
 local parameters
   do
     local class = {
-        string = {string = 1},
-        table  = {table = 1},
-        number = {number = 1},
         number_or_string = {string = 1, number = 1},
         string_or_number = {string = 1, number = 1},
       }
@@ -116,8 +114,8 @@ local parameters
     parameters = function (syntax, ...)
       for i,p in ipairs {...} do
         local t = type(p)
-        local s = syntax[i] or t
-        if not class [s] [t] then
+        local s = syntax[i]
+        if not (class [s] or {[t] = 1}) [t] then
           error (message: format (i, s, t), 3)
         end
       end
@@ -392,20 +390,20 @@ end
  
 -- function: set_failure
 -- parameters: value (int), device (string or number)
+-- 2017.04.21  but see also: http://forum.micasaverde.com/index.php/topic,27420.msg207850.html#msg207850
 -- returns:
 --
 -- Luup maintains a 'failure' flag for every device to indicate if it is not functioning. 
 -- You can set the flag to 1 if the device is failing, 0 if it's working, 
 -- and 2 if the device is reachable but there's an authentication error. 
 -- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
-local function set_failure (...)
-  local status, device = parameters({"number", "number_or_string"}, ...)
-  local map = {[0] = -1, 2,2}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
+local function set_failure (status, device)
+  local map = {[0] = -1, 2,2, [true]=2, [false] = -1}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
   _log ("status = " .. tostring(status), "luup.set_failure")
   local devNo = device or scheduler.current_device()
   local dev = devices[devNo]
   if dev then 
-    dev:status_set (map[tonumber(status) or 0] or -1)  -- 2016.05.15
+    dev:status_set (map[status or 0] or -1)  -- 2016.05.15
     local time = 0
     if status ~= 0 then time = os.time() end
     local HaSID = "urn:micasaverde-com:serviceId:HaDevice1"
