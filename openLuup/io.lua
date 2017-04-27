@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2017.04.10",
+  VERSION       = "2017.04.27",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -41,6 +41,8 @@ local ABOUT = {
 --            see: http://forum.micasaverde.com/index.php/topic,40120.0.html
 
 -- 2017.04.10  add Logfile.Incoming option
+-- 2017.04.27  only disable intercept after non-raw reads
+--             see: http://forum.micasaverde.com/index.php/topic,48814.0.html
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
@@ -276,7 +278,9 @@ local function read (timeout, device)
       local text = fmt: format ((#data or 0), msg or "OK", tostring(sock))
       _log (text, "luup.io.read")
     end
-    dev.io.intercept = false                      -- turn off intercept now this read is done
+    if dev.io.protocol ~= "raw" then              -- 2017.04.27 only disable for non-raw reads
+      dev.io.intercept = false                    -- turn off intercept now this read is done
+    end
     sock:settimeout (READ_SOCKET_TIMEOUT)         -- revert to incoming timeout
   end
   return data

@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2017.03.31",
+  VERSION       = "2017.04.26",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -27,6 +27,8 @@ ABOUT = {
 ]]
 }
 
+-- 2017.04.26  HTML menu improvement by @explorer (thanks!)
+
 --  WSAPI Lua implementation
 
 local lfs       = require "lfs"                   -- for backup file listing
@@ -47,13 +49,20 @@ prefix = [[
     <meta charset="utf-8">
     <title>Console</title>
     <style>
-      body {font-family:Arial; background:LightGray; }
+      *    { box-sizing:border-box; margin:0px; padding:0px; }
+      html { width:100%; height:100%; overflow:hidden; border:none 0px; }
+      body { font-family:Arial; background:LightGray; width:100%; height:100%; overflow:hidden; padding-top:60px; }
+      
+      .menu { position:absolute; top:0px; width:100%; height:60px; }
+      .content { width:100%; height:100%; overflow:scroll; padding:4px; }
       
       .dropbtn {
         background-color: Sienna;
         color: white;
         padding: 16px;
         font-size: 16px;
+        line-height:18px;
+        vertical-align:middle;
         border: none;
         cursor: pointer;
       }
@@ -92,7 +101,7 @@ prefix = [[
   </head>
     <body>
     
-    <div style="background:DarkGrey;">
+    <div class="menu" style="background:DarkGrey;">
     
       <div class="dropdown" >
         <img src="https://avatars.githubusercontent.com/u/4962913" alt="X"  
@@ -137,7 +146,7 @@ prefix = [[
         </div>
       </div>
     </div>
-    <div style="overflow:scroll;">
+    <div class="content">
     <pre>
 ]],
 --     <div style="overflow:scroll; height:500px;">
