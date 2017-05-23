@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2017.03.17",
+  VERSION       = "2017.05.10",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -61,6 +61,7 @@ ABOUT = {
 -- 2017.03.07   add Mirror as AltUI Data Service Provider
 -- 2017.03.09   add wildcard '*' in Mirror syntax to preserve existing serviceId or variable name
 -- 2017.03.17   don't override existing user attibutes (thanks @explorer)
+-- 2017.05.10   add category_num and subcategory_num to bridge devices (thanks @dklinkman)
 
 local devNo                      -- our device number
 
@@ -226,21 +227,23 @@ local function create_new (cloneId, dev, room)
 
 --]]
   local d = chdev.create {
-    devNo = cloneId, 
-    device_type = dev.device_type,
-    internal_id = tostring(dev.altid or ''),
-    invisible   = dev.invisible == "1",   -- might be invisible, eg. Zwave and Scene controllers
-    json_file   = dev.device_json,
-    description = dev.name,
-    upnp_file   = dev.device_file,
-    upnp_impl   = 'X',              -- override device file's implementation definition... musn't run here!
-    parent      = devNo,
-    password    = dev.password,
-    room        = room, 
-    statevariables = dev.states,
-    username    = dev.username,
-    ip          = dev.ip, 
-    mac         = dev.mac, 
+    category_num    = dev.category_num,      -- 2017.05.10
+    devNo           = cloneId, 
+    device_type     = dev.device_type,
+    internal_id     = tostring(dev.altid or ''),
+    invisible       = dev.invisible == "1",   -- might be invisible, eg. Zwave and Scene controllers
+    json_file       = dev.device_json,
+    description     = dev.name,
+    upnp_file       = dev.device_file,
+    upnp_impl       = 'X',              -- override device file's implementation definition... musn't run here!
+    parent          = devNo,
+    password        = dev.password,
+    room            = room, 
+    statevariables  = dev.states,
+    subcategory_num = dev.subcategory_num,      -- 2017.05.10
+    username        = dev.username,
+    ip              = dev.ip, 
+    mac             = dev.mac, 
   }  
   luup.devices[cloneId] = d   -- remember to put into the devices table! (chdev.create doesn't do that)
 end

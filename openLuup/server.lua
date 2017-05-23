@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2017.03.15",
+  VERSION       = "2017.05.05",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -60,7 +60,8 @@ local ABOUT = {
 -- 2017.02.08   thanks to @amg0 for finding error in POST parameter handling
 -- 2017.02.21   use find, not match, with plain string option for POST parameter encoding test
 -- 2017.03.03   fix embedded spaces in POST url-encoded parameters (thanks @jswim788)
--- 2017.03.15   add Server table structure to startup call
+-- 2017.03.15   add server table structure to startup call
+-- 2017.05.05   add error logging to wget (thanks @a-lurker), change socket close error message
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -371,10 +372,14 @@ local function wget (request_URI, Timeout, Username, Password)
   
   end
   
-  local actual_status = status
-  if result and status == 200 then status = 0 end     -- wget has a strange return code
-  return status, result or '', actual_status          -- note reversal of parameter order cf. http.request()
-                                                      -- also 'actual_Status' which seems to be returned in Vera
+  local wget_status = status                          -- wget has a strange return code
+  if status == 200 then
+    wget_status = 0 
+  else                                                -- 2017.05.05 add error logging
+    local error_message = "WGET status: %d, request: %s" 
+    _log (error_message: format (status, request_URI))
+  end
+  return wget_status, result or '', status            -- note reversal of parameter order cf. http.request()
 end
 
 
@@ -538,7 +543,7 @@ local function client_request (sock)
     
     else
       sock: close ()
-      _log (("receive error: %s %s"): format (err or '?', tostring (sock)))
+      _log (("socket closed: %s %s"): format (err or '?', tostring (sock)))
     end
     return err
   end

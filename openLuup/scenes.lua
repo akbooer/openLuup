@@ -307,7 +307,7 @@ local function create (scene_json)
 -- luup.scenes contains all the scenes in the system as a table indexed by the scene number. 
   return setmetatable (luup_scene, {
       __index = meta, 
-      __tostring = function () return json.encode (user_table()) or '?' end,
+      __tostring = function () return (json.encode (user_table())) or '?' end,
     })
 end
 

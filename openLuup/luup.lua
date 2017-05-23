@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2017.04.21",
+  VERSION       = "2017.05.05",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -42,6 +42,7 @@ local ABOUT = {
 -- 2017.04.16  add missing luup.ir.pronto_to_gc100() (thanks @a-lurker)
 -- 2017.04.18  check parameter types in chdev calls (thanks @a-lurker)
 -- 2017.04.21  allow both integer AND boolean parameter to set failure (thanks @a-lurker)
+-- 2017.05.01  user-defined parameter job settings
 
 local logs          = require "openLuup.logs"
 
@@ -107,15 +108,17 @@ local parameters
   do
     local class = {
         number_or_string = {string = 1, number = 1},
+        table_or_string  = {string = 1, table  = 1},
         string_or_number = {string = 1, number = 1},
+        string_or_table  = {string = 1, table  = 1},
       }
     local message = "parameter #%d should be type %s but is %s"
 
     parameters = function (syntax, ...)
       for i,p in ipairs {...} do
         local t = type(p)
-        local s = syntax[i]
-        if not (class [s] or {[t] = 1}) [t] then
+        local s = syntax[i] or t
+        if not (class [s] or {[s] = 1}) [t] then
           error (message: format (i, s, t), 3)
         end
       end
@@ -539,6 +542,7 @@ local function job_watch (...)
   local global_function_name, device = parameters ({"string"}, ...)
   local fct = entry_point (global_function_name "luup.job_watch")
   -- TODO: implement job_watch
+  local _,_ ,_= global_function_name, device, fct    -- to suppress 'unused' warning
   error "luup.job_watch not implemented"
 end
 
@@ -601,9 +605,14 @@ end
 
 -- MODULE inet
 local inet = {
- -- Returns the contents of the URL you pass in the "url" argument. 
- -- Optionally append "user" and "pass" arguments for http authentication, 
- -- and "timeout" to specify the maximum time to wait in seconds.
+-- This reads the URL and returns 3 variables: 
+--   the first is a numeric error code which is 0 if successful;
+--   the second variable is a string containing the contents of the page;
+--   the third variable is the HTTP status code.
+-- If Timeout is specified, the function will timeout after that many seconds. 
+-- The default value for Timeout is 5 seconds. 
+-- If Username and Password are specified, they will be used for HTTP Basic Authentication.
+--
   wget = function (URL, Timeout, Username, Password)
   return server.wget (URL, Timeout, Username, Password)
   end
@@ -699,12 +708,11 @@ local chdev_module = {
 
 -- JOB module
 
-local job = {   -- TODO: implement luup.job module
-  
+local job = {  
 
 -- parameters: job_number (number), device (string or number)
 -- returns: job_status (number), notes (string)
-  status  = scheduler.status,
+  status = scheduler.status,
   
 -- function: set
 -- parameters: job (userdata), setting (string), value (string) OR table of {name = value} pairs
@@ -712,16 +720,29 @@ local job = {   -- TODO: implement luup.job module
 --
 -- This stores a setting(s) for a job.  
 --
-  set     = function () end,
-  
+  set = function (...)       -- 2017.05.01  user-defined parameter job settings
+    local job, setting, value = parameters ({"table", "table_or_string"}, ...)
+    if type(setting) ~= "table" then 
+      setting = {[setting] = value}
+    end
+    local set = job.settings
+    if set then
+      for name,val in pairs (setting) do
+        set[name] = tostring(val)
+      end
+    end
+  end,
+
 -- function: setting aka. get !
 -- parameters: job (userdata), setting (string)
 -- returns: value (string)
 --
 -- This returns a setting for a job.
 --
-  setting = function () end,
-  
+  setting = function (...)   -- 2017.05.01  user-defined parameter job settings
+    local job, setting = parameters ({"table", "string"}, ...)
+    return (job.settings or {}) [setting]
+  end,
 }
 
 -- IR module
