@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2017.05.05",
+  VERSION       = "2017.05.23",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -43,6 +43,7 @@ local ABOUT = {
 -- 2017.04.18  check parameter types in chdev calls (thanks @a-lurker)
 -- 2017.04.21  allow both integer AND boolean parameter to set failure (thanks @a-lurker)
 -- 2017.05.01  user-defined parameter job settings
+-- 2017.05.23  allow string or number parameter on call_delay()
 
 local logs          = require "openLuup.logs"
 
@@ -496,7 +497,7 @@ local function call_action (service, action, arguments, device)
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- The function returns 0 if successful. 
 local function call_delay (...) 
-  local global_function_name, seconds, data = parameters ({"string", "number"}, ...) 
+  local global_function_name, seconds, data = parameters ({"string", "number_or_string"}, ...) 
   local fct = entry_point (global_function_name, "luup.call_delay")
   if fct then 
     -- don't bother to log call_delay, since it happens rather frequently
