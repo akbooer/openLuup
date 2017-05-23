@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2016.11.18",
+  VERSION       = "2017.05.05",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -36,6 +36,10 @@ local ABOUT = {
 
 -- 2016.11.02  add startup_list handling, kill_job
 -- 2016.11.18  add delay callback type (string) parameter, and silent mode
+
+-- 2017.02.22  add extra (non-variable) returns to action calls (used by generic action handlers)
+-- 2017.05.01  add user-defined parameter settings to a job, see luup.job.set[ting]
+-- 2017.05.05  update current time in handling of delays
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
@@ -225,6 +229,7 @@ local function dispatch (job, method)
     _log ("job aborted : " .. tostring(status))
     status = state.Aborted
   end  
+  job.now = socket.gettime()        -- 2017.05.05  update, since dispatched task may have taken a while
   job.expiry = job.now + timeout
   if exit_state[job.status] then
     job.expiry = job.now + job_linger
@@ -262,6 +267,7 @@ local function create_job (action, arguments, devNo, target_device)
       type        = nil,                -- used in request id=status, and possibly elsewhere
       expiry      = socket.gettime (),                 -- time to go
       target      = target_device,
+      settings    = {},                 -- 2017.05.01  user-defined parameter list
       -- job tag entry points
       tag = {
         job       = action.job,
@@ -328,6 +334,9 @@ local function run_job (action, arguments, devNo, target_device)
     end
   end
   
+  -- 2017.02.22 add any extra (non-device-variable) returns
+  for a,b in pairs (action.extra_returns or {}) do return_arguments[a] = b end
+
   return error, error_msg or '', jobNo, return_arguments
 end
 
@@ -358,7 +367,6 @@ local function device_start (entry_point, devNo, name)
 --    if job.notes == '' then
 --      job.notes = text      -- use this as the startup job comments
 --    end
-  -- TODO: remove successful startup jobs from startup list
     return state.Done, 0  
   end
   
@@ -425,6 +433,7 @@ local function task_callbacks ()
         end
       end
 
+      job.now = socket.gettime()        -- 2017.05.05  update, since dispatched job may have taken a while
       if exit_state[job.status] and job.now > job.expiry then 
         job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local_job_list)
       end
@@ -497,6 +506,7 @@ local function luup_callbacks ()
     if schedule.time <= now then 
       local ok, msg = context_switch (schedule.devNo, schedule.callback, schedule.parameter) 
       if not ok then _log (tostring(schedule.callback) .. " ERROR: " .. (msg or '?'), "luup.delay_callback") end
+      now = socket.gettime()        -- 2017.05.05  update, since dispatched task may have taken a while
     else
       delay_list[#delay_list+1] = schedule   -- carry forward into new list      
     end

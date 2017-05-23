@@ -6,7 +6,7 @@ module(..., package.seeall)
 ABOUT = {
   NAME          = "sysinfo.sh",
   VERSION       = "2016.05.09",
-  DESCRIPTION   = "sysinfo script /etc/cmh-ludl/cgi-bin/cmh/backup.sh",
+  DESCRIPTION   = "sysinfo script /etc/cmh-ludl/cgi-bin/cmh/sysinfo.sh",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",

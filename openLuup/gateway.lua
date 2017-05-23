@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2016.06.22",
+  VERSION       = "2017.01.18",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ local ABOUT = {
 --
 
 -- 2016.06.22   CreatePLugin and DeletePlugin now use update_plugin/delete_plugin in request module
+-- 2017.01.18   add HouseMode variable to openLuup device, to mirror attribute, so this can be used as a trigger
 
 local requests    = require "openLuup.requests"
 local scenes      = require "openLuup.scenes"
@@ -209,6 +210,7 @@ Device_0.services[SID].actions =
         userdata.attributes.Mode = new
         userdata.attributes.mode_change_time = os.time()
         userdata.attributes.mode_change_mode = new
+        luup.variable_set ("openLuup", "HouseMode", new, 2)  -- 2017.01.18 update openLuup HouseMode variable
         return true
       end, 
     },

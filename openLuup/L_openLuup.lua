@@ -1,12 +1,12 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2016.11.26",
+  VERSION       = "2017.05.23",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ ABOUT = {
 --             ...also add DataYours install configuration
 -- 2016.11.18  remove HTTP handler
 -- 2016.11.20  add system memory stats
+-- 2016.12.05  move performance parameters to openLuup.status attribute
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
@@ -128,7 +129,7 @@ local function calc_stats ()
   display (line1)
   luup.log (line1)
  
-  local set_attr = luup.attr_get "openLuup"
+  local set_attr = luup.attr_get "openLuup.Status"
   set_attr ["Memory"]  = memory .. " Mbyte"
   set_attr ["CpuLoad"] = cpuload .. '%'
   set_attr ["Uptime"]  = days .. " days"
@@ -156,7 +157,7 @@ end
 -- DataYours install configuration
 --
 -- set up parameters and a Whisper data directory
--- to start loggin some system variables
+-- to start logging some system variables
 
 --[[ 
 

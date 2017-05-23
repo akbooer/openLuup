@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2016.11.20",
+  VERSION       = "2017.01.15",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -36,6 +36,10 @@ local ABOUT = {
 -- 2016.10.29   add notes to timer jobs (changed to job.type)
 -- 2016.11.01   add new_userdata_dataversion() to successful scene execution
 -- 2016.11.18   add scene finisher type to final delay.
+
+-- 2017.01.05   add lul_scene to the scope of the scene Lua (to contain the scene Id)
+-- 2017.01.15   remove scene triggers which refer to missing devices (thanks @reneboer)
+--              see: http://forum.micasaverde.com/index.php/topic,41249.msg306385.html#msg306385
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
@@ -75,7 +79,7 @@ local function load_lua_code (lua, id)
   local scene_lua, error_msg, code
   if lua then
     local scene_name = "scene_" .. id
-    local wrapper = table.concat ({"function ", scene_name, " ()", lua, "end"}, '\n')
+    local wrapper = table.concat ({"function ", scene_name, " (lul_scene)", lua, "end"}, '\n')  -- 2017.01.05
     local name = "scene_" .. id .. "_lua"
     code, error_msg = loader.compile_lua (wrapper, name, scene_environment) -- load, compile, instantiate
     scene_lua = (code or {}) [scene_name]
@@ -133,7 +137,7 @@ local function create (scene_json)
       _log "timer disabled"
       return 
     end   -- timer or trigger disabled
-    local ok = not lua_code or lua_code ()
+    local ok = not lua_code or lua_code (scene.id)    -- 2017.01.05
     if ok ~= false then
       scene.last_run = os.time()                -- scene run time
       luup_scene.running = true
@@ -193,6 +197,7 @@ local function create (scene_json)
 
   -- delete any actions which refer to non-existent devices
   -- also, add listeners to the device AND service to watch for changes
+  -- also, remove any triggers reltated to unkown devices
   local function verify ()
     local silent = true     -- don't log watch callbacks
     for _, g in ipairs (scene.groups or {}) do
@@ -207,6 +212,15 @@ local function create (scene_json)
         else
           table.remove (actions,i)
         end
+      end      
+    end
+    -- triggers
+    local triggers = scene.triggers or {}
+    local n = #triggers
+    for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
+      local t = triggers[i]
+      if not luup.devices[t.device] then
+        table.remove (triggers, i)
       end
     end
   end
@@ -235,6 +249,8 @@ local function create (scene_json)
       lua       = "....",
       paused    = "0",        -- also this! "1" == paused
     }
+    
+    -- also notification_only = device_no,  which hides the scene ???
 --]]
 
   scene = scn   -- there may be other data there than that which is possibly modified below...
@@ -291,7 +307,7 @@ local function create (scene_json)
 -- luup.scenes contains all the scenes in the system as a table indexed by the scene number. 
   return setmetatable (luup_scene, {
       __index = meta, 
-      __tostring = function () return json.encode (user_table()) or '?' end,
+      __tostring = function () return (json.encode (user_table())) or '?' end,
     })
 end
 

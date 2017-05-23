@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2016.11.18",
+  VERSION       = "2017.05.05",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -43,9 +43,6 @@ local ABOUT = {
 -- 2016.06.01   also look for files in virtualfilesystem
 -- 2016.06.09   also look in files/ directory
 -- 2016.07.06   add 'method' to WSAPI server call
-
----------------------
-
 -- 2016.07.12   start refactoring: request dispatcher and POST queries
 -- 2016.07.14   request object parameter and WSAPI-style returns for all handlers
 -- 2016.07.17   HTML error pages
@@ -57,7 +54,14 @@ local ABOUT = {
 -- 2016.10.17   use CGI prefixes from external servertables module
 -- 2016.11.02   change job.notes to job.type for new connections and requests
 -- 2016.11.07   add requester IP to new connection log message
--- 2016.11.18  test for nil URL.path 
+-- 2016.11.18   test for nil URL.path 
+
+-- 2017.02.06   allow request parameters from URL and POST request body (rather than one or other)
+-- 2017.02.08   thanks to @amg0 for finding error in POST parameter handling
+-- 2017.02.21   use find, not match, with plain string option for POST parameter encoding test
+-- 2017.03.03   fix embedded spaces in POST url-encoded parameters (thanks @jswim788)
+-- 2017.03.15   add server table structure to startup call
+-- 2017.05.05   add error logging to wget (thanks @a-lurker), change socket close error message
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -76,12 +80,12 @@ local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 
 logs.banner (ABOUT)   -- for version control
 
--- CONSTANTS
+-- CONFIGURATION DEFAULTS
 
-local BACKLOG             = 255       -- used in socket.bind() for queue length
-local CHUNKED_LENGTH      = 16000     -- size of chunked transfers
-local CLOSE_SOCKET_AFTER  = 90        -- number of seconds idle after which to close socket
-local MAX_HEADER_LINES    = 100       -- limit lines to help mitigate DOS attack or other client errors
+local BACKLOG                   = 2000      -- used in socket.bind() for queue length
+local CHUNKED_LENGTH            = 16000     -- size of chunked transfers
+local CLOSE_IDLE_SOCKET_AFTER   = 90        -- number of seconds idle after which to close socket
+local MAX_HEADER_LINES          = 100       -- limit lines to help mitigate DOS attack or other client errors
 
 -- TABLES
 
@@ -308,10 +312,15 @@ local function request_object (request_URI, headers, post_content, method, http_
   -- construct parameters from query string or POST content
   local parameters
   method = method or "GET"
-  if method == "GET" and URL.query then
+  if URL.query then
     parameters = parse_parameters (URL.query)   -- extract useful parameters from query string
-  elseif method == "POST" and headers["Content-Type"] == "application/x-www-form-urlencoded" then
-    parameters = parse_parameters (post_content)
+    if method == "POST" 
+    and (headers["Content-Type"] or ''): find ("application/x-www-form-urlencoded",1,true) then -- 2017.02.21
+      local p2 = parse_parameters (post_content:gsub('+', ' '))   -- 2017.03.03 fix embedded spaces
+      for a,b in pairs (p2) do        -- 2017.02.06  combine URL and POST parameters
+        parameters[a] = b
+      end
+    end
   end
 
   local path_list = url.parse_path (URL.path) or {}   -- split out individual parts of the path
@@ -363,10 +372,14 @@ local function wget (request_URI, Timeout, Username, Password)
   
   end
   
-  local actual_status = status
-  if result and status == 200 then status = 0 end     -- wget has a strange return code
-  return status, result or '', actual_status          -- note reversal of parameter order cf. http.request()
-                                                      -- also 'actual_Status' which seems to be returned in Vera
+  local wget_status = status                          -- wget has a strange return code
+  if status == 200 then
+    wget_status = 0 
+  else                                                -- 2017.05.05 add error logging
+    local error_message = "WGET status: %d, request: %s" 
+    _log (error_message: format (status, request_URI))
+  end
+  return wget_status, result or '', status            -- note reversal of parameter order cf. http.request()
 end
 
 
@@ -530,7 +543,7 @@ local function client_request (sock)
     
     else
       sock: close ()
-      _log (("receive error: %s %s"): format (err or '?', tostring (sock)))
+      _log (("socket closed: %s %s"): format (err or '?', tostring (sock)))
     end
     return err
   end
@@ -602,7 +615,7 @@ local function new_client (sock)
   
   local function incoming (sock)
     local err = client_request (sock)                  -- launch new job to handle request 
-    expiry = socket.gettime () + CLOSE_SOCKET_AFTER      -- update socket expiry 
+    expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER      -- update socket expiry 
     if err and (err ~= "closed") then 
       _log ("read error: " ..  tostring(err) .. ' ' .. tostring(sock))
       sock: close ()                                -- it may be closed already
@@ -626,7 +639,7 @@ local function new_client (sock)
   local ip = sock:getpeername() or '?'                    -- who's asking?
   local connect = "new client connection from %s: %s"
   _log (connect:format (ip, tostring(sock)))
-  expiry = socket.gettime () + CLOSE_SOCKET_AFTER         -- set initial socket expiry 
+  expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER         -- set initial socket expiry 
   sock:settimeout(nil)                                    -- this is a timeout on the HTTP read
 --  sock:settimeout(10)                                   -- this is a timeout on the HTTP read
   sock:setoption ("tcp-nodelay", true)                    -- trying to fix timeout error on long strings
@@ -644,8 +657,13 @@ end
 -- start (), sets up the HTTP request handler
 -- returns list of utility function(s)
 -- 
-local function start (port, backlog)
-  local server, msg = socket.bind ('*', port, backlog or BACKLOG) 
+local function start (port, config)
+  config = config or {}               -- 2017.03.15 server configuration table
+  BACKLOG = config.Backlog or BACKLOG
+  CHUNKED_LENGTH = config.ChunkedLength or CHUNKED_LENGTH
+  CLOSE_IDLE_SOCKET_AFTER = config.CloseIdleSocketAfter or CLOSE_IDLE_SOCKET_AFTER
+  
+  local server, msg = socket.bind ('*', port, BACKLOG) 
    
   -- new client connection
   local function server_incoming (server)

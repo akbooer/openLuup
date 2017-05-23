@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.11.18",
+  VERSION       = "2017.04.10",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -35,6 +35,10 @@ local ABOUT = {
 -- 2016.07.19  correct syntax error in xml action request response
 -- 2016.11.18  add delay callback name
 
+-- 2017.01.05  add new line before end of Startup Lua (to guard against unterminated final comment line)
+-- 2017.03.15  add Server.Backlog parameter to openLuup attribute (thanks @explorer)
+-- 2017.04.10  add Logfile.Incoming parameter to openLuup attribute (thanks @a-lurker)
+
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
 local logs = require "openLuup.logs"
@@ -59,7 +63,7 @@ local mime          = require "mime"
 local function compile_and_run (lua, name)
   _log ("running " .. name)
   local startup_env = loader.shared_environment    -- shared with scenes
-  local source = table.concat {"function ", name, " () ", lua, "end" }
+  local source = table.concat {"function ", name, " () ", lua, '\n', "end" }
   local code, error_msg = 
   loader.compile_lua (source, name, startup_env) -- load, compile, instantiate
   if not code then 
@@ -76,9 +80,11 @@ end
 local chkpt = 1
 local function openLuupPulse ()
   chkpt = chkpt + 1
-  timers.call_delay(openLuupPulse, 6*60, '', 'openLuup checkpoint #' .. chkpt)      -- periodic pulse (6 minutes)  
+  local delay = tonumber (luup.attr_get "openLuup.UserData.Checkpoint") or 6  -- periodic pulse ( default 6 minutes)
+  timers.call_delay(openLuupPulse, delay*60, '', 'openLuup checkpoint #' .. chkpt)  
   -- CHECKPOINT !
-  local ok, msg = userdata.save (luup)
+  local name = (luup.attr_get "openLuup.UserData.Name") or "user_data.json"
+  local ok, msg = userdata.save (luup, name)
   if not ok then
     _log (msg or "error writing user_data")
   end
@@ -99,20 +105,43 @@ do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, repl
   luup.attr_set ("Device_Num_Next", 1)  -- this may get overwritten by a subsequent user_data load
 
   local device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum
-  
+  local _ = {device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum}
   invisible = true
   luup.create_device ("urn:schemas-micasaverde-com:device:ZWaveNetwork:1", '',
     "ZWave", "D_ZWaveNetwork.xml", upnp_impl, ip, mac, hidden, invisible)
 --  luup.create_device ("urn:schemas-micasaverde-com:device:SceneController:1", '',
 --                      "_SceneController", "D_SceneController1.xml", nil, nil, nil, nil, invisible, 1)
   invisible = false
-  luup.create_device ("openLuup", '', "   openLuup", "D_openLuup.xml",
+  luup.create_device ("openLuup", '', "    openLuup", "D_openLuup.xml",
                         upnp_impl, ip, mac, hidden, invisible, parent, room, "openLuup")
 end
 
 do -- set attributes, possibly decoding if required
   local set_attr = userdata.attributes 
-  set_attr["openLuup"] = {StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime)}
+  set_attr["openLuup"] = {
+    Backup = {
+      Compress = "LZAP",
+      Directory = "backup/",
+    },
+    Logfile = {
+      Name      = "logs/LuaUPnP.log",  -- note that these may be changed by Lua Startup before being used
+      Lines     = 2000,
+      Versions  = 5,
+      Incoming  = "true",
+    },
+    Status = {
+      StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime),
+    },
+    UserData = {
+      Checkpoint  = 60,                   -- checkpoint every sixty minutes
+      Name        = "user_data.json",     -- not recommended to change
+    },
+    Server = {
+      Backlog = 2000,                     -- used in socket.bind() for queue length
+      ChunkedLength = 16000,              -- size of chunked transfers
+      CloseIdleSocketAfter  = 90 ,        -- number of seconds idle after which to close socket
+   },
+  }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
   local attr = string.char(unpack (attrs))
   loader.shared_environment[attr] = function (info)
@@ -176,13 +205,19 @@ do -- STARTUP
   else
     _log "init file not found"
   end
+end
+
+do -- log rotate and possible rename
+  _log "init phase completed"
+  local config = userdata.attributes.openLuup or {}
+  logs.rotate (config.Logfile or {})
   _log "init phase completed"
 end
 
 local status
 
 do -- SERVER and SCHEDULER
-  local s = server.start "3480"                 -- start the port 3480 Web server
+  local s = server.start ("3480", userdata.attributes.Server)     -- start the port 3480 Web server
   if not s then 
     error "openLuup - is another copy already running?  Unable to start port 3480 server" 
   end

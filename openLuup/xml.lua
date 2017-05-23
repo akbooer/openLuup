@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2016.05.10",
+  VERSION       = "2017.03.31",
   DESCRIPTION   = "read Device / Service / Implementation XML files",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -39,6 +39,21 @@ local ABOUT = {
 -- 2016.04.14  @explorer expanded tags to alpha-numerics and underscores
 -- 2016.04.15  fix attribute skipping (got lost in previous edit)
 -- 2016.05.10  allow ':' as part of tag name
+-- 2017.03.31  make escape() and unescape() global
+
+
+-- utility function for escaping XML special characters
+
+local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
+local rev = {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'}
+
+local function unescape(x)
+  return (x: gsub ("&(%w+);", rev))   -- extra parentheses to remove second return parameter
+end
+
+local function escape (x)
+  return (x: gsub ([=[[<>"'&]]=], fwd))
+end
 
 
 -- XML:extract ("name", "subname", "subsubname", ...)
@@ -77,7 +92,7 @@ local function decode (info)
     end
   else
     if result then   -- in case of failure, simply return whole string as 'error message'
-      msg = result: gsub ("&(%w+);", {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'})
+      msg = unescape (result)
     end
     result = nil    -- ...and nil for xml result
   end
@@ -93,11 +108,10 @@ local function encode (Lua, wrapper)
   end
   
   local function value (x, name, depth)
-    local gsub = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
     local function spc ()  p ((' '):rep (2*depth)) end
     local function atag () spc() ; p {'<', name,'>'} end
     local function ztag () p {'</',name:match "^[^%s]+",'>\n'} end
-    local function str (x) atag() ; p(tostring(x): gsub("%s+", ' '): gsub ([=[[<>"'&]]=], gsub)) ; ztag() end
+    local function str (x) atag() ; p(escape (tostring(x): gsub("%s+", ' '))) ; ztag() end
     local function err (x) error ("xml: unsupported data type "..type (x)) end
     local function tbl (x)
       local y
@@ -127,6 +141,9 @@ return {
   ABOUT = ABOUT,
   
   -- methods
+  
+  escape = escape,
+  unescape = unescape,
   
   extract = extract,
   decode  = decode, 

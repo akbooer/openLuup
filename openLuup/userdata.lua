@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.11.15",
+  VERSION       = "2017.04.19",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -40,6 +40,9 @@ local ABOUT = {
 -- 2016.08.29   update plugin versions on load
 -- 2016.11.05   added gmt_offset: thanks @jswim788 and @logread
 -- 2016.11.09   preserve device #2 (openLuup) room allocation across reloads (thanks @DesT)
+
+-- 2017.01.18   add HouseMode variable to openLuup device, to mirror attribute, so this can be used as a trigger
+-- 2017.04.19   sort devices_table() output (thanks @a-lurker)
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -571,6 +574,8 @@ local function load_user_data (user_data_json)
         local room = tonumber (d.room) or 0
         ol:attr_set {room = room}     -- set the device attribute...
         ol.room_num = room            -- ... AND the device table (Luup is SO bad...)
+        -- 2017.01.18 create openLuup HouseMode variable
+        ol:variable_set ("openLuup", "HouseMode", luup.attr_get "Mode")  
       else
         local dev = chdev.create {      -- the variation in naming within luup is appalling
             devNo = d.id, 
@@ -661,7 +666,11 @@ end
 local function devices_table (device_list)
   local info = {}
   local serviceNo = 0
-  for _,d in pairs (device_list) do 
+  local devs = {}
+  for d in pairs (device_list) do devs[#devs+1] = d end  -- 2017.04.19
+  table.sort (devs)
+  for _,dnum in ipairs (devs) do 
+    local d = device_list[dnum] 
     local states = {}
     for i,item in ipairs(d.variables) do
       states[i] = {

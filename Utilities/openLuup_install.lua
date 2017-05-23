@@ -5,7 +5,7 @@ local lua = "lua5.1"     -- change this to "lua" if required
 local x = os.execute
 local p = print
 
-p "openLuup_install   2016.06.08   @akbooer"
+p "openLuup_install   2017.03.28   @akbooer"
 
 local http  = require "socket.http"
 local https = require "ssl.https"
@@ -38,6 +38,7 @@ assert (code == 200, "GitHub download failed with code " .. code)
 p "creating required files and folders"
 lfs.mkdir "files"
 lfs.mkdir "icons"
+lfs.mkdir "backup"    -- thanks @a-lurker
 
 local vfs = require "openLuup.virtualfilesystem"
 
