@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2017.05.05",
+  VERSION       = "2017.05.25",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -62,6 +62,7 @@ local ABOUT = {
 -- 2017.03.03   fix embedded spaces in POST url-encoded parameters (thanks @jswim788)
 -- 2017.03.15   add server table structure to startup call
 -- 2017.05.05   add error logging to wget (thanks @a-lurker), change socket close error message
+-- 2017.05.25   fix wget error logging format
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -376,7 +377,7 @@ local function wget (request_URI, Timeout, Username, Password)
   if status == 200 then
     wget_status = 0 
   else                                                -- 2017.05.05 add error logging
-    local error_message = "WGET status: %d, request: %s" 
+    local error_message = "WGET status: %s, request: %s"  -- 2017.05.25 fix wget error logging format
     _log (error_message: format (status, request_URI))
   end
   return wget_status, result or '', status            -- note reversal of parameter order cf. http.request()
