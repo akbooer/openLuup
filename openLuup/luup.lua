@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2017.05.23",
+  VERSION       = "2017.06.08",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -44,6 +44,7 @@ local ABOUT = {
 -- 2017.04.21  allow both integer AND boolean parameter to set failure (thanks @a-lurker)
 -- 2017.05.01  user-defined parameter job settings
 -- 2017.05.23  allow string or number parameter on call_delay()
+-- 2017.06.08  fix data parameter error in call_timer (introduced in type-checking)
 
 local logs          = require "openLuup.logs"
 
@@ -513,14 +514,14 @@ end
 -- Returns 0 if successful. 
 
 local function call_timer (...)
-  local global_function_name, timer_type, time, days, recurring = parameters ({"string", "number"}, ...)
+  local global_function_name, timer_type, time, days, data, recurring = parameters ({"string", "number"}, ...)
   local ttype = {"interval", "day of week", "day of month", "absolute"}
   local fmt = "%s: time=%s, days={%s}"
   local msg = fmt: format (ttype[timer_type or ''] or '?', time or '', days or '')
   local fct = entry_point (global_function_name, "luup.call_timer")
   if fct then
     _log (msg, "luup.call_timer")
-    local e,_,j = timers.call_timer(fct, timer_type, time, days, recurring)      -- 2016.03.01   
+    local e,_,j = timers.call_timer(fct, timer_type, time, days, data, recurring)      -- 2016.03.01   
     if j and scheduler.job_list[j] then
       local text = "job#%d :timer %s (%s)"
       scheduler.job_list[j].type = text: format (j, global_function_name, msg)
