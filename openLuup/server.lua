@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2017.05.25",
+  VERSION       = "2017.06.14",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -63,6 +63,7 @@ local ABOUT = {
 -- 2017.03.15   add server table structure to startup call
 -- 2017.05.05   add error logging to wget (thanks @a-lurker), change socket close error message
 -- 2017.05.25   fix wget error logging format
+-- 2017.06.14   use Authorization header for wget basic authorization, rather than in the URL (now deprecated)
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -75,6 +76,8 @@ local json      = require "openLuup.json"               -- for unit testing only
 local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for CGI processing
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local vfs       = require "openLuup.virtualfilesystem"
+local ltn12     = require "ltn12"                       -- for wget handling
+local mime      = require "mime"                        -- for basic authorization in wget
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -365,12 +368,27 @@ local function wget (request_URI, Timeout, Username, Password)
     local URL = request.URL
     URL.scheme = URL.scheme or "http"                 -- assumed undefined is http request
     if URL.scheme == "https" then scheme = https end  -- 2016.03.20
-    URL.user = Username                               -- add authorization credentials
-    URL.password = Password
-    URL= url.build (URL)                              -- reconstruct request for external use
+--    URL.user = Username                             -- add authorization credentials
+--    URL.password = Password
+    URL = url.build (URL)                             -- reconstruct request for external use
     scheme.TIMEOUT = Timeout or 5
-    result, status = scheme.request (URL)
-  
+    
+    if Username then                                  -- 2017.06.14 build Authorization header
+      local flag
+      local headers = {
+          Authorization = "Basic " .. mime.b64 (table.concat {Username, ':', Password or ''}),
+        }
+      result = {}
+      flag, status = scheme.request {
+          url=URL, 
+          sink=ltn12.sink.table(result),
+          headers = headers,
+        }
+      result = table.concat (result)
+    else
+      result, status = scheme.request (URL)
+    end
+--  
   end
   
   local wget_status = status                          -- wget has a strange return code
