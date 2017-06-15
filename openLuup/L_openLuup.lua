@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2017.05.23",
+  VERSION       = "2017.06.15",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -287,7 +287,9 @@ function openLuup_synchronise ()
   local timer_type = 1                  -- interval timer
   local recurring = true                -- reschedule automatically, definitely not a Vera luup option! ... 
                           -- ...it ensures that rescheduling is always on time and does not 'slip' between calls.
+  luup.log "synchronising to on-the-minute"
   luup.call_timer ("openLuup_ticker", timer_type, MINUTES, days, data, recurring)
+  luup.log "2 minute timer launched"
   calc_stats ()
 end
 

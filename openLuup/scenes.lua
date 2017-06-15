@@ -197,7 +197,7 @@ local function create (scene_json)
 
   -- delete any actions which refer to non-existent devices
   -- also, add listeners to the device AND service to watch for changes
-  -- also, remove any triggers reltated to unkown devices
+  -- also, remove any triggers related to unknown devices
   local function verify ()
     local silent = true     -- don't log watch callbacks
     for _, g in ipairs (scene.groups or {}) do

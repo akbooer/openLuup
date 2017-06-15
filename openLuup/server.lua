@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2017.05.05",
+  VERSION       = "2017.06.15",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -62,6 +62,8 @@ local ABOUT = {
 -- 2017.03.03   fix embedded spaces in POST url-encoded parameters (thanks @jswim788)
 -- 2017.03.15   add server table structure to startup call
 -- 2017.05.05   add error logging to wget (thanks @a-lurker), change socket close error message
+-- 2017.05.25   fix wget error logging format
+-- 2017.06.14   use Authorization header for wget basic authorization, rather than in the URL (now deprecated)
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -74,6 +76,8 @@ local json      = require "openLuup.json"               -- for unit testing only
 local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for CGI processing
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local vfs       = require "openLuup.virtualfilesystem"
+local ltn12     = require "ltn12"                       -- for wget handling
+local mime      = require "mime"                        -- for basic authorization in wget
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -86,6 +90,7 @@ local BACKLOG                   = 2000      -- used in socket.bind() for queue l
 local CHUNKED_LENGTH            = 16000     -- size of chunked transfers
 local CLOSE_IDLE_SOCKET_AFTER   = 90        -- number of seconds idle after which to close socket
 local MAX_HEADER_LINES          = 100       -- limit lines to help mitigate DOS attack or other client errors
+local URL_AUTHORIZATION         = true      -- use URL rather than Authorization header for wget basic authorization
 
 -- TABLES
 
@@ -364,19 +369,37 @@ local function wget (request_URI, Timeout, Username, Password)
     local URL = request.URL
     URL.scheme = URL.scheme or "http"                 -- assumed undefined is http request
     if URL.scheme == "https" then scheme = https end  -- 2016.03.20
-    URL.user = Username                               -- add authorization credentials
-    URL.password = Password
-    URL= url.build (URL)                              -- reconstruct request for external use
+    if URL_AUTHORIZATION then                         -- 2017.06.15
+      URL.user = Username                             -- add authorization credentials to URL
+      URL.password = Password
+    end
+    URL = url.build (URL)                             -- reconstruct request for external use
     scheme.TIMEOUT = Timeout or 5
-    result, status = scheme.request (URL)
-  
+    
+    if Username and not URL_AUTHORIZATION then        -- 2017.06.14 build Authorization header
+      local flag
+      local auth = table.concat {Username, ':', Password or ''}
+      local headers = {
+          Authorization = "Basic " .. mime.b64 (auth),
+        }
+      result = {}
+      flag, status = scheme.request {
+          url=URL, 
+          sink=ltn12.sink.table(result),
+          headers = headers,
+        }
+      result = table.concat (result)
+    else
+      result, status = scheme.request (URL)
+    end
+--  
   end
   
   local wget_status = status                          -- wget has a strange return code
   if status == 200 then
     wget_status = 0 
   else                                                -- 2017.05.05 add error logging
-    local error_message = "WGET status: %d, request: %s" 
+    local error_message = "WGET status: %s, request: %s"  -- 2017.05.25 fix wget error logging format
     _log (error_message: format (status, request_URI))
   end
   return wget_status, result or '', status            -- note reversal of parameter order cf. http.request()
@@ -662,6 +685,7 @@ local function start (port, config)
   BACKLOG = config.Backlog or BACKLOG
   CHUNKED_LENGTH = config.ChunkedLength or CHUNKED_LENGTH
   CLOSE_IDLE_SOCKET_AFTER = config.CloseIdleSocketAfter or CLOSE_IDLE_SOCKET_AFTER
+  URL_AUTHORIZATION = config.WgetAuthorization == "URL"
   
   local server, msg = socket.bind ('*', port, BACKLOG) 
    
