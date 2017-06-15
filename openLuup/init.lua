@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2017.04.10",
+  VERSION       = "2017.06.15",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -38,6 +38,7 @@ local ABOUT = {
 -- 2017.01.05  add new line before end of Startup Lua (to guard against unterminated final comment line)
 -- 2017.03.15  add Server.Backlog parameter to openLuup attribute (thanks @explorer)
 -- 2017.04.10  add Logfile.Incoming parameter to openLuup attribute (thanks @a-lurker)
+-- 2017.06.14  add Server.WgetAuthorization for wget header basic authorization or URL-style
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -140,6 +141,7 @@ do -- set attributes, possibly decoding if required
       Backlog = 2000,                     -- used in socket.bind() for queue length
       ChunkedLength = 16000,              -- size of chunked transfers
       CloseIdleSocketAfter  = 90 ,        -- number of seconds idle after which to close socket
+      WgetAuthorization = "URL",          -- "URL" or else uses request header authorization
    },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}

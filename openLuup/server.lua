@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2017.06.14",
+  VERSION       = "2017.06.15",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -90,6 +90,7 @@ local BACKLOG                   = 2000      -- used in socket.bind() for queue l
 local CHUNKED_LENGTH            = 16000     -- size of chunked transfers
 local CLOSE_IDLE_SOCKET_AFTER   = 90        -- number of seconds idle after which to close socket
 local MAX_HEADER_LINES          = 100       -- limit lines to help mitigate DOS attack or other client errors
+local URL_AUTHORIZATION         = true      -- use URL rather than Authorization header for wget basic authorization
 
 -- TABLES
 
@@ -368,15 +369,18 @@ local function wget (request_URI, Timeout, Username, Password)
     local URL = request.URL
     URL.scheme = URL.scheme or "http"                 -- assumed undefined is http request
     if URL.scheme == "https" then scheme = https end  -- 2016.03.20
---    URL.user = Username                             -- add authorization credentials
---    URL.password = Password
+    if URL_AUTHORIZATION then                         -- 2017.06.15
+      URL.user = Username                             -- add authorization credentials to URL
+      URL.password = Password
+    end
     URL = url.build (URL)                             -- reconstruct request for external use
     scheme.TIMEOUT = Timeout or 5
     
-    if Username then                                  -- 2017.06.14 build Authorization header
+    if Username and not URL_AUTHORIZATION then        -- 2017.06.14 build Authorization header
       local flag
+      local auth = table.concat {Username, ':', Password or ''}
       local headers = {
-          Authorization = "Basic " .. mime.b64 (table.concat {Username, ':', Password or ''}),
+          Authorization = "Basic " .. mime.b64 (auth),
         }
       result = {}
       flag, status = scheme.request {
@@ -681,6 +685,7 @@ local function start (port, config)
   BACKLOG = config.Backlog or BACKLOG
   CHUNKED_LENGTH = config.ChunkedLength or CHUNKED_LENGTH
   CLOSE_IDLE_SOCKET_AFTER = config.CloseIdleSocketAfter or CLOSE_IDLE_SOCKET_AFTER
+  URL_AUTHORIZATION = config.WgetAuthorization == "URL"
   
   local server, msg = socket.bind ('*', port, BACKLOG) 
    
