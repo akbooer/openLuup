@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2017.06.08",
+  VERSION       = "2017.06.19",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -45,6 +45,7 @@ local ABOUT = {
 -- 2017.05.01  user-defined parameter job settings
 -- 2017.05.23  allow string or number parameter on call_delay()
 -- 2017.06.08  fix data parameter error in call_timer (introduced in type-checking)
+-- 2017.06.19  correct first word of GC100 code (thanks again @a-lurker)
 
 local logs          = require "openLuup.logs"
 
@@ -752,14 +753,20 @@ local job = {
 -- see: http://forum.micasaverde.com/index.php/topic,37268.0.html
 
 local ir = {
-  pronto_to_gc100 = function (prontoCode)
+  pronto_to_gc100 = function (pronto)
     -- replace the pronto code preamble with the GC100 preamble
-    local strTab = {40000, 1, 1}
-    prontoCode = prontoCode: gsub ("^%s*%x+%s+%x+%s+%x+%s+%x+%s+", '')
-    for hexStr in prontoCode: gmatch "%x+" do
-      strTab[#strTab+1] = tonumber(hexStr, 16)
+    local rate
+    rate, pronto = pronto: match "^%s*%x+%s+(%x+)%s+%x+%s+%x+%s+(.+)" -- extract preamble
+    
+    local PRONTO_PWM_HZ = 4145152  -- a constant measured in Hz and is the PWM frequencyof Philip's Pronto remotes
+    rate = math.floor ( PRONTO_PWM_HZ / (tonumber(rate, 16) or 100) )
+    
+    local gc100 = {rate, 1, 1}
+    for hexStr in pronto: gmatch "%x+" do
+      gc100[#gc100+1] = tonumber(hexStr, 16)
     end
-    return table.concat(strTab, ',')
+    
+    return table.concat(gc100, ',')
   end
 }
 

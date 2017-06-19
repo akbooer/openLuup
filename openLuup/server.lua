@@ -492,7 +492,6 @@ local function send_chunked (sock, x, n)
   local Nc = 0
   while i <= N and ok do
     Nc = Nc + 1
---    socket.sleep(0.001) -- TODO: REMOVE SLEEP !!!!
     send (sock, hex: format (j-i+1))
     ok, err = send (sock,x,i,j)
     send (sock, "\r\n")
