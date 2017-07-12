@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2017.04.26",
+  VERSION       = "2017.07.05",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -28,6 +28,7 @@ ABOUT = {
 }
 
 -- 2017.04.26  HTML menu improvement by @explorer (thanks!)
+-- 2017.07.05  add user_data, status and sdata to openLuup menu
 
 --  WSAPI Lua implementation
 
@@ -37,6 +38,7 @@ local luup      = require "openLuup.luup"
 local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
 local xml       = require "openLuup.xml"          -- for escape()
+local requests  = require "openLuup.requests"     -- for user_data, status, and sdata
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -313,6 +315,22 @@ function run (wsapi_env)
       local p = json.encode (info or {})
       print (p or "--- none ---")
     end,
+    
+    userdata = function ()
+      local u = requests.user_data()
+      print(u)
+    end,
+    
+    status = function ()
+      local s = requests.status()
+      print(s)
+    end,
+    
+    sdata = function ()
+      local d = requests.sdata()
+      print(d)
+    end,
+    
   }
 
   
@@ -327,13 +345,10 @@ function run (wsapi_env)
   local headers = {}
   
   local page = p.page or ''
---  if page then
-    do (pages[page] or function () end) (p) end
---    headers["Content-Type"] = "text/plain"
---  else
---    lines = {console_html}
-    headers["Content-Type"] = "text/html"
---  end
+  
+  do (pages[page] or function () end) (p) end
+  headers["Content-Type"] = "text/html"
+  
   print (console_html.postfix)
   local return_content = table.concat (lines)
 

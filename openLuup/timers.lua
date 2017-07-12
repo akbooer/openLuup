@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2016.11.18",
+  VERSION       = "2017.07.12",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -36,6 +36,10 @@ local ABOUT = {
 -- 2016.11.13  refactor day-of-week and day-of-month timers (fixing old bug?)
 -- 2016.11.14  bug fix in DOW and DOM timers! (knew I shouldn't have done previous fix on the 13-th!)
 -- 2016.11.18  add callback type (string) to scheduler delay_list calls
+
+-- 2017.07.12  correct first-time initialisation for repeating Type 1 timers ...
+--             ...was skipping first scheduled callback (thanks @a-lurker)
+
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
@@ -262,7 +266,7 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   -- returns: error (number), error_msg (string), job (number), arguments (table)
   -- and additional argument 'due', being the first scheduled time (used by scene timers)
   local function start_timer ()
-    local due = target ()
+    local due = target (true)    -- 2017.07.12
     local e,m,j,a
     if recurring then
       e,m,j,a = scheduler.run_job (timer, {}, 0)      -- this starts a recurring job
@@ -283,7 +287,11 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
     if u then
       local base = os.time()
       local increment = v * multiplier[u]
-      target = function () base = base + increment return base end
+      -- dont_increment parameter added since target is called twice (by start_timer and timer.job)
+      target = function (dont_increment)
+        if not dont_increment then base = base + increment end    -- 2017.07.12
+        return base 
+      end
       return start_timer () 
     end
   end
