@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2017.07.12",
+  VERSION       = "2017.07.14",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -39,6 +39,8 @@ local ABOUT = {
 
 -- 2017.07.12  correct first-time initialisation for repeating Type 1 timers ...
 --             ...was skipping first scheduled callback (thanks @a-lurker)
+-- 2017.07.14  use socket.gettime() rather than os.time() in interval timer calculation
+--             enforce non-negative interval time in call_delay
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -220,6 +222,7 @@ end
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- The function returns 0 if successful. 
 local function call_delay (fct, seconds, data, type)
+  seconds = math.max ((seconds), 0)       -- 2017.07.12
   scheduler.add_to_delay_list (fct, seconds, data, nil, type) -- note intervening nil parameter!
   return 0
 end
@@ -285,8 +288,8 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
     local multiplier = {[''] = 1, m = 60, h = 3600}
     local v,u = time: match "(%d+)([hm]?)"
     if u then
-      local base = os.time()
-      local increment = v * multiplier[u]
+      local base = socket.gettime()       -- 2017.07.14
+      local increment = math.max (v * multiplier[u], 1)    -- 2017.07.14
       -- dont_increment parameter added since target is called twice (by start_timer and timer.job)
       target = function (dont_increment)
         if not dont_increment then base = base + increment end    -- 2017.07.12
