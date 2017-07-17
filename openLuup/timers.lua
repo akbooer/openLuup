@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2017.07.14",
+  VERSION       = "2017.07.17",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -41,6 +41,8 @@ local ABOUT = {
 --             ...was skipping first scheduled callback (thanks @a-lurker)
 -- 2017.07.14  use socket.gettime() rather than os.time() in interval timer calculation
 --             enforce non-negative interval time in call_delay
+-- 2017.07.17  correct first-time initialisation for NON-repeating Type 1 timers ... !!!
+--             ...since previous repeating fix broke this (thanks @a-lurker)
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -274,6 +276,7 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
     if recurring then
       e,m,j,a = scheduler.run_job (timer, {}, 0)      -- this starts a recurring job
     else
+      due = target()            -- 2017.07.17  actually DO want to increment time if using delay
       e = call_delay (fct, due - socket.gettime(), data)        -- this is one-shot
     end
     return e,m,j,a, math.floor (due)  -- 2016.11.07 scene time only deals with integers
