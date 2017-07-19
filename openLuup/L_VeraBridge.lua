@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2017.05.10",
+  VERSION       = "2017.07.19",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -62,6 +62,7 @@ ABOUT = {
 -- 2017.03.09   add wildcard '*' in Mirror syntax to preserve existing serviceId or variable name
 -- 2017.03.17   don't override existing user attibutes (thanks @explorer)
 -- 2017.05.10   add category_num and subcategory_num to bridge devices (thanks @dklinkman)
+-- 2017.07.19   add GetVeraScenes action call to copy (not just link) remote scenes
 
 local devNo                      -- our device number
 
@@ -99,6 +100,9 @@ local HouseModeOptions = {      -- 2016.05.23
   ['1'] = "1 : local mirrors remote",
   ['2'] = "2 : remote mirrors local",
 }
+
+-- 2017.0719  saved variables required for GetVeraScenes action
+  local VeraScenes, VeraRoom
 
 -- @explorer options for device filtering
 
@@ -430,6 +434,10 @@ local function GetUserData ()
       local roomNo = local_room_index[new_room_name] or 0
       Ndev = create_children (Vera.devices, roomNo)
       Nscn = create_scenes (Vera.scenes, roomNo)
+      do      -- 2017.07.19
+        VeraScenes = Vera.scenes
+        VeraRoom = roomNo
+      end
     end
   end
   return Ndev, Nscn, version
@@ -690,6 +698,48 @@ function GetVeraFiles ()
   end
 end
 
+
+-- GetVeraScenes action (not to be confused with the usual scene linking.)
+-- Makes new copies in the 100,000+ range to aid logic transfer to openLuup
+
+function GetVeraScenes()
+  luup.log "GetVeraScenes action called"
+  local warning = {
+    device = 2,
+    enabled = 1,
+    lua = '',
+    name = "*** WARNING ***",
+    template = "1",
+  }
+  
+  if VeraScenes then
+    for n,s in pairs (VeraScenes) do
+      luup.log (s.name)
+      -- name, embedded Lua code, and timers are unchanged
+      s.paused = "1"                            -- don't want this to run by default
+      s.room = VeraRoom                         -- default place for this Vera
+      s.id = s.id + OFFSET + 1e5     -- BIG offset for these scenes
+      
+      -- convert triggers and actions to point to local devices
+      s.triggers = s.triggers or {}
+      for _,t in ipairs (s.triggers) do
+        t.device = t.device + OFFSET
+        t.enabled = 0             -- disable it
+      end
+      if #s.triggers ~= 0 then    -- insert warning that these triggers are not active
+        table.insert(s.triggers, 1, warning)
+      end
+      for _,g in ipairs (s.groups or {}) do
+        for _,a in ipairs (g.actions or {}) do
+          a.device = a.device + OFFSET
+        end
+      end
+      
+      -- now create new scene locally
+      luup.scenes[s.id] = scenes.create (s)
+    end
+  end
+end
 
 --
 -- GENERIC ACTION HANDLER

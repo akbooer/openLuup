@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2017.01.15",
+  VERSION       = "2017.07.19",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -40,6 +40,8 @@ local ABOUT = {
 -- 2017.01.05   add lul_scene to the scope of the scene Lua (to contain the scene Id)
 -- 2017.01.15   remove scene triggers which refer to missing devices (thanks @reneboer)
 --              see: http://forum.micasaverde.com/index.php/topic,41249.msg306385.html#msg306385
+-- 2017.07.19   allow missing Lua field for scenes
+--              force userdata update after scene creation
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
@@ -234,7 +236,7 @@ local function create (scene_json)
   end
   if not scn then return nil, err end
   
-  lua_code, err = load_lua_code (scn.lua, scn.id or (#luup.scenes + 1))   -- load the Lua
+  lua_code, err = load_lua_code (scn.lua or '', scn.id or (#luup.scenes + 1))   -- load the Lua
   if err then return nil, err end
   
 --[[
@@ -303,6 +305,8 @@ local function create (scene_json)
       jobs[#jobs+1] = j           -- save the jobs we're running
     end
   end
+
+  devutil.new_userdata_dataversion ()               -- 2017.07.19
 
 -- luup.scenes contains all the scenes in the system as a table indexed by the scene number. 
   return setmetatable (luup_scene, {

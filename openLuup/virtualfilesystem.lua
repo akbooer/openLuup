@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2017.02.21",
+  VERSION       = "2017.07.19",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -156,6 +156,17 @@ local D_openLuup_json = [[
 				}
 			]
 		}
+  ],
+  "eventList2": [
+    {
+      "id": 1,
+      "label": {
+        "lang_tag": "triggers_are_not_implemented",
+        "text": "UPnP triggers are not implemented in _DEVICE_NAME_"
+      },
+      "serviceId": "openLuup",
+      "argumentList": []
+    }
   ],
   "DeviceType": "openLuup"
 }
@@ -550,6 +561,14 @@ local I_VeraBridge_impl = [[
   			return 4,0
   		</job>
     </action>
+    <action>
+  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+  		<name>GetVeraScenes</name>
+  		<job>
+  			GetVeraScenes ()
+  			return 4,0
+  		</job>
+    </action>
   </actionList>
 </implementation>
 ]]
@@ -564,6 +583,9 @@ local S_VeraBridge_svc = [[
   <actionList>
     <action>
       <name>GetVeraFiles</name>
+    </action>
+    <action>
+      <name>GetVeraScenes</name>
     </action>
   </actionList>
 </scpd>

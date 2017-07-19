@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2017.04.19",
+  VERSION       = "2017.07.19",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -43,6 +43,7 @@ local ABOUT = {
 
 -- 2017.01.18   add HouseMode variable to openLuup device, to mirror attribute, so this can be used as a trigger
 -- 2017.04.19   sort devices_table() output (thanks @a-lurker)
+-- 2017.0719 ignore temporary "high numbered" scenes (VeraBridge)
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -612,13 +613,15 @@ local function load_user_data (user_data_json)
     _log "loading scenes..."
     local Nscn = 0
     for _, scene in ipairs (user_data.scenes or {}) do
-      local new, msg = scenes.create (scene)
-      if new and scene.id then
-        Nscn = Nscn + 1
-        luup.scenes[scene.id] = new
-        _log (("[%s] %s"): format (scene.id or '?', scene.name))
-      else
-        _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
+      if tonumber(scene.id) < 1e5 then        -- 2017.0719 ignore temporary "high numbered" scenes (VeraBridge)
+        local new, msg = scenes.create (scene)
+        if new and scene.id then
+          Nscn = Nscn + 1
+          luup.scenes[scene.id] = new
+          _log (("[%s] %s"): format (scene.id or '?', scene.name))
+        else
+          _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
+        end
       end
     end
     _log ("number of scenes = " .. Nscn)
