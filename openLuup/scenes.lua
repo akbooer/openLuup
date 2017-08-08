@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2017.07.19",
+  VERSION       = "2017.08.08",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -42,6 +42,10 @@ local ABOUT = {
 --              see: http://forum.micasaverde.com/index.php/topic,41249.msg306385.html#msg306385
 -- 2017.07.19   allow missing Lua field for scenes
 --              force userdata update after scene creation
+-- 2017.07.20   add lul_timer and lul_trigger to scene Lua
+--              these parameters are tables conforming to the scene syntax
+--              see: http://wiki.micasaverde.com/index.php/Scene_Syntax
+-- 2017.08.08   add warning message to scenes with triggers
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
@@ -70,6 +74,14 @@ Apr 2016 - AltUI now provides workflow too.
 
 --]]
 
+local trigger_warning = {   -- template points to openLuup notification message
+  device = 2,
+  enabled = 1,
+  lua = '',
+  name = "*** WARNING ***",
+  template = "1",
+}
+
 ---
 --- utilities
 --
@@ -81,7 +93,7 @@ local function load_lua_code (lua, id)
   local scene_lua, error_msg, code
   if lua then
     local scene_name = "scene_" .. id
-    local wrapper = table.concat ({"function ", scene_name, " (lul_scene)", lua, "end"}, '\n')  -- 2017.01.05
+    local wrapper = table.concat ({"function ", scene_name, " (lul_scene, lul_trigger, lul_timer)", lua, "end"}, '\n')  -- 2017.01.05, 2017.07.20
     local name = "scene_" .. id .. "_lua"
     code, error_msg = loader.compile_lua (wrapper, name, scene_environment) -- load, compile, instantiate
     scene_lua = (code or {}) [scene_name]
@@ -127,6 +139,7 @@ local function create (scene_json)
   end
   
   local function scene_runner (t, next_time)              -- called by timer, trigger, or manual run
+    local lul_trigger, lul_timer
     if not runs_in_current_mode (scene) then 
       _log (scene.name .. " does not run in current House Mode")
       return 
@@ -135,11 +148,18 @@ local function create (scene_json)
       _log (scene.name .. " is currently paused")
       return 
     end
-    if t and tonumber (t.enabled) ~= 1  then 
-      _log "timer disabled"
-      return 
-    end   -- timer or trigger disabled
-    local ok = not lua_code or lua_code (scene.id)    -- 2017.01.05
+    if t then     -- we were started by a trigger or timer
+      if tonumber (t.enabled) ~= 1  then 
+        _log "timer disabled"
+        return 
+      end
+      if t.device then    -- 2017.07.20
+        lul_trigger = t
+      else
+        lul_timer = t
+      end
+    end
+    local ok = not lua_code or lua_code (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20
     if ok ~= false then
       scene.last_run = os.time()                -- scene run time
       luup_scene.running = true
@@ -200,6 +220,7 @@ local function create (scene_json)
   -- delete any actions which refer to non-existent devices
   -- also, add listeners to the device AND service to watch for changes
   -- also, remove any triggers related to unknown devices
+  -- also, add warning message trigger to any scene with triggers  -- 2017.08.08
   local function verify ()
     local silent = true     -- don't log watch callbacks
     for _, g in ipairs (scene.groups or {}) do
@@ -221,9 +242,13 @@ local function create (scene_json)
     local n = #triggers
     for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
       local t = triggers[i]
-      if not luup.devices[t.device] then
+      if t.device == 2 or not luup.devices[t.device] then
         table.remove (triggers, i)
       end
+    end
+    -- 2017.08.08
+    if #triggers ~= 0 then    -- insert warning that these triggers are not active
+      table.insert(triggers, 1, trigger_warning)
     end
   end
 

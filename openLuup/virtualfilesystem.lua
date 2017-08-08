@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2017.07.19",
+  VERSION       = "2017.08.08",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -162,7 +162,7 @@ local D_openLuup_json = [[
       "id": 1,
       "label": {
         "lang_tag": "triggers_are_not_implemented",
-        "text": "UPnP triggers are not implemented in _DEVICE_NAME_"
+        "text": "Triggers not implemented, use Watch instead"
       },
       "serviceId": "openLuup",
       "argumentList": []

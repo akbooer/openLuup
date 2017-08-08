@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2017.07.19",
+  VERSION       = "2017.08.08",
   DESCRIPTION   = "VeraBridge plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -63,6 +63,7 @@ ABOUT = {
 -- 2017.03.17   don't override existing user attibutes (thanks @explorer)
 -- 2017.05.10   add category_num and subcategory_num to bridge devices (thanks @dklinkman)
 -- 2017.07.19   add GetVeraScenes action call to copy (not just link) remote scenes
+-- 2017.08.08   move unimplemented triggers warning in GetVeraScenes to generic openLuup scene handler
 
 local devNo                      -- our device number
 
@@ -704,13 +705,6 @@ end
 
 function GetVeraScenes()
   luup.log "GetVeraScenes action called"
-  local warning = {
-    device = 2,
-    enabled = 1,
-    lua = '',
-    name = "*** WARNING ***",
-    template = "1",
-  }
   
   if VeraScenes then
     for n,s in pairs (VeraScenes) do
@@ -725,9 +719,6 @@ function GetVeraScenes()
       for _,t in ipairs (s.triggers) do
         t.device = t.device + OFFSET
         t.enabled = 0             -- disable it
-      end
-      if #s.triggers ~= 0 then    -- insert warning that these triggers are not active
-        table.insert(s.triggers, 1, warning)
       end
       for _,g in ipairs (s.groups or {}) do
         for _,a in ipairs (g.actions or {}) do
