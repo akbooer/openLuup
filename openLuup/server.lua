@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2017.06.15",
+  VERSION       = "2017.11.14",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -64,6 +64,7 @@ local ABOUT = {
 -- 2017.05.05   add error logging to wget (thanks @a-lurker), change socket close error message
 -- 2017.05.25   fix wget error logging format
 -- 2017.06.14   use Authorization header for wget basic authorization, rather than in the URL (now deprecated)
+-- 2017.11.14   add extra icon path alias
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -245,6 +246,7 @@ local function http_file (request)
   path = path: gsub ("luvd/", '')                   -- no idea how this is handled in Luup, just remove it!
   path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
   path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
+  path = path: gsub ("cmh/skins/default/img/icons/", "icons/")                  -- 2017.11.14 
   
   local content_type = mime_file_type (path)
   local content_length

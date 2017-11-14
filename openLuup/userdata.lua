@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2017.07.19",
+  VERSION       = "2017.08.27",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -43,7 +43,10 @@ local ABOUT = {
 
 -- 2017.01.18   add HouseMode variable to openLuup device, to mirror attribute, so this can be used as a trigger
 -- 2017.04.19   sort devices_table() output (thanks @a-lurker)
--- 2017.0719 ignore temporary "high numbered" scenes (VeraBridge)
+-- 2017.07.19   ignore temporary "high numbered" scenes (VeraBridge)
+-- 2017.08.27   fix non-numeric device ids in save_user_data()
+--              ...allows renumbering of device ids using luup.attr_set()
+--              ... see: http://forum.micasaverde.com/index.php/topic,50428.0.html
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -705,6 +708,7 @@ local function devices_table (device_list)
       status          = status,
     }
     for a,b in pairs (d.attributes) do tbl[a] = b end
+    tbl.id = tonumber(tbl.id) or tbl.id      -- 2017.08.27  fix for non-numeric device id
     info[#info+1] = tbl
   end
   return info

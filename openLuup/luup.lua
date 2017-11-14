@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2017.06.19",
+  VERSION       = "2017.08.08",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -840,7 +840,7 @@ return {
     rooms               = rooms,
     scenes              = scenes,
     devices             = devices, 
---    xj                  = "what is this?",
+--    xj                  = {xml_node_text = function: 0xbc7b78} -- "what is this?",
 
 }
 

@@ -172,6 +172,8 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
       srv[var] = srv[var] or {}
       local watch = srv[var]
       watch[#watch+1] = callback  -- set the watch on the variable or service
+    else
+      -- no service id
     end
   end
 end
