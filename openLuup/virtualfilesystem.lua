@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2017.08.08",
+  VERSION       = "2018.01.11",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2017 AK Booer
+  Copyright 2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -450,8 +450,8 @@ local D_VeraBridge_dev = [[
     <manufacturer>akbooer</manufacturer>
     <manufacturerURL></manufacturerURL>
     <modelDescription>Vera Bridge for openLuup</modelDescription>
-    <modelName>v2.0</modelName>
-    <modelNumber>1</modelNumber>
+    <modelName>VeraBridge</modelName>
+    <modelNumber>3</modelNumber>
     <handleChildren>1</handleChildren>
     <Category_Num>1</Category_Num>
     <UDN></UDN>

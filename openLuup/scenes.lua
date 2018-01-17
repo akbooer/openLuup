@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2017.08.08",
+  VERSION       = "2018.01.17",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -46,6 +46,8 @@ local ABOUT = {
 --              these parameters are tables conforming to the scene syntax
 --              see: http://wiki.micasaverde.com/index.php/Scene_Syntax
 -- 2017.08.08   add warning message to scenes with triggers
+
+-- 2018.01.17   add optional 2-nd return parameter 'user_finalizer' function to scene Lua (thanks @DesT)
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
@@ -130,11 +132,12 @@ end
 
 -- scene.create() - returns compiled scene object given json string containing group / timers / lua / ...
 local function create (scene_json)
-  local scene, lua_code, luup_scene
+  local scene, lua_code, luup_scene, user_finalizer
   
-  local function scene_finisher (started)         -- called at end of scene
+  local function scene_finisher (started)                               -- called at end of scene
     if scene.last_run == started then 
-      luup_scene.running = false                  -- clear running flag only if we set it
+      if type(user_finalizer) == "function" then user_finalizer() end   -- call the user-defined finalizer code
+      luup_scene.running = false                                        -- clear running flag only if we set it
     end
   end
   
@@ -159,7 +162,10 @@ local function create (scene_json)
         lul_timer = t
       end
     end
-    local ok = not lua_code or lua_code (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20
+    local ok
+    if lua_code then
+      ok, user_finalizer = lua_code (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20, 2018.01.17
+    end
     if ok ~= false then
       scene.last_run = os.time()                -- scene run time
       luup_scene.running = true
