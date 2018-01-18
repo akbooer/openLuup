@@ -48,6 +48,7 @@ local ABOUT = {
 -- 2017.08.08   add warning message to scenes with triggers
 
 -- 2018.01.17   add optional 2-nd return parameter 'user_finalizer' function to scene Lua (thanks @DesT)
+-- 2018.01.18   add optional 3-rd return parameter 'final_delay' and also scene.prolog and epilog calls
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
@@ -132,13 +133,19 @@ end
 
 -- scene.create() - returns compiled scene object given json string containing group / timers / lua / ...
 local function create (scene_json)
-  local scene, lua_code, luup_scene, user_finalizer
+  local scene, lua_code, luup_scene, user_finalizer, final_delay
+  local prolog, epilog
   
   local function scene_finisher (started)                               -- called at end of scene
     if scene.last_run == started then 
       if type(user_finalizer) == "function" then user_finalizer() end   -- call the user-defined finalizer code
       luup_scene.running = false                                        -- clear running flag only if we set it
     end
+    
+    if type (epilog) == "function" then 
+      epilog (scene.id)
+    end
+
   end
   
   local function scene_runner (t, next_time)              -- called by timer, trigger, or manual run
@@ -162,11 +169,27 @@ local function create (scene_json)
         lul_timer = t
       end
     end
-    local ok
-    if lua_code then
-      ok, user_finalizer = lua_code (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20, 2018.01.17
+    
+    do      -- 2018.01.18   scene prolog and epilog calls
+      local s = luup.attr_get "openLuup.Scenes" or {}
+      prolog = scene_environment[s.Prolog]     -- find the global procedure reference in the scene/startup environment
+      epilog = scene_environment[s.Epilog]
+      print ("Pro/Epi-log", s.Prolog, prolog, s.Epilog, epilog)
     end
-    if ok ~= false then
+    
+    local global_ok
+    if type (prolog) == "function" then 
+      global_ok = prolog (scene.id, lul_trigger, lul_timer)
+    end
+    --
+    
+    local ok, del
+    if lua_code then
+      ok, user_finalizer, del = lua_code (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20, 2018.01.17,8
+    end
+    final_delay = tonumber(del) or 30
+    
+    if global_ok ~= false and ok ~= false then
       scene.last_run = os.time()                -- scene run time
       luup_scene.running = true
       devutil.new_userdata_dataversion ()               -- 2016.11.01
@@ -186,7 +209,7 @@ local function create (scene_json)
         if delay > max_delay then max_delay = delay end
         timers.call_delay (group_runner, delay, group.actions, label .. "group delay")
       end
-      timers.call_delay (scene_finisher, max_delay + 30, scene.last_run, 
+      timers.call_delay (scene_finisher, max_delay + final_delay, scene.last_run, 
         label .. " finisher")    -- say we're finished
     end
   end

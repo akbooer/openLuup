@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2017.06.15",
+  VERSION       = "2018.01.18",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -39,6 +39,8 @@ local ABOUT = {
 -- 2017.03.15  add Server.Backlog parameter to openLuup attribute (thanks @explorer)
 -- 2017.04.10  add Logfile.Incoming parameter to openLuup attribute (thanks @a-lurker)
 -- 2017.06.14  add Server.WgetAuthorization for wget header basic authorization or URL-style
+
+-- 2018.01.18  add openLuup.Scenes prolog and epilog parameters
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -143,6 +145,10 @@ do -- set attributes, possibly decoding if required
       CloseIdleSocketAfter  = 90 ,        -- number of seconds idle after which to close socket
       WgetAuthorization = "URL",          -- "URL" or else uses request header authorization
    },
+    Scenes = {
+      Prolog = '',                        -- name of global function to call before any scene
+      Epilog = '',                        -- ditto, after any scene
+    },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
   local attr = string.char(unpack (attrs))
