@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2017.11.14",
+  VERSION       = "2018.01.11",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -65,6 +65,8 @@ local ABOUT = {
 -- 2017.05.25   fix wget error logging format
 -- 2017.06.14   use Authorization header for wget basic authorization, rather than in the URL (now deprecated)
 -- 2017.11.14   add extra icon path alias
+
+-- 2018.01.11   remove edit of port_3480 in URL.path as per 2016.09.16 above, in advance of Vera port updates
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -313,20 +315,22 @@ local function request_object (request_URI, headers, post_content, method, http_
   end
  
   local URL = url.parse (request_URI)               -- parse URL
-  if URL.path then                                  -- 2016.11.18
-    URL.path = URL.path:gsub ("/port_3480", '')     -- 2016.09.16, thanks @explorer
-  end
-  -- construct parameters from query string or POST content
-  local parameters
+--  if URL.path then                                  -- 2016.11.18
+--    URL.path = URL.path:gsub ("/port_3480", '')     -- 2016.09.16, thanks @explorer  -- REVOKED 2018.01.11
+--  end
+
+  -- construct parameters from query string and/or POST content
+  local parameters = {}
   method = method or "GET"
   if URL.query then
     parameters = parse_parameters (URL.query)   -- extract useful parameters from query string
-    if method == "POST" 
-    and (headers["Content-Type"] or ''): find ("application/x-www-form-urlencoded",1,true) then -- 2017.02.21
-      local p2 = parse_parameters (post_content:gsub('+', ' '))   -- 2017.03.03 fix embedded spaces
-      for a,b in pairs (p2) do        -- 2017.02.06  combine URL and POST parameters
-        parameters[a] = b
-      end
+  end
+  
+  if method == "POST" 
+  and (headers["Content-Type"] or ''): find ("application/x-www-form-urlencoded",1,true) then -- 2017.02.21
+    local p2 = parse_parameters (post_content:gsub('+', ' '))   -- 2017.03.03 fix embedded spaces
+    for a,b in pairs (p2) do        -- 2017.02.06  combine URL and POST parameters
+      parameters[a] = b
     end
   end
 

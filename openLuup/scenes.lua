@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2018.01.17",
+  VERSION       = "2018.01.27",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -174,7 +174,6 @@ local function create (scene_json)
       local s = luup.attr_get "openLuup.Scenes" or {}
       prolog = scene_environment[s.Prolog]     -- find the global procedure reference in the scene/startup environment
       epilog = scene_environment[s.Epilog]
-      print ("Pro/Epi-log", s.Prolog, prolog, s.Epilog, epilog)
     end
     
     local global_ok
