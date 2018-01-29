@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2018.01.27",
+  VERSION       = "2018.01.29",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -32,6 +32,8 @@ local ABOUT = {
 -- 2017.01.18   add HouseMode variable to openLuup device, to mirror attribute, so this can be used as a trigger
 
 -- 2018.01.27   implement ModifyUserData since /hag functionality to port_49451 deprecated
+-- 2018.01.18   add UserData variable in ModifyUserData response (thanks @amg0)
+--              see: http://forum.micasaverde.com/index.php/topic,55598.msg343271.html#msg343271
 
 local requests    = require "openLuup.requests"
 local scenes      = require "openLuup.scenes"
@@ -64,6 +66,7 @@ local SID = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
 -- create a variable for CreateDevice return info
 -- ...and, incidentally, the whole service also, which gets extended below...
 Device_0: variable_set (SID, "DeviceNum", '')
+
 
 
 --[[ action=CreateDevice
@@ -170,9 +173,9 @@ Device_0.services[SID].actions =
     --   If Reload is 1 the LuaUPnP engine will reload after the UserData is modified. 
     --   For more information read http://wiki.micasaverde.com/index.php/ModifyUserData
     ModifyUserData = {
+      extra_returns = {UserData = "{}"},     -- 2018.01.28  action return info
       run = function (_,m)
         local response
-        print "MODIFY USER DATA:"
         
         if m.DataFormat == "json" and m.inUserData then
           local j,msg = json.decode (m.inUserData)
