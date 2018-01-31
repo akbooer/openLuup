@@ -5,13 +5,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2017.07.05",
+  VERSION       = "2018.01.30",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-17 AK Booer
+  Copyright 2013-18 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -29,6 +29,8 @@ ABOUT = {
 
 -- 2017.04.26  HTML menu improvement by @explorer (thanks!)
 -- 2017.07.05  add user_data, status and sdata to openLuup menu
+
+-- 2018.01.30  add invocations count to job listing
 
 --  WSAPI Lua implementation
 
@@ -145,6 +147,7 @@ prefix = [[
         <button class="dropbtn">Backups</button>
         <div class="dropdown-content">
           <a class="left" href="/console?page=backups">Files</a>
+          <a class="left" href="/console?page=uncompressform">Uncompress...</a>
         </div>
       </div>
     </div>
@@ -164,7 +167,7 @@ prefix = [[
 }
 
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
-local line = "%20s  %8s  %8s  %s %s"
+local line = "%20s  %8s  %12s  %s %s"
 local date = "%Y-%m-%d %H:%M:%S"
 
 
@@ -201,10 +204,11 @@ function run (wsapi_env)
   local function joblist (job_list)
     local jlist = {}
     for _,b in pairs (job_list) do
+      local status = table.concat {state[b.status] or '', '[', b.logging.invocations, ']'}
       jlist[#jlist+1] = {
         t = b.expiry,
         l = line: format (os.date (date, b.expiry + 0.5), b.devNo or "system", 
-                            state[b.status] or '?', b.type or '?', b.notes or '')
+                            status, b.type or '?', b.notes or '')
       }
     end
     return jlist
@@ -255,7 +259,7 @@ function run (wsapi_env)
   local function listit (list, title)
     print (title .. ", " .. os.date "%c")
     table.sort (list, function (a,b) return a.t < b.t end)
-    print ('#', (line: format ("date       time    ", "device", "status","info", '')))
+    print ('#', (line: format ("date       time    ", "device", "status[n]","info", '')))
     for i,x in ipairs (list) do print (i, x.l) end
     print ''
   end
@@ -300,6 +304,54 @@ function run (wsapi_env)
     end
   end
   
+  local function uncompressform ()
+    print [[
+ <form action="/console">
+    <input type="hidden" name="page" value="uncompress">
+    <input type="file" name="unlzap" accept=".lzap" formmethod="get">
+    <label for="file">Choose a file</label>
+    <input type="Submit" value="Uncompress" class="dropbtn"><br>
+ </form>     
+    ]]
+  end
+  
+  local function uncompress (p)
+    for a,b in pairs(p) do
+      print (a .. " : " .. tostring(b))
+    end
+--    local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
+--    local code = compress.lzap.decode (code, codec)   -- uncompress the file
+-- TODO:  UNCOMPRESS... following code lifted from backup module compression
+--[[
+    local f
+    f, msg = io.open (fname, 'wb')
+    if f then 
+      local codec = compress.codec (nil, "LZAP")  -- full binary codec with header text
+      small = compress.lzap.encode (ok, codec)
+      f: write (small)
+      f: close ()
+      ok = #ok / 1000    -- convert to file sizes
+      small = #small / 1000
+    else
+      ok = false
+    end
+  end
+  
+  local headers = {["Content-Type"] = "text/plain"}
+  local status, return_content
+  if ok then 
+    msg = ("%0.0f kb compressed to %0.0f kb (%0.1f:1)") : format (ok, small, ok/small)
+    local body = html: format (msg, fname, fname)
+    headers["Content-Type"] = "text/html"
+    status, return_content = 200, body
+  else
+    status, return_content = 500, "backup failed: " .. msg
+  end
+  _log (msg)
+
+--]]
+
+  end
   
   local pages = {
     about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
@@ -309,6 +361,9 @@ function run (wsapi_env)
     log     = printlog,
     startup = function () listit (slist, "Startup Jobs") end,
     watches = watchlist,
+    
+    uncompress      = uncompress,
+    uncompressform  = uncompressform,
     
     parameters = function ()
       local info = luup.attr_get "openLuup"

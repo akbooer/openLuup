@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2016.11.19",
+  VERSION       = "2018.01.31",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -30,7 +30,11 @@ local ABOUT = {
 -- 2016.04.15  added per-device variable numbering (thanks @explorer)
 -- 2016.04.29  added device status
 -- 2016.07.19  improve call_action error handling
--- 2016.11.19  addeed callback name to watch callback structure
+-- 2016.11.19  added callback name to watch callback structure
+
+-- 2018.01.30  changed variable numbering to start at 0 (for compatibility with ModifyUserData)
+-- 2018.01.31  add delete_vars() to device (for ModifyUserData to replace all state variables)
+
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 
@@ -68,9 +72,9 @@ local variable = {}             -- variable CLASS
 function variable.new (name, serviceId, devNo)    -- factory for new variables
   local device = device_list[devNo] or {}
   local vars = device.variables or {}
-  local varID = #vars + 1
+  local varID = #vars                             -- 2018.01.31
   new_userdata_dataversion ()                     -- say structure has changed
-  vars[varID] = {
+  vars[varID + 1] = {                             -- 2018.01.31
       -- variables
       dev       = devNo,
       id        = varID,                          -- unique ID
@@ -80,7 +84,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       -- methods
       set       = variable.set,
     }
-  return vars[varID]
+  return vars[#vars]
 end
   
 function variable:set (value)
@@ -210,6 +214,22 @@ local function new (devNo)
     end
   end
   
+  -- function delete_vars
+  -- parameter: device 
+  -- deletes all variables in all services (but retains actions)
+  local function delete_vars (dev)
+    local v = dev.variables
+    for i in ipairs(v) do v[i] = nil end    -- clear each element, don't replace whole table
+    
+    for _,svc in pairs(dev.services) do
+      local v = svc.variables
+      for name in pairs (v) do    -- remove all the old service variables!
+        v[name] = nil             -- clear each element, don't replace whole table
+      end
+    end
+    
+    new_userdata_dataversion ()
+  end
   
   -- function: variable_set
   -- parameters: service (string), variable (string), value (string), watch (boolean)
@@ -359,6 +379,8 @@ local function new (devNo)
       variable_set        = variable_set, 
       variable_get        = variable_get,
       version_get         = function () return version end,
+      
+      delete_vars         = delete_vars,    -- 2018.01.31
     }
     
   return device_list[devNo]

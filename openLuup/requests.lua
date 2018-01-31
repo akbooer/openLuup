@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2017.02.05",
+  VERSION       = "2018.01.29",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -49,6 +49,9 @@ local ABOUT = {
 -- 2017.01.10  fix non-integer values in live_energy_usage, thanks @reneboer
 --             see: http://forum.micasaverde.com/index.php/topic,41249.msg306290.html#msg306290
 -- 2017.02.05  add 'test' request (for testing!)
+-- 2017.11.08  modifiy 'test' reporting text
+
+-- 2018.01.29  and ns parameter option to user_Data request to ignore static_data object (new Luup feature?)
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -476,11 +479,13 @@ local function user_data (_,p)
     for a,b in pairs (userdata.attributes) do      -- add all the top-level attributes
       user_data2[a] = b
     end
-    local sd = {}
-    for _, data in pairs (loader.static_data) do    -- bundle up the JSON data for all devices 
-      sd[#sd+1] = data
+    if p.ns ~= '1' then     -- 2018.01.29
+      local sd = {}
+      for _, data in pairs (loader.static_data) do    -- bundle up the JSON data for all devices 
+        sd[#sd+1] = data
+      end
+      user_data2.static_data = sd
     end
-    user_data2.static_data = sd
     mime_type = "application/json"
     result = json.encode (user_data2)
   end
@@ -691,11 +696,11 @@ local function request_image (_, p)
   local cam = luup.devices[devNo]
   if cam then
     local ip = p.ip or luup.attr_get ("ip", devNo) or ''
-    local url = p.url or cam:variable_get (sid, "URL") or ''
+    local url = p.url or luup.variable_get (sid, "URL", devNo) or ''
 --    local timeout = tonumber(cam:variable_get (sid, "Timeout")) or 5
     local timeout = tonumber(p.timeout) or 5
     if url then
-      status, image = luup.inet.wget ("http://" .. ip .. url.value, timeout)
+      status, image = luup.inet.wget ("http://" .. ip .. url, timeout)
     end
   end
   if image then
@@ -808,7 +813,7 @@ local function reload () luup.reload () end
 -- openLuup additions
 --
 local function test (r,p)
-  local d = {"data_request=" .. r}
+  local d = {"data_request","id=" .. r}   -- 2017.11.08
   for a,b in pairs (p) do
     d[#d+1] = table.concat {a,'=',b}
   end

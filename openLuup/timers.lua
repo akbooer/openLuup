@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2017.07.17",
+  VERSION       = "2018.01.31",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -44,6 +44,9 @@ local ABOUT = {
 -- 2017.07.17  correct first-time initialisation for NON-repeating Type 1 timers ... !!!
 --             ...since previous repeating fix broke this (thanks @a-lurker)
 
+-- 2018.01.30  move timenow() and sleep() functions to scheduler module, add sunrise_sunset to TEST
+-- 2018.01.31  fix multiple sunrise/sunset timers (due to tolerance of time calculations)
+
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
@@ -52,7 +55,7 @@ local ABOUT = {
 -- NB: earth coordinates (latitude & longitude) are picked up from the global luup variables
 
 local scheduler = require "openLuup.scheduler"
-local socket    = require "socket"
+
 -- constants
 
 local loadtime  = os.time()
@@ -60,6 +63,10 @@ local time_format           = "(%d%d?)%:(%d%d?)%:(%d%d?)"
 local date_format           = "(%d%d%d%d)%-(%d%d?)%-(%d%d?)"
 local date_time_format      =  date_format .. "%s+" .. time_format
 local relative_time_format  = "([%+%-]?)" .. time_format .. "([rt]?)"
+
+-- alias for timenow
+
+local timenow = scheduler.timenow
 
 -- utility function, string time to unix epoch
 -- time should be in the format: "yyyy-mm-dd hh:mm:ss"
@@ -70,17 +77,6 @@ local function time2unix (time)
     epoch = os.time {year=y, month=m, day=d, hour=H, min=M, sec=S}
   end
   return epoch
-end
-
-
--- function: sleep
--- parameters: number of milliseconds
--- returns: none
---
--- Sleeps a certain number of milliseconds
--- NB: doesn't use CPU cycles, but does block the whole process...  not advised!!
-local function sleep (milliseconds)
-  socket.sleep ((tonumber (milliseconds) or 0)/1000)      -- wait a bit
 end
 
 -- returns timezone offset in seconds
@@ -146,14 +142,14 @@ end
 -- luup.sunset-os.time is the number of seconds before the next sunset. 
 -- Be sure the location and timezone are properly set or the sunset/sunrise will be wrong.
 
-local function sunrise_sunset ()
+local function sunrise_sunset (now, latitude, longitude)
   local day = 24 * 60 * 60
-  local now = os.time()
-  local today_rise, today_set = rise_set (now)
-  local tomorrow_rise, tomorrow_set = rise_set (now + day)
+  now = now or os.time()
+  local today_rise, today_set = rise_set (now, latitude, longitude)
+  local tomorrow_rise, tomorrow_set = rise_set (now + day, latitude, longitude)
   local rise, set = today_rise, today_set
-  if now > rise then rise = tomorrow_rise end
-  if now > set  then set  = tomorrow_set  end
+  if now+1 > rise then rise = tomorrow_rise end    -- 2018.01.30  fix jitter causing multiple trigger firing
+  if now+1 > set  then set  = tomorrow_set  end
   return rise, set
 end
 
@@ -257,13 +253,13 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   -- the timeout period is the time difference between now and target time
   -- as returned by the function target() which is local to each timer type.
   local timer = { 
-      job = function() 
+      job = function(_,_,j) 
         local next_time = target()
         if not first_time then
           pcall (fct, data, next_time)    -- make the call, ignore any errors
         end
         first_time = false
-        return scheduler.state.WaitingToStart, next_time - socket.gettime()    -- calculate delta time
+        return scheduler.state.WaitingToStart, next_time - timenow()    -- calculate delta time
       end
     }
 
@@ -277,9 +273,10 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
       e,m,j,a = scheduler.run_job (timer, {}, 0)      -- this starts a recurring job
     else
       due = target()            -- 2017.07.17  actually DO want to increment time if using delay
-      e = call_delay (fct, due - socket.gettime(), data)        -- this is one-shot
+      e = call_delay (fct, due - timenow(), data)        -- this is one-shot
     end
-    return e,m,j,a, math.floor (due)  -- 2016.11.07 scene time only deals with integers
+--    return e,m,j,a, math.floor (due)  -- 2016.11.07 scene time only deals with integers
+    return e,m,j,a, due     -- 2018.01.30
   end
   
   -- (1) interval timer
@@ -291,7 +288,7 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
     local multiplier = {[''] = 1, m = 60, h = 3600}
     local v,u = time: match "(%d+)([hm]?)"
     if u then
-      local base = socket.gettime()       -- 2017.07.14
+      local base = timenow()       -- 2017.07.14
       local increment = math.max (v * multiplier[u], 1)    -- 2017.07.14
       -- dont_increment parameter added since target is called twice (by start_timer and timer.job)
       target = function (dont_increment)
@@ -356,7 +353,7 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   local function absolute ()
     local epoch = time2unix (time)
     if epoch then
-      return call_delay (fct, epoch - socket.gettime(), data)  -- this is one-shot
+      return call_delay (fct, epoch - timenow(), data)  -- this is one-shot
     end
   end
   
@@ -387,10 +384,6 @@ local function cpu_clock ()
   return this + offset
 end
   
-local function timenow ()
-  return socket.gettime()
-end
-
 -- see: http://lua-users.org/wiki/TimeZone
 local function gmt_offset ()
   local now = os.time()
@@ -405,13 +398,13 @@ return {
   TEST = {
     next_scheduled_time = next_scheduled_time,
     rise_set            = rise_set,
+    sunrise_sunset      = sunrise_sunset,
     target_time         = target_time,
     time2unix           = time2unix,
   },
   
   cpu_clock   = cpu_clock,
   gmt_offset  = gmt_offset,
-  sleep       = sleep,
   sunrise     = sunrise,
   sunset      = sunset,
   timenow     = timenow,

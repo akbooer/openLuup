@@ -172,8 +172,12 @@ Device_0.services[SID].actions =
     --   DataFormat must be json.
     --   If Reload is 1 the LuaUPnP engine will reload after the UserData is modified. 
     --   For more information read http://wiki.micasaverde.com/index.php/ModifyUserData
+    -- and http://forum.micasaverde.com/index.php/topic,55598.msg343277.html#msg343277
     ModifyUserData = {
       extra_returns = {UserData = "{}"},     -- 2018.01.28  action return info
+      job = function (_, p) 
+        if p.Reload == '1' then luup.reload () end
+      end,
       run = function (_,m)
         local response
         
@@ -210,7 +214,45 @@ Device_0.services[SID].actions =
               end
             end
             
-            -- also devices, sections, rooms, users...
+            -- Devices
+            
+            if j.devices then
+              for dev_name, info in pairs (j.devices) do
+                local devnum = tonumber (dev_name: match "_(%d+)$")   -- deal with this ridiculous naming convention
+                local dev = luup.devices[devnum]
+                if dev then
+                  if info.states then
+                    
+                    _log ("modifying states in device #" .. devnum)
+                    
+                    dev:delete_vars()      -- remove existing variables
+                    
+                    local newmsg = "new state[%s] %s.%s=%s"
+                    local errmsg = "error: state index/id mismatch: %s/%s"
+                    for i, v in pairs (info.states) do
+                      if v.id ~= i-1 then
+                        _log (errmsg: format (i, v.id or '?'))
+                        break
+                      end
+                      dev:variable_set (v.service, v.variable, v.value)
+                      _log (newmsg: format(v.id, v.service, v.variable, v.value))
+                    end
+                  end
+                end
+              end
+            end
+            
+            -- InstalledPlugins2
+           
+            if j.InstalledPlugins2 then
+              for plug_id, info in pairs (j.InstalledPlugins2) do
+                _log ("InstalledPlugins2 **************" .. plug_id)
+                _log (json.encode(info))
+                _log "**********************"
+              end
+            end
+            
+            -- also sections, rooms, users...
             
           end
           

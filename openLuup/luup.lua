@@ -825,7 +825,7 @@ return {
     reload              = reload,
 --    require             = "what is this?"  --the redefined 'require' which deals with pluto.lzo ??
     set_failure         = set_failure,
-    sleep               = timers.sleep,
+    sleep               = scheduler.sleep,
     sunrise             = function () return math.floor(timers.sunrise ()) end, -- 2017.04.12
     sunset              = function () return math.floor(timers.sunset ()) end,
     task                = task,

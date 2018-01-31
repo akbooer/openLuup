@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2018.01.27",
+  VERSION       = "2018.01.30",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -49,12 +49,14 @@ local ABOUT = {
 
 -- 2018.01.17   add optional 2-nd return parameter 'user_finalizer' function to scene Lua (thanks @DesT)
 -- 2018.01.18   add optional 3-rd return parameter 'final_delay' and also scene.prolog and epilog calls
+-- 2018.01.30   cancel timer jobs on scene delete, round next scene run time, etc..
+
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
 local timers    = require "openLuup.timers"
 local loader    = require "openLuup.loader"
-local scheduler = require "openLuup.scheduler"    -- simply for adding notes to the timer jobs
+local scheduler = require "openLuup.scheduler"    -- simply for adding notes to the timer jobs 
 local devutil   = require "openLuup.devices"      -- for new_userdata_dataversion
 
 --  local logs
@@ -213,11 +215,13 @@ local function create (scene_json)
     end
   end
   
-  local function scene_stopper ()
-    -- TODO: cancel timers on scene delete, etc..?
---    for _,j in ipairs (jobs) do
---      scheduler.kill_job (j.
---    end
+  local function scene_stopper (scn)
+    -- 2018.01.30 pause the whole scene
+    luup_scene.paused = true
+    -- 2018.01.30 cancel timers on scene
+    for _,j in ipairs ((scn or {}).jobs) do
+      scheduler.kill_job (j)
+    end
     -- disable all timers and triggers
     for _, t in ipairs (scene.timers or {}) do
       t.enabled = 0
@@ -354,8 +358,8 @@ local function create (scene_json)
       local job = scheduler.job_list[j]
       local text = info: format (j, t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
       job.type = text
-      t.next_run = due
-      jobs[#jobs+1] = j           -- save the jobs we're running
+      t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers
+      jobs[#jobs+1] = j               -- save the jobs we're running
     end
   end
 
