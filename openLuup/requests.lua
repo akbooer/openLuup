@@ -49,9 +49,9 @@ local ABOUT = {
 -- 2017.01.10  fix non-integer values in live_energy_usage, thanks @reneboer
 --             see: http://forum.micasaverde.com/index.php/topic,41249.msg306290.html#msg306290
 -- 2017.02.05  add 'test' request (for testing!)
--- 2017.11.08  modifiy 'test' reporting text
+-- 2017.11.08  modify 'test' reporting text
 
--- 2018.01.29  and ns parameter option to user_Data request to ignore static_data object (new Luup feature?)
+-- 2018.01.29  add ns parameter option to user_Data request to ignore static_data object (new Luup feature?)
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"

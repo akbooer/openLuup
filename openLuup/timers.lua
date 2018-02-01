@@ -202,7 +202,7 @@ local function next_scheduled_time (offset, time, blocksize)
   local now = os.time ()
   local target_day = offset[1] * day_offset
   local next_time = target_time (now + target_day, time)
-  if next_time <= now then     -- too late!, so schedule some future day...
+  if next_time <= now + 1 then     -- 2018.01.31  a second too late!, so schedule some future day...
     if #offset > 1 then 
       target_day = offset[2] * day_offset   -- simply move to the next one
     else
