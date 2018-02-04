@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2018.01.31",
+  VERSION       = "2018.02.04",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -46,6 +46,8 @@ local ABOUT = {
 
 -- 2018.01.30  move timenow() and sleep() functions to scheduler module, add sunrise_sunset to TEST
 -- 2018.01.31  fix multiple sunrise/sunset timers (due to tolerance of time calculations)
+-- 2018.02.04  correct long-standing noon calculation error around equinox (thanks @a-lurker)
+
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -113,22 +115,46 @@ local function rise_set (date, latitude, longitude)
   
   local L = q + 1.915 * sin (g) + 0.0200 * sin (2*g)      -- geocentric apparent ecliptic longitude
   local e = 23.439 - 0.00000036 * D                       -- mean obliquity of the ecliptic
-  local sin_L = sin(L)
-  local RA = atan2 (cos(e) * sin_L, cos(L))               -- right ascension (-180..+180)
+    
+  local sin_q, cos_q = sin(q), cos(q)   
+  local sin_L, cos_L = sin(L), cos(L)
+  local sin_e, cos_e = sin(e), cos(e)
+
+  -----------
+  --
+  -- 2018.02.04  correct quadrant error using vector rotation to calculate angular difference
+  --
+  -- local RA = atan2 (sin_RA, cos_RA)                       -- right ascension (-180..+180)
+  -- local noon = t - 240*(q - RA + longitude)               -- actual noon (seconds)
+  --
+  -- thanks to @a-lurker for diagnosing this problem:
+  -- see: http://forum.micasaverde.com/index.php/topic,50962.msg330177.html#msg330177
   
-  local noon = t - 240*(q - RA + longitude)               -- actual noon (seconds)
+  local sin_RA, cos_RA = cos_e * sin_L, cos_L
   
-  local sin_d = sin(e) * sin_L                            -- declination (sine of)
+  local s = sin_q * cos_RA - cos_q * sin_RA               -- vector rotation
+  local c = cos_q * cos_RA + sin_q * sin_RA
+  
+  local q_RA = atan2(s,c)                                 -- the (q - RA) difference
+  local noon = t - 240*(q_RA + longitude)                 -- actual noon (seconds)
+  
+  --
+  -----------
+  
+  local sin_d = sin_e * sin_L                            -- declination (sine of)
   local cos_d = cos(asin(sin_d))
   local sin_p = sin(latitude)
   local cos_p = cos(latitude)
 
   local rise, set
   local cos_w = (sin(-0.83) - sin_p * sin_d) / (cos_p * cos_d)
+  
+  local hour_angle
   if math.abs(cos_w) <= 1 then
-    local hour_angle = acos (cos_w) * 240                 -- hour angle (seconds)
-    rise = noon - hour_angle
-    set  = noon + hour_angle 
+    hour_angle = acos (cos_w)
+    local seconds = hour_angle * 240                      -- hour angle (seconds)
+    rise = noon - seconds
+    set  = noon + seconds 
   end
   
   local tz = time_zone()
@@ -253,7 +279,7 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   -- the timeout period is the time difference between now and target time
   -- as returned by the function target() which is local to each timer type.
   local timer = { 
-      job = function(_,_,j) 
+      job = function() 
         local next_time = target()
         if not first_time then
           pcall (fct, data, next_time)    -- make the call, ignore any errors
