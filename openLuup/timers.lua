@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2018.02.04",
+  VERSION       = "2018.02.05",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -97,6 +97,7 @@ local function time_zone()
   return os.difftime(now, os.time(os.date("!*t", now)))
 end
 
+-- Sol's RA, DEC, and mean longitude, at given epoch
 local function sol_ra_dec (t)
   
   local J2000 = os.time {year = 2000, month=1, day=1, hour = 12}  -- Julian 2000.0 epoch
@@ -123,6 +124,15 @@ end
 local function rise_set (date, latitude, longitude)
   
   local t = date or os.time()
+  if type (t) ~= "table" then t = os.date ("*t", t) end
+  t = os.time {year = t.year, month = t.month, day = t.day, hour = 12, isdst = false}  -- approximate noon
+    
+  local RA, DEC, q = sol_ra_dec(t)
+  
+  -- earth coordinates
+  latitude  = latitude  or luup.latitude
+  longitude = longitude or luup.longitude
+
   -----------
   --
   -- 2018.02.04  correct quadrant error using vector rotation to calculate angular difference
@@ -132,6 +142,8 @@ local function rise_set (date, latitude, longitude)
   -- thanks to @a-lurker for diagnosing this problem:
   -- see: http://forum.micasaverde.com/index.php/topic,50962.msg330177.html#msg330177
   
+  local sin_RA, cos_RA = sin(RA), cos(RA)
+  local sin_q,  cos_q  = sin(q),  cos(q)   
   
   local s = sin_q * cos_RA - cos_q * sin_RA               -- vector rotation
   local c = cos_q * cos_RA + sin_q * sin_RA
@@ -142,6 +154,8 @@ local function rise_set (date, latitude, longitude)
   --
   -----------
   
+  local sin_d = sin(DEC) 
+  local cos_d = cos(DEC)
   local sin_p = sin(latitude)
   local cos_p = cos(latitude)
 
@@ -423,6 +437,7 @@ return {
   TEST = {
     next_scheduled_time = next_scheduled_time,
     rise_set            = rise_set,
+    sol_ra_dec          = sol_ra_dec,
     sunrise_sunset      = sunrise_sunset,
     target_time         = target_time,
     time2unix           = time2unix,
