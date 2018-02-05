@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.01.29",
+  VERSION       = "2018.02.05",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -68,7 +68,8 @@ ABOUT = {
 -- 2018.01.11   refactor remote requests in advance of Vera security changes closing HTTP ports
 --              remove deprecated mirror functionality - instead use AltUI Data Storage Provider callbacks
 -- 2018.01.29   ignore static_data content in user_Data request using the (new) &ns=1 option
-
+-- 2018.02.05   use real action to trigger HouseMode change so that openLuup plugin triggers
+--              thanks @RHCPNG, see: http://forum.micasaverde.com/index.php/topic,56664.0.html
 
 local devNo                      -- our device number
 
@@ -485,8 +486,9 @@ local function UpdateHouseMode (Mode)
   local current = userdata.attributes.Mode
   if current ~= Mode then 
     if HouseModeMirror == '1' then
-      luup.attr_set ("Mode", Mode)            -- 2016.05.23, thanks @konradwalsh!
-      
+--      luup.attr_set ("Mode", Mode)            -- 2016.05.23, thanks @konradwalsh!
+      luup.call_action (SID.hag, "SetHouseMode", {Mode = Mode}) -- 2018.02.05, use real action, thanks @RHCPNG
+
     elseif HouseModeMirror == '2' then
       local now = os.time()
       luup.log "remote HouseMode differs from that set..."
@@ -851,7 +853,7 @@ local function register_AltUI_Data_Storage_Provider ()
     newJsonParameters = json.encode (newJsonParameters),
   }
 
-  luup.call_action ("urn:upnp-org:serviceId:altui1", "RegisterDataProvider", arguments, AltUI)
+  luup.call_action (SID.altui1, "RegisterDataProvider", arguments, AltUI)
 end
 
 

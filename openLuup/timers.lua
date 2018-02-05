@@ -70,6 +70,16 @@ local relative_time_format  = "([%+%-]?)" .. time_format .. "([rt]?)"
 
 local timenow = scheduler.timenow
 
+-- circular functions in degrees
+local dr = math.pi / 180
+
+local function sin(x)     return math.sin(x*dr)     end
+local function cos(x)     return math.cos(x*dr)     end
+
+local function asin(x)    return math.asin(x)/dr    end
+local function acos(x)    return math.acos(x)/dr    end
+local function atan2(y,x) return math.atan2(y,x)/dr end 
+
 -- utility function, string time to unix epoch
 -- time should be in the format: "yyyy-mm-dd hh:mm:ss"
 local function time2unix (time)
@@ -87,26 +97,8 @@ local function time_zone()
   return os.difftime(now, os.time(os.date("!*t", now)))
 end
 
--- sunrise, sunset times given date (and lat + long as globals)
--- see: http://aa.usno.navy.mil/faq/docs/SunApprox.php
--- rise and set are nil if the sun does not rise or set on that day.
-local function rise_set (date, latitude, longitude)
+local function sol_ra_dec (t)
   
-  -- earth coordinates
-  latitude  = latitude  or luup.latitude
-  longitude = longitude or luup.longitude
-
-  local dr = math.pi / 180
-  local function sin(x) return math.sin(x*dr) end
-  local function cos(x) return math.cos(x*dr) end
-
-  local function asin(x) return math.asin(x)/dr end
-  local function acos(x) return math.acos(x)/dr end
-  local function atan2(x,y) return math.atan2(x,y)/dr end 
-  
-  local t = date or os.time()
-  if type (t) ~= "table" then t = os.date ("*t", t) end
-  t = os.time {year = t.year, month = t.month, day = t.day, hour = 12, isdst = false}  -- approximate noon
   local J2000 = os.time {year = 2000, month=1, day=1, hour = 12}  -- Julian 2000.0 epoch
   local D = (t - J2000) / (24 * 60 * 60)                  -- days since Julian epoch "J2000.0"
 
@@ -116,21 +108,30 @@ local function rise_set (date, latitude, longitude)
   local L = q + 1.915 * sin (g) + 0.0200 * sin (2*g)      -- geocentric apparent ecliptic longitude
   local e = 23.439 - 0.00000036 * D                       -- mean obliquity of the ecliptic
     
-  local sin_q, cos_q = sin(q), cos(q)   
   local sin_L, cos_L = sin(L), cos(L)
   local sin_e, cos_e = sin(e), cos(e)
 
+  local RA  = atan2 (cos_e * sin_L, cos_L)
+  local DEC = asin  (sin_e * sin_L)
+  
+  return RA, DEC, q
+end
+  
+-- sunrise, sunset times given date (and lat + long, possibly defaulted to luup.xxx globals)
+-- see: http://aa.usno.navy.mil/faq/docs/SunApprox.php
+-- rise and set are nil if the sun does not rise or set on that day.
+local function rise_set (date, latitude, longitude)
+  
+  local t = date or os.time()
   -----------
   --
   -- 2018.02.04  correct quadrant error using vector rotation to calculate angular difference
   --
-  -- local RA = atan2 (sin_RA, cos_RA)                       -- right ascension (-180..+180)
   -- local noon = t - 240*(q - RA + longitude)               -- actual noon (seconds)
   --
   -- thanks to @a-lurker for diagnosing this problem:
   -- see: http://forum.micasaverde.com/index.php/topic,50962.msg330177.html#msg330177
   
-  local sin_RA, cos_RA = cos_e * sin_L, cos_L
   
   local s = sin_q * cos_RA - cos_q * sin_RA               -- vector rotation
   local c = cos_q * cos_RA + sin_q * sin_RA
@@ -141,8 +142,6 @@ local function rise_set (date, latitude, longitude)
   --
   -----------
   
-  local sin_d = sin_e * sin_L                            -- declination (sine of)
-  local cos_d = cos(asin(sin_d))
   local sin_p = sin(latitude)
   local cos_p = cos(latitude)
 
