@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2016.12.10",
+  VERSION       = "2018.02.06",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -31,6 +31,9 @@ local ABOUT = {
 -- 2016.11.18   convert parameter to string  in truncate
 -- 2016.12.05   add log file configurations parameters (thanks @logread)
 --              see: http://forum.micasaverde.com/index.php/topic,34476.msg300645.html#msg300645
+
+-- 2018.02.06   fixed missing tab in AltUI scene log (thanks @kartcon, @amg0)
+--              see: http://forum.micasaverde.com/index.php/topic,56847.0.html
 
 local socket  = require "socket"
 local lfs     = require "lfs"       -- for creating default log firectory
@@ -296,7 +299,7 @@ local function altui_logger (info)
   
   local function scene (scn)
     local now = formatted_time "%m/%d/%y %H:%M:%S"
-    local sfmt = "%02d\t%s Scene::RunScene running %d %s <%s>\n"
+    local sfmt = "%02d\t%s\tScene::RunScene running %d %s <%s>\n"   -- 2018.02.06 fixed second tab 
     local msg = sfmt: format (8, now, scn.id, scn.name, "0x0")
     write (msg)
     return msg    -- for testing

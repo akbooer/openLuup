@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.01.29",
+  VERSION       = "2018.02.06",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -51,7 +51,10 @@ local ABOUT = {
 -- 2017.02.05  add 'test' request (for testing!)
 -- 2017.11.08  modify 'test' reporting text
 
--- 2018.01.29  add ns parameter option to user_Data request to ignore static_data object (new Luup feature?)
+-- 2018.01.29  add &ns=1 parameter option to user_data request to ignore static_data object (new Luup feature?)
+-- 2018.02.05  move scheduler callback handler initialisation from init module to here
+-- 2018.02.06  add static request and internal static_data() function
+
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -121,6 +124,14 @@ local function iprequests_table ()
     info[#info + 1] = x
   end
   return info 
+end
+
+local function static_data ()
+  local sd = {}
+  for _, data in pairs (loader.static_data) do    -- bundle up the JSON data for all devices 
+    sd[#sd+1] = data
+  end
+  return sd
 end
 
 --
@@ -480,16 +491,24 @@ local function user_data (_,p)
       user_data2[a] = b
     end
     if p.ns ~= '1' then     -- 2018.01.29
-      local sd = {}
-      for _, data in pairs (loader.static_data) do    -- bundle up the JSON data for all devices 
-        sd[#sd+1] = data
-      end
-      user_data2.static_data = sd
+      user_data2.static_data = static_data()
     end
     mime_type = "application/json"
     result = json.encode (user_data2)
   end
-  return  result, mime_type
+  return result, mime_type
+end
+
+-- This returns the static data only (undocumented, but used in UI5 JavaScript code)
+-- see: http://forum.micasaverde.com/index.php/topic,35904.0.html
+local function static ()
+  local sd = {
+    category_filter = category_filter,
+    static_data = static_data(),
+  }
+  local mime_type = "application/json"
+  local result = json.encode (sd)
+  return result, mime_type
 end
 
 -- room
@@ -833,11 +852,12 @@ local function debug() luup.debugON = not luup.debugON; return "DEBUG = ".. tost
 local function exit () scheduler.stop() ; return ("requested openLuup exit at "..os.date()) end
 
 --
+-- INITIALISATION
+--
 -- export all Luup requests
 --
 
-return {
-  ABOUT = ABOUT,
+local luup_requests = {
   
   action              = action, 
   alive               = alive,
@@ -853,6 +873,7 @@ return {
   room                = room,
   scene               = scene,
   sdata               = sdata, 
+  static              = static,
   status              = status, 
   status2             = status, 
   user_data           = user_data, 
@@ -869,6 +890,20 @@ return {
   update              = update,             -- download openLuup version from GitHub
 }
 
+do -- CALLBACK HANDLERS
+  -- Register lu_* style (ie. luup system, not luup user) callbacks with HTTP server
+  local extendedList = {}
+  for name, proc in pairs (luup_requests) do 
+    extendedList[name]        = proc
+    extendedList["lu_"..name] = proc              -- add compatibility with old-style call names
+  end
+  server.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
+end
+
+luup_requests.ABOUT = ABOUT   -- add module info (NOT part of request list!)
+
+
+return luup_requests
 
 ------------
 

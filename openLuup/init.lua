@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.01.18",
+  VERSION       = "2018.02.05",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -41,6 +41,8 @@ local ABOUT = {
 -- 2017.06.14  add Server.WgetAuthorization for wget header basic authorization or URL-style
 
 -- 2018.01.18  add openLuup.Scenes prolog and epilog parameters
+-- 2018.02.05  move scheduler callback handler initialisation from here to request module
+
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -53,7 +55,6 @@ logs.banner (ABOUT)   -- for version control
 
 luup = require "openLuup.luup"       -- here's the GLOBAL luup environment
 
-local requests      = require "openLuup.requests"
 local server        = require "openLuup.server"
 local scheduler     = require "openLuup.scheduler"
 local timers        = require "openLuup.timers"
@@ -160,16 +161,6 @@ do -- set attributes, possibly decoding if required
       set_attr[a] = b
     end
   end
-end
-
-do -- CALLBACK HANDLERS
-  -- Register lu_* style (ie. luup system, not luup user) callbacks with HTTP server
-  local extendedList = {}
-  for name, proc in pairs (requests) do 
-    extendedList[name]        = proc
-    extendedList["lu_"..name] = proc              -- add compatibility with old-style call names
-  end
-  server.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
 end
 
 do -- STARTUP   
