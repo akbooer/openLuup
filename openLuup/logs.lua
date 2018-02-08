@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2018.02.06",
+  VERSION       = "2018.02.08",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -34,6 +34,8 @@ local ABOUT = {
 
 -- 2018.02.06   fixed missing tab in AltUI scene log (thanks @kartcon, @amg0)
 --              see: http://forum.micasaverde.com/index.php/topic,56847.0.html
+-- 2018.02.08   use actual scene table hex address rather than <0x0> in AltUI log
+
 
 local socket  = require "socket"
 local lfs     = require "lfs"       -- for creating default log firectory
@@ -300,7 +302,7 @@ local function altui_logger (info)
   local function scene (scn)
     local now = formatted_time "%m/%d/%y %H:%M:%S"
     local sfmt = "%02d\t%s\tScene::RunScene running %d %s <%s>\n"   -- 2018.02.06 fixed second tab 
-    local msg = sfmt: format (8, now, scn.id, scn.name, "0x0")
+    local msg = sfmt: format (8, now, scn.id, scn.name, tostring(scn): match "0x%x+")
     write (msg)
     return msg    -- for testing
   end

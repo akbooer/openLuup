@@ -1,7 +1,7 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2018.01.11",
-  DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
+  VERSION       = "2018.02.08",
+  DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
@@ -67,20 +67,20 @@ local ABOUT = {
 -- 2017.11.14   add extra icon path alias
 
 -- 2018.01.11   remove edit of port_3480 in URL.path as per 2016.09.16 above, in advance of Vera port updates
+-- 2018.02.07   some functionality exported to new openluup.request_api module (cleaner interface)
+
 
 local socket    = require "socket"
 local url       = require "socket.url"
 local http      = require "socket.http"
 local https     = require "ssl.https"
-local logs      = require "openLuup.logs"
-local devices   = require "openLuup.devices"            -- to access 'dataversion'
-local scheduler = require "openLuup.scheduler"
-local json      = require "openLuup.json"               -- for unit testing only
-local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for CGI processing
-local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
-local vfs       = require "openLuup.virtualfilesystem"
 local ltn12     = require "ltn12"                       -- for wget handling
 local mime      = require "mime"                        -- for basic authorization in wget
+
+local logs      = require "openLuup.logs"
+local scheduler = require "openLuup.scheduler"
+local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
+local servlet   = require "openLuup.servlet"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -97,36 +97,10 @@ local URL_AUTHORIZATION         = true      -- use URL rather than Authorization
 
 -- TABLES
 
-local mimetype = tables.mimetypes
 local status_codes = tables.status_codes
 
 local iprequests = {}     -- log of incoming requests {ip = ..., mac = ..., time = ...} indexed by ip
 
-local http_handler = {    -- the data_request?id=... handler dispatch list
-  TEST = {
-      callback = function (...) return json.encode {...}, mimetype.json end    -- just for testing
-    },
-  }
-  
-local function file_type (filename)
-  return filename: match "%.([^%.]+)$"     -- extract extension from filename
-end
-
--- GLOBAL functions
-
-local function mime_file_type (filename)
-  return mimetype[file_type (filename) or '']                        -- returns nil if unknown
-end
-
--- add callbacks to the HTTP handler dispatch list  
--- and remember the device context in which it's called
--- fixed callback context - thanks @reneboer
--- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
-local function add_callback_handlers (handlers, devNo)
-  for name, proc in pairs (handlers) do     
-    http_handler[name] = {callback = proc, devNo = devNo}
-  end
-end
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
 local myIP = (
@@ -165,15 +139,6 @@ local function parse_parameters (query)
   return p
 end
 
--- turn a content string into a one-shot iterator, returning same (for WSAPI-style handler returns)
-local function make_iterator (content)      -- one-shot iterator (no need for coroutines!)
-  return function ()
-    local x = content
-    content = nil
-    return x
-  end
-end
-
 -- turn an iterator into a single content string
 local function make_content (iterator)
   local content = {}
@@ -189,116 +154,9 @@ end
 
 ----------------------------------------------------
 --
--- REQUEST HANDLER: /data_request?id=... queries only (could be GET or POST)
---
-
-local function data_request (request)
-  local ok, mtype
-  local status = 501
-  local parameters = request.parameters   
-  local id = parameters.id or '?'
-  local content_type
-  local response = "No handler for data_request?id=" .. id     -- 2016.05.17   log "No handler" responses
-  
-  local handler = http_handler[id]
-  if handler and handler.callback then 
-    local format = parameters.output_format
-    parameters.id = nil               -- don't pass on request id to user...
-    parameters.output_format = nil    -- ...or output format in parameters
-    -- fixed callback request name - thanks @reneboer
-    -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
-    local request_name = id: gsub ("^l[ru]_", '')     -- remove leading "lr_" or "lu_"
-    ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request_name, parameters, format)
-    if ok then
-      status = 200
-      response = tostring (response)      -- force string type
-      content_type = mtype or content_type
-    else
-      status = 500
-      response = "error in callback [" .. id .. "] : ".. (response or 'nil')
-    end
-  end
-  
-  if status ~= 200 then
-    _log (response or 'not a data request')
-  end
-  
-  -- WSAPI-style return parameters: status, headers, iterator
-  local response_headers = {
---      ["Content-Length"] = #response,     -- with no length, allow chunked transfers
-      ["Content-Type"]   = content_type,
-    }
-  return status, response_headers, make_iterator(response)
-end
-
-
-----------------------------------------------------
---
--- REQUEST HANDLER: file requests
---
-
-local function http_file (request)
-  local path = request.URL.path or ''
-  if request.path_list.is_directory then 
-    path = path .. "index.html"                     -- look for index.html in given directory
-  end
-  
-  path = path: gsub ("%.%.", '')                    -- ban attempt to move up directory tree
-  path = path: gsub ("^/", '')                      -- remove filesystem root from path
-  path = path: gsub ("luvd/", '')                   -- no idea how this is handled in Luup, just remove it!
-  path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
-  path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
-  path = path: gsub ("cmh/skins/default/img/icons/", "icons/")                  -- 2017.11.14 
-  
-  local content_type = mime_file_type (path)
-  local content_length
-  local response
-  local status = 500
-  
-  local f = io.open(path,'rb')                      -- 2016.03.05  'b' for Windows, thanks @vosmont
-    or io.open ("../cmh-lu/" .. path, 'rb')         -- 2016.02.24  also look in /etc/cmh-lu/
-    or io.open ("files/" .. path, 'rb')             -- 2016.06.09  also look in files/
-    or io.open ("openLuup/" .. path, 'rb')          -- 2016.05.25  also look in openLuup/
-    or vfs.open (path, 'rb')                        -- 2016.06.01  also look in virtualfilesystem
-  
-  if f then 
-    response = (f: read "*a") or ''                   -- should perhaps chunk long files
-    f: close ()
-    status = 200
-    
-    -- @explorer:  2016.04.14, Workaround for SONOS not liking chunked MP3 and some headers.       
-    if file_type (path) == "mp3" then       -- 2016.04.28  @akbooer, change this to apply to ALL .mp3 files
-      content_length = #response            -- specifying Content-Length disables chunked sending
-    end
-  
-  else
-    status = 404
-    response = "file not found:" .. path  
-  end
- 
-  if status ~= 200 then 
-    _log (response) 
-  end
-  
-  local response_headers = {
-      ["Content-Length"] = content_length,
-      ["Content-Type"]   = content_type,
-    }
-  
-  return status, response_headers, make_iterator(response)
-end
-
-
-----------------------------------------------------
---
 -- return a request object containing all the information a handler needs
 -- only required parameter is request_URI, others have sensible defaults.
-  
--- define the appropriate handler depending on request type
-local selector = {data_request = data_request}
-for _,prefix in pairs (tables.cgi_prefix) do
-  selector[prefix] = wsapi.cgi    -- add those defined in the server tables
-end
+ 
 
 local self_reference = {
   ["localhost"] = true,
@@ -307,7 +165,9 @@ local self_reference = {
   [myIP] = true,
 }
 
-local function request_object (request_URI, headers, post_content, method, http_version)
+local function request_object (request_URI, headers, post_content, method, http_version, sock, ip)
+  
+  local request_start = socket.gettime()
   
   if not (request_URI: match "^https?://") 
   or (request_URI: match "^//") then 
@@ -335,10 +195,9 @@ local function request_object (request_URI, headers, post_content, method, http_
   end
 
   local path_list = url.parse_path (URL.path) or {}   -- split out individual parts of the path
-  local handler   = selector [path_list[1]] or http_file
   local internal  = self_reference [URL.host] and URL.port == "3480"  -- 2016-03-16 check for port #, thanks @reneboer
 
-  return setmetatable ({
+  return {
       URL           = URL,
       headers       = headers or {},
       post_content  = post_content or '',
@@ -347,8 +206,10 @@ local function request_object (request_URI, headers, post_content, method, http_
       path_list     = path_list,
       internal      = internal,
       parameters    = parameters or {},
-
-      handler = handler },{__call = handler})    -- allows the request object to be called directly
+      request_start = request_start,
+      sock          = sock,
+      ip            = ip,
+    }
 end
 
 
@@ -365,7 +226,7 @@ local function wget (request_URI, Timeout, Username, Password)
     
     -- INTERNAL request
     local headers, iterator
-    status, headers, iterator = request ()            -- make the request call
+    status, headers, iterator = servlet.execute (request) -- make the request call
     result = make_content (iterator)                  -- build the return string
   
   else
@@ -474,7 +335,7 @@ local function http_response (status, headers, iterator)
   headers = table.concat (h, crlf) 
   
   return headers, response, chunked
- end
+end
   
 -- simple send
 local function send (sock, data, ...)
@@ -485,7 +346,7 @@ local function send (sock, data, ...)
   if n then
     _log (("...only %d bytes sent"): format (n))
   end
-  return ok, err
+  return ok, err, 0   -- 2018.02.07  add 0 chunks!
 end
 
 -- specific encoding for chunked messages (trying to avoid long string problem)
@@ -508,7 +369,8 @@ local function send_chunked (sock, x, n)
 end
 
 -- build response and send it
-local function respond (sock, ...)
+local function respond (request, ...)
+  local sock = request.sock
 
   local headers, response, chunked = http_response (...)
   send (sock, headers)
@@ -519,13 +381,13 @@ local function respond (sock, ...)
   else
     ok, err, nc = send (sock, response)
   end
-  return #response, nc or 0
+  
+  local t = math.floor (1000*(socket.gettime() - request.request_start))
+  local completed = "request completed (%d bytes, %d chunks, %d ms) %s"
+  _log (completed:format (#response, nc, t, tostring(sock)))
+  
 end
  
----------
---
--- handle each client request by running an asynchronous job
---
 
 -- convert headers to table with name/value pairs, and CamelCaps-style names
 local function http_read_headers (sock)
@@ -542,96 +404,45 @@ local function http_read_headers (sock)
   return headers, err
 end
 
--- process client request
-local function client_request (sock)
-  local request                         -- the request object
-  local start_time = socket.gettime()   -- remember when we started (for timeout)
- 
-  -- receive client request
-  local function receive ()
-    local headers, post_content
-    local line, err = sock:receive()        -- read the request line
-    if not err then  
-      _log (line .. ' ' .. tostring(sock))
-      
-      -- Request-Line = Method SP Request-URI SP HTTP-Version CRLF
-      local method, request_URI, http_version = line: match "^(%u+)%s+(.-)%s+(HTTP/%d%.%d)%s*$"
-      
-      headers, err = http_read_headers (sock)
-      if method == "POST" then
-        local length = tonumber(headers["Content-Length"]) or 0
-        post_content, err = sock:receive(length)
-      end
-    
-      request = request_object (request_URI, headers, post_content, method, http_version)
-       
-      if not (method == "GET" or method == "POST") then
-        err = "Unsupported HTTP request:" .. method
-      end
-    
-    else
-      sock: close ()
-      _log (("socket closed: %s %s"): format (err or '?', tostring (sock)))
-    end
-    return err
-  end
+-- receive client request
+local function receive (sock)
+  local request                               -- the request object
+  local headers, post_content
   
-  -- special scheduling parameters used by the job 
-  local Timeout       -- (s)  respond after this time even if no data changes 
-  local MinimumDelay  -- (ms) initial delay before responding
-  local DataVersion   --      previous data version value
-  
-  local function job ()
-    
-    -- initial delay (possibly) 
-    if MinimumDelay and MinimumDelay > 0 then 
-      local delay = MinimumDelay
-      MinimumDelay = nil                                        -- don't do it again!
-      return scheduler.state.WaitingToStart, delay
-    end
-    
-    -- DataVersion update or timeout (possibly)
-    if DataVersion 
-      and not (devices.dataversion.value > DataVersion)         -- no updates yet
-      and socket.gettime() - start_time < (Timeout or 0) then   -- and not timed out
-        return scheduler.state.WaitingToStart, 0.5              -- wait a bit and try again
-    end
-    
-    -- finally (perhaps) execute the request
-    local n, nc = respond (sock, request ())              -- execute and respond 
-    
-    local t = math.floor (1000*(socket.gettime() - start_time))
-    local completed = "request completed (%d bytes, %d chunks, %d ms) %s"
-    _log (completed:format (n, nc, t, tostring(sock)))
-    
-    return scheduler.state.Done, 0  
-  end
-  
-  
-  -- client_request ()
-  local ip = sock:getpeername()                         -- who's asking?
-  ip = ip or '?'
+  local ip = sock:getpeername() or '?'        -- who's asking?
   iprequests [ip] = {ip = ip, date = os.time(), mac = "00:00:00:00:00:00"} --TODO: real MAC address - how?
-  local err = receive ()
-  if not err then
+  
+  local line, err = sock:receive()        -- read the request line
+  if not err then  
+    _log (line .. ' ' .. tostring(sock))
     
-    -- /data_request?DataVersion=...&MinimumDelay=...&Timeout=... parameters have special significance
-    if request.handler == data_request then      
-      local p = request.parameters
-      Timeout      = tonumber (p.Timeout)                     -- seconds
-      MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3    -- milliseconds
-      DataVersion  = tonumber (p.DataVersion)                 -- timestamp
+    -- Request-Line = Method SP Request-URI SP HTTP-Version CRLF
+    local method, request_URI, http_version = line: match "^(%u+)%s+(.-)%s+(HTTP/%d%.%d)%s*$"
+    
+    headers, err = http_read_headers (sock)
+    if method == "POST" then
+      local length = tonumber(headers["Content-Length"]) or 0
+      post_content, err = sock:receive(length)
     end
-
-    --  err, msg, jobNo = scheduler.run_job ()
-    local _, _, jobNo = scheduler.run_job ({job = job}, {}, nil)  -- nil device number
-    if jobNo and scheduler.job_list[jobNo] then
-      local info = "job#%d :HTTP request from %s"
-      scheduler.job_list[jobNo].type = info: format (jobNo, tostring(ip))
+  
+    request = request_object (request_URI, headers, post_content, method, http_version, sock, ip)
+     
+    if not (method == "GET" or method == "POST") then
+      err = "Unsupported HTTP request:" .. method
     end
+  
+  else
+    sock: close ()
+    _log (("socket closed: %s %s"): format (err or '?', tostring (sock)))
   end
-  return err
+  return request, err
 end
+  
+
+---------
+--
+-- handle each client request by running an asynchronous job
+--
 
 --
 -- this is a job for each new client connection
@@ -642,7 +453,12 @@ local function new_client (sock)
   local expiry
   
   local function incoming (sock)
-    local err = client_request (sock)                  -- launch new job to handle request 
+    local request, err = receive (sock)                       -- get the request         
+    if not err then
+      --  returns are as in err, msg, jobNo = scheduler.run_job ()
+      local _, _, _ = servlet.execute (request, respond)
+    end
+    
     expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER      -- update socket expiry 
     if err and (err ~= "closed") then 
       _log ("read error: " ..  tostring(err) .. ' ' .. tostring(sock))
@@ -664,10 +480,11 @@ local function new_client (sock)
     end
   end
   
+  -- new_client ()
   local ip = sock:getpeername() or '?'                    -- who's asking?
   local connect = "new client connection from %s: %s"
   _log (connect:format (ip, tostring(sock)))
-  expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER         -- set initial socket expiry 
+  expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER    -- set initial socket expiry 
   sock:settimeout(nil)                                    -- this is a timeout on the HTTP read
 --  sock:settimeout(10)                                   -- this is a timeout on the HTTP read
   sock:setoption ("tcp-nodelay", true)                    -- trying to fix timeout error on long strings
@@ -724,13 +541,9 @@ return {
     
     TEST = {          -- for testing only
       CamelCaps       = CamelCaps,
-      data_request    = data_request,
-      http_file       = http_file,
       http_response   = http_response,
       make_content    = make_content,
-      make_iterator   = make_iterator,
       request_object  = request_object,
-      wsapi_cgi       = wsapi.cgi,
     },
     
     -- constants
@@ -740,7 +553,7 @@ return {
     iprequests = iprequests,
     
     --methods
-    add_callback_handlers = add_callback_handlers,
+    add_callback_handlers = servlet.new,
     wget = wget,
     send = send,
     start = start,
