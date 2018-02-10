@@ -67,7 +67,7 @@ local ABOUT = {
 -- 2017.11.14   add extra icon path alias
 
 -- 2018.01.11   remove edit of port_3480 in URL.path as per 2016.09.16 above, in advance of Vera port updates
--- 2018.02.07   some functionality exported to new openluup.request_api module (cleaner interface)
+-- 2018.02.07   some functionality exported to new openluup.servlet module (cleaner interface)
 
 
 local socket    = require "socket"

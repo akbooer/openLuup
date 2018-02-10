@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.02.05",
+  VERSION       = "2018.02.09",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -70,6 +70,8 @@ ABOUT = {
 -- 2018.01.29   ignore static_data content in user_Data request using the (new) &ns=1 option
 -- 2018.02.05   use real action to trigger HouseMode change so that openLuup plugin triggers
 --              thanks @RHCPNG, see: http://forum.micasaverde.com/index.php/topic,56664.0.html
+-- 2018.02.09   continuing updates for Vera security changes (/port_3480)
+
 
 local devNo                      -- our device number
 
@@ -752,7 +754,7 @@ end
 --
 local function generic_action (serviceId, name)
   local basic_request = table.concat {
-      "http://", ip, ":3480/data_request?id=action",
+      "http://", ip, "/port_3480/data_request?id=action",
       "&serviceId=", serviceId,
       "&action=", name,
     }

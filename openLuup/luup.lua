@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2017.08.08",
+  VERSION       = "2018.02.10",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -46,6 +46,8 @@ local ABOUT = {
 -- 2017.05.23  allow string or number parameter on call_delay()
 -- 2017.06.08  fix data parameter error in call_timer (introduced in type-checking)
 -- 2017.06.19  correct first word of GC100 code (thanks again @a-lurker)
+
+-- 2018.02.10  ensure valid error in luup.call_action() even if missing parameters
 
 local logs          = require "openLuup.logs"
 
@@ -463,6 +465,8 @@ local function call_action (service, action, arguments, device)
   end
   
   local devNo = tonumber (device) or 0
+  service = service or '?'                -- 2018.02.10  ensure valid error even if missing parameters
+  action = action or '?'
   _log (("%d.%s.%s "): format (devNo, service, action), "luup.call_action")
   
   local function missing_action ()
