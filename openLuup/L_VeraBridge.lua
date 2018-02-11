@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.02.09",
+  VERSION       = "2018.02.11",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -71,6 +71,7 @@ ABOUT = {
 -- 2018.02.05   use real action to trigger HouseMode change so that openLuup plugin triggers
 --              thanks @RHCPNG, see: http://forum.micasaverde.com/index.php/topic,56664.0.html
 -- 2018.02.09   continuing updates for Vera security changes (/port_3480)
+-- 2018.02.11   fix recent SID error in RegisterDataProvider (thanks @Buxton)
 
 
 local devNo                      -- our device number
@@ -855,7 +856,7 @@ local function register_AltUI_Data_Storage_Provider ()
     newJsonParameters = json.encode (newJsonParameters),
   }
 
-  luup.call_action (SID.altui1, "RegisterDataProvider", arguments, AltUI)
+  luup.call_action (SID.altui, "RegisterDataProvider", arguments, AltUI)
 end
 
 
