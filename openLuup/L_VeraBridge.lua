@@ -72,7 +72,7 @@ ABOUT = {
 --              thanks @RHCPNG, see: http://forum.micasaverde.com/index.php/topic,56664.0.html
 -- 2018.02.09   continuing updates for Vera security changes (/port_3480)
 -- 2018.02.11   fix recent SID error in RegisterDataProvider (thanks @Buxton)
-
+--              and /port_3480/ separator
 
 local devNo                      -- our device number
 
@@ -669,7 +669,7 @@ function GetVeraFiles ()
 -- TODO: does this work with new port_3480 access?
   local function get_files_from (path, dest, url_prefix)
     dest = dest or '.'
-    url_prefix = url_prefix or "/port_3480"
+    url_prefix = url_prefix or "/port_3480/"
     luup.log ("getting files from " .. path)
     local info = get_directory (path)
     for x in info: gmatch "%C+" do
@@ -689,8 +689,8 @@ function GetVeraFiles ()
 
   -- device, service, lua, json, files...
   lfs.mkdir "files"
-  get_files_from ("/etc/cmh-ludl/", "files", "/port_3480")
-  get_files_from ("/etc/cmh-lu/", "files", "/port_3480")
+  get_files_from ("/etc/cmh-ludl/", "files", "/port_3480/")
+  get_files_from ("/etc/cmh-lu/", "files", "/port_3480/")
   luup.log "...end of device files"
   
   -- icons
