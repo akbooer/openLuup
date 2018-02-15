@@ -1,7 +1,7 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2018.02.08",
-  DESCRIPTION   = "HTTP servlet API - interfaces to data request, CGI and file services",
+  VERSION       = "2018.02.15",
+  DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
@@ -39,7 +39,7 @@ The WSAPI-style functions are used by the tasks, but also called directly by the
 
 -- 2018.02.07   functionality extracted from openluup.server module and refactored
 --              CGIs and file requests now execute in the <run> phase, rather than <job> (so faster)
-
+-- 2018.02.15   For file requests, also look in ./www/ (a better place for web pages)
 
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"            -- to access 'dataversion'
@@ -207,7 +207,8 @@ local function http_file (request)
   local f = io.open(path,'rb')                      -- 2016.03.05  'b' for Windows, thanks @vosmont
     or io.open ("../cmh-lu/" .. path, 'rb')         -- 2016.02.24  also look in /etc/cmh-lu/
     or io.open ("files/" .. path, 'rb')             -- 2016.06.09  also look in files/
-    or io.open ("openLuup/" .. path, 'rb')          -- 2016.05.25  also look in openLuup/
+    or io.open ("www/" .. path, 'rb')               -- 2018.02.15  also look in files/
+    or io.open ("openLuup/" .. path, 'rb')          -- 2016.05.25  also look in openLuup/ (for plugins page)
     or vfs.open (path, 'rb')                        -- 2016.06.01  also look in virtualfilesystem
   
   if f then 

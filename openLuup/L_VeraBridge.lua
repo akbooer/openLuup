@@ -73,6 +73,7 @@ ABOUT = {
 -- 2018.02.09   continuing updates for Vera security changes (/port_3480)
 -- 2018.02.11   fix recent SID error in RegisterDataProvider (thanks @Buxton)
 --              and /port_3480/ separator
+--              qdd TEMP COPY suffix to scenes by action call
 
 local devNo                      -- our device number
 
@@ -724,7 +725,8 @@ function GetVeraScenes()
   if VeraScenes then
     for _,s in pairs (VeraScenes) do
       luup.log (s.name)
-      -- name, embedded Lua code, and timers are unchanged
+      s.name = s.name .. " TEMP COPY"
+      -- embedded Lua code, and timers are unchanged
       s.paused = "1"                            -- don't want this to run by default
       s.room = VeraRoom                         -- default place for this Vera
       s.id = s.id + OFFSET + 1e5     -- BIG offset for these scenes

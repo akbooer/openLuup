@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.01.11",
+  VERSION       = "2018.02.15",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -196,6 +196,15 @@ local I_openLuup_impl = [[
       -- note that there's no code, but the action has return parameters (see service file)
       </run>
     </action>
+    
+    <action>
+      <serviceId>openLuup</serviceId>
+      <name>SetHouseMode</name>
+      <run>
+      local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+      luup.call_action (sid, "SetHouseMode", lul_settings)
+      </run>
+    </action>
   
   </actionList>
 </implementation>
@@ -247,6 +256,16 @@ local S_openLuup_svc = [[
       </argumentList>
     </action>
   
+    <action>
+    <name>SetHouseMode</name>
+    <argumentList>
+      <argument>
+        <name>Mode</name>
+        <direction>in</direction>
+      </argument>
+    </argumentList>
+  </action>
+
   </actionList>
 </scpd>
 ]]
