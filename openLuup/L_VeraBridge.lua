@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.02.11",
+  VERSION       = "2018.02.17",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -74,6 +74,10 @@ ABOUT = {
 -- 2018.02.11   fix recent SID error in RegisterDataProvider (thanks @Buxton)
 --              and /port_3480/ separator
 --              qdd TEMP COPY suffix to scenes by action call
+-- 2018.02.17   Redirect any SID.hag action to the remote Vera, device 0
+--              useful (perhaps) for things like SetHouseMode and SetGeoFence
+--              thanks @RHCPNG, see: http://forum.micasaverde.com/index.php/topic,57834.0.html
+
 
 local devNo                      -- our device number
 
@@ -178,6 +182,7 @@ local function local_by_remote_id (id)
 end
 
 local function remote_by_local_id (id)
+  if id == devNo then return 0 end  -- point to remote Vera device 0
   return Zwave[id] or id - OFFSET
 end
 
@@ -764,6 +769,11 @@ local function generic_action (serviceId, name)
   local function job (lul_device, lul_settings)
     local devNo = remote_by_local_id (lul_device)
     if not devNo then return end        -- not a device we have cloned
+
+    if devNo == 0 and serviceId ~= SID.hag then  -- 2018.02.17  only pass on hag requests to device #0
+      return 
+    end
+  
     local request = {basic_request, "DeviceNum=" .. devNo }
     for a,b in pairs (lul_settings) do
       if a ~= "DeviceNum" then        -- thanks to @CudaNet for finding this bug!
@@ -783,7 +793,7 @@ local function generic_action (serviceId, name)
   if serviceId == SID.gateway and name == "remote_ip" then     -- 2017.02.22  add remote_ip request
     return {serviceId = serviceId, name = name, extra_returns = {IP = ip} }
   end
-  
+    
   return {run = job}    -- TODO: job or run ?
 end
 
@@ -823,6 +833,7 @@ end
 local function register_AltUI_Data_Storage_Provider ()
   local MirrorCallback    = "HTTP_VeraBridgeMirror_" .. ip
   local MirrorCallbackURL = "http://127.0.0.1:3480/data_request?id=lr_" .. MirrorCallback
+  -- the use of :3480 above is correct, since this is a localhost openLuup request
   
   local AltUI
   for devNo, d in pairs (luup.devices) do

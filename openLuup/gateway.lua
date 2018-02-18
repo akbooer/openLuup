@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2018.01.29",
+  VERSION       = "2018.02.16",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -59,7 +59,10 @@ logs.banner (ABOUT)   -- for version control
 
 local Device_0 = devutil.new (0)
 
--- No need for an implementation file - we can define all the services right here
+-- No need for an implementation file - we can define all the services right here.
+-- Note that all the action run/job functions are called with the following parameters:
+--   function (lul_device, lul_settings, lul_job, lul_data)
+
 
 local SID = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
 
@@ -246,7 +249,7 @@ Device_0.services[SID].actions =
            
             if j.InstalledPlugins2 then
               for plug_id, info in pairs (j.InstalledPlugins2) do
-                _log ("InstalledPlugins2 **************" .. plug_id)
+                _log ("InstalledPlugins2 ******* NOT IMPLEMENTED *******" .. plug_id)
                 _log (json.encode(info))
                 _log "**********************"
               end

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2018.02.08",
+  VERSION       = "2018.02.17",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -553,7 +553,7 @@ return {
     iprequests = iprequests,
     
     --methods
-    add_callback_handlers = servlet.new,
+    add_callback_handlers = servlet.add_callback_handlers,
     wget = wget,
     send = send,
     start = start,

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2018.02.15",
+  VERSION       = "2018.02.17",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -31,7 +31,9 @@ Requests are of three basic types:
   - Lua WSAPI CGIs            enumerated in the cgi_prefix section of the servertables.lua file
   - file requests             anything not recognised as one of the above, and on defined file paths
 
-The new() function essentially converts a given luup-stype callback handler, which simply returns response and possibly mime-type, into both a function with WSAPI-style returns of status, headers, and iterator function, and also a task which may be executed by the scheduler.  These are essentially, servlets.  Tasks which service data_requests have <run> and <job> phases, but CGIs and file requests are immediately executed in the <run> phase only, so do not appear as scheduler jobs (thus improving response times.)
+The add_callback_handlers () function registers a list of new request callback handler.
+
+The execute() function essentially converts a given luup-style callback handler, which simply returns response and possibly mime-type, into both a function with WSAPI-style returns of status, headers, and iterator function, and also a task which may be executed by the scheduler.  These are essentially, servlets.  Tasks which service data_requests have <run> and <job> phases, but CGIs and file requests are immediately executed in the <run> phase only, so do not appear as scheduler jobs (thus improving response times.)
 
 The WSAPI-style functions are used by the tasks, but also called directly by the wget() client call which processes their reponses.  If a respond() function is given to the execute() call, then the servelet is scheduled.
 
@@ -295,7 +297,7 @@ return {
     --methods
     
     execute = execute,
-    new = add_callback_handlers,
+    add_callback_handlers = add_callback_handlers,
   }
 
 -----
