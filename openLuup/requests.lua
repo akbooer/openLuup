@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.02.06",
+  VERSION       = "2018.02.18",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -54,7 +54,7 @@ local ABOUT = {
 -- 2018.01.29  add &ns=1 parameter option to user_data request to ignore static_data object (new Luup feature?)
 -- 2018.02.05  move scheduler callback handler initialisation from init module to here
 -- 2018.02.06  add static request and internal static_data() function
-
+-- 2018.02.18  implement lu_invoke (partially)
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -192,17 +192,60 @@ end
 
 
 -- invoke
---This request shows the list of devices and the actions they support through the UPnP services specified in their UPnP device description file. 
+--This request shows the list of devices and the actions they support 
+--through the UPnP services specified in their UPnP device description file. 
 --Only the actions with a star (*) preceding their name are implemented.
+-- [NB: here in openLuup, only implemented actions are displayed at all]
 --
 --    http://ip_address:3480/data_request?id=invoke
 --    http://ip_address:3480/data_request?id=invoke&DeviceNum=6
 --    http://ip_address:3480/data_request?id=invoke&UDN=uuid:4d494342-5342-5645-0002-000000000002 
 --
-local function invoke ()
-  --TODO: lu_invoke
-  error "*** invoke not yet implemented ***"
-  return ''
+local function invoke (_, p)
+  -- produces a page with hot links to each device and scene, or, ...
+  -- ...if a device number is given, produces a list of device services and actions
+  local hag   = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+  
+  local html    = [[<!DOCTYPE html> <head><title>Remote Control</title></head> <body>%s</body> </html>]]
+  local Device  = [[<a href="data_request?id=lu_invoke&DeviceNum=%d"> #%d %s</a><br>]]
+  local Scene   = [[<a href="data_request?id=action&serviceId=%s&action=RunScene&SceneNum=%d"> #%d %s</a><br>]]  
+  local Action  = [[<a href="data_request?id=action&DeviceNum=%d&serviceId=%s&action=%s">%s</a><br>]]
+  local Service = [[<br><i>%s</i><br>]]
+    
+  local function spairs (x, fsort)  -- sorted pairs iterator
+      local I = {}
+      for n in pairs(x) do I[#I+1] = n end
+      table.sort(I, fsort)
+      local i = 0
+      return function () i = i+1; return I[i], x[I[i]] end 
+  end
+
+  local body
+  local D, S = {}, {}
+  local dev = luup.devices[tonumber(p.DeviceNum)]
+  
+  if dev then
+    for s, srv in spairs (dev.services) do
+      S[#S+1] = Service: format (s)
+      for a in spairs (srv.actions) do
+        S[#S+1] = Action: format (p.DeviceNum, s, a, a)
+      end
+    end
+    body = table.concat (S, '\n')
+  else
+    -- TODO: sort by name and parent/child structure
+    for n,d in spairs(luup.devices) do
+      D[#D+1] = Device:format (n, n, d.description)
+    end
+    
+    local S = {}
+    for n,s in spairs(luup.scenes) do
+      S[#S+1] = Scene:format (hag, n, n, s.description)
+    end
+    
+    body = table.concat {table.concat (D, '\n'), "<br>Scenes:<br>", table.concat (S, '\n')}
+  end
+  return html: format (body)
 end
 
 -- Returns the recent IP requests in order by most recent first, [ACTUALLY, IT'S NOT ORDERED]
