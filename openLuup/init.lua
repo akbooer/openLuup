@@ -42,15 +42,17 @@ local ABOUT = {
 
 -- 2018.01.18  add openLuup.Scenes prolog and epilog parameters
 -- 2018.02.05  move scheduler callback handler initialisation from here to request module
+-- 2018.02.19  add current directory to startup log
 
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
 local logs = require "openLuup.logs"
+local lfs  = require "lfs"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-_log ('',":: openLuup STARTUP ")
+_log (lfs.currentdir(),":: openLuup STARTUP ")
 logs.banner (ABOUT)   -- for version control
 
 luup = require "openLuup.luup"       -- here's the GLOBAL luup environment

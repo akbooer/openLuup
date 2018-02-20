@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.02.17",
+  VERSION       = "2018.02.20",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -77,6 +77,7 @@ ABOUT = {
 -- 2018.02.17   Redirect any SID.hag action to the remote Vera, device 0
 --              useful (perhaps) for things like SetHouseMode and SetGeoFence
 --              thanks @RHCPNG, see: http://forum.micasaverde.com/index.php/topic,57834.0.html
+-- 2018.02.20   include remote HouseMode in bridge panel DisplayLine2
 
 
 local devNo                      -- our device number
@@ -488,9 +489,15 @@ local function UpdateVariables(devices)
 end
 
 -- update HouseMode variable and, possibly, the actual openLuup Mode
+local modeName = {"Home", "Away", "Night", "Vacation"}
+local displayLine = "%s [%s]"
+
 local function UpdateHouseMode (Mode)
+  Mode = tonumber(Mode)
+  local status = modeName[Mode] or '?'
   Mode = tostring(Mode)
-  setVar ("HouseMode", Mode)                  -- 2016.05.15, thanks @logread!
+  setVar ("HouseMode", Mode)                                            -- 2016.05.15, thanks @logread!
+  setVar ("DisplayLine2", displayLine: format(ip, status), SID.altui)   -- 2018.02.20
   
   local current = userdata.attributes.Mode
   if current ~= Mode then 
@@ -930,7 +937,6 @@ function init (lul_device)
   end
   
   setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
-  setVar ("DisplayLine2", ip, SID.altui)
   
   if Ndev > 0 or Nscn > 0 then
 --    watch_mirror_variables (Mirrored)         -- set up variable watches for mirrored devices

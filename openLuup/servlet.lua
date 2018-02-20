@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2018.02.17",
+  VERSION       = "2018.02.19",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -42,6 +42,7 @@ The WSAPI-style functions are used by the tasks, but also called directly by the
 -- 2018.02.07   functionality extracted from openluup.server module and refactored
 --              CGIs and file requests now execute in the <run> phase, rather than <job> (so faster)
 -- 2018.02.15   For file requests, also look in ./www/ (a better place for web pages)
+-- 2018.02.19   apply directory path aliases from server tables (rather than hard-coded)
 
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"            -- to access 'dataversion'
@@ -197,9 +198,15 @@ local function http_file (request)
   path = path: gsub ("%.%.", '')                    -- ban attempt to move up directory tree
   path = path: gsub ("^/", '')                      -- remove filesystem root from path
   path = path: gsub ("luvd/", '')                   -- no idea how this is handled in Luup, just remove it!
-  path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
-  path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
-  path = path: gsub ("cmh/skins/default/img/icons/", "icons/")                  -- 2017.11.14 
+  
+--  path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
+--  path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
+--  path = path: gsub ("cmh/skins/default/img/icons/", "icons/")                  -- 2017.11.14 
+  
+  -- 2018.02.19  apply directory path aliases from server tables
+  for old,new in pairs (tables.dir_alias) do
+    path = path: gsub (old, new)
+  end
   
   local content_type = mime_file_type (path)
   local content_length
@@ -209,7 +216,7 @@ local function http_file (request)
   local f = io.open(path,'rb')                      -- 2016.03.05  'b' for Windows, thanks @vosmont
     or io.open ("../cmh-lu/" .. path, 'rb')         -- 2016.02.24  also look in /etc/cmh-lu/
     or io.open ("files/" .. path, 'rb')             -- 2016.06.09  also look in files/
-    or io.open ("www/" .. path, 'rb')               -- 2018.02.15  also look in files/
+    or io.open ("www/" .. path, 'rb')               -- 2018.02.15  also look in www/
     or io.open ("openLuup/" .. path, 'rb')          -- 2016.05.25  also look in openLuup/ (for plugins page)
     or vfs.open (path, 'rb')                        -- 2016.06.01  also look in virtualfilesystem
   

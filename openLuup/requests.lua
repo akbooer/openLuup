@@ -192,10 +192,9 @@ end
 
 
 -- invoke
---This request shows the list of devices and the actions they support 
---through the UPnP services specified in their UPnP device description file. 
---Only the actions with a star (*) preceding their name are implemented.
--- [NB: here in openLuup, only implemented actions are displayed at all]
+-- This request shows the list of devices and the actions they support 
+-- through the UPnP services specified in their UPnP device description file. 
+-- Only the actions with a star (*) preceding their name are implemented.
 --
 --    http://ip_address:3480/data_request?id=invoke
 --    http://ip_address:3480/data_request?id=invoke&DeviceNum=6
@@ -209,31 +208,38 @@ local function invoke (_, p)
   local html    = [[<!DOCTYPE html> <head><title>Remote Control</title></head> <body>%s</body> </html>]]
   local Device  = [[<a href="data_request?id=lu_invoke&DeviceNum=%d"> #%d %s</a><br>]]
   local Scene   = [[<a href="data_request?id=action&serviceId=%s&action=RunScene&SceneNum=%d"> #%d %s</a><br>]]  
-  local Action  = [[<a href="data_request?id=action&DeviceNum=%d&serviceId=%s&action=%s">%s</a><br>]]
+  local Action  = [[<a href="data_request?id=action&DeviceNum=%d&serviceId=%s&action=%s">%s%s</a><br>]]
   local Service = [[<br><i>%s</i><br>]]
     
   local function spairs (x, fsort)  -- sorted pairs iterator
-      local I = {}
-      for n in pairs(x) do I[#I+1] = n end
-      table.sort(I, fsort)
-      local i = 0
-      return function () i = i+1; return I[i], x[I[i]] end 
+    local i = 0
+    local I = {}
+    local function iterator () i = i+1; return I[i], x[I[i]] end
+    
+    for n in pairs(x) do I[#I+1] = n end
+    table.sort(I, fsort)
+    return iterator
   end
 
   local body
   local D, S = {}, {}
   local dev = luup.devices[tonumber(p.DeviceNum)]
   
+  -- TODO: sort by name and parent/child structure? Too much trouble!
   if dev then
+    -- Services and Actions for specific device
     for s, srv in spairs (dev.services) do
       S[#S+1] = Service: format (s)
-      for a in spairs (srv.actions) do
-        S[#S+1] = Action: format (p.DeviceNum, s, a, a)
+      local implemented_actions = srv.actions
+      for a,act in spairs ((loader.service_data[s] or {}).actions or {}) do
+        local name = act.name
+        local star = implemented_actions[name] and '*' or ''
+        S[#S+1] = Action: format (p.DeviceNum, s, name, star, name)
       end
     end
     body = table.concat (S, '\n')
   else
-    -- TODO: sort by name and parent/child structure
+    -- Devices and Scenes
     for n,d in spairs(luup.devices) do
       D[#D+1] = Device:format (n, n, d.description)
     end

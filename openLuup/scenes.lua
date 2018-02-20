@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2018.01.30",
+  VERSION       = "2018.02.19",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -50,6 +50,7 @@ local ABOUT = {
 -- 2018.01.17   add optional 2-nd return parameter 'user_finalizer' function to scene Lua (thanks @DesT)
 -- 2018.01.18   add optional 3-rd return parameter 'final_delay' and also scene.prolog and epilog calls
 -- 2018.01.30   cancel timer jobs on scene delete, round next scene run time, etc..
+-- 2018.02.19   add log messages for scene cancellation by global and local Lua code
 
 
 local logs      = require "openLuup.logs"
@@ -181,38 +182,45 @@ local function create (scene_json)
     local global_ok
     if type (prolog) == "function" then 
       global_ok = prolog (scene.id, lul_trigger, lul_timer)
+      if global_ok == false then
+        _log (scene.name .. " prevented from running by global scene prolog Lua")
+        return    -- GLOBAL cancel
+      end
     end
-    --
     
     local ok, del
     if lua_code then
       ok, user_finalizer, del = lua_code (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20, 2018.01.17,8
+      if ok == false then
+        _log (scene.name .. " prevented from running by local scene Lua")
+        return    -- LOCAL cancel
+      end
     end
-    final_delay = tonumber(del) or 30
     
-    if global_ok ~= false and ok ~= false then
-      scene.last_run = os.time()                -- scene run time
-      luup_scene.running = true
-      devutil.new_userdata_dataversion ()               -- 2016.11.01
-      local runner = "command"
-      if t then
-        t.last_run = scene.last_run             -- timer or trigger specific run time
-        t.next_run = next_time                  -- only non-nil for timers
-        runner = (t.name ~= '' and t.name) or '?'
-      end
-      local msg = ("scene %d, %s, initiated by %s"): format (scene.id, scene.name, runner)
-      _log (msg, "luup.scenes")
-      _log_altui_scene (scene)                  -- log for altUI to see
-      local max_delay = 0
-      local label = "scene#" .. scene.id
-      for _, group in ipairs (scene.groups) do  -- schedule the various delay groups
-        local delay = tonumber (group.delay) or 0
-        if delay > max_delay then max_delay = delay end
-        timers.call_delay (group_runner, delay, group.actions, label .. "group delay")
-      end
-      timers.call_delay (scene_finisher, max_delay + final_delay, scene.last_run, 
-        label .. " finisher")    -- say we're finished
+    final_delay = tonumber(del) or 30
+    scene.last_run = os.time()                -- scene run time
+    luup_scene.running = true
+    devutil.new_userdata_dataversion ()               -- 2016.11.01
+    local runner = "command"
+    if t then
+      t.last_run = scene.last_run             -- timer or trigger specific run time
+      t.next_run = next_time                  -- only non-nil for timers
+      runner = (t.name ~= '' and t.name) or '?'
     end
+    
+    local msg = ("scene %d, %s, initiated by %s"): format (scene.id, scene.name, runner)
+    _log (msg, "luup.scenes")
+    _log_altui_scene (scene)                  -- log for altUI to see
+    
+    local max_delay = 0
+    local label = "scene#" .. scene.id
+    for _, group in ipairs (scene.groups) do  -- schedule the various delay groups
+      local delay = tonumber (group.delay) or 0
+      if delay > max_delay then max_delay = delay end
+      timers.call_delay (group_runner, delay, group.actions, label .. "group delay")
+    end
+    timers.call_delay (scene_finisher, max_delay + final_delay, scene.last_run, 
+      label .. " finisher")    -- say we're finished
   end
   
   local function scene_stopper (scn)
