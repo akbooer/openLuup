@@ -32,6 +32,9 @@ ABOUT = {
 
 -- 2018.01.30  add invocations count to job listing
 
+-- TODO: HTML pages with sorted tables
+-- see: https://www.w3schools.com/w3js/w3js_sort.asp
+
 --  WSAPI Lua implementation
 
 local lfs       = require "lfs"                   -- for backup file listing

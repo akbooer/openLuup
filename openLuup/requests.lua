@@ -393,19 +393,6 @@ end
 local function status_startup_table ()
   local tasks = {}
   local startup = {tasks = tasks}
-  -- TODO: startup tasks:
-  --[[
-    startup": {
-      "tasks": [
-        {
-            "id": 1,
-            "status": 2,
-            "type": "Test Plugin[58]",
-            "comments": "Lua Engine Failed to Load"
-        }
-      ]
-    },
-]]--
   for id, job in pairs (scheduler.startup_list) do
     if job.status ~= scheduler.state.Done then
       tasks[#tasks + 1] = {

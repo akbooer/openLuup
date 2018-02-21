@@ -29,13 +29,19 @@ This module is the interface between the HTTP port 3480 server and the handlers 
 Requests are of three basic types:
   - data_request?id=...       Luup-style system requests (both system lu_xxx, and user-defined lr_xxx)
   - Lua WSAPI CGIs            enumerated in the cgi_prefix section of the servertables.lua file
-  - file requests             anything not recognised as one of the above, and on defined file paths
+  - file requests             anything not recognised as one of the above, and on defined file paths,
+                              or as redirected from severtables dir_alias table.
 
-The add_callback_handlers () function registers a list of new request callback handler.
+The add_callback_handlers () function registers a list of new request callback handlers.
 
-The execute() function essentially converts a given luup-style callback handler, which simply returns response and possibly mime-type, into both a function with WSAPI-style returns of status, headers, and iterator function, and also a task which may be executed by the scheduler.  These are essentially, servlets.  Tasks which service data_requests have <run> and <job> phases, but CGIs and file requests are immediately executed in the <run> phase only, so do not appear as scheduler jobs (thus improving response times.)
+The execute() function essentially converts a given luup-style callback handler, which simply returns response and possibly mime-type, into both a function with WSAPI-style returns of status, headers, and iterator function, and also a task which may be executed by the scheduler.  These are essentially, servlets.  
 
-The WSAPI-style functions are used by the tasks, but also called directly by the wget() client call which processes their reponses.  If a respond() function is given to the execute() call, then the servelet is scheduled.
+If a respond() function is given to the execute() call, then the servlet is scheduled.  CGI and file
+requests are currently implemented as <run> tags, so do not appear as scheduler jobs (thus improving response times.)
+The data_request one is a more complex task with <run> and <job> tags to handle the 
+MinimumDelay, Timeout, and DataVersion parameters which all affect timing of the response.
+
+The WSAPI-style functions are used by the servlet tasks, but also called directly by the wget() client call which processes their reponses directly.
 
 --]]
 
