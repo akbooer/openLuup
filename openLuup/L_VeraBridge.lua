@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.02.21",
+  VERSION       = "2018.02.24",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -495,7 +495,7 @@ local displayLine = "%s [%s]"
 
 local function UpdateHouseMode (Mode)
   Mode = tonumber(Mode)
-  if not Mode then return   -- 2018.02.21  bail out if no Mode (eg. UI5)
+  if not Mode then return end   -- 2018.02.21  bail out if no Mode (eg. UI5)
   local status = modeName[Mode] or '?'
   Mode = tostring(Mode)
   setVar ("HouseMode", Mode)                                            -- 2016.05.15, thanks @logread!
