@@ -43,6 +43,9 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 -- 2016.11.23   don't allow spaces in pathnames
 --              see: http://forum.micasaverde.com/index.php/topic,40406.msg299810.html#msg299810
 
+-- 2018.02.24   upgrade SSL encryption to tls v1.2 after GitHub deprecation of v1 protocol
+
+
 local https     = require "ssl.https"
 local lfs       = require "lfs"
 local ltn12     = require "ltn12"
