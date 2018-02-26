@@ -95,6 +95,8 @@ local CLOSE_IDLE_SOCKET_AFTER   = 90        -- number of seconds idle after whic
 local MAX_HEADER_LINES          = 100       -- limit lines to help mitigate DOS attack or other client errors
 local URL_AUTHORIZATION         = true      -- use URL rather than Authorization header for wget basic authorization
 
+local PORT -- filled in during start()
+
 -- TABLES
 
 local status_codes = tables.status_codes
@@ -169,9 +171,11 @@ local function request_object (request_URI, headers, post_content, method, http_
   
   local request_start = socket.gettime()
   
-  if not (request_URI: match "^https?://") 
-  or (request_URI: match "^//") then 
-    request_URI = "//" .. request_URI 
+  -- we seem to get requests without the usual prefix, eg. just "/data_request..."
+  -- think this is from persistent connections from the browser (AltUI in particular)
+  -- without the scheme, ip, and port, then the request would be mis-handled
+  if not (request_URI: match "^%w+://") then 
+    request_URI = table.concat {"http://", myIP, ':', PORT,  request_URI }    -- 2018.02.26
   end
  
   local URL = url.parse (request_URI)               -- parse URL
@@ -191,9 +195,9 @@ local function request_object (request_URI, headers, post_content, method, http_
     end
   end
 
-  local internal  = self_reference [URL.host] and URL.port == "3480"  -- 2016-03-16 check for port #, thanks @reneboer
-  if internal and URL.path then                                  -- 2016.11.18, 2018.02.26
-    URL.path = URL.path:gsub ("/port_3480", '')     -- 2016.09.16, thanks @explorer 
+  local internal  = self_reference [URL.host] and URL.port == PORT    -- 2016-03-16 check for port #, thanks @reneboer
+  if internal and URL.path then                                       -- 2016.11.18
+    URL.path = URL.path:gsub ("/port_3480", '')                       -- 2016.09.16, thanks @explorer 
   end
   local path_list = url.parse_path (URL.path) or {}   -- split out individual parts of the path
 
@@ -508,6 +512,7 @@ local function start (port, config)
   CHUNKED_LENGTH = config.ChunkedLength or CHUNKED_LENGTH
   CLOSE_IDLE_SOCKET_AFTER = config.CloseIdleSocketAfter or CLOSE_IDLE_SOCKET_AFTER
   URL_AUTHORIZATION = config.WgetAuthorization == "URL"
+  PORT = port
   
   local server, msg = socket.bind ('*', port, BACKLOG) 
    
