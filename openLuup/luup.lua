@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2016.12.06",
+  VERSION       = "2018.02.10",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -36,6 +36,18 @@ local ABOUT = {
 -- 2016.11.02  add job type to timer calls
 -- 2016.11.18  add call_delay function name as timer type
 -- 2016.12.06  change attr_get/set for structured openLuup attributes
+
+-- 2017.10.12  make luup.sunrise/sunset() return integer (thanks @a-lurker)
+-- 2017.10.15  check parameter types for callback functions (thanks @a-lurker)
+-- 2017.04.16  add missing luup.ir.pronto_to_gc100() (thanks @a-lurker)
+-- 2017.04.18  check parameter types in chdev calls (thanks @a-lurker)
+-- 2017.04.21  allow both integer AND boolean parameter to set failure (thanks @a-lurker)
+-- 2017.05.01  user-defined parameter job settings
+-- 2017.05.23  allow string or number parameter on call_delay()
+-- 2017.06.08  fix data parameter error in call_timer (introduced in type-checking)
+-- 2017.06.19  correct first word of GC100 code (thanks again @a-lurker)
+
+-- 2018.02.10  ensure valid error in luup.call_action() even if missing parameters
 
 local logs          = require "openLuup.logs"
 
@@ -86,6 +98,39 @@ local scenes = {}
 -- The members are: remote_file (string), room_num (number), description(string)
 
 local remotes = {}
+
+-----
+--
+-- parameter checking routine
+--
+-- a,b,c = parameters ({list of types}, parameters)
+-- where types can include the usual, but also "number_or_string"
+-- throws an error pointing to the caller's caller (ie. where the wrong parameter actually is)
+-- eg.
+--     a,b,c = parameters ({"string", "number", "table"}, ...)
+--
+local parameters
+  do
+    local class = {
+        number_or_string = {string = 1, number = 1},
+        table_or_string  = {string = 1, table  = 1},
+        string_or_number = {string = 1, number = 1},
+        string_or_table  = {string = 1, table  = 1},
+      }
+    local message = "parameter #%d should be type %s but is %s"
+
+    parameters = function (syntax, ...)
+      for i,p in ipairs {...} do
+        local t = type(p)
+        local s = syntax[i] or t
+        if not (class [s] or {[s] = 1}) [t] then
+          error (message: format (i, s, t), 3)
+        end
+      end
+      return ...  -- note that this even works for embedded nil parameters
+    end
+  end
+
 
 -----
 --
@@ -156,7 +201,8 @@ end
 -- Checks whether a device has successfully completed its startup sequence. If so, is_ready returns true. 
 -- If your device shouldn't process incoming data until the startup sequence is finished, 
 -- you may want to add a condition to the <incoming> block that only processes data if is_ready(lul_device) is true.
-local function is_ready (device)
+local function is_ready (...)
+  local device = parameters ({"number_or_string"}, ...)
   local dev = devices[device]
   return dev and dev:is_ready() 
 end
@@ -214,7 +260,8 @@ end
 -- BUT...
 -- Setting UPnP variables is unrestricted and free form, 
 -- and the engine doesn't really know if a device actually uses it or does anything with it. 
-local function device_supports_service (serviceId, device)
+local function device_supports_service (...)
+  local serviceId, device = parameters ({"string", "number_or_string"}, ...)
   local support
   local dev = devices[device]
   if dev then
@@ -323,7 +370,8 @@ end
 -- Sets the IP address for a device. 
 -- This is better than setting the "ip" attribute using attr_set 
 -- because it updates internal values additionally, so a reload isn't required.
-local function ip_set (value, device)
+local function ip_set (...)
+  local value, device = parameters ({"string", "number_or_string"}, ...)
   attr_set ("ip", value, device)
   local dev = devices[device]
   if dev then
@@ -338,7 +386,8 @@ end
 -- Sets the mac address for a device. 
 -- This is better than setting the "mac" attribute using attr_set 
 -- because it updates internal values additionally, so a reload isn't required. 
-local function mac_set (value, device)
+local function mac_set (...)
+  local value, device = parameters ({"string", "number_or_string"}, ...)
   attr_set ("mac", value, device)
   local dev = devices[device]
   if dev then
@@ -349,6 +398,7 @@ end
  
 -- function: set_failure
 -- parameters: value (int), device (string or number)
+-- 2017.04.21  but see also: http://forum.micasaverde.com/index.php/topic,27420.msg207850.html#msg207850
 -- returns:
 --
 -- Luup maintains a 'failure' flag for every device to indicate if it is not functioning. 
@@ -356,12 +406,12 @@ end
 -- and 2 if the device is reachable but there's an authentication error. 
 -- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
 local function set_failure (status, device)
-  local map = {[0] = -1, 2,2}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
+  local map = {[0] = -1, 2,2, [true]=2, [false] = -1}   -- apparently this mapping is used... ANOTHER MiOS inconsistency!
   _log ("status = " .. tostring(status), "luup.set_failure")
   local devNo = device or scheduler.current_device()
   local dev = devices[devNo]
   if dev then 
-    dev:status_set (map[tonumber(status) or 0] or -1)  -- 2016.05.15
+    dev:status_set (map[status or 0] or -1)  -- 2016.05.15
     local time = 0
     if status ~= 0 then time = os.time() end
     local HaSID = "urn:micasaverde-com:serviceId:HaDevice1"
@@ -415,6 +465,8 @@ local function call_action (service, action, arguments, device)
   end
   
   local devNo = tonumber (device) or 0
+  service = service or '?'                -- 2018.02.10  ensure valid error even if missing parameters
+  action = action or '?'
   _log (("%d.%s.%s "): format (devNo, service, action), "luup.call_action")
   
   local function missing_action ()
@@ -450,7 +502,8 @@ local function call_action (service, action, arguments, device)
 --
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- The function returns 0 if successful. 
-local function call_delay (global_function_name, seconds, data) 
+local function call_delay (...) 
+  local global_function_name, seconds, data = parameters ({"string", "number_or_string"}, ...) 
   local fct = entry_point (global_function_name, "luup.call_delay")
   if fct then 
     -- don't bother to log call_delay, since it happens rather frequently
@@ -465,14 +518,15 @@ end
 -- The function will be called in seconds seconds (the second parameter), with the data parameter.
 -- Returns 0 if successful. 
 
-local function call_timer (global_function_name, timer_type, time, days, ...)
+local function call_timer (...)
+  local global_function_name, timer_type, time, days, data, recurring = parameters ({"string", "number"}, ...)
   local ttype = {"interval", "day of week", "day of month", "absolute"}
   local fmt = "%s: time=%s, days={%s}"
   local msg = fmt: format (ttype[timer_type or ''] or '?', time or '', days or '')
   local fct = entry_point (global_function_name, "luup.call_timer")
   if fct then
     _log (msg, "luup.call_timer")
-    local e,_,j = timers.call_timer(fct, timer_type, time, days, ...)      -- 2016.03.01   
+    local e,_,j = timers.call_timer(fct, timer_type, time, days, data, recurring)      -- 2016.03.01   
     if j and scheduler.job_list[j] then
       local text = "job#%d :timer %s (%s)"
       scheduler.job_list[j].type = text: format (j, global_function_name, msg)
@@ -491,9 +545,11 @@ end
 -- If the device is nil or not specified, function_name will be called for all jobs, 
 -- otherwise only for jobs that involve the specified device.
 
-local function job_watch (global_function_name, device)
+local function job_watch (...)
+  local global_function_name, device = parameters ({"string"}, ...)
   local fct = entry_point (global_function_name "luup.job_watch")
   -- TODO: implement job_watch
+  local _,_ ,_= global_function_name, device, fct    -- to suppress 'unused' warning
   error "luup.job_watch not implemented"
 end
 
@@ -507,7 +563,8 @@ end
 --
 -- The request is made with the URL: data_request?id=lr_[the registered name] on port 3480. 
 
-local function register_handler (global_function_name, request_name)
+local function register_handler (...)
+  local global_function_name, request_name = parameters ({"string", "string"}, ...)
   local fct = entry_point (global_function_name, "luup.register_handler")
   if fct then
     -- fixed callback context - thanks @reneboer
@@ -530,7 +587,8 @@ end
 -- If variable is nil, function_name will be called whenever any variable in the service is changed. 
 -- If device is nil see: http://forum.micasaverde.com/index.php/topic,34567.0.html
 -- thanks @vosmont for clarification of undocumented feature
-local function variable_watch (global_function_name, service, variable, device)
+local function variable_watch (...)
+  local global_function_name, service, variable, device = parameters ({"string", "string"}, ...)
   local fct = entry_point (global_function_name, "luup.variable_watch")
   if not fct then
     _log ("callback function '" .. global_function_name .. "' not found", "luup.variable_watch")
@@ -554,9 +612,14 @@ end
 
 -- MODULE inet
 local inet = {
- -- Returns the contents of the URL you pass in the "url" argument. 
- -- Optionally append "user" and "pass" arguments for http authentication, 
- -- and "timeout" to specify the maximum time to wait in seconds.
+-- This reads the URL and returns 3 variables: 
+--   the first is a numeric error code which is 0 if successful;
+--   the second variable is a string containing the contents of the page;
+--   the third variable is the HTTP status code.
+-- If Timeout is specified, the function will timeout after that many seconds. 
+-- The default value for Timeout is 5 seconds. 
+-- If Username and Password are specified, they will be used for HTTP Basic Authentication.
+--
   wget = function (URL, Timeout, Username, Password)
   return server.wget (URL, Timeout, Username, Password)
   end
@@ -627,14 +690,36 @@ local function reload (exit_status)
   os.exit (exit_status) 
 end 
 
+
+-- 2017.04.18   CHDEV module with parameter checking
+
+local chdev_module = {
+  
+  start = function (...)
+    parameters ({"number"}, ...)
+    return chdev.chdev.start (...)
+  end,
+  
+  append = function (device, ptr, altid, ...)
+    parameters ({"number", "table", "number_or_string"}, device, ptr, altid)
+    return chdev.chdev.append (device, ptr, tostring(altid), ...)   -- force string type for altid
+  end,
+  
+  sync = function (...)
+    parameters ({"number", "table"}, ...)
+    return chdev.chdev.sync (...)
+  end,
+  
+}
+
+
 -- JOB module
 
-local job = {   -- TODO: implement luup.job module
-  
+local job = {  
 
 -- parameters: job_number (number), device (string or number)
 -- returns: job_status (number), notes (string)
-  status  = scheduler.status,
+  status = scheduler.status,
   
 -- function: set
 -- parameters: job (userdata), setting (string), value (string) OR table of {name = value} pairs
@@ -642,16 +727,51 @@ local job = {   -- TODO: implement luup.job module
 --
 -- This stores a setting(s) for a job.  
 --
-  set     = function () end,
-  
+  set = function (...)       -- 2017.05.01  user-defined parameter job settings
+    local job, setting, value = parameters ({"table", "table_or_string"}, ...)
+    if type(setting) ~= "table" then 
+      setting = {[setting] = value}
+    end
+    local set = job.settings
+    if set then
+      for name,val in pairs (setting) do
+        set[name] = tostring(val)
+      end
+    end
+  end,
+
 -- function: setting aka. get !
 -- parameters: job (userdata), setting (string)
 -- returns: value (string)
 --
 -- This returns a setting for a job.
 --
-  setting = function () end,
-  
+  setting = function (...)   -- 2017.05.01  user-defined parameter job settings
+    local job, setting = parameters ({"table", "string"}, ...)
+    return (job.settings or {}) [setting]
+  end,
+}
+
+-- IR module
+-- thanks to @a-lurker for this.
+-- see: http://forum.micasaverde.com/index.php/topic,37268.0.html
+
+local ir = {
+  pronto_to_gc100 = function (pronto)
+    -- replace the pronto code preamble with the GC100 preamble
+    local rate
+    rate, pronto = pronto: match "^%s*%x+%s+(%x+)%s+%x+%s+%x+%s+(.+)" -- extract preamble
+    
+    local PRONTO_PWM_HZ = 4145152  -- a constant measured in Hz and is the PWM frequencyof Philip's Pronto remotes
+    rate = math.floor ( PRONTO_PWM_HZ / (tonumber(rate, 16) or 100) )
+    
+    local gc100 = {rate, 1, 1}
+    for hexStr in pronto: gmatch "%x+" do
+      gc100[#gc100+1] = tonumber(hexStr, 16)
+    end
+    
+    return table.concat(gc100, ',')
+  end
 }
 
 -----
@@ -692,7 +812,7 @@ return {
     call_action         = call_action,  
     call_delay          = call_delay,
     call_timer          = call_timer,
-    chdev               = chdev.chdev,
+    chdev               = chdev_module,
     create_device       = create_device,    
     device_supports_service = device_supports_service,    
     devices_by_service  = devices_by_service,   
@@ -709,9 +829,9 @@ return {
     reload              = reload,
 --    require             = "what is this?"  --the redefined 'require' which deals with pluto.lzo ??
     set_failure         = set_failure,
-    sleep               = timers.sleep,
-    sunrise             = timers.sunrise,
-    sunset              = timers.sunset,
+    sleep               = scheduler.sleep,
+    sunrise             = function () return math.floor(timers.sunrise ()) end, -- 2017.04.12
+    sunset              = function () return math.floor(timers.sunset ()) end,
     task                = task,
     variable_get        = variable_get,
     variable_set        = variable_set,
@@ -719,12 +839,12 @@ return {
 
     -- tables 
     
-    ir                  = {},
+    ir                  = ir,
     remotes             = remotes,
     rooms               = rooms,
     scenes              = scenes,
     devices             = devices, 
---    xj                  = "what is this?",
+--    xj                  = {xml_node_text = function: 0xbc7b78} -- "what is this?",
 
 }
 

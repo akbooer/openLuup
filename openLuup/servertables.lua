@@ -12,6 +12,8 @@
 -- 2016.11.17  change location of graphite_cgi to openLuup folder
 -- 2016.11.18  added CGI console.lua
 
+-- 2018.02.19  added directory aliases (for file access requests)
+
 local mimetypes = {
   css  = "text/css", 
   gif  = "image/gif",
@@ -86,7 +88,7 @@ local cgi_prefix = {
     "metrics",      -- ditto
     "render",       -- ditto
     
-    "upnp",         -- for Luup HAG requests
+    "upnp",         -- for Luup HAG requests --- DEPRECATED, Feb 2018 ---
     
     "ZWaveAPI",     -- Z-Wave.me Advanced API (requires Z-Way plugin)
     "ZAutomation",  -- Z-Wave.me Virtual Device API
@@ -100,7 +102,7 @@ local cgi_alias = setmetatable ({
     
     ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
     ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
-    ["upnp/control/hag"]          = "openLuup/hag.lua",
+    ["upnp/control/hag"]          = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
     ["console"]                   = "openLuup/console.lua",
     
     -- graphite_api support
@@ -120,10 +122,20 @@ local cgi_alias = setmetatable ({
     end
   })
 
+-- Directory redirect aliases
+
+local dir_alias = {
+    ["cmh/skins/default/img/devices/device_states/"] = "icons/",  -- redirect UI7 icon requests
+    ["cmh/skins/default/icons/"] = "icons/",                      -- redirect UI5 icon requests
+    ["cmh/skins/default/img/icons/"] = "icons/" ,                 -- 2017.11.14 
+  }
+  
+--
 
 return {
     cgi_prefix    = cgi_prefix,
     cgi_alias     = cgi_alias,
+    dir_alias     = dir_alias,
     mimetypes     = mimetypes,
     status_codes  = status_codes,
   }

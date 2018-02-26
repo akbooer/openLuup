@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2017.02.21",
+  VERSION       = "2018.02.15",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2017 AK Booer
+  Copyright 2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -157,6 +157,17 @@ local D_openLuup_json = [[
 			]
 		}
   ],
+  "eventList2": [
+    {
+      "id": 1,
+      "label": {
+        "lang_tag": "triggers_are_not_implemented",
+        "text": "Triggers not implemented, use Watch instead"
+      },
+      "serviceId": "openLuup",
+      "argumentList": []
+    }
+  ],
   "DeviceType": "openLuup"
 }
 ]]
@@ -183,6 +194,15 @@ local I_openLuup_impl = [[
       <name>GetStats</name>
       <run>
       -- note that there's no code, but the action has return parameters (see service file)
+      </run>
+    </action>
+    
+    <action>
+      <serviceId>openLuup</serviceId>
+      <name>SetHouseMode</name>
+      <run>
+      local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+      luup.call_action (sid, "SetHouseMode", lul_settings)
       </run>
     </action>
   
@@ -236,6 +256,16 @@ local S_openLuup_svc = [[
       </argumentList>
     </action>
   
+    <action>
+    <name>SetHouseMode</name>
+    <argumentList>
+      <argument>
+        <name>Mode</name>
+        <direction>in</direction>
+      </argument>
+    </argumentList>
+  </action>
+
   </actionList>
 </scpd>
 ]]
@@ -439,8 +469,8 @@ local D_VeraBridge_dev = [[
     <manufacturer>akbooer</manufacturer>
     <manufacturerURL></manufacturerURL>
     <modelDescription>Vera Bridge for openLuup</modelDescription>
-    <modelName>v2.0</modelName>
-    <modelNumber>1</modelNumber>
+    <modelName>VeraBridge</modelName>
+    <modelNumber>3</modelNumber>
     <handleChildren>1</handleChildren>
     <Category_Num>1</Category_Num>
     <UDN></UDN>
@@ -550,6 +580,14 @@ local I_VeraBridge_impl = [[
   			return 4,0
   		</job>
     </action>
+    <action>
+  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+  		<name>GetVeraScenes</name>
+  		<job>
+  			GetVeraScenes ()
+  			return 4,0
+  		</job>
+    </action>
   </actionList>
 </implementation>
 ]]
@@ -564,6 +602,9 @@ local S_VeraBridge_svc = [[
   <actionList>
     <action>
       <name>GetVeraFiles</name>
+    </action>
+    <action>
+      <name>GetVeraScenes</name>
     </action>
   </actionList>
 </scpd>

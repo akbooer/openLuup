@@ -5,13 +5,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2017.02.12",
+  VERSION       = "2018.01.30",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-17 AK Booer
+  Copyright 2013-18 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -27,6 +27,14 @@ ABOUT = {
 ]]
 }
 
+-- 2017.04.26  HTML menu improvement by @explorer (thanks!)
+-- 2017.07.05  add user_data, status and sdata to openLuup menu
+
+-- 2018.01.30  add invocations count to job listing
+
+-- TODO: HTML pages with sorted tables
+-- see: https://www.w3schools.com/w3js/w3js_sort.asp
+
 --  WSAPI Lua implementation
 
 local lfs       = require "lfs"                   -- for backup file listing
@@ -34,7 +42,8 @@ local url       = require "socket.url"            -- for url unescape
 local luup      = require "openLuup.luup"
 local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
-
+local xml       = require "openLuup.xml"          -- for escape()
+local requests  = require "openLuup.requests"     -- for user_data, status, and sdata
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -47,13 +56,20 @@ prefix = [[
     <meta charset="utf-8">
     <title>Console</title>
     <style>
-      body {font-family:Arial; background:LightGray; }
+      *    { box-sizing:border-box; margin:0px; padding:0px; }
+      html { width:100%; height:100%; overflow:hidden; border:none 0px; }
+      body { font-family:Arial; background:LightGray; width:100%; height:100%; overflow:hidden; padding-top:60px; }
+      
+      .menu { position:absolute; top:0px; width:100%; height:60px; }
+      .content { width:100%; height:100%; overflow:scroll; padding:4px; }
       
       .dropbtn {
         background-color: Sienna;
         color: white;
         padding: 16px;
         font-size: 16px;
+        line-height:18px;
+        vertical-align:middle;
         border: none;
         cursor: pointer;
       }
@@ -92,7 +108,7 @@ prefix = [[
   </head>
     <body>
     
-    <div style="background:DarkGrey;">
+    <div class="menu" style="background:DarkGrey;">
     
       <div class="dropdown" >
         <img src="https://avatars.githubusercontent.com/u/4962913" alt="X"  
@@ -134,16 +150,17 @@ prefix = [[
         <button class="dropbtn">Backups</button>
         <div class="dropdown-content">
           <a class="left" href="/console?page=backups">Files</a>
+          <a class="left" href="/console?page=uncompressform">Uncompress...</a>
         </div>
       </div>
     </div>
-    <div style="overflow:scroll;">
-    <pre><code>
+    <div class="content">
+    <pre>
 ]],
 --     <div style="overflow:scroll; height:500px;">
 
   postfix = [[
-    </code></pre>
+    </pre>
     </div>
 
   </body>
@@ -153,7 +170,7 @@ prefix = [[
 }
 
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
-local line = "%20s  %8s  %8s  %s %s"
+local line = "%20s  %8s  %12s  %s %s"
 local date = "%Y-%m-%d %H:%M:%S"
 
 
@@ -190,10 +207,11 @@ function run (wsapi_env)
   local function joblist (job_list)
     local jlist = {}
     for _,b in pairs (job_list) do
+      local status = table.concat {state[b.status] or '', '[', b.logging.invocations, ']'}
       jlist[#jlist+1] = {
         t = b.expiry,
         l = line: format (os.date (date, b.expiry + 0.5), b.devNo or "system", 
-                            state[b.status] or '?', b.type or '?', b.notes or '')
+                            status, b.type or '?', b.notes or '')
       }
     end
     return jlist
@@ -244,7 +262,7 @@ function run (wsapi_env)
   local function listit (list, title)
     print (title .. ", " .. os.date "%c")
     table.sort (list, function (a,b) return a.t < b.t end)
-    print ('#', (line: format ("date       time    ", "device", "status","info", '')))
+    print ('#', (line: format ("date       time    ", "device", "status[n]","info", '')))
     for i,x in ipairs (list) do print (i, x.l) end
     print ''
   end
@@ -263,7 +281,7 @@ function run (wsapi_env)
     if f then
       local x = f:read "*a"
       f: close()
-      print (x)
+      print (xml.escape (x))       -- thanks @a-lurker
     end
   end
   
@@ -289,6 +307,54 @@ function run (wsapi_env)
     end
   end
   
+  local function uncompressform ()
+    print [[
+ <form action="/console">
+    <input type="hidden" name="page" value="uncompress">
+    <input type="file" name="unlzap" accept=".lzap" formmethod="get">
+    <label for="file">Choose a file</label>
+    <input type="Submit" value="Uncompress" class="dropbtn"><br>
+ </form>     
+    ]]
+  end
+  
+  local function uncompress (p)
+    for a,b in pairs(p) do
+      print (a .. " : " .. tostring(b))
+    end
+--    local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
+--    local code = compress.lzap.decode (code, codec)   -- uncompress the file
+-- TODO:  UNCOMPRESS... following code lifted from backup module compression
+--[[
+    local f
+    f, msg = io.open (fname, 'wb')
+    if f then 
+      local codec = compress.codec (nil, "LZAP")  -- full binary codec with header text
+      small = compress.lzap.encode (ok, codec)
+      f: write (small)
+      f: close ()
+      ok = #ok / 1000    -- convert to file sizes
+      small = #small / 1000
+    else
+      ok = false
+    end
+  end
+  
+  local headers = {["Content-Type"] = "text/plain"}
+  local status, return_content
+  if ok then 
+    msg = ("%0.0f kb compressed to %0.0f kb (%0.1f:1)") : format (ok, small, ok/small)
+    local body = html: format (msg, fname, fname)
+    headers["Content-Type"] = "text/html"
+    status, return_content = 200, body
+  else
+    status, return_content = 500, "backup failed: " .. msg
+  end
+  _log (msg)
+
+--]]
+
+  end
   
   local pages = {
     about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
@@ -299,11 +365,30 @@ function run (wsapi_env)
     startup = function () listit (slist, "Startup Jobs") end,
     watches = watchlist,
     
+    uncompress      = uncompress,
+    uncompressform  = uncompressform,
+    
     parameters = function ()
       local info = luup.attr_get "openLuup"
       local p = json.encode (info or {})
       print (p or "--- none ---")
     end,
+    
+    userdata = function ()
+      local u = requests.user_data()
+      print(u)
+    end,
+    
+    status = function ()
+      local s = requests.status()
+      print(s)
+    end,
+    
+    sdata = function ()
+      local d = requests.sdata()
+      print(d)
+    end,
+    
   }
 
   
@@ -318,13 +403,10 @@ function run (wsapi_env)
   local headers = {}
   
   local page = p.page or ''
---  if page then
-    do (pages[page] or function () end) (p) end
---    headers["Content-Type"] = "text/plain"
---  else
---    lines = {console_html}
-    headers["Content-Type"] = "text/html"
---  end
+  
+  do (pages[page] or function () end) (p) end
+  headers["Content-Type"] = "text/html"
+  
   print (console_html.postfix)
   local return_content = table.concat (lines)
 

@@ -4,13 +4,13 @@ module(..., package.seeall)
 
 local ABOUT = {
   NAME          = "upnp.control.hag",
-  VERSION       = "2016.07.06",
+  VERSION       = "2018.01.27",
   DESCRIPTION   = "a handler for redirected port_49451 /upnp/control/hag requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ local ABOUT = {
 
 -- 2016.06.05  add scene processing (for AltUI long scene POST requests)
 -- 2016.07.06  correct calling syntax for wsapi_env.input:read ()
+
+-- 2018.01.24   see note at end of code regarding call syntax changes...
 
 local xml       = require "openLuup.xml"
 local json      = require "openLuup.json"
@@ -127,5 +129,46 @@ function run(wsapi_env)
 end
 
 -----
+
+-- NB: following info from @amg0, 24-Jan-2018
+
+--[[
+
+I looked at UI7 behavior and it replaces it by a JSON call to HomeAutomation device, action ModifyUserData
+
+so basically I have to replace OLD CODE
+
+return $.ajax({
+					url: "/port_49451/upnp/control/hag",
+					type: "POST",
+					dataType: "text",
+					contentType: "text/xml;charset=UTF-8",
+					processData: false,
+					data:  xml,
+					headers: {
+						"SOAPACTION":'"urn:schemas-micasaverde-org:service:HomeAutomationGateway:1#ModifyUserData"'
+					},
+				})
+
+by NEW CODE
+				return $.ajax({
+					url: "/port_3480/data_request",
+					type: "POST",
+					contentType: "application/x-www-form-urlencoded; charset=UTF-8",
+					data:  {
+						id:'lu_action',
+						serviceId:'urn:micasaverde-com:serviceId:HomeAutomationGateway1',
+						action:'ModifyUserData',
+						DataFormat:'json',
+						inUserData: JSON.stringify(target)
+					}
+				})
+
+
+This is used for very large scene for instance where the other method ( GET ) is not appropriate or some other functionality ( plugin flags modification , etc ... )
+
+you may have an impact on openluup
+
+--]]
 
 

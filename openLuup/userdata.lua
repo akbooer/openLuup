@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2016.11.15",
+  VERSION       = "2017.08.27",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -42,7 +42,11 @@ local ABOUT = {
 -- 2016.11.09   preserve device #2 (openLuup) room allocation across reloads (thanks @DesT)
 
 -- 2017.01.18   add HouseMode variable to openLuup device, to mirror attribute, so this can be used as a trigger
-
+-- 2017.04.19   sort devices_table() output (thanks @a-lurker)
+-- 2017.07.19   ignore temporary "high numbered" scenes (VeraBridge)
+-- 2017.08.27   fix non-numeric device ids in save_user_data()
+--              ...allows renumbering of device ids using luup.attr_set()
+--              ... see: http://forum.micasaverde.com/index.php/topic,50428.0.html
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -612,13 +616,15 @@ local function load_user_data (user_data_json)
     _log "loading scenes..."
     local Nscn = 0
     for _, scene in ipairs (user_data.scenes or {}) do
-      local new, msg = scenes.create (scene)
-      if new and scene.id then
-        Nscn = Nscn + 1
-        luup.scenes[scene.id] = new
-        _log (("[%s] %s"): format (scene.id or '?', scene.name))
-      else
-        _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
+      if tonumber(scene.id) < 1e5 then        -- 2017.0719 ignore temporary "high numbered" scenes (VeraBridge)
+        local new, msg = scenes.create (scene)
+        if new and scene.id then
+          Nscn = Nscn + 1
+          luup.scenes[scene.id] = new
+          _log (("[%s] %s"): format (scene.id or '?', scene.name))
+        else
+          _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
+        end
       end
     end
     _log ("number of scenes = " .. Nscn)
@@ -666,7 +672,11 @@ end
 local function devices_table (device_list)
   local info = {}
   local serviceNo = 0
-  for _,d in pairs (device_list) do 
+  local devs = {}
+  for d in pairs (device_list) do devs[#devs+1] = d end  -- 2017.04.19
+  table.sort (devs)
+  for _,dnum in ipairs (devs) do 
+    local d = device_list[dnum] 
     local states = {}
     for i,item in ipairs(d.variables) do
       states[i] = {
@@ -698,6 +708,7 @@ local function devices_table (device_list)
       status          = status,
     }
     for a,b in pairs (d.attributes) do tbl[a] = b end
+    tbl.id = tonumber(tbl.id) or tbl.id      -- 2017.08.27  fix for non-numeric device id
     info[#info+1] = tbl
   end
   return info

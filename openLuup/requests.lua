@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2017.02.05",
+  VERSION       = "2018.02.18",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -49,6 +49,12 @@ local ABOUT = {
 -- 2017.01.10  fix non-integer values in live_energy_usage, thanks @reneboer
 --             see: http://forum.micasaverde.com/index.php/topic,41249.msg306290.html#msg306290
 -- 2017.02.05  add 'test' request (for testing!)
+-- 2017.11.08  modify 'test' reporting text
+
+-- 2018.01.29  add &ns=1 parameter option to user_data request to ignore static_data object (new Luup feature?)
+-- 2018.02.05  move scheduler callback handler initialisation from init module to here
+-- 2018.02.06  add static request and internal static_data() function
+-- 2018.02.18  implement lu_invoke (partially)
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -120,6 +126,14 @@ local function iprequests_table ()
   return info 
 end
 
+local function static_data ()
+  local sd = {}
+  for _, data in pairs (loader.static_data) do    -- bundle up the JSON data for all devices 
+    sd[#sd+1] = data
+  end
+  return sd
+end
+
 --
 -- non-user Luup HTTP requests
 --
@@ -178,17 +192,66 @@ end
 
 
 -- invoke
---This request shows the list of devices and the actions they support through the UPnP services specified in their UPnP device description file. 
---Only the actions with a star (*) preceding their name are implemented.
+-- This request shows the list of devices and the actions they support 
+-- through the UPnP services specified in their UPnP device description file. 
+-- Only the actions with a star (*) preceding their name are implemented.
 --
 --    http://ip_address:3480/data_request?id=invoke
 --    http://ip_address:3480/data_request?id=invoke&DeviceNum=6
 --    http://ip_address:3480/data_request?id=invoke&UDN=uuid:4d494342-5342-5645-0002-000000000002 
 --
-local function invoke ()
-  --TODO: lu_invoke
-  error "*** invoke not yet implemented ***"
-  return ''
+local function invoke (_, p)
+  -- produces a page with hot links to each device and scene, or, ...
+  -- ...if a device number is given, produces a list of device services and actions
+  local hag   = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+  
+  local html    = [[<!DOCTYPE html> <head><title>Remote Control</title></head> <body>%s</body> </html>]]
+  local Device  = [[<a href="data_request?id=lu_invoke&DeviceNum=%d"> #%d %s</a><br>]]
+  local Scene   = [[<a href="data_request?id=action&serviceId=%s&action=RunScene&SceneNum=%d"> #%d %s</a><br>]]  
+  local Action  = [[<a href="data_request?id=action&DeviceNum=%d&serviceId=%s&action=%s">%s%s</a><br>]]
+  local Service = [[<br><i>%s</i><br>]]
+    
+  local function spairs (x, fsort)  -- sorted pairs iterator
+    local i = 0
+    local I = {}
+    local function iterator () i = i+1; return I[i], x[I[i]] end
+    
+    for n in pairs(x) do I[#I+1] = n end
+    table.sort(I, fsort)
+    return iterator
+  end
+
+  local body
+  local D, S = {}, {}
+  local dev = luup.devices[tonumber(p.DeviceNum)]
+  
+  -- TODO: sort by name and parent/child structure? Too much trouble!
+  if dev then
+    -- Services and Actions for specific device
+    for s, srv in spairs (dev.services) do
+      S[#S+1] = Service: format (s)
+      local implemented_actions = srv.actions
+      for a,act in spairs ((loader.service_data[s] or {}).actions or {}) do
+        local name = act.name
+        local star = implemented_actions[name] and '*' or ''
+        S[#S+1] = Action: format (p.DeviceNum, s, name, star, name)
+      end
+    end
+    body = table.concat (S, '\n')
+  else
+    -- Devices and Scenes
+    for n,d in spairs(luup.devices) do
+      D[#D+1] = Device:format (n, n, d.description)
+    end
+    
+    local S = {}
+    for n,s in spairs(luup.scenes) do
+      S[#S+1] = Scene:format (hag, n, n, s.description)
+    end
+    
+    body = table.concat {table.concat (D, '\n'), "<br>Scenes:<br>", table.concat (S, '\n')}
+  end
+  return html: format (body)
 end
 
 -- Returns the recent IP requests in order by most recent first, [ACTUALLY, IT'S NOT ORDERED]
@@ -330,19 +393,6 @@ end
 local function status_startup_table ()
   local tasks = {}
   local startup = {tasks = tasks}
-  -- TODO: startup tasks:
-  --[[
-    startup": {
-      "tasks": [
-        {
-            "id": 1,
-            "status": 2,
-            "type": "Test Plugin[58]",
-            "comments": "Lua Engine Failed to Load"
-        }
-      ]
-    },
-]]--
   for id, job in pairs (scheduler.startup_list) do
     if job.status ~= scheduler.state.Done then
       tasks[#tasks + 1] = {
@@ -476,15 +526,25 @@ local function user_data (_,p)
     for a,b in pairs (userdata.attributes) do      -- add all the top-level attributes
       user_data2[a] = b
     end
-    local sd = {}
-    for _, data in pairs (loader.static_data) do    -- bundle up the JSON data for all devices 
-      sd[#sd+1] = data
+    if p.ns ~= '1' then     -- 2018.01.29
+      user_data2.static_data = static_data()
     end
-    user_data2.static_data = sd
     mime_type = "application/json"
     result = json.encode (user_data2)
   end
-  return  result, mime_type
+  return result, mime_type
+end
+
+-- This returns the static data only (undocumented, but used in UI5 JavaScript code)
+-- see: http://forum.micasaverde.com/index.php/topic,35904.0.html
+local function static ()
+  local sd = {
+    category_filter = category_filter,
+    static_data = static_data(),
+  }
+  local mime_type = "application/json"
+  local result = json.encode (sd)
+  return result, mime_type
 end
 
 -- room
@@ -691,11 +751,11 @@ local function request_image (_, p)
   local cam = luup.devices[devNo]
   if cam then
     local ip = p.ip or luup.attr_get ("ip", devNo) or ''
-    local url = p.url or cam:variable_get (sid, "URL") or ''
+    local url = p.url or luup.variable_get (sid, "URL", devNo) or ''
 --    local timeout = tonumber(cam:variable_get (sid, "Timeout")) or 5
     local timeout = tonumber(p.timeout) or 5
     if url then
-      status, image = luup.inet.wget ("http://" .. ip .. url.value, timeout)
+      status, image = luup.inet.wget ("http://" .. ip .. url, timeout)
     end
   end
   if image then
@@ -808,7 +868,7 @@ local function reload () luup.reload () end
 -- openLuup additions
 --
 local function test (r,p)
-  local d = {"data_request=" .. r}
+  local d = {"data_request","id=" .. r}   -- 2017.11.08
   for a,b in pairs (p) do
     d[#d+1] = table.concat {a,'=',b}
   end
@@ -828,11 +888,12 @@ local function debug() luup.debugON = not luup.debugON; return "DEBUG = ".. tost
 local function exit () scheduler.stop() ; return ("requested openLuup exit at "..os.date()) end
 
 --
+-- INITIALISATION
+--
 -- export all Luup requests
 --
 
-return {
-  ABOUT = ABOUT,
+local luup_requests = {
   
   action              = action, 
   alive               = alive,
@@ -848,6 +909,7 @@ return {
   room                = room,
   scene               = scene,
   sdata               = sdata, 
+  static              = static,
   status              = status, 
   status2             = status, 
   user_data           = user_data, 
@@ -864,6 +926,20 @@ return {
   update              = update,             -- download openLuup version from GitHub
 }
 
+do -- CALLBACK HANDLERS
+  -- Register lu_* style (ie. luup system, not luup user) callbacks with HTTP server
+  local extendedList = {}
+  for name, proc in pairs (luup_requests) do 
+    extendedList[name]        = proc
+    extendedList["lu_"..name] = proc              -- add compatibility with old-style call names
+  end
+  server.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
+end
+
+luup_requests.ABOUT = ABOUT   -- add module info (NOT part of request list!)
+
+
+return luup_requests
 
 ------------
 

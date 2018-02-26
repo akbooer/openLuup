@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2016.11.06",
-  DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
+  VERSION       = "2018.02.19",
+  DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -44,6 +44,8 @@ local ABOUT = {
 -- 2016.06.18  also look in openLuup/ directory (for AltAppStore)
 -- 2016.11.06  make "crlf" the default I/O protocol
 --             see: http://forum.micasaverde.com/index.php/topic,37661.msg298022.html#msg298022
+
+-- 2018.02.19  remove obsolete icon_redirect functionality (now done in servlet file request handler)
 
 ------------------
 --
@@ -338,37 +340,15 @@ local function read_service (service_file)
   return info
 end
 
-local icon_path      -- redirect path set by function below (if called at all)
-
--- called with new path for icon access, eg "http://172.16.42.151:3480/icons/"
-local function icon_redirect (path)
-  icon_path = json.encode (path): sub (1,-2)    -- strip off trailing double quote character
-end
-
--- force port 3480 access for all icons
-local function rewrite_icon_path (j)
-  return (j: gsub ('"[^"]+%.[ps][nw][gf]"', 
-    function (x)
-      if x: match '"http' then return x end
-      local new = icon_path .. x: match '[^"/=]+%.%a+"'
---      print ("icon: ", x, new)
-      return new
-    end
-    ))
-end
-
 
 -- read JSON file, if present.
 -- openLuup doesn't use the json files, except to put into the static_data structure
--- which is passed on to any UI through the /data_request?id=user_Data HTTP request.
+-- which is passed on to any UI through the /data_request?id=user_data HTTP request.
 local function read_json (json_file)
   local data, msg
   if json_file then 
     local j = cached_read (json_file)     -- 2016.05.24, restore caching to use virtual file system for .json files
     if j then 
-      if icon_path then                   -- 2016.02.23
-        j = rewrite_icon_path (j)
-      end
       data, msg = json.decode (j) 
     end
   end
@@ -494,7 +474,6 @@ return {
   -- methods
   assemble_device     = assemble_device_from_files,
   compile_lua         = compile_lua,
-  icon_redirect       = icon_redirect,
   new_environment     = new_environment,
   parse_service_xml   = parse_service_xml,
   parse_device_xml    = parse_device_xml,

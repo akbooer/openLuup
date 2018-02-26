@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2016.11.02",
+  VERSION       = "2017.05.10",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2017 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -38,6 +38,8 @@ local ABOUT = {
 -- 2016.07.10  add extra 'no_reload' parameter to luup.chdev.sync (for ZWay plugin)
 -- 2016.07.12  add 'reload' return parameter to luup.chdev.sync (ditto)
 -- 2016.11.02  add device name to device_startup code
+
+-- 2017.05.10  add category_num and subcategory_num to create() table parameters (thanks @dklinkman)
 
 local logs      = require "openLuup.logs"
 
@@ -146,7 +148,7 @@ local function create (x)
   dev:attr_set {
     id              = x.devNo,                                          -- device id
     altid           = x.internal_id and tostring(x.internal_id) or '',  -- altid (called id in luup.devices, confusing, yes?)
-    category_num    = d.category_num,
+    category_num    = x.category_num or d.category_num,     -- 2017.05.10
     device_type     = d.device_type or '',
     device_file     = x.upnp_file,
     device_json     = d.json_file,
@@ -161,7 +163,7 @@ local function create (x)
     plugin          = tostring(x.pluginnum or ''),
     password        = x.password,
     room            = tostring(tonumber (x.room or 0)),   -- why it's a string, I have no idea
-    subcategory_num = tonumber (d.subcategory_num) or 0,
+    subcategory_num = tonumber (x.subcategory_num or d.subcategory_num) or 0,     -- 2017.05.10
     time_created    = os.time(), 
     username        = x.username,
     ip              = x.ip or '',

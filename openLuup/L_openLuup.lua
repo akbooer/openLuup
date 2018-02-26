@@ -1,12 +1,12 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2017.03.09",
+  VERSION       = "2018.02.26",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -36,6 +36,8 @@ ABOUT = {
 -- 2016.11.18  remove HTTP handler
 -- 2016.11.20  add system memory stats
 -- 2016.12.05  move performance parameters to openLuup.status attribute
+
+-- 2018.02.20  use DisplayLine2 for HouseMode
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
@@ -276,6 +278,22 @@ end
 
 
 -- init
+local modeName = {"Home", "Away", "Night", "Vacation"}
+local modeLine = "[%s]"
+
+local function displayHouseMode (Mode)
+  if not Mode then
+    Mode = luup.variable_get (SID.openLuup, "HouseMode", ole)
+  end
+  Mode = tonumber(Mode)
+  display (nil, modeLine: format(modeName[Mode]))
+end
+
+function openLuup_watcher (_, _, var, _, Mode)    -- 2018.02.20
+  if var == "HouseMode" then
+    displayHouseMode (Mode)
+  end
+end
 
 function openLuup_ticker ()
   calc_stats()
@@ -287,7 +305,9 @@ function openLuup_synchronise ()
   local timer_type = 1                  -- interval timer
   local recurring = true                -- reschedule automatically, definitely not a Vera luup option! ... 
                           -- ...it ensures that rescheduling is always on time and does not 'slip' between calls.
+  luup.log "synchronising to on-the-minute"
   luup.call_timer ("openLuup_ticker", timer_type, MINUTES, days, data, recurring)
+  luup.log "2 minute timer launched"
   calc_stats ()
 end
 
@@ -298,7 +318,7 @@ function init (devNo)
   luup.call_delay ("openLuup_synchronise", later)
   local msg = ("synch in %0.1f s"): format (later)
   luup.log (msg)
-  display (nil, '')
+  displayHouseMode ()
   
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
@@ -325,7 +345,9 @@ function init (devNo)
     luup.chdev.sync (devNo, ptr)  
   end  
   
+  luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
   calc_stats ()
+  
   return true, msg, ABOUT.NAME
 end
 

@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2017.01.18",
+  VERSION       = "2018.02.16",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -28,14 +28,26 @@ local ABOUT = {
 --
 
 -- 2016.06.22   CreatePLugin and DeletePlugin now use update_plugin/delete_plugin in request module
+
 -- 2017.01.18   add HouseMode variable to openLuup device, to mirror attribute, so this can be used as a trigger
+
+-- 2018.01.27   implement ModifyUserData since /hag functionality to port_49451 deprecated
+-- 2018.01.18   add UserData variable in ModifyUserData response (thanks @amg0)
+--              see: http://forum.micasaverde.com/index.php/topic,55598.msg343271.html#msg343271
 
 local requests    = require "openLuup.requests"
 local scenes      = require "openLuup.scenes"
 local userdata    = require "openLuup.userdata"     -- for HouseMode
 local loader      = require "openLuup.loader"       -- for compile_lua
+local json        = require "openLuup.json"
+local logs        = require "openLuup.logs"
+local devutil     = require "openLuup.devices"
 
-local devutil = require "openLuup.devices"
+
+--  local log
+local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+
+logs.banner (ABOUT)   -- for version control
 
 --- create the device!!
 
@@ -47,13 +59,17 @@ local devutil = require "openLuup.devices"
 
 local Device_0 = devutil.new (0)
 
--- No need for an implementation file - we can define all the services right here
+-- No need for an implementation file - we can define all the services right here.
+-- Note that all the action run/job functions are called with the following parameters:
+--   function (lul_device, lul_settings, lul_job, lul_data)
+
 
 local SID = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
 
 -- create a variable for CreateDevice return info
 -- ...and, incidentally, the whole service also, which gets extended below...
 Device_0: variable_set (SID, "DeviceNum", '')
+
 
 
 --[[ action=CreateDevice
@@ -159,8 +175,95 @@ Device_0.services[SID].actions =
     --   DataFormat must be json.
     --   If Reload is 1 the LuaUPnP engine will reload after the UserData is modified. 
     --   For more information read http://wiki.micasaverde.com/index.php/ModifyUserData
+    -- and http://forum.micasaverde.com/index.php/topic,55598.msg343277.html#msg343277
     ModifyUserData = {
-      
+      extra_returns = {UserData = "{}"},     -- 2018.01.28  action return info
+      job = function (_, p) 
+        if p.Reload == '1' then luup.reload () end
+      end,
+      run = function (_,m)
+        local response
+        
+        if m.DataFormat == "json" and m.inUserData then
+          local j,msg = json.decode (m.inUserData)
+          if not j then 
+            response = msg 
+            _log (msg)
+          else
+            
+            -- Startup
+            
+            if j.StartupCode then
+              luup.attr_set ("StartupCode", j.StartupCode)
+              _log "modified StartupCode"
+            end
+            
+            -- Scenes
+            
+            if j.scenes then                                -- 2016.06.05
+              for _, scene in pairs (j.scenes) do
+                local id = tonumber (scene.id)
+                if id >= 1e6 then scene.id = nil end        -- remove bogus scene number
+                local new_scene, msg = scenes.create (scene)
+                id = tonumber (scene.id)                    -- may have changed
+                if id and new_scene then
+                  luup.scenes[id] = new_scene               -- slot into scenes table
+                  _log ("modified scene #" .. id)
+                else
+                  response = msg
+                  _log (msg)
+                  break
+                end
+              end
+            end
+            
+            -- Devices
+            
+            if j.devices then
+              for dev_name, info in pairs (j.devices) do
+                local devnum = tonumber (dev_name: match "_(%d+)$")   -- deal with this ridiculous naming convention
+                local dev = luup.devices[devnum]
+                if dev then
+                  if info.states then
+                    
+                    _log ("modifying states in device #" .. devnum)
+                    
+                    dev:delete_vars()      -- remove existing variables
+                    
+                    local newmsg = "new state[%s] %s.%s=%s"
+                    local errmsg = "error: state index/id mismatch: %s/%s"
+                    for i, v in pairs (info.states) do
+                      if v.id ~= i-1 then
+                        _log (errmsg: format (i, v.id or '?'))
+                        break
+                      end
+                      dev:variable_set (v.service, v.variable, v.value)
+                      _log (newmsg: format(v.id, v.service, v.variable, v.value))
+                    end
+                  end
+                end
+              end
+            end
+            
+            -- InstalledPlugins2
+           
+            if j.InstalledPlugins2 then
+              for plug_id, info in pairs (j.InstalledPlugins2) do
+                _log ("InstalledPlugins2 ******* NOT IMPLEMENTED *******" .. plug_id)
+                _log (json.encode(info))
+                _log "**********************"
+              end
+            end
+            
+            -- also sections, rooms, users...
+            
+          end
+          
+        else    -- not yet implemented
+          _log (m.inUserData)
+        end
+        return true
+      end
     },
     
     -- Reload the LuaUPnP engine. 

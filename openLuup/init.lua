@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2016.12.10",
+  VERSION       = "2018.02.25",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -34,20 +34,30 @@ local ABOUT = {
 -- 2016.06.30  uncompress user_data file if necessary
 -- 2016.07.19  correct syntax error in xml action request response
 -- 2016.11.18  add delay callback name
+
 -- 2017.01.05  add new line before end of Startup Lua (to guard against unterminated final comment line)
+-- 2017.03.15  add Server.Backlog parameter to openLuup attribute (thanks @explorer)
+-- 2017.04.10  add Logfile.Incoming parameter to openLuup attribute (thanks @a-lurker)
+-- 2017.06.14  add Server.WgetAuthorization for wget header basic authorization or URL-style
+
+-- 2018.01.18  add openLuup.Scenes prolog and epilog parameters
+-- 2018.02.05  move scheduler callback handler initialisation from here to request module
+-- 2018.02.19  add current directory to startup log
+-- 2018.02.25  add ip address to openLuup.Server
+
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
 local logs = require "openLuup.logs"
+local lfs  = require "lfs"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-_log ('',":: openLuup STARTUP ")
+_log (lfs.currentdir(),":: openLuup STARTUP ")
 logs.banner (ABOUT)   -- for version control
 
 luup = require "openLuup.luup"       -- here's the GLOBAL luup environment
 
-local requests      = require "openLuup.requests"
 local server        = require "openLuup.server"
 local scheduler     = require "openLuup.scheduler"
 local timers        = require "openLuup.timers"
@@ -109,7 +119,7 @@ do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, repl
 --  luup.create_device ("urn:schemas-micasaverde-com:device:SceneController:1", '',
 --                      "_SceneController", "D_SceneController1.xml", nil, nil, nil, nil, invisible, 1)
   invisible = false
-  luup.create_device ("openLuup", '', "   openLuup", "D_openLuup.xml",
+  luup.create_device ("openLuup", '', "    openLuup", "D_openLuup.xml",
                         upnp_impl, ip, mac, hidden, invisible, parent, room, "openLuup")
 end
 
@@ -124,6 +134,7 @@ do -- set attributes, possibly decoding if required
       Name      = "logs/LuaUPnP.log",  -- note that these may be changed by Lua Startup before being used
       Lines     = 2000,
       Versions  = 5,
+      Incoming  = "true",
     },
     Status = {
       StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime),
@@ -131,6 +142,17 @@ do -- set attributes, possibly decoding if required
     UserData = {
       Checkpoint  = 60,                   -- checkpoint every sixty minutes
       Name        = "user_data.json",     -- not recommended to change
+    },
+    Server = {
+      Backlog = 2000,                     -- used in socket.bind() for queue length
+      ChunkedLength = 16000,              -- size of chunked transfers
+      CloseIdleSocketAfter  = 90 ,        -- number of seconds idle after which to close socket
+      WgetAuthorization = "URL",          -- "URL" or else uses request header authorization
+      ip = server.myIP,
+   },
+    Scenes = {
+      Prolog = '',                        -- name of global function to call before any scene
+      Epilog = '',                        -- ditto, after any scene
     },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
@@ -143,16 +165,6 @@ do -- set attributes, possibly decoding if required
       set_attr[a] = b
     end
   end
-end
-
-do -- CALLBACK HANDLERS
-  -- Register lu_* style (ie. luup system, not luup user) callbacks with HTTP server
-  local extendedList = {}
-  for name, proc in pairs (requests) do 
-    extendedList[name]        = proc
-    extendedList["lu_"..name] = proc              -- add compatibility with old-style call names
-  end
-  server.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
 end
 
 do -- STARTUP   
@@ -208,7 +220,7 @@ end
 local status
 
 do -- SERVER and SCHEDULER
-  local s = server.start "3480"                 -- start the port 3480 Web server
+  local s = server.start ("3480", userdata.attributes.Server)     -- start the port 3480 Web server
   if not s then 
     error "openLuup - is another copy already running?  Unable to start port 3480 server" 
   end
