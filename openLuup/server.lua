@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2018.02.17",
+  VERSION       = "2018.02.26",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -66,9 +66,9 @@ local ABOUT = {
 -- 2017.06.14   use Authorization header for wget basic authorization, rather than in the URL (now deprecated)
 -- 2017.11.14   add extra icon path alias
 
--- 2018.01.11   remove edit of port_3480 in URL.path as per 2016.09.16 above, in advance of Vera port updates
+-- 2018.01.11   remove edit of /port_3480 in URL.path as per 2016.09.16 above, in advance of Vera port updates
 -- 2018.02.07   some functionality exported to new openluup.servlet module (cleaner interface)
-
+-- 2018.02.26   reinstate /port_3480 removal for local host requests only (allows Vera-style URLs to work here)
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -175,9 +175,6 @@ local function request_object (request_URI, headers, post_content, method, http_
   end
  
   local URL = url.parse (request_URI)               -- parse URL
---  if URL.path then                                  -- 2016.11.18
---    URL.path = URL.path:gsub ("/port_3480", '')     -- 2016.09.16, thanks @explorer  -- REVOKED 2018.01.11
---  end
 
   -- construct parameters from query string and/or POST content
   local parameters = {}
@@ -194,8 +191,11 @@ local function request_object (request_URI, headers, post_content, method, http_
     end
   end
 
-  local path_list = url.parse_path (URL.path) or {}   -- split out individual parts of the path
   local internal  = self_reference [URL.host] and URL.port == "3480"  -- 2016-03-16 check for port #, thanks @reneboer
+  if internal and URL.path then                                  -- 2016.11.18, 2018.02.26
+    URL.path = URL.path:gsub ("/port_3480", '')     -- 2016.09.16, thanks @explorer 
+  end
+  local path_list = url.parse_path (URL.path) or {}   -- split out individual parts of the path
 
   return {
       URL           = URL,

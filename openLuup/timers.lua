@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2018.02.05",
+  VERSION       = "2018.02.25",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -47,7 +47,7 @@ local ABOUT = {
 -- 2018.01.30  move timenow() and sleep() functions to scheduler module, add sunrise_sunset to TEST
 -- 2018.01.31  fix multiple sunrise/sunset timers (due to tolerance of time calculations)
 -- 2018.02.04  correct long-standing noon calculation error around equinox (thanks @a-lurker)
-
+-- 2018.02.25  move sol_ra_dec from TEST to normal exported function
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -437,12 +437,14 @@ return {
   TEST = {
     next_scheduled_time = next_scheduled_time,
     rise_set            = rise_set,
-    sol_ra_dec          = sol_ra_dec,
     sunrise_sunset      = sunrise_sunset,
     target_time         = target_time,
     time2unix           = time2unix,
   },
-  
+   -- constants
+  loadtime    = loadtime,
+ 
+   -- functions
   cpu_clock   = cpu_clock,
   gmt_offset  = gmt_offset,
   sunrise     = sunrise,
@@ -451,8 +453,7 @@ return {
   is_night    = is_night,
   call_delay  = call_delay,
   call_timer  = call_timer,
-  -- constants
-  loadtime    = loadtime,
+  sol_ra_dec  = sol_ra_dec,
 }
 
 ----

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.02.05",
+  VERSION       = "2018.02.25",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -43,6 +43,7 @@ local ABOUT = {
 -- 2018.01.18  add openLuup.Scenes prolog and epilog parameters
 -- 2018.02.05  move scheduler callback handler initialisation from here to request module
 -- 2018.02.19  add current directory to startup log
+-- 2018.02.25  add ip address to openLuup.Server
 
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
@@ -147,6 +148,7 @@ do -- set attributes, possibly decoding if required
       ChunkedLength = 16000,              -- size of chunked transfers
       CloseIdleSocketAfter  = 90 ,        -- number of seconds idle after which to close socket
       WgetAuthorization = "URL",          -- "URL" or else uses request header authorization
+      ip = server.myIP,
    },
     Scenes = {
       Prolog = '',                        -- name of global function to call before any scene
