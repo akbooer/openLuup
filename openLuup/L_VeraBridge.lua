@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.02.24",
+  VERSION       = "2018.03.01",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -79,6 +79,7 @@ ABOUT = {
 --              thanks @RHCPNG, see: http://forum.micasaverde.com/index.php/topic,57834.0.html
 -- 2018.02.20   include remote HouseMode in bridge panel DisplayLine2
 -- 2018.02.21   don't try and display HouseMode if none (eg. UI5)
+-- 2018.03.01   fix serviceId error for DisplayLine2 initialisation
 
 
 local devNo                      -- our device number
@@ -939,7 +940,7 @@ function init (lul_device)
   end
   
   setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
-  setVar ("DisplayLine2", '')
+  setVar ("DisplayLine2", '', SID.altui)
   
   if Ndev > 0 or Nscn > 0 then
 --    watch_mirror_variables (Mirrored)         -- set up variable watches for mirrored devices
