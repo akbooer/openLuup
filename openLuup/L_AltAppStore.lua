@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2018.02.24",
+  VERSION       = "2018.02.27",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2018",
@@ -187,20 +187,6 @@ function GitHub (archive)     -- global for access by other modules
     end
     return decoded, errmsg
   end
-
---  local function git_request (request)
---    local decoded
---    local response, errmsg = https.request (request)
---    _log ("GitHub request: " .. request)
---    if response then 
---      decoded, errmsg = json.decode (response)
---    else
---      _log ("ERROR: " .. (errmsg or "unknown"))
---      errmsg = response
---    end
---    return decoded, errmsg
---  end
-  
   
   -- return a table of tagged releases, indexed by name, 
   -- with GitHub structure including commit info

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2018.02.25",
+  VERSION       = "2018.02.27",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -171,7 +171,7 @@ local function rise_set (date, latitude, longitude)
   end
   
   local tz = time_zone()
-  return rise + tz, set + tz, noon + tz
+  return rise + tz, set + tz
 end
 
 -- function: sunset / sunrise

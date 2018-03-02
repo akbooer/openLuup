@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.02.26",
+  VERSION       = "2018.03.02",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -38,12 +38,15 @@ ABOUT = {
 -- 2016.12.05  move performance parameters to openLuup.status attribute
 
 -- 2018.02.20  use DisplayLine2 for HouseMode
+-- 2018.03.01  register openLuup as AltUI Data Storage Provider
+
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local vfs         = require "openLuup.virtualfilesystem"
 local lfs         = require "lfs"
 local url         = require "socket.url"
+local socket      = require "socket"                -- for UDP
 
 local INTERVAL = 120
 local MINUTES  = "2m"
@@ -252,7 +255,6 @@ local function plugin_configuration (_,meta)
   end
 end
 
-
 --
 -- GENERIC ACTION HANDLER
 --
@@ -277,7 +279,69 @@ local function generic_action (serviceId, name)
 end
 
 
--- init
+--
+-- register openLuup as an AltUI Data Storage Provider
+--
+local udp = {
+
+    open = function (ip_and_port)   -- returns UDP socket configured for sending to given destination
+      local sock, msg, ok
+      local ip, port = ip_and_port: match "(%d+%.%d+%.%d+%.%d+):(%d+)"
+      if ip and port then 
+        sock, msg = socket.udp()
+        if sock then ok, msg = sock:setpeername(ip, port) end         -- connect to destination
+      else
+        msg = "invalid ip:port syntax '" .. tostring (ip_and_port) .. "'"
+      end
+      if ok then ok = sock end
+      return ok, msg
+    end
+  }
+
+function openLuup_storage_provider (_, p)
+  print(json.encode {oL_DSP = {p}})
+end
+
+local function register_Data_Storage_Provider ()
+  
+  local AltUI
+  for devNo, d in pairs (luup.devices) do
+    if d.device_type == "urn:schemas-upnp-org:device:altui:1" 
+    and d.device_num_parent == 0 then   -- look for it on the LOCAL machine (might be bridged to another!)
+      AltUI = devNo
+      break
+    end
+  end
+  
+  if not AltUI then return end
+  
+  luup.log ("registering with AltUI [" .. AltUI .. "] as Data Storage Provider")
+  luup.register_handler ("openLuup_storage_provider", "openLuup_DSP")
+  
+  local newJsonParameters = {
+    {
+        default = "unknown",
+        key = "target",
+        label = "Target",
+        type = "text"
+--      },{
+--        default = "/data_request?id=lr_" .. MirrorCallback,
+--        key = "graphicurl",
+--        label = "Graphic Url",
+--        type = "url"
+      }
+    }
+  local arguments = {
+    newName = "openLuup",
+    newUrl = "http://127.0.0.1:3480/data_request?id=lr_openLuup_DSP",
+    newJsonParameters = json.encode (newJsonParameters),
+  }
+
+  luup.call_action (SID.altui, "RegisterDataProvider", arguments, AltUI)
+end
+
+
+-- init()
 local modeName = {"Home", "Away", "Night", "Vacation"}
 local modeLine = "[%s]"
 
@@ -346,6 +410,7 @@ function init (devNo)
   end  
   
   luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
+  register_Data_Storage_Provider ()   -- 2018.03.01
   calc_stats ()
   
   return true, msg, ABOUT.NAME

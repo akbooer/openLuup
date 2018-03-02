@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2018.02.16",
+  VERSION       = "2018.03.02",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -34,6 +34,8 @@ local ABOUT = {
 -- 2018.01.27   implement ModifyUserData since /hag functionality to port_49451 deprecated
 -- 2018.01.18   add UserData variable in ModifyUserData response (thanks @amg0)
 --              see: http://forum.micasaverde.com/index.php/topic,55598.msg343271.html#msg343271
+-- 2018.03.02   add HouseMode change delay (thanks @RHCPNG)
+
 
 local requests    = require "openLuup.requests"
 local scenes      = require "openLuup.scenes"
@@ -63,13 +65,30 @@ local Device_0 = devutil.new (0)
 -- Note that all the action run/job functions are called with the following parameters:
 --   function (lul_device, lul_settings, lul_job, lul_data)
 
-
 local SID = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+
+--
+-- HouseMode changes
+--
+
+-- setHouseMode()
+local function setHouseMode_immediate (new)
+  userdata.attributes.Mode = new
+  userdata.attributes.mode_change_time = os.time()
+  userdata.attributes.mode_change_mode = new
+  luup.variable_set ("openLuup", "HouseMode", new, 2)     -- 2017.01.18 update openLuup HouseMode variable
+end
+
+function setHouseMode_delayed (new)                       -- 2018.03.02
+  if new == userdata.attributes.mode_change_mode then     -- make sure soneone hasn't changed their mind!
+    setHouseMode_immediate (new)
+  end
+end
+
 
 -- create a variable for CreateDevice return info
 -- ...and, incidentally, the whole service also, which gets extended below...
 Device_0: variable_set (SID, "DeviceNum", '')
-
 
 
 --[[ action=CreateDevice
@@ -309,11 +328,14 @@ Device_0.services[SID].actions =
             ["3"] = "3",    -- "night"
             ["4"] = "4",    -- "vacation"
           }
-        local new = valid[p.Mode or ''] or "1"
-        userdata.attributes.Mode = new
-        userdata.attributes.mode_change_time = os.time()
-        userdata.attributes.mode_change_mode = new
-        luup.variable_set ("openLuup", "HouseMode", new, 2)  -- 2017.01.18 update openLuup HouseMode variable
+        local new = valid[p.Mode] or "1"
+        userdata.attributes.mode_change_mode = new    -- this is the pending mode
+        if new == "1" or p.Now then
+          setHouseMode_immediate (new)
+        else
+          local delay = tonumber (userdata.attributes.mode_change_delay) or 30
+          luup.call_delay ("setHouseMode_delayed", delay, new)
+        end
         return true
       end, 
     },

@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.03.01",
+  VERSION       = "2018.03.02",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -80,7 +80,7 @@ ABOUT = {
 -- 2018.02.20   include remote HouseMode in bridge panel DisplayLine2
 -- 2018.02.21   don't try and display HouseMode if none (eg. UI5)
 -- 2018.03.01   fix serviceId error for DisplayLine2 initialisation
-
+-- 2018.03.02   if mirroring remote House Mode, then change local Mode with immediate effect
 
 local devNo                      -- our device number
 
@@ -505,8 +505,9 @@ local function UpdateHouseMode (Mode)
   local current = userdata.attributes.Mode
   if current ~= Mode then 
     if HouseModeMirror == '1' then
---      luup.attr_set ("Mode", Mode)            -- 2016.05.23, thanks @konradwalsh!
-      luup.call_action (SID.hag, "SetHouseMode", {Mode = Mode}) -- 2018.02.05, use real action, thanks @RHCPNG
+      -- luup.attr_set ("Mode", Mode)                                     -- 2016.05.23, thanks @konradwalsh!
+      -- 2018.02.05, use real action, thanks @RHCPNG
+      luup.call_action (SID.hag, "SetHouseMode", {Mode = Mode, Now=1})    -- 2018.03.02  with immediate effect 
 
     elseif HouseModeMirror == '2' then
       local now = os.time()
@@ -940,7 +941,7 @@ function init (lul_device)
   end
   
   setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
-  setVar ("DisplayLine2", '', SID.altui)
+  setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
   
   if Ndev > 0 or Nscn > 0 then
 --    watch_mirror_variables (Mirrored)         -- set up variable watches for mirrored devices
