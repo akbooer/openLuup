@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.03.02",
+  VERSION       = "2018.03.05",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -57,6 +57,7 @@ local SID = {
 }
 
 local ole               -- our own device ID
+local InfluxSocket      -- for the database
 
 local _log = function (...) luup.log (table.concat ({...}, ' ')) end
 
@@ -299,7 +300,11 @@ local udp = {
   }
 
 function openLuup_storage_provider (_, p)
-  print(json.encode {oL_DSP = {p}})
+  local influx = "%s value=%s"
+  print(json.encode {Influx_DSP = {p}})
+  if InfluxSocket and p.measurement and p.new then 
+    InfluxSocket: send (influx: format (p.measurement, p.new))
+  end
 end
 
 local function register_Data_Storage_Provider ()
@@ -321,8 +326,8 @@ local function register_Data_Storage_Provider ()
   local newJsonParameters = {
     {
         default = "unknown",
-        key = "target",
-        label = "Target",
+        key = "measurement",
+        label = "Measurement[,tags]",
         type = "text"
 --      },{
 --        default = "/data_request?id=lr_" .. MirrorCallback,
@@ -332,7 +337,7 @@ local function register_Data_Storage_Provider ()
       }
     }
   local arguments = {
-    newName = "openLuup",
+    newName = "influx",
     newUrl = "http://127.0.0.1:3480/data_request?id=lr_openLuup_DSP",
     newJsonParameters = json.encode (newJsonParameters),
   }
@@ -376,13 +381,17 @@ function openLuup_synchronise ()
 end
 
 function init (devNo)
+  local msg
   ole = devNo
-  local later = timers.timenow() + INTERVAL    -- some minutes in the future
-  later = INTERVAL - later % INTERVAL          -- adjust to on-the-hour (actually, two-minutes)
-  luup.call_delay ("openLuup_synchronise", later)
-  local msg = ("synch in %0.1f s"): format (later)
-  luup.log (msg)
   displayHouseMode ()
+  
+  do -- synchronised heartbeat
+    local later = timers.timenow() + INTERVAL    -- some minutes in the future
+    later = INTERVAL - later % INTERVAL          -- adjust to on-the-hour (actually, two-minutes)
+    luup.call_delay ("openLuup_synchronise", later)
+    msg = ("synch in %0.1f s"): format (later)
+    luup.log (msg)
+  end
   
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
@@ -393,10 +402,12 @@ function init (devNo)
     info.Version = version      -- put it into openLuup table too.
   end
 
---  luup.register_handler ("HTTP_openLuup", "openLuup")
---  luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
-  
-  luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
+  do -- callback handlers
+--    luup.register_handler ("HTTP_openLuup", "openLuup")
+--    luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
+    luup.devices[devNo].action_callback (generic_action)      -- catch all undefined action calls
+    luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
+  end
 
   do -- install AltAppStore as child device
     local ptr = luup.chdev.start (devNo)
@@ -409,8 +420,20 @@ function init (devNo)
     luup.chdev.sync (devNo, ptr)  
   end  
   
-  luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
-  register_Data_Storage_Provider ()   -- 2018.03.01
+  do -- InfluxDB as Data Storage Provider 
+    local dsp = "InfluxDB Data Storage Provider: "
+    local db = luup.attr_get "openLuup.Databases.Influx"
+    if db then
+      local err
+      register_Data_Storage_Provider ()   -- 2018.03.01
+      InfluxSocket, err = udp.open (db)
+      if InfluxSocket then 
+        _log (dsp .. tostring(InfluxSocket))
+      else
+        _log (dsp .. (err or '')) end
+    end
+  end
+  
   calc_stats ()
   
   return true, msg, ABOUT.NAME

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2018.03.02",
+  VERSION       = "2018.03.05",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -35,7 +35,7 @@ local ABOUT = {
 -- 2018.01.18   add UserData variable in ModifyUserData response (thanks @amg0)
 --              see: http://forum.micasaverde.com/index.php/topic,55598.msg343271.html#msg343271
 -- 2018.03.02   add HouseMode change delay (thanks @RHCPNG)
-
+-- 2018.03.05   only trigger House Mode change if new value different from old
 
 local requests    = require "openLuup.requests"
 local scenes      = require "openLuup.scenes"
@@ -74,13 +74,17 @@ local SID = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
 -- setHouseMode()
 local function setHouseMode_immediate (new)
   userdata.attributes.Mode = new
-  userdata.attributes.mode_change_time = os.time()
-  userdata.attributes.mode_change_mode = new
-  luup.variable_set ("openLuup", "HouseMode", new, 2)     -- 2017.01.18 update openLuup HouseMode variable
+  local srv, var, dev = "openLuup", "HouseMode", 2
+  local old = luup.variable_get (srv, var, dev)
+  if new ~= old then    -- 2018.03.05
+    userdata.attributes.mode_change_time = os.time()
+    userdata.attributes.mode_change_mode = new
+    luup.variable_set (srv, var, new, dev)     -- 2017.01.18 update openLuup HouseMode variable
+  end
 end
 
 function setHouseMode_delayed (new)                       -- 2018.03.02
-  if new == userdata.attributes.mode_change_mode then     -- make sure soneone hasn't changed their mind!
+  if new == userdata.attributes.mode_change_mode then     -- make sure someone hasn't changed their mind!
     setHouseMode_immediate (new)
   end
 end
