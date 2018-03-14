@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.01.30",
+  VERSION       = "2018.03.08",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -355,25 +355,6 @@ local function device_start (entry_point, devNo, name)
   startup_list[jobNo] = job  -- put this into the startup job list too 
   return jobNo
 end    
-    -- TODO: device startup status and messages
-  --[[
-  startup": {
-
-    "tasks": 
-
-[
-
-        {
-            "id": 1,
-            "status": 2,
-            "type": "Test Plugin[58]",
-            "comments": "Lua Engine Failed to Load"
-        }
-    ]
-
-},
-  ]]--
-
 
 -- step through one cycle of task processing
 local function task_callbacks ()

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2018.02.26",
+  VERSION       = "2018.03.09",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -69,6 +69,8 @@ local ABOUT = {
 -- 2018.01.11   remove edit of /port_3480 in URL.path as per 2016.09.16 above, in advance of Vera port updates
 -- 2018.02.07   some functionality exported to new openluup.servlet module (cleaner interface)
 -- 2018.02.26   reinstate /port_3480 removal for local host requests only (allows Vera-style URLs to work here)
+-- 2018.03.09   move myIP code to servertables (more easily shared with other servers, eg. SMTP)
+
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -103,16 +105,7 @@ local status_codes = tables.status_codes
 
 local iprequests = {}     -- log of incoming requests {ip = ..., mac = ..., time = ...} indexed by ip
 
-
--- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
-local myIP = (
-  function ()    
-    local mySocket = socket.udp ()
-    mySocket:setpeername ("42.42.42.42", "424242")  -- arbitrary IP and PORT
-    local ip = mySocket:getsockname () 
-    mySocket: close()
-    return ip or "127.0.0.1"
-  end) ()
+local myIP = tables.myIP
 
 -- return HTML for error given numeric status code and optional extended error message
 local function error_html(status, msg)

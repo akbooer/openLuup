@@ -13,6 +13,22 @@
 -- 2016.11.18  added CGI console.lua
 
 -- 2018.02.19  added directory aliases (for file access requests)
+-- 2018.03.06  added SMTP status codes
+-- 2018.03.09  added myIP, moved from openLuup.server
+
+
+-- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
+
+local socket = require "socket"
+
+local function myIP ()    
+  local mySocket = socket.udp ()
+  mySocket:setpeername ("42.42.42.42", "424242")  -- arbitrary IP and PORT
+  local ip = mySocket:getsockname () 
+  mySocket: close()
+  return ip or "127.0.0.1"
+end
+
 
 local mimetypes = {
   css  = "text/css", 
@@ -77,6 +93,32 @@ local status_codes = {
    [505] = "HTTP Version not supported",
 }
 
+
+local smtp_codes = {
+  [211] = "System status, or system help reply",
+  [214] = "Help message",
+  [220] = "%s Service ready",                                               -- <domain>
+  [221] = "%s Service closing transmission channel",                        -- <domain>
+  [250] = "OK",      -- Requested mail action okay
+  [251] = "User not local; will forward to <%s>",                             -- <forward-path>
+  [354] = "Start mail input; end with <CRLF>.<CRLF>",
+  [421] = "%s Service not available, closing transmission channel",         -- <domain>
+  [450] = "Requested mail action not taken: mailbox <%s> unavailable",        -- <mailbox>
+  [451] = "Requested action aborted: local error in processing",
+  [452] = "Requested action not taken: insufficient system storage",
+  [500] = "Syntax error, command <%s> unrecognized",                           -- <command>
+  [501] = "Syntax error in parameters or arguments <%s>",
+  [502] = "Command <%s> not implemented",                                      -- <command>
+  [503] = "Bad sequence of commands",
+  [504] = "Command parameter not implemented",
+  [550] = "Requested action not taken: <%s> unavailable",                       -- <mailbox>
+  [551] = "User not local; please try <%s>",                                   -- <forward-path>
+  [552] = "Requested mail action aborted: exceeded storage allocation",
+  [553] = "Requested action not taken: mailbox name not allowed",
+  [554] = "Transaction failed",
+}
+
+
 -- CGI prefixes: HTTP requests with any of these path roots are treated as CGIs
 local cgi_prefix = {
     "cgi",          -- standard CGI directory
@@ -133,11 +175,13 @@ local dir_alias = {
 --
 
 return {
+    myIP          = myIP (),
     cgi_prefix    = cgi_prefix,
     cgi_alias     = cgi_alias,
     dir_alias     = dir_alias,
     mimetypes     = mimetypes,
-    status_codes  = status_codes,
+    smtp_codes    = smtp_codes,     -- SMTP
+    status_codes  = status_codes,   -- HTTP
   }
   
 -----

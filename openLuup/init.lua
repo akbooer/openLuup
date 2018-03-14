@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.02.25",
+  VERSION       = "2018.03.09",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -44,7 +44,7 @@ local ABOUT = {
 -- 2018.02.05  move scheduler callback handler initialisation from here to request module
 -- 2018.02.19  add current directory to startup log
 -- 2018.02.25  add ip address to openLuup.Server
-
+-- 2018.03.09  add SMTP server
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
@@ -59,6 +59,7 @@ logs.banner (ABOUT)   -- for version control
 luup = require "openLuup.luup"       -- here's the GLOBAL luup environment
 
 local server        = require "openLuup.server"
+local smtp          = require "openLuup.smtp"
 local scheduler     = require "openLuup.scheduler"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
@@ -125,13 +126,13 @@ end
 
 do -- set attributes, possibly decoding if required
   local set_attr = userdata.attributes 
-  set_attr["openLuup"] = {
+  set_attr["openLuup"] = {  -- note that any of these may be changed by Lua Startup before being used
     Backup = {
       Compress = "LZAP",
       Directory = "backup/",
     },
     Logfile = {
-      Name      = "logs/LuaUPnP.log",  -- note that these may be changed by Lua Startup before being used
+      Name      = "logs/LuaUPnP.log",
       Lines     = 2000,
       Versions  = 5,
       Incoming  = "true",
@@ -149,7 +150,12 @@ do -- set attributes, possibly decoding if required
       CloseIdleSocketAfter  = 90 ,        -- number of seconds idle after which to close socket
       WgetAuthorization = "URL",          -- "URL" or else uses request header authorization
       ip = server.myIP,
-   },
+    },
+    SMTP = {
+      Backlog = 100,                      -- RFC 821 recommended minimum queue length
+      CloseIdleSocketAfter = 300,         -- number of seconds idle after which to close socket
+      Port = 2525,
+    },
     Scenes = {
       Prolog = '',                        -- name of global function to call before any scene
       Epilog = '',                        -- ditto, after any scene
@@ -219,12 +225,17 @@ end
 
 local status
 
-do -- SERVER and SCHEDULER
-  local s = server.start ("3480", userdata.attributes.Server)     -- start the port 3480 Web server
+do -- SERVERs and SCHEDULER
+  local s = server.start ("3480", userdata.attributes.openLuup.Server)     -- start the port 3480 Web server
   if not s then 
     error "openLuup - is another copy already running?  Unable to start port 3480 server" 
   end
 
+  local config = userdata.attributes.openLuup.SMTP or {}
+  if config.Port then
+    smtp.start (config.Port, config)
+  end
+  
   -- start the heartbeat
   timers.call_delay(openLuupPulse, 6 * 60, '', "first checkpoint")      -- it's alive! it's alive!!
 

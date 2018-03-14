@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.02.10",
+  VERSION       = "2018.03.08",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -48,6 +48,8 @@ local ABOUT = {
 -- 2017.06.19  correct first word of GC100 code (thanks again @a-lurker)
 
 -- 2018.02.10  ensure valid error in luup.call_action() even if missing parameters
+-- 2018.03.08  extend register_handler to work with email (local SMTP server)
+
 
 local logs          = require "openLuup.logs"
 
@@ -58,6 +60,7 @@ local Device_0      = require "openLuup.gateway"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local loader        = require "openLuup.loader"   -- simply to access shared environment
+local smtp          = require "openLuup.smtp"     -- for register_handler to work with email
 
 -- luup sub-modules
 local chdev         = require "openLuup.chdev"
@@ -571,7 +574,12 @@ local function register_handler (...)
     -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
     local msg = ("global_function_name=%s, request=%s"): format (global_function_name, request_name)
     _log (msg, "luup.register_handler")
-    server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
+    local email = request_name: match "@"       -- not an HTTP request, but an SMTP email address
+    if email  then                              -- 2018.03.08
+      smtp.register_handler (fct, request_name)
+    else
+      server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
+    end
   end
 end
 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.02.15",
+  VERSION       = "2018.03.02",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -790,6 +790,108 @@ local I_ZWay_xml = [[
 </implementation>
 ]]
 
+-- testing new ZWay implementation
+local I_ZWay2_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <functions>
+    local M = require "L_ZWay2"
+    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
+    function startup (...)
+      return M.init (...)
+    end
+  </functions>
+  <startup>startup</startup>
+</implementation>
+]]
+
+-- Camera with child Motion Detector triggered by email
+local I_openLuupCamera1_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <handleChildren>1</handleChildren>
+  <functions>
+    local timeout = 30
+    local child -- the motion sensor
+    local smtp = require "openLuup.smtp"
+    local timers = require "openLuup.timers"
+    local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
+    function get (name)
+      return (luup.variable_get (sid, name, child))
+    end
+    function set (name, val)
+      if val ~= get (name) then
+        luup.variable_set (sid, name, val, child)
+      end
+    end
+    local function clear ()
+      local now = os.time()
+      local last = get "LastTripped"
+      if (tonumber (last) + timeout) <= (now + 1) then
+        set ("Tripped", '0')
+        set ("ArmedTripped", '0')
+        set ("LastTripped", now)
+      end
+    end
+    local function openLuupCamera (ip, mail)      -- email callback
+      set ("Tripped", '1')
+      set ("LastTripped", os.time())
+      if get "Armed" == '1' then set ("ArmedTripped", '1') end
+      timers.call_delay (clear, timeout, '', "camera motion reset")
+    end
+    function startup (devNo)
+      local smtp = require "openLuup.smtp"
+      do -- install MotionSensor as child device
+        local var = "urn:micasaverde-com:serviceId:SecuritySensor1,%s=%s\n"
+        local statevariables = table.concat {
+            var:format("Armed",1), 
+            var:format("ArmedTripped", 0),
+            var:format("Tripped", 0), 
+            var:format("LastTripped", 0),
+          }
+        local ptr = luup.chdev.start (devNo)
+        local altid = "openLuupCamera"
+        local description = luup.devices[devNo].description .." Motion Sensor"
+        local device_type = "urn:schemas-micasaverde-com:device:MotionSensor:1"
+        local upnp_file = "D_MotionSensor1.xml"
+        local upnp_impl = ''
+        luup.chdev.append (devNo, ptr, altid, description, device_type, upnp_file, upnp_impl, statevariables)
+        luup.chdev.sync (devNo, ptr)  
+      end
+      for dnum,d in pairs (luup.devices) do
+        if d.device_num_parent == devNo then
+          child = dnum
+          luup.attr_set ("subcategory_num", 3, child)  -- motion detector subtype
+        end
+      end
+      local ip = luup.attr_get ("ip", devNo)
+      ip = (ip or ''): match "%d+%.%d+%.%d+%.%d+"
+      if ip then
+        smtp.register_handler (openLuupCamera, ip)     -- receive mail from camera IP
+      end
+      return true, "OK", "I_openLuupCamera1"
+    end
+  </functions>
+  <actionList>
+    <action>
+  		<serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
+      <name>SetArmed</name>
+      <argumentList>
+        <argument>
+          <name>newArmedValue</name>
+          <direction>in</direction>
+          <relatedStateVariable>Armed</relatedStateVariable>
+        </argument>
+      </argumentList>
+      <run>
+        set ("Armed", lul_settings.newArmedValue)
+      </run>
+    </action>
+  </actionList>
+  <startup>startup</startup>
+</implementation>
+]]
+
 -----
 --
 -- DataYours schema and aggregation definitions for AltUI DataStorage Provider
@@ -918,6 +1020,9 @@ local manifest = {
     ["D_ZWay.xml"]  = D_ZWay_xml,
     ["D_ZWay.json"] = D_ZWay_json,
     ["I_ZWay.xml"]  = I_ZWay_xml,
+    ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
+    
+    ["I_openLuupCamera1.xml"] = I_openLuupCamera1_xml,
     
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,

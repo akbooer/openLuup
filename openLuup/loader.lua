@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.02.19",
+  VERSION       = "2018.03.13",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -46,6 +46,8 @@ local ABOUT = {
 --             see: http://forum.micasaverde.com/index.php/topic,37661.msg298022.html#msg298022
 
 -- 2018.02.19  remove obsolete icon_redirect functionality (now done in servlet file request handler)
+-- 2018.03.13  add handleChildren to implementation file parser
+
 
 ------------------
 --
@@ -284,6 +286,7 @@ local function parse_impl_xml (impl_xml, raw_xml)
   local source_code = table.concat (loadList, '\n')             -- concatenate the code
 
   return {
+    handle_children = i.handleChildren,                 -- 2018.03.13
     protocol    = i.settings and i.settings.protocol,   -- may be defined here, but more normally in device file
     source_code = source_code,
     startup     = i.startup,
@@ -437,9 +440,10 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
     i.source_code = nil   -- free up for garbage collection
   end
 
-  -- look for protocol in both device and implementation files 
-  d.protocol = d.protocol or i.protocol or "crlf"   -- 2015.11.06
-
+  -- look for protocol AND handleChildren in BOTH device and implementation files 
+  d.protocol = d.protocol or i.protocol or "crlf"               -- 2015.11.06
+  d.handle_children = d.handle_children or i.handle_children    -- 2018.03.13
+  
   -- set up code environment (for context switching)
   code = code or {}
   d.environment     = code  
