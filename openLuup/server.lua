@@ -1,10 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2018.03.09",
+  VERSION       = "2018.03.15",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -70,6 +71,7 @@ local ABOUT = {
 -- 2018.02.07   some functionality exported to new openluup.servlet module (cleaner interface)
 -- 2018.02.26   reinstate /port_3480 removal for local host requests only (allows Vera-style URLs to work here)
 -- 2018.03.09   move myIP code to servertables (more easily shared with other servers, eg. SMTP)
+-- 2018.03.15   fix relative URL handling in request object
 
 
 local socket    = require "socket"
@@ -84,10 +86,8 @@ local scheduler = require "openLuup.scheduler"
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local servlet   = require "openLuup.servlet"
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 -- CONFIGURATION DEFAULTS
 
@@ -167,8 +167,13 @@ local function request_object (request_URI, headers, post_content, method, http_
   -- we seem to get requests without the usual prefix, eg. just "/data_request..."
   -- think this is from persistent connections from the browser (AltUI in particular)
   -- without the scheme, ip, and port, then the request would be mis-handled
+  
   if not (request_URI: match "^%w+://") then 
-    request_URI = table.concat {"http://", myIP, ':', PORT,  request_URI }    -- 2018.02.26
+    if request_URI: match "^/" then    -- 2018.03.15  it's a relative URL, must be served from here
+      request_URI = table.concat {"http://", myIP, ':', PORT,  request_URI }    -- 2018.02.26
+    else
+      request_URI = "http://" .. request_URI    -- assume it's an external HTTP request
+    end
   end
  
   local URL = url.parse (request_URI)               -- parse URL

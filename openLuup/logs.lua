@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2018.02.08",
+  VERSION       = "2018.03.15",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -35,6 +35,7 @@ local ABOUT = {
 -- 2018.02.06   fixed missing tab in AltUI scene log (thanks @kartcon, @amg0)
 --              see: http://forum.micasaverde.com/index.php/topic,56847.0.html
 -- 2018.02.08   use actual scene table hex address rather than <0x0> in AltUI log
+-- 2018.03.15   provide reqistration for modules giving customised _log() and _debug() functions
 
 
 local socket  = require "socket"
@@ -350,6 +351,15 @@ local function banner (ABOUT)
   normal.send (msg, ABOUT.NAME, '')
 end
 
+-- module registration
+-- ... uses ABOUT information for NAME and DEBUG status, and module version log line
+local function register (about)
+  banner (about)                                  -- for version control
+  local function _log (msg, name) normal.send (msg, name or about.NAME) end
+  local function _debug (...) if about.DEBUG then print (...) end; end     -- debug to stdout
+  return _log, _debug
+end
+
 -- export methods
 
 return {
@@ -360,6 +370,8 @@ return {
   send            = normal.send,
   altui_variable  = altui.variable,
   altui_scene     = altui.scene,
+  register        = register,
+  
   -- for testing
   openLuup_logger = openLuup_logger,
   altui_logger    = altui_logger,

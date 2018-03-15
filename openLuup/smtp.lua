@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.smtp",
-  VERSION       = "2018.03.14",
+  VERSION       = "2018.03.15",
   DESCRIPTION   = "SMTP server and client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -28,6 +28,9 @@ local ABOUT = {
 --
 
 -- 2018.03.05   initial implementation, extracted from HTTP server
+-- 2018.03.14   first release
+-- 2018.03.15   remove lowercase folding of addresses.  Add Received header and timestamp.
+
 
 local socket    = require "socket"
 local smtp      = require "socket.smtp"
@@ -35,11 +38,10 @@ local smtp      = require "socket.smtp"
 local logs      = require "openLuup.logs"
 local scheduler = require "openLuup.scheduler"
 local tables    = require "openLuup.servertables"
+local timers    = require "openLuup.timers"         -- for rfc_5322_date()
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 -- CONFIGURATION DEFAULTS
 
@@ -92,7 +94,7 @@ local OK = code(250)
 
 local myIP = tables.myIP
 
-local myDomain = ("[%s] %s / %s"): format (myIP, ABOUT.NAME, ABOUT.VERSION)
+local myDomain = ("[%s] %s %s"): format (myIP, ABOUT.NAME, ABOUT.VERSION)
 
 local iprequests = {}       -- log incoming request IPs
 
@@ -100,16 +102,9 @@ local destinations = {}     -- table of registered email addresses (shared acros
 
 local blacklist = {}      -- table of blacklisted senders
 
---
---
-
-local function debug (...)
-  if ABOUT.DEBUG then print (...) end
-end
 
 -- register a listener for the incoming mail
 local function register_handler (callback, email)
-  email = email: lower()
   if not destinations[email] then                    -- only allow one unique reader for this email address
     destinations[email] = {
         callback = callback, 
@@ -131,7 +126,7 @@ local function deliver_mail (state)
     }
   
   local function job ()
-    debug "Mail Delivery job"
+    _debug "Mail Delivery job"
     local function deliver (info)
       if info then 
         local ok, err = scheduler.context_switch (info.devNo, info.callback, info.email, message)
@@ -144,21 +139,21 @@ local function deliver_mail (state)
     end
     -- email recipients
     for i, recipient in ipairs (message.forward_path) do
-      debug (" Recipient #" ..i, recipient)
+      _debug (" Recipient #" ..i, recipient)
       deliver (destinations[recipient])
     end
     -- IP listener
     local ip = state.domain: match "%[(%d+%.%d+%.%d+%.%d+)%]"
     if destinations[ip] then
-      debug (" IP listener", ip)
+      _debug (" IP listener", ip)
       deliver (destinations[ip])
     end
     return scheduler.state.Done, 0
   end
   
-  debug "Deliver Mail:"
-  debug (" Data lines:", #(message.data or {}))
-  debug (" Sender:", message.reverse_path)
+  _debug "Deliver Mail:"
+  _debug (" Data lines:", #(message.data or {}))
+  _debug (" Sender:", message.reverse_path)
   scheduler.run_job {job = job}
 end
 
@@ -183,7 +178,7 @@ local function new_client (sock)
   local state = {}   -- the current state of the conversation  
   
   local function send_client (msg) 
-    debug ("SEND:", msg)
+    _debug ("SEND:", msg)
     return sock:send (table.concat {msg, '\r\n'}) 
   end
   
@@ -206,7 +201,6 @@ local function new_client (sock)
   local function mail (from) 
     local reply
     local sender = from: match "[Ff][Rr][Oo][Mm]:.-([^@<%s]+@[%w-%.]+).-$"
-    sender = sender: lower()
     if not sender then 
       reply = code(501, tostring (from))    -- could be nil
     else
@@ -223,7 +217,6 @@ local function new_client (sock)
   -- receiver
   local function rcpt (to) 
     local receiver = to: match "^[Tt][Oo]:.-([^@<%s]+@[%w-%.]+).-$"
-    receiver = receiver: lower()
     if state.reverse_path and destinations[receiver] then
       local r = state.forward_path 
       r[#r+1] = receiver
@@ -249,6 +242,10 @@ local function new_client (sock)
     send_client (code (354))
     local errmsg
     local data = state.data
+    data[1] = ("Received: from %s"): format (state.domain)
+    data[2] = (" by %s;"): format (myDomain)                      -- TODO: syntax not correct
+    data[3] = (" %s"): format (timers.rfc_5322_date())            -- timestamp
+    data[4] = nil                                                 -- ensure no further data, yet
     for line, err in next_data do
       errmsg = err
       data[#data+1] = line        -- add to the data buffer
@@ -270,9 +267,10 @@ local function new_client (sock)
     send_client (code(502, d or '?'))
   end
     
--- From RFC-821:
--- In order to make SMTP workable, the following minimum implementation is required for all receivers:
--- Note: EHLO added since some clients don't fall back to using HELO.
+-- From RFC-5321, section 4.5.1 Minimum Implementation
+-- In order to make SMTP workable, the following minimum implementation
+-- MUST be provided by all receivers.  The following commands MUST be
+-- supported to conform to this specification:
     local dispatch = {
       EHLO = helo,    -- extended HELO functionality the same as HELO, because it has no extensions!
       HELO = helo,
@@ -282,14 +280,14 @@ local function new_client (sock)
       RSET = function () reset_client() ; send_client (OK) end,
       NOOP = function () send_client (OK) end,
       QUIT = quit, 
+      VRFY = function () send_client (code(252)) end,   -- "unable to verify"
     }
   
   -- incoming() is called by the scheduler when there is data to read
   local function incoming ()
     local line, err = sock: receive()         -- read the request line
     if not err then  
-      debug (#line, line)
-      _log (line .. ' ' .. tostring(sock))
+--      _debug (#line, line)
       local cmd, params = line: match "^(%a%a%a%a)%s*(.-)$"
       cmd = (cmd or ''): upper()
       local fct = dispatch[cmd]
@@ -392,6 +390,17 @@ end
 -- receive email for openLuup...
 local function local_email (email, message)
   -- EMAIL processing goes here!
+  _debug (email)
+  if ABOUT.DEBUG then
+    local json = require "openLuup.json"
+    json.default.max_array_length = 5000
+    local f = io.open ("SMTP/data/message.json", 'wb')
+    if f then 
+      local j,e = json.encode(message)
+      f: write (j or e)
+      f: close ()
+    end
+  end
 end
 
 
