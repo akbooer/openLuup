@@ -841,6 +841,13 @@ local I_openLuupCamera1_xml = [[
     end
     function startup (devNo)
       local smtp = require "openLuup.smtp"
+      do -- add key camera parameters
+        local sid = "urn:micasaverde-com:serviceId:Camera1"
+        local var = "AutoArchivePreserveDays"
+        if not luup.variable_get (sid, var, devNo) then
+          luup.variable_set (sid, var, 7, devNo)    -- how many days to keep the pictures in the archive
+        end
+      end
       do -- install MotionSensor as child device
         local var = "urn:micasaverde-com:serviceId:SecuritySensor1,%s=%s\n"
         local statevariables = table.concat {
