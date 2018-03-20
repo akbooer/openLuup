@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.03.08",
+  VERSION       = "2018.03.19",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -531,7 +531,7 @@ local function call_timer (...)
     _log (msg, "luup.call_timer")
     local e,_,j = timers.call_timer(fct, timer_type, time, days, data, recurring)      -- 2016.03.01   
     if j and scheduler.job_list[j] then
-      local text = "job#%d :timer %s (%s)"
+      local text = "job#%d :timer '%s' (%s)"
       scheduler.job_list[j].type = text: format (j, global_function_name, msg)
     end
     return e

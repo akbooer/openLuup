@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.smtp",
-  VERSION       = "2018.03.17",
+  VERSION       = "2018.03.20",
   DESCRIPTION   = "SMTP server and client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -32,6 +32,7 @@ local ABOUT = {
 -- 2018.03.15   remove lowercase folding of addresses.  Add Received header and timestamp.
 -- 2018.03.16   only deliver message header and body, not whole state
 -- 2018.03.17   add MIME decoder
+-- 2018.03.20   add IP connection and message counts
 
 
 local socket    = require "socket"
@@ -228,7 +229,9 @@ local iprequests = {}       -- log incoming request IPs
 
 local destinations = {}     -- table of registered email addresses (shared across all server instances)
 
-local blacklist = {}      -- table of blacklisted senders
+local blocked = {           -- table of blocked senders
+    ["spam@not.wanted.com"] = true,
+  }
 
 -- register a listener for the incoming mail
 local function register_handler (callback, email)
@@ -237,6 +240,7 @@ local function register_handler (callback, email)
         callback = callback, 
         devNo = scheduler.current_device (),
         email = email,
+        count = 0,
       }
     return 1
   end
@@ -250,8 +254,10 @@ local function deliver_mail (state)
     _debug "Mail Delivery job"
     local meta = {__index = {decode = decode_message}}  -- provide MIME decoder method...
     local data = setmetatable (state.data, meta)        -- ...as part of the delivered data object
+    
     local function deliver (info)
       if info then 
+        info.count = info.count + 1                     -- 2018.03.20  increment mailbox message counter
         local ok, err = scheduler.context_switch (info.devNo, info.callback, info.email, data)
         if ok then
           _log (table.concat {"EMAIL delivered to handler for: ", info.email})
@@ -326,7 +332,7 @@ local function new_client (sock)
     if not sender then 
       reply = code(501, tostring (from))    -- could be nil
     else
-      if blacklist[sender] then
+      if blocked[sender] then
         reply = code (552)          -- rejected
       else
         state.reverse_path = sender
@@ -409,7 +415,7 @@ local function new_client (sock)
   local function incoming ()
     local line, err = sock: receive()         -- read the request line
     if not err then  
---      _debug (#line, line)
+      _debug (line)
       local cmd, params = line: match "^(%a%a%a%a)%s*(.-)$"
       cmd = (cmd or ''): upper()
       local fct = dispatch[cmd]
@@ -447,8 +453,13 @@ local function new_client (sock)
   -- new_client ()
 
   do -- initialisation
-    ip = sock:getpeername() or '?'                                            -- who's asking?
-    iprequests [ip] = {ip = ip, date = os.time(), mac = "00:00:00:00:00:00"}  --TODO: real MAC address - how?
+    ip = sock:getpeername() or '?'                                    -- who's asking?
+    local connects = ((iprequests[ip] or {}).connects or 0) + 1       -- let me count the times
+    iprequests[ip] = {
+      ip = ip, 
+      date = os.time(), 
+      connects = connects,
+      mac = "00:00:00:00:00:00"}  --TODO: real MAC address - how?
     local connect = "new SMTP client connection from %s: %s"
     _log (connect:format (ip, tostring(sock)))
   end
@@ -510,28 +521,17 @@ local function start (port, config)
   return mod, msg
 end
 
--- receive email for openLuup...
+-- special email destinations for openLuup...
 local function local_email (email, message)
   -- EMAIL processing goes here!
+  local _ = message   -- unused at present
   _debug (email)
-  if ABOUT.DEBUG then
-    local json = require "openLuup.json"
-    json.default.max_array_length = 5000
-    local f = io.open ("SMTP/data/message.json", 'wb')
-    if f then 
-      local j,e = json.encode(message)
-      f: write (j or e)
-      f: close ()
-    end
-  end
 end
 
 
 do -- init
-
   register_handler (local_email, "postmaster@openLuup.local")
-  register_handler (local_email, "openLuup@openLuup.local")
-
+  register_handler (local_email, "test@openLuup.local")
 end
 
 --- return module variables and methods
@@ -545,7 +545,9 @@ return {
     myIP = myIP,
 
     -- variables
-    iprequests  = iprequests,
+    destinations  = destinations,
+    iprequests    = iprequests,
+    blocked        = blocked,
     
     -- methods
     start = start,

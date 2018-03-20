@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2018.03.15",
+  VERSION       = "2018.03.18",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -356,7 +356,7 @@ end
 local function register (about)
   banner (about)                                  -- for version control
   local function _log (msg, name) normal.send (msg, name or about.NAME) end
-  local function _debug (...) if about.DEBUG then print (...) end; end     -- debug to stdout
+  local function _debug (...) if about.DEBUG then print (about.NAME, ...) end; end     -- debug to stdout
   return _log, _debug
 end
 

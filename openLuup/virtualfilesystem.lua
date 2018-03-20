@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.03.02",
+  VERSION       = "2018.03.18",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -841,13 +841,6 @@ local I_openLuupCamera1_xml = [[
     end
     function startup (devNo)
       local smtp = require "openLuup.smtp"
-      do -- add key camera parameters
-        local sid = "urn:micasaverde-com:serviceId:Camera1"
-        local var = "AutoArchivePreserveDays"
-        if not luup.variable_get (sid, var, devNo) then
-          luup.variable_set (sid, var, 7, devNo)    -- how many days to keep the pictures in the archive
-        end
-      end
       do -- install MotionSensor as child device
         local var = "urn:micasaverde-com:serviceId:SecuritySensor1,%s=%s\n"
         local statevariables = table.concat {
