@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.03.19",
+  VERSION       = "2018.03.21",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -45,7 +45,6 @@ local ABOUT = {
 -- 2018.02.19  add current directory to startup log
 -- 2018.02.25  add ip address to openLuup.Server
 -- 2018.03.09  add SMTP server
--- 2018.03.18  add openLuup.RetentionPolicies
 
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
@@ -162,16 +161,6 @@ do -- set attributes, possibly decoding if required
       comment = "set Prolog/Epilog to global function names to run before/after ALL scenes",
       Prolog = '',                        -- name of global function to call before any scene
       Epilog = '',                        -- ditto, after any scene
-    },
-    RetentionPolicies = {                 -- file types to delete in these directories after expiry times            -- 
-                                          -- times specified in days OR weeks OR months OR years
-      images = {
-        days = 7, maxfiles = 200, types = "jpg, bmp, gif",
-        comment = "image files in openLuup's images/ folder purged after 7 days and limited to 200 files max",
-      },
-      tmp = {days = 1, 
-        comment = "any file in openLuup's tmp/ folder is purged after one day",
-      },
     },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}

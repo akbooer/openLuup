@@ -191,18 +191,26 @@ local I_openLuup_impl = [[
     
     <action>
       <serviceId>openLuup</serviceId>
-      <name>GetStats</name>
-      <run>
-      -- note that there's no code, but the action has return parameters (see service file)
-      </run>
+      <name>SendToTrash</name>
+      <job>
+        SendToTrash (lul_settings)
+      </job>
+    </action>
+    
+    <action>
+      <serviceId>openLuup</serviceId>
+      <name>EmptyTrash</name>
+      <job>
+        EmptyTrash (lul_settings)
+      </job>
     </action>
     
     <action>
       <serviceId>openLuup</serviceId>
       <name>SetHouseMode</name>
       <run>
-      local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
-      luup.call_action (sid, "SetHouseMode", lul_settings)
+        local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+        luup.call_action (sid, "SetHouseMode", lul_settings)
       </run>
     </action>
   
@@ -236,35 +244,46 @@ local S_openLuup_svc = [[
     </action>
 
     <action>
-      <name>GetStats</name>
+      <name>SendToTrash</name>
       <argumentList>
         <argument>
-          <name>CPU</name>
-          <direction>out</direction>
-          <relatedStateVariable>CpuLoad</relatedStateVariable>
+          <name>Folder</name>
+          <direction>in</direction>
         </argument>
         <argument>
-          <name>Memory</name>
-          <direction>out</direction>
-          <relatedStateVariable>Memory_Mb</relatedStateVariable>
+          <name>MaxDays</name>
+          <direction>in</direction>
         </argument>
         <argument>
-          <name>Uptime</name>
-          <direction>out</direction>
-          <relatedStateVariable>Uptime_Days</relatedStateVariable>
+          <name>MaxFiles</name>
+          <direction>in</direction>
+        </argument>
+        <argument>
+          <name>FileTypes</name>
+          <direction>in</direction>
         </argument>
       </argumentList>
     </action>
   
     <action>
-    <name>SetHouseMode</name>
-    <argumentList>
-      <argument>
-        <name>Mode</name>
-        <direction>in</direction>
-      </argument>
-    </argumentList>
-  </action>
+      <name>EmptyTrash</name>
+      <argumentList>
+        <argument>
+          <name>AreYouSure</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+  
+    <action>
+      <name>SetHouseMode</name>
+      <argumentList>
+        <argument>
+          <name>Mode</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
 
   </actionList>
 </scpd>

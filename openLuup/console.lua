@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.03.19",
+  VERSION       = "2018.03.20",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -378,6 +378,10 @@ function run (wsapi_env)
   end
   
   local function smtplist ()
+    local layout = "     %-32s %s %s"
+    local none = "--- none ---"
+    local function number (n) return ("%7d  "): format (n) end
+    local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
     
     local function devname (d)
       local d = tonumber(d) or 0
@@ -385,37 +389,39 @@ function run (wsapi_env)
       return table.concat {'[', d, '] ', name: match "^%s*(.+)"}
     end
     
-    local layout = "     %-32s %s %s"
     print ("SMTP eMail Server, " .. os.date "%c")
     
     print "\n Received connections:"
-    print (layout: format("IP address", "date       time", '\n'))
-    if not next (smtp.iprequests) then print (layout: format ("--- none ---",'','\n')) end
+    printout("IP address", "#connects", "    date     time\n")
+    if not next (smtp.iprequests) then printout (none) end
     for ip, req in pairs (smtp.iprequests) do
-      print (layout: format (ip, os.date(date, req.date), ''))
+      local connects = number (req.connects)
+      printout (ip, connects, os.date(date, req.date))
     end
     
     print "\n Registered email sender IPs:"
-    print (layout: format ("IP address", "#messages", "for device\n"))
+    printout ("IP address", "#messages", "for device\n")
+    local n = 0
     for ip,dest in pairs (smtp.destinations) do
       local name = devname (dest.devNo)
-      local count = ("%7d  "): format (dest.count)
-      if not ip: match "@" then print (layout: format (ip, count, name)) end
+      local count = number (dest.count)
+      if not ip: match "@" then n=n+1; printout (ip, count, name) end
     end
+    if n == 0 then printout (none) end
     
     print "\n Registered destination mailboxes:"
-    print (layout: format("eMail address", "#messages", "for device\n"))
+    printout ("eMail address", "#messages", "for device\n")
     for email,dest in pairs (smtp.destinations) do
       local name = devname (dest.devNo)
-      local count = ("%7d  "): format (dest.count)
-      if email: match "@" then print (layout: format (email, count, name)) end
+      local count = number (dest.count)
+      if email: match "@" then printout (email, count, name) end
     end
     
     print "\n Blocked senders:"
-    print (layout: format("eMail address", '', '\n'))
-    if not next (smtp.blocked) then print (layout: format ("--- none ---",'', '\n')) end
+    printout ("eMail address", '', '\n')
+    if not next (smtp.blocked) then printout (none) end
     for email in pairs (smtp.blocked) do
-      print (layout: format (email,'',''))
+      printout (email)
     end
   end
   

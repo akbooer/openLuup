@@ -1,10 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.03.08",
+  VERSION       = "2018.03.21",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -42,14 +43,14 @@ local ABOUT = {
 -- 2017.05.05  update current time in handling of delays
 
 -- 2018.01.30  add logging info to job structure, move timenow() and sleep() here from timers
+-- 2018.03.21  add default exit state to jobs
+
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 -- LOCAL aliases for timenow() and sleep() functions
 
@@ -190,6 +191,7 @@ local function dispatch (job, method)
                                                   job.target, job.arguments, job) 
   timeout = tonumber (timeout) or 0
   if ok then 
+    status = status or state.Done                 -- 2018.03.21  add default exit state to jobs
     if not valid_state[status or ''] then
       job.notes = "invalid job state returned: " .. tostring(status)
       status = state.Aborted

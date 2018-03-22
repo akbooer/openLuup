@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.03.20",
+  VERSION       = "2018.03.21",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -41,7 +41,7 @@ ABOUT = {
 -- 2018.02.20  use DisplayLine2 for HouseMode
 -- 2018.03.01  register openLuup as AltUI Data Storage Provider
 -- 2018.03.18  register with local SMTP server to receive email for openLuup@openLuup.local
--- 2018.03.19  add daily timer for applying file retention policies in openLuup.RetentionPolicies
+-- 2018.03.21  add SendToTrash and EmptyTrash actions to apply file retention policies
 
 
 local json        = require "openLuup.json"
@@ -356,9 +356,18 @@ end
 -- File Retention Policies
 --
 
--- implement_retention_policies (remove)
--- calls 'remove' function for every file to be deleted
-local function implement_retention_policies (policies, remove)
+-- implement_retention_policies (policies, process)
+-- calls 'process' function for every matching file
+-- policies is a table of the form:
+--[[
+    { 
+      [folderName1] = {types = "jpg gif tmp", days=1, weeks=1, months=1, years=1, maxfiles=42},
+      [folderName2] = {types = "*", weeks=3, maxfiles=42},
+      [...]
+    }
+--]]
+
+local function implement_retention_policies (policies, process)
 
   local function duration (policy)    -- return max age in days for given policy
     local function x(interval) return policy[interval] or 0 end
@@ -375,7 +384,7 @@ local function implement_retention_policies (policies, remove)
 
   local function filetypes (policy)   -- return table of applicable file types
     local types = {}
-    for ext in (policy.types or ''): gmatch "%w+" do
+    for ext in (policy.types or ''): gmatch "[%*%w]+" do
       types[ext] = ext
     end
     return types
@@ -383,10 +392,11 @@ local function implement_retention_policies (policies, remove)
 
   local function get_candidates (path, types)   -- return file candidates sorted by age
     local files = {}
-    local tmp = path: match "^tmp[/\\]"     -- anything with tmp/... (or tmp\...) path
+    local wildcard = types['*']                          -- anything goes
     for filename in lfs.dir (path) do
-      local ext = filename: match "^[^%.].*%.(%w+)$"      -- look for file extension (non-hidden files only)
-      if types[ext] or tmp then                           -- valid candidate
+      local hidden = filename: match "^%."                -- hidden files start with '.'
+      local ext = filename: match "%.(%w+)$"              -- file extensions end with ".xxx'
+      if not hidden and (types[ext] or wildcard) then     -- valid candidate
         local fullpath = path .. filename
         local a = lfs.attributes (fullpath)
         if a.mode == "file" then
@@ -400,7 +410,7 @@ local function implement_retention_policies (policies, remove)
 
   -- implement_retention_policies()
 
-  local purge = 'retention policy %s*.(%s), age=%s, files=%s'
+  local purge = "retention policy %s*.(%s), age=%s, #files=%s"
   for dir, policy in pairs (policies) do
     local a = lfs.attributes (dir)                -- check that path exists
     local is_dir = a and a.mode == "directory"
@@ -418,8 +428,8 @@ local function implement_retention_policies (policies, remove)
       if max_files then
         for i = #files, policy.maxfiles+1, -1 do
           local file = files[i]
-          _log (("delete #%d %s"): format (i, file.name))
-          remove (file.name)
+          _log (("select #%d %s"): format (i, file.name))
+          process (file.name)
           files[i] = nil
         end
       end
@@ -428,13 +438,74 @@ local function implement_retention_policies (policies, remove)
       if max_age then
         for _, file in ipairs (files) do
           if file.age > max_age then
-            _log (("delete %0.0f days %s"): format(file.age, file.name))
-            remove (file.name)
+            _log (("select %0.0f day old %s"): format(file.age, file.name))
+            process (file.name)
           end      
         end      
       end
     
     end
+  end
+end
+
+------------------------
+--
+-- ACTIONS
+--
+
+-- 2018.03.21  SendToTrash
+--
+--  Parameters: 
+--    Folder    (string) path of folder below openLuup current directory
+--    MaxDays   (number) maximum age of files (days) to retain
+--    MaxFiles  (number) maximum number of files to retain
+--    FileTypes (string) one or more file extensions to apply, or * for anything
+--
+function SendToTrash (p)
+  
+  local function trash (file)
+    local filename = file: match "[/\\]*([^/\\]+)$"    -- ignore leading path to leave just the filename
+    os.rename (file, "trash/" .. filename)
+  end
+  
+  lfs.mkdir "trash"   -- make sure destination exists
+  
+  -- try to protect ourself from any damage!
+  local locked = {"openLuup", "cgi", "cgi-bin", "cmh", "files", "icons", "trash", "whisper", "www"}
+  local prohibited = {}
+  for _, dir in ipairs(locked) do prohibited[dir] = dir end
+  
+  local folder = (p.Folder or ''): match "^[%./\\]*(.-)[/\\]*$" -- just pull out the relevant path
+  if prohibited[folder] then
+    luup.log ("cannot select files in protected folder " .. tostring(folder))
+    return
+  end
+  
+  if folder then
+    luup.log "applying file retention policy..."
+    local policy = {[folder] = {types = p.FileTypes, days = p.MaxDays, maxfiles = p.MaxFiles}}
+    local process = trash
+    implement_retention_policies (policy, process)
+    luup.log "...finished applying file retention policy"
+  end
+end
+
+function EmptyTrash (p)
+  local yes = p.AreYouSure or ''
+  if yes: lower() == "yes" then
+    luup.log "emptying trash/ folder..."
+    for file in lfs.dir "trash" do
+      local hidden = file: match "^%."                -- hidden files start with '.'
+      if not hidden then
+        local ok,err = os.remove ("trash/" .. file)
+        if ok then
+          luup.log ("deleted " .. file)
+        else
+          luup.log ("unable to delete " .. file .. " : " .. (err or '?'))
+        end
+      end
+    end
+    luup.log "...done!"
   end
 end
 
@@ -476,17 +547,9 @@ function openLuup_synchronise ()
   calc_stats ()
 end
 
--- 2018.03.19  apply retention policies on a daily basis
-function openLuup_retention_policies ()
-  luup.log "applying file retention policies..."
-  local policies = luup.attr_get "openLuup.RetentionPolicies"
-  local remove = os.remove      -- use system's remove function to delete expired files
-  implement_retention_policies (policies, remove)
-  luup.log "...finished file retention policies"
-end
-
 -- 2018.03.18  receive email for openLuup@openLuup.local
 function openLuup_email (email, data)
+  local _,_ = email, data
   -- do nothing at the moment
   -- but it's important that this handler is registered,
   -- so that email sent to this address will be accepted by the server.
@@ -522,24 +585,12 @@ function init (devNo)
   ole = devNo
   displayHouseMode ()
   
-  do -- timed callbacks
-    
-    -- synchronised heartbeat
+  do -- synchronised heartbeat
     local later = timers.timenow() + INTERVAL         -- some minutes in the future
     later = INTERVAL - later % INTERVAL               -- adjust to on-the-hour (actually, two-minutes)
     luup.call_delay ("openLuup_synchronise", later)
     msg = ("synch in %0.1f s"): format (later)
     luup.log (msg)
-    
-    -- 2018.03.19  folder retention policies on a daily basis
-    local timer_type = 2          -- day of week timer
-    local time = "03:30:00"       -- 3:30 AM
-    local days = "1,2,3,4,5,6,7"  -- every day of the week
-    local data = ''
-    local recurring = true
-    luup.call_timer ("openLuup_retention_policies", timer_type, time, days, data, recurring)
-    luup.log "started daily file retention policy job"
-  
   end
 
   do -- version number
