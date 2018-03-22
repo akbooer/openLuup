@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.03.21",
+  VERSION       = "2018.03.22",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -564,6 +564,7 @@ function openLuup_image (email, data)
       local ContentType = part.header["content-type"] or "text/plain"
       local ctype = ContentType: match "^%w+/%w+" 
       local cname = ContentType: match 'name="([^"]+)"'
+      -- TODO: parse filename to ensure no path references
       if cname and ctype: match "image" then    -- write out image files
         local f = io.open ("images/" .. cname, 'wb') 
         if f then

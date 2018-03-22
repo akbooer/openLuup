@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2018.03.15",
+  VERSION       = "2018.03.22",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -72,6 +72,7 @@ local ABOUT = {
 -- 2018.02.26   reinstate /port_3480 removal for local host requests only (allows Vera-style URLs to work here)
 -- 2018.03.09   move myIP code to servertables (more easily shared with other servers, eg. SMTP)
 -- 2018.03.15   fix relative URL handling in request object
+-- 2018.03.22   export http_handler from servlet for use by console server page
 
 
 local socket    = require "socket"
@@ -553,7 +554,11 @@ return {
     myIP = myIP,
     
     -- variables
-    iprequests = iprequests,
+    iprequests    = iprequests,
+    
+    http_handler  = servlet.http_handler,   -- export for use by console server page
+    file_handler  = servlet.file_handler,
+    cgi_handler   = servlet.cgi_handler,
     
     --methods
     add_callback_handlers = servlet.add_callback_handlers,

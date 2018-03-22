@@ -1,10 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.03.19",
+  VERSION       = "2018.03.22",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -49,6 +50,7 @@ local ABOUT = {
 
 -- 2018.02.10  ensure valid error in luup.call_action() even if missing parameters
 -- 2018.03.08  extend register_handler to work with email (local SMTP server)
+-- 2018.03.22  use renamed io.luupio module, use logs.register()
 
 
 local logs          = require "openLuup.logs"
@@ -66,17 +68,9 @@ local smtp          = require "openLuup.smtp"     -- for register_handler to wor
 local chdev         = require "openLuup.chdev"
 local io            = require "openLuup.io"    
 
--- global log
 
--- @param: what_to_log (string), log_level (optional, number)
-local function log (msg, level)
-  logs.send (msg, level, scheduler.current_device())
-end
-
---  local log
-local function _log (msg, name) log (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 local _log_altui_variable  = logs.altui_variable
 
@@ -460,7 +454,7 @@ local function call_action (service, action, arguments, device)
     if dev and dev.device_num_parent ~= 0 then        -- action may be handled by parent
       local parent = devices[dev.device_num_parent] or {}
       if parent.handle_children then     -- action IS handled by parent
-        log ("action will be handled by parent: " .. dev.device_num_parent, "luup.call_action")
+        _log ("action will be handled by parent: " .. dev.device_num_parent, "luup.call_action")
         dev = find_handler (parent)
       end
     end
@@ -825,13 +819,13 @@ return {
     device_supports_service = device_supports_service,    
     devices_by_service  = devices_by_service,   
     inet                = inet,
-    io                  = io,
+    io                  = io.luupio,
     ip_set              = ip_set,
     is_night            = timers.is_night,  
     is_ready            = is_ready,
     job                 = job, 
     job_watch           = job_watch,
-    log                 = log,
+    log                 = function (msg, level) logs.send (msg, level, scheduler.current_device()) end,
     mac_set             = mac_set,
     register_handler    = register_handler, 
     reload              = reload,

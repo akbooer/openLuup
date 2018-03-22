@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.03.20",
+  VERSION       = "2018.03.22",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -366,21 +366,51 @@ function run (wsapi_env)
 
   end
 
+  local function number (n) return ("%7d  "): format (n) end
+
   local function httplist ()
-    local layout = "     %-20s %s"
+    local layout = "     %-42s %s %s"
+    local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
+    
+    local function printinfo (requests)
+      local calls = {}
+      for name in pairs (requests) do calls[#calls+1] = name end
+      table.sort (calls)
+      for _,name in ipairs (calls) do
+        local call = requests[name]
+        local count = call.count
+        local status = call.status
+        if count and count > 0 then
+          printout (name, "  "..status, number(count))
+        end
+      end
+    end
+    
     print ("HTTP Web Server, " .. os.date "%c")
     
-    print "\n Incoming connections:"
-    print (layout: format("IP address", "date       time"))
+    print "\n Most recent incoming connections:"
+    printout ("IP address", "date       time")
     for ip, req in pairs (server.iprequests) do
-      print (layout: format (ip, os.date(date, req.date)))
+      printout (ip, os.date(date, req.date))
     end
+    
+      print "\n /data_request?"
+      printout ("id=... ","status", " #requests")
+      printinfo (server.http_handler)
+      
+      print "\n CGI requests"
+      printout ("URL ","status"," #requests")
+      printinfo (server.cgi_handler)
+      
+      print "\n file requests"
+      printout ("filename ","status"," #requests")
+      printinfo (server.file_handler)
+    
   end
   
   local function smtplist ()
     local layout = "     %-32s %s %s"
     local none = "--- none ---"
-    local function number (n) return ("%7d  "): format (n) end
     local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
     
     local function devname (d)
