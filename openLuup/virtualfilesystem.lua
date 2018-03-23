@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.03.18",
+  VERSION       = "2018.03.23",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -892,20 +892,44 @@ local I_openLuupCamera1_xml = [[
     end
   </functions>
   <actionList>
+    
     <action>
   		<serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
       <name>SetArmed</name>
-      <argumentList>
-        <argument>
-          <name>newArmedValue</name>
-          <direction>in</direction>
-          <relatedStateVariable>Armed</relatedStateVariable>
-        </argument>
-      </argumentList>
       <run>
         set ("Armed", lul_settings.newArmedValue)
       </run>
     </action>
+    
+    <action>
+      <serviceId>urn:micasaverde-com:serviceId:Camera1</serviceId>
+      <name>ArchiveVideo</name>
+      <job>
+        local ip  = luup.attr_get ("ip", lul_device)
+        local url = luup.variable_get ("urn:micasaverde-com:serviceId:Camera1", "URL", lul_device)
+        local p = lul_settings
+        if ip and url then
+          timeout = 5
+          local status, image = luup.inet.wget ("http://" .. ip .. url, timeout)
+          if status == 0 then
+            local filename = os.date "Snap_%Y%m%d-%H%M%S-X.jpg"
+            local f,err = io.open ("images/" .. filename, 'wb')
+            image = image or "---no image---"
+            if f then
+              f: write (image)
+              f: close ()
+              local msg = "ArchiveVideo:%d: Format=%s, Duration=%s - %d bytes written to %s"
+              luup.log (msg:format (lul_device, p.Format or '?', p.Duration or '?', #image, filename))              
+            else
+              luup.log ("ERROR writing image file: " .. (err or '?'))
+            end
+          else
+            luup.log ("ERROR getting image: " .. (image or '?'))
+          end
+        end
+      </job>
+    </action>
+  
   </actionList>
   <startup>startup</startup>
 </implementation>

@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.03.22",
+  VERSION       = "2018.03.23",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -402,7 +402,7 @@ function run (wsapi_env)
       printout ("URL ","status"," #requests")
       printinfo (server.cgi_handler)
       
-      print "\n file requests"
+      print "\n File requests"
       printout ("filename ","status"," #requests")
       printinfo (server.file_handler)
     
