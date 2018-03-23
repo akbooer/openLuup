@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.02.19",
+  VERSION       = "2018.03.17",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -46,6 +46,9 @@ local ABOUT = {
 --             see: http://forum.micasaverde.com/index.php/topic,37661.msg298022.html#msg298022
 
 -- 2018.02.19  remove obsolete icon_redirect functionality (now done in servlet file request handler)
+-- 2018.03.13  add handleChildren to implementation file parser
+-- 2018.03.17  changes to enable plugin debugging by ZeroBrane Studio (thanks @explorer)
+--             see: http://forum.micasaverde.com/index.php/topic,38471.0.html
 
 ------------------
 --
@@ -270,6 +273,19 @@ local function parse_impl_xml (impl_xml, raw_xml)
   local file_pos = raw_xml:find "<files>" or 0
   local func_pos = raw_xml:find "<functions>" or 0
   local files_first = file_pos < func_pos   
+  
+  -----
+  --
+  -- 2018.03.17 from @explorer: ZeroBrane debugging support:
+  -- determine the number of line breaks in the XML before functions start and insert them in front of the functions
+  -- to help debugger’s current position when going through the code from I_device.xml
+  if i.functions then
+    local _, line_count = string.gsub( raw_xml:sub(0, func_pos), "\n", "")
+    i.functions = string.rep("\n", line_count) .. i.functions
+  end
+  --
+  -----
+  
   -- load 
   local loadList = {}   
   if not files_first then loadList[#loadList+1] = i.functions end   -- append any xml file functions
@@ -284,9 +300,11 @@ local function parse_impl_xml (impl_xml, raw_xml)
   local source_code = table.concat (loadList, '\n')             -- concatenate the code
 
   return {
+    handle_children = i.handleChildren,                 -- 2018.03.13
     protocol    = i.settings and i.settings.protocol,   -- may be defined here, but more normally in device file
     source_code = source_code,
     startup     = i.startup,
+    files       = i.files,                              -- 2018.03.17  ZeroBrane debugging support
   }
 end
 
@@ -428,7 +446,22 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   -- load and compile the amalgamated code from <files>, <functions>, <actions>, and <startup> tags
   local code, error_msg
   if i.source_code then
-    local name = ("[%d] %s"): format (devNo, file or '?')
+    
+  -----
+  --
+  -- 2018.03.17 from @explorer: ZeroBrane debugging support:
+  -- use actual filenames to make it work with ZeroBrane
+  -- limitations:
+  -- works only when I_pugin.xml code is in <functions> or <files>, not both
+  -- only single file is supported now
+  -- TODO: consider not concatenating the source code in parse_impl_xml but compiling them separately.
+  -- for code in XML files, keep XML but start XML lines with comments "-- " to match the line number.
+
+--    local name = ("[%d] %s"): format (devNo, file or '?')
+    local name = i.files or file or '?'                  -- 2018.03.17
+  --
+  -----
+
     code, error_msg = compile_lua (i.source_code, name)  -- load, compile, instantiate    
     if code then 
       code.luup.device = devNo        -- set local value for luup.device
@@ -437,9 +470,10 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
     i.source_code = nil   -- free up for garbage collection
   end
 
-  -- look for protocol in both device and implementation files 
-  d.protocol = d.protocol or i.protocol or "crlf"   -- 2015.11.06
-
+  -- look for protocol AND handleChildren in BOTH device and implementation files 
+  d.protocol = d.protocol or i.protocol or "crlf"               -- 2015.11.06
+  d.handle_children = d.handle_children or i.handle_children    -- 2018.03.13
+  
   -- set up code environment (for context switching)
   code = code or {}
   d.environment     = code  

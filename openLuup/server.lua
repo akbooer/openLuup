@@ -1,10 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2018.02.26",
+  VERSION       = "2018.03.22",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -69,6 +70,10 @@ local ABOUT = {
 -- 2018.01.11   remove edit of /port_3480 in URL.path as per 2016.09.16 above, in advance of Vera port updates
 -- 2018.02.07   some functionality exported to new openluup.servlet module (cleaner interface)
 -- 2018.02.26   reinstate /port_3480 removal for local host requests only (allows Vera-style URLs to work here)
+-- 2018.03.09   move myIP code to servertables (more easily shared with other servers, eg. SMTP)
+-- 2018.03.15   fix relative URL handling in request object
+-- 2018.03.22   export http_handler from servlet for use by console server page
+
 
 local socket    = require "socket"
 local url       = require "socket.url"
@@ -82,10 +87,8 @@ local scheduler = require "openLuup.scheduler"
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local servlet   = require "openLuup.servlet"
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 -- CONFIGURATION DEFAULTS
 
@@ -103,16 +106,7 @@ local status_codes = tables.status_codes
 
 local iprequests = {}     -- log of incoming requests {ip = ..., mac = ..., time = ...} indexed by ip
 
-
--- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
-local myIP = (
-  function ()    
-    local mySocket = socket.udp ()
-    mySocket:setpeername ("42.42.42.42", "424242")  -- arbitrary IP and PORT
-    local ip = mySocket:getsockname () 
-    mySocket: close()
-    return ip or "127.0.0.1"
-  end) ()
+local myIP = tables.myIP
 
 -- return HTML for error given numeric status code and optional extended error message
 local function error_html(status, msg)
@@ -174,8 +168,13 @@ local function request_object (request_URI, headers, post_content, method, http_
   -- we seem to get requests without the usual prefix, eg. just "/data_request..."
   -- think this is from persistent connections from the browser (AltUI in particular)
   -- without the scheme, ip, and port, then the request would be mis-handled
+  
   if not (request_URI: match "^%w+://") then 
-    request_URI = table.concat {"http://", myIP, ':', PORT,  request_URI }    -- 2018.02.26
+    if request_URI: match "^/" then    -- 2018.03.15  it's a relative URL, must be served from here
+      request_URI = table.concat {"http://", myIP, ':', PORT,  request_URI }    -- 2018.02.26
+    else
+      request_URI = "http://" .. request_URI    -- assume it's an external HTTP request
+    end
   end
  
   local URL = url.parse (request_URI)               -- parse URL
@@ -555,7 +554,11 @@ return {
     myIP = myIP,
     
     -- variables
-    iprequests = iprequests,
+    iprequests    = iprequests,
+    
+    http_handler  = servlet.http_handler,   -- export for use by console server page
+    file_handler  = servlet.file_handler,
+    cgi_handler   = servlet.cgi_handler,
     
     --methods
     add_callback_handlers = servlet.add_callback_handlers,

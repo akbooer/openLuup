@@ -1,10 +1,11 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.02.26",
+  VERSION       = "2018.03.23",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -38,12 +39,17 @@ ABOUT = {
 -- 2016.12.05  move performance parameters to openLuup.status attribute
 
 -- 2018.02.20  use DisplayLine2 for HouseMode
+-- 2018.03.01  register openLuup as AltUI Data Storage Provider
+-- 2018.03.18  register with local SMTP server to receive email for openLuup@openLuup.local
+-- 2018.03.21  add SendToTrash and EmptyTrash actions to apply file retention policies
+
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local vfs         = require "openLuup.virtualfilesystem"
 local lfs         = require "lfs"
 local url         = require "socket.url"
+local socket      = require "socket"                -- for UDP
 
 local INTERVAL = 120
 local MINUTES  = "2m"
@@ -54,8 +60,12 @@ local SID = {
 }
 
 local ole               -- our own device ID
+local InfluxSocket      -- for the database
 
 local _log = function (...) luup.log (table.concat ({...}, ' ')) end
+local function _debug (...)
+  if ABOUT.DEBUG then print (ABOUT.NAME, ...) end
+end
 
 --
 -- utilities
@@ -252,7 +262,6 @@ local function plugin_configuration (_,meta)
   end
 end
 
-
 --
 -- GENERIC ACTION HANDLER
 --
@@ -276,8 +285,235 @@ local function generic_action (serviceId, name)
   return dispatch[name] or noop
 end
 
+------------------------
+--
+-- register openLuup as an AltUI Data Storage Provider
+--
+local udp = {
 
--- init
+    open = function (ip_and_port)   -- returns UDP socket configured for sending to given destination
+      local sock, msg, ok
+      local ip, port = ip_and_port: match "(%d+%.%d+%.%d+%.%d+):(%d+)"
+      if ip and port then 
+        sock, msg = socket.udp()
+        if sock then ok, msg = sock:setpeername(ip, port) end         -- connect to destination
+      else
+        msg = "invalid ip:port syntax '" .. tostring (ip_and_port) .. "'"
+      end
+      if ok then ok = sock end
+      return ok, msg
+    end
+  }
+
+function openLuup_storage_provider (_, p)
+  local influx = "%s value=%s"
+  _debug (json.encode {Influx_DSP = {p}})
+  if InfluxSocket and p.measurement and p.new then 
+    InfluxSocket: send (influx: format (p.measurement, p.new))
+  end
+end
+
+local function register_Data_Storage_Provider ()
+  
+  local AltUI
+  for devNo, d in pairs (luup.devices) do
+    if d.device_type == "urn:schemas-upnp-org:device:altui:1" 
+    and d.device_num_parent == 0 then   -- look for it on the LOCAL machine (might be bridged to another!)
+      AltUI = devNo
+      break
+    end
+  end
+  
+  if not AltUI then return end
+  
+  luup.log ("registering with AltUI [" .. AltUI .. "] as Data Storage Provider")
+  luup.register_handler ("openLuup_storage_provider", "openLuup_DSP")
+  
+  local newJsonParameters = {
+    {
+        default = "unknown",
+        key = "measurement",
+        label = "Measurement[,tags]",
+        type = "text"
+--      },{
+--        default = "/data_request?id=lr_" .. MirrorCallback,
+--        key = "graphicurl",
+--        label = "Graphic Url",
+--        type = "url"
+      }
+    }
+  local arguments = {
+    newName = "influx",
+    newUrl = "http://127.0.0.1:3480/data_request?id=lr_openLuup_DSP",
+    newJsonParameters = json.encode (newJsonParameters),
+  }
+
+  luup.call_action (SID.altui, "RegisterDataProvider", arguments, AltUI)
+end
+
+------------------------
+--
+-- File Retention Policies
+--
+
+-- implement_retention_policies (policies, process)
+-- calls 'process' function for every matching file
+-- policies is a table of the form:
+--[[
+    { 
+      [folderName1] = {types = "jpg gif tmp", days=1, weeks=1, months=1, years=1, maxfiles=42},
+      [folderName2] = {types = "*", weeks=3, maxfiles=42},
+      [...]
+    }
+--]]
+
+local function implement_retention_policies (policies, process)
+
+  local function duration (policy)    -- return max age in days for given policy
+    local function x(interval) return policy[interval] or 0 end
+    local days  = x"days" + 7 * x"weeks" + 30.5 * x"months" + 356 * x"years"
+    if days > 0 then return days end
+  end
+
+  local age do                        -- return age in days since last modified
+    local now = os.time()
+    age = function (attributes)
+      return (now - attributes.modification) /24 /3600
+    end
+  end
+
+  local function filetypes (policy)   -- return table of applicable file types
+    local types = {}
+    for ext in (policy.types or ''): gmatch "[%*%w]+" do
+      types[ext] = ext
+    end
+    return types
+  end
+
+  local function get_candidates (path, types)   -- return file candidates sorted by age
+    local files = {}
+    local wildcard = types['*']                          -- anything goes
+    for filename in lfs.dir (path) do
+      local hidden = filename: match "^%."                -- hidden files start with '.'
+      local ext = filename: match "%.(%w+)$"              -- file extensions end with ".xxx'
+      if not hidden and (types[ext] or wildcard) then     -- valid candidate
+        local fullpath = path .. filename
+        local a = lfs.attributes (fullpath)
+        if a.mode == "file" then
+          files[#files+1] = {name = fullpath, age = age(a)}
+        end
+      end
+    end
+    table.sort (files, function (a,b) return a.age < b.age end)
+    return files
+  end
+
+  -- implement_retention_policies()
+
+  local purge = "retention policy %s*.(%s), age=%s, #files=%s"
+  for dir, policy in pairs (policies) do
+    local a = lfs.attributes (dir)                -- check that path exists
+    local is_dir = a and a.mode == "directory"
+    local up_dir = dir: match "%.%."              -- remove any attempt to move up directory tree
+    
+    if is_dir and not up_dir then
+      local path = dir:gsub ("[^/]$", '%1/')      -- make sure it ends with a '/'
+      local types = filetypes (policy)
+      local files = get_candidates (path, types)
+      local max_age = duration (policy) 
+      local max_files = policy.maxfiles
+      _log (purge: format (path, policy.types or '', max_age or "unlimited", max_files or "unlimited"))
+      
+      -- apply max file policy
+      if max_files then
+        for i = #files, policy.maxfiles+1, -1 do
+          local file = files[i]
+          _log (("select #%d %s"): format (i, file.name))
+          process (file.name)
+          files[i] = nil
+        end
+      end
+      
+      -- apply max age policy
+      if max_age then
+        for _, file in ipairs (files) do
+          if file.age > max_age then
+            _log (("select %0.0f day old %s"): format(file.age, file.name))
+            process (file.name)
+          end      
+        end      
+      end
+    
+    end
+  end
+end
+
+------------------------
+--
+-- ACTIONS
+--
+
+-- 2018.03.21  SendToTrash
+--
+--  Parameters: 
+--    Folder    (string) path of folder below openLuup current directory
+--    MaxDays   (number) maximum age of files (days) to retain
+--    MaxFiles  (number) maximum number of files to retain
+--    FileTypes (string) one or more file extensions to apply, or * for anything
+--
+function SendToTrash (p)
+  
+  local function trash (file)
+    local filename = file: match "[/\\]*([^/\\]+)$"    -- ignore leading path to leave just the filename
+    os.rename (file, "trash/" .. filename)
+  end
+  
+  lfs.mkdir "trash"   -- make sure destination exists
+  
+  -- try to protect ourself from any damage!
+  local locked = {"openLuup", "cgi", "cgi-bin", "cmh", "files", "icons", "trash", "whisper", "www"}
+  local prohibited = {}
+  for _, dir in ipairs(locked) do prohibited[dir] = dir end
+  
+  local folder = (p.Folder or ''): match "^[%./\\]*(.-)[/\\]*$" -- just pull out the relevant path
+  if prohibited[folder] then
+    luup.log ("cannot select files in protected folder " .. tostring(folder))
+    return
+  end
+  
+  if folder then
+    luup.log "applying file retention policy..."
+    local policy = {[folder] = {types = p.FileTypes, days = p.MaxDays, maxfiles = p.MaxFiles}}
+    local process = trash
+    implement_retention_policies (policy, process)
+    luup.log "...finished applying file retention policy"
+  end
+end
+
+function EmptyTrash (p)
+  local yes = p.AreYouSure or ''
+  if yes: lower() == "yes" then
+    luup.log "emptying trash/ folder..."
+    for file in lfs.dir "trash" do
+      local hidden = file: match "^%."                -- hidden files start with '.'
+      if not hidden then
+        local ok,err = os.remove ("trash/" .. file)
+        if ok then
+          luup.log ("deleted " .. file)
+        else
+          luup.log ("unable to delete " .. file .. " : " .. (err or '?'))
+        end
+      end
+    end
+    luup.log "...done!"
+  end
+end
+
+
+------------------------
+--
+-- init()
+--
 local modeName = {"Home", "Away", "Night", "Vacation"}
 local modeLine = "[%s]"
 
@@ -311,15 +547,55 @@ function openLuup_synchronise ()
   calc_stats ()
 end
 
+-- 2018.03.18  receive email for openLuup@openLuup.local
+function openLuup_email (email, data)
+  local _,_ = email, data
+  -- do nothing at the moment
+  -- but it's important that this handler is registered,
+  -- so that email sent to this address will be accepted by the server.
+end
+
+-- 2018.03.18  receive and store email images for images@openLuup.local
+function openLuup_image (email, data)
+  local message = data: decode ()             -- decode MIME message
+  if type (message.body) == "table" then      -- must be multipart message
+    local n = 0
+    for _, part in ipairs (message.body) do
+      
+      local ContentType = part.header["content-type"] or "text/plain"
+      local ctype = ContentType: match "^%w+/%w+" 
+      local cname = ContentType: match 'name%s*=%s*"([^/\\][^"]+)"'   -- avoid absolute paths
+      if cname and cname: match "%.%." then cname = nil end           -- avoid any attempt to move up folder tree
+      
+      if cname and ctype: match "image" then    -- write out image files
+        local f = io.open ("images/" .. cname, 'wb') 
+        if f then
+          n = n + 1
+          f: write (part.body)
+          f: close ()
+        end
+      end
+    end
+    if n > 0 then 
+      local saved = "%s: saved %d image files"
+      _log (saved: format(email, n))
+    end
+  end
+end
+
 function init (devNo)
+  local msg
   ole = devNo
-  local later = timers.timenow() + INTERVAL    -- some minutes in the future
-  later = INTERVAL - later % INTERVAL          -- adjust to on-the-hour (actually, two-minutes)
-  luup.call_delay ("openLuup_synchronise", later)
-  local msg = ("synch in %0.1f s"): format (later)
-  luup.log (msg)
   displayHouseMode ()
   
+  do -- synchronised heartbeat
+    local later = timers.timenow() + INTERVAL         -- some minutes in the future
+    later = INTERVAL - later % INTERVAL               -- adjust to on-the-hour (actually, two-minutes)
+    luup.call_delay ("openLuup_synchronise", later)
+    msg = ("synch in %0.1f s"): format (later)
+    luup.log (msg)
+  end
+
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
@@ -329,10 +605,14 @@ function init (devNo)
     info.Version = version      -- put it into openLuup table too.
   end
 
---  luup.register_handler ("HTTP_openLuup", "openLuup")
---  luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
-  
-  luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
+  do -- callback handlers
+--    luup.register_handler ("HTTP_openLuup", "openLuup")
+--    luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
+    luup.devices[devNo].action_callback (generic_action)      -- catch all undefined action calls
+    luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
+    luup.register_handler ("openLuup_email", "openLuup@openLuup.local")       -- 2018.03.18
+    luup.register_handler ("openLuup_image", "images@openLuup.local")         -- 2018.03.18
+  end
 
   do -- install AltAppStore as child device
     local ptr = luup.chdev.start (devNo)
@@ -345,7 +625,25 @@ function init (devNo)
     luup.chdev.sync (devNo, ptr)  
   end  
   
-  luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
+  do -- InfluxDB as Data Storage Provider 
+    local dsp = "InfluxDB Data Storage Provider: "
+    local db = luup.attr_get "openLuup.Databases.Influx"
+    if db then
+      local err
+      register_Data_Storage_Provider ()   -- 2018.03.01
+      InfluxSocket, err = udp.open (db)
+      if InfluxSocket then 
+        _log (dsp .. tostring(InfluxSocket))
+      else
+        _log (dsp .. (err or '')) end
+    end
+  end
+  
+  do -- ensure some extra folders exist
+    lfs.mkdir "images"
+    lfs.mkdir "trash"
+  end
+  
   calc_stats ()
   
   return true, msg, ABOUT.NAME

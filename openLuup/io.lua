@@ -1,10 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2017.04.27",
+  VERSION       = "2018.03.22",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2017 AK Booer
 
@@ -32,17 +33,22 @@ local ABOUT = {
 -- thanks to @cybrmage for pointing out some implementation problems here.
 -- see: http://forum.micasaverde.com/index.php/topic,35972.msg266490.html#msg266490
 -- and: http://forum.micasaverde.com/index.php/topic,35983.msg266858.html#msg266858
--- 2016.01.26 fix for protocol = cr, crlf, raw
--- 2016.01.28 @cybrmage fix for read timeout
--- 2016.01.30 @cybrmage log fix for device number
--- 2016.01.31 socket.select() timeouts, 0 mapped to nil for infinite wait
--- 2016.02.15 'keepalive' option for socket - thanks to @martynwendon for testing the solution
--- 2016.11.09 implement version of @vosmont's "cr" protocol in io.read()
---            see: http://forum.micasaverde.com/index.php/topic,40120.0.html
+
+-- 2016.01.26  fix for protocol = cr, crlf, raw
+-- 2016.01.28  @cybrmage fix for read timeout
+-- 2016.01.30  @cybrmage log fix for device number
+-- 2016.01.31  socket.select() timeouts, 0 mapped to nil for infinite wait
+-- 2016.02.15  'keepalive' option for socket - thanks to @martynwendon for testing the solution
+-- 2016.11.09  implement version of @vosmont's "cr" protocol in io.read()
+--             see: http://forum.micasaverde.com/index.php/topic,40120.0.html
 
 -- 2017.04.10  add Logfile.Incoming option
 -- 2017.04.27  only disable intercept after non-raw reads
 --             see: http://forum.micasaverde.com/index.php/topic,48814.0.html
+
+-- 2018.03.22  move luup-specific IO functions into sub-module luupio
+
+-- TODO: add fully-fledged UDP and TCP server/client modules
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
@@ -51,11 +57,8 @@ local socket    = require "socket"
 local logs      = require "openLuup.logs"
 local scheduler = require "openLuup.scheduler"
 
---  local log
---local function _log (msg, name) logs.send (msg, name or _NAME) end
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME, scheduler.current_device()) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 --[[
  <protocol>
@@ -191,9 +194,10 @@ local function open (device, ip, port)
   end
 
   if dev and not sock then
+    local jobNo
     scheduler.run_job ({run = connect}, nil, devNo)   -- run now 
---    local _,_, jobNo = scheduler.run_job ({job = connect}, nil, devNo)   -- ...or, schedule for later 
---    _log (("starting job #%d to connect to %s:%s"): format (jobNo or 0, ip, tostring(port)), "luup.io.open")
+--    local __,__, jobNo = scheduler.run_job ({job = connect}, nil, devNo)   -- ...or, schedule for later 
+    _debug (("starting job #%d to connect to %s:%s"): format (jobNo or 0, ip, tostring(port)), "luup.io.open")
   end
 end
 
@@ -302,12 +306,20 @@ end
 -- return methods
 
 return {
---  ABOUT = ABOUT,      -- commented out, because this is a module visible to the user
-  intercept     = intercept, 
-  is_connected  = is_connected,
-  open          = open, 
-  read          = read, 
-  write         = write, 
+  ABOUT = ABOUT,
+  
+  luupio = {                    -- this is the luup.io module as seen by the user       
+    intercept     = intercept, 
+    is_connected  = is_connected,
+    open          = open, 
+    read          = read, 
+    write         = write, 
+  },
+
+  udp = {},     -- TODO: implement UDP client/server
+  
+  tcp = {},     -- TODO: implement TCP client/server
+  
 }
 
 ----

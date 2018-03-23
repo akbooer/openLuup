@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2017.08.27",
+  VERSION       = "2018.03.02",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -47,6 +47,8 @@ local ABOUT = {
 -- 2017.08.27   fix non-numeric device ids in save_user_data()
 --              ...allows renumbering of device ids using luup.attr_set()
 --              ... see: http://forum.micasaverde.com/index.php/topic,50428.0.html
+
+-- 2018.03.02   remove TODO for mode change attributes
 
 local json    = require "openLuup.json"
 local rooms   = require "openLuup.rooms"
@@ -138,8 +140,8 @@ luup.log "startup code completed"
 --  local_udn = "uuid:4d494342-5342-5645-0000-000002b03069",
   longitude = "0.0",
   mode_change_delay = "30",
-  mode_change_mode = '',      -- TODO: implement mode_change_mode
-  mode_change_time = '',      -- TODO: implement mode_change_time
+  mode_change_mode = '',
+  mode_change_time = '',
   model = "Not a Vera",
 --  net_pnp = "0",
 --  overview_tabs = {},

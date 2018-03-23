@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2018.02.25",
+  VERSION       = "2018.03.15",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -48,6 +48,8 @@ local ABOUT = {
 -- 2018.01.31  fix multiple sunrise/sunset timers (due to tolerance of time calculations)
 -- 2018.02.04  correct long-standing noon calculation error around equinox (thanks @a-lurker)
 -- 2018.02.25  move sol_ra_dec from TEST to normal exported function
+-- 2018.03.15  add RFC 5322 format date (for SMTP)
+
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -65,7 +67,7 @@ local time_format           = "(%d%d?)%:(%d%d?)%:(%d%d?)"
 local date_format           = "(%d%d%d%d)%-(%d%d?)%-(%d%d?)"
 local date_time_format      =  date_format .. "%s+" .. time_format
 local relative_time_format  = "([%+%-]?)" .. time_format .. "([rt]?)"
-
+        
 -- alias for timenow
 
 local timenow = scheduler.timenow
@@ -95,6 +97,14 @@ end
 local function time_zone()
   local now = os.time()
   return os.difftime(now, os.time(os.date("!*t", now)))
+end
+
+--RFC 5322 format date  day, DD MMM YYYY HH:MM:SS +/-hhmm
+local function rfc_5322_date (epoch)
+  epoch = epoch or os.time()
+  local datetime = os.date ("%a, %d %b %Y %X", epoch)
+  local offset = os.date ("!%H%M", time_zone())
+  return ("%s %+05d"): format (datetime, offset)  -- timestamp
 end
 
 -- Sol's RA, DEC, and mean longitude, at given epoch
@@ -171,7 +181,7 @@ local function rise_set (date, latitude, longitude)
   end
   
   local tz = time_zone()
-  return rise + tz, set + tz, noon + tz
+  return rise + tz, set + tz
 end
 
 -- function: sunset / sunrise
@@ -445,15 +455,16 @@ return {
   loadtime    = loadtime,
  
    -- functions
-  cpu_clock   = cpu_clock,
-  gmt_offset  = gmt_offset,
-  sunrise     = sunrise,
-  sunset      = sunset,
-  timenow     = timenow,
-  is_night    = is_night,
-  call_delay  = call_delay,
-  call_timer  = call_timer,
-  sol_ra_dec  = sol_ra_dec,
+  cpu_clock     = cpu_clock,
+  gmt_offset    = gmt_offset,
+  sunrise       = sunrise,
+  sunset        = sunset,
+  timenow       = timenow,
+  is_night      = is_night,
+  call_delay    = call_delay,
+  call_timer    = call_timer,
+  sol_ra_dec    = sol_ra_dec,
+  rfc_5322_date = rfc_5322_date,
 }
 
 ----

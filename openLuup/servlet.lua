@@ -1,10 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2018.02.19",
+  VERSION       = "2018.02.22",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -49,6 +50,8 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 --              CGIs and file requests now execute in the <run> phase, rather than <job> (so faster)
 -- 2018.02.15   For file requests, also look in ./www/ (a better place for web pages)
 -- 2018.02.19   apply directory path aliases from server tables (rather than hard-coded)
+-- 2018.03.22   add invocation count to data_request calls, export http_handler, use logs.register()
+
 
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"            -- to access 'dataversion'
@@ -58,10 +61,8 @@ local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for C
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local vfs       = require "openLuup.virtualfilesystem"  -- on possible file path
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 -- TABLES
 
@@ -105,7 +106,7 @@ local http_handler = {    -- the data_request?id=... handler dispatch list
 
 local function add_callback_handlers (handlers, devNo)
   for name, proc in pairs (handlers) do     
-    http_handler[name] = {callback = proc, devNo = devNo}
+    http_handler[name] = {callback = proc, devNo = devNo, count = 0}
   end
 end
 
@@ -134,6 +135,8 @@ local function data_request (request)
       status = 500
       response = "error in callback [" .. id .. "] : ".. (response or 'nil')
     end
+    handler.count  = (handler.count or 0) + 1            -- 2018.03.22
+    handler.status = status
   end
   
   if status ~= 200 then
@@ -194,8 +197,9 @@ end
 --
 -- REQUEST HANDLER: file requests
 --
+local file_handler = {}     -- table of requested files
 
-local function http_file (request)
+local function file_request (request)
   local path = request.URL.path or ''
   if request.path_list.is_directory then 
     path = path .. "index.html"                     -- look for index.html in given directory
@@ -204,10 +208,6 @@ local function http_file (request)
   path = path: gsub ("%.%.", '')                    -- ban attempt to move up directory tree
   path = path: gsub ("^/", '')                      -- remove filesystem root from path
   path = path: gsub ("luvd/", '')                   -- no idea how this is handled in Luup, just remove it!
-  
---  path = path: gsub ("cmh/skins/default/img/devices/device_states/", "icons/")  -- redirect UI7 icon requests
---  path = path: gsub ("cmh/skins/default/icons/", "icons/")                      -- redirect UI5 icon requests
---  path = path: gsub ("cmh/skins/default/img/icons/", "icons/")                  -- 2017.11.14 
   
   -- 2018.02.19  apply directory path aliases from server tables
   for old,new in pairs (tables.dir_alias) do
@@ -245,6 +245,12 @@ local function http_file (request)
     _log (response) 
   end
   
+  local stats = file_handler[path] or {count = 0}   -- log statistics for console page
+  stats.size = #response
+  stats.status = status
+  stats.count = stats.count + 1
+  file_handler[path] = stats
+  
   local response_headers = {
       ["Content-Length"] = content_length,
       ["Content-Type"]   = content_type,
@@ -253,14 +259,35 @@ local function http_file (request)
   return status, response_headers, make_iterator(response)
 end
 
+----------------------------------------------------
+--
+-- REQUEST HANDLER: CGI requests
+--
+
+-- only here to log the usage statistics
+local cgi_handler = {}
+
+local function cgi_request (request)
+  local path = request.URL.path or ''
+  local status, headers, iterator = wsapi.cgi (request)
+  
+  local stats = cgi_handler[path] or {count = 0}   -- log statistics for console page
+  stats.status = status
+  stats.count = stats.count + 1
+  cgi_handler[path] = stats
+
+  return status, headers, iterator
+end
+
+
 -- return a task for the scheduler to handle file requests 
 local function file_task (request, respond)
-  return {run = function () respond (request, http_file(request)) end}   -- immediate run action (no job needed)
+  return {run = function () respond (request, file_request(request)) end}   -- immediate run action (no job needed)
 end
 
 -- return a task for the scheduler to handle CGI requests 
 local function cgi_task (request, respond)
-  return {run = function () respond (request, wsapi.cgi(request)) end}   -- immediate run action (no job needed)
+  return {run = function () respond (request, cgi_request(request)) end}    -- immediate run action (no job needed)
 end
 
 
@@ -290,7 +317,7 @@ local function execute (request, respond)
     end
     return err, msg, jobNo
   else
-    local handler = exec_selector [request_root] or http_file
+    local handler = exec_selector [request_root] or file_request
     return handler (request)    -- no HTTP response needed by server
   end
 end
@@ -302,15 +329,22 @@ return {
     
     TEST = {          -- for testing only
       data_request    = data_request,
-      http_file       = http_file,
+      http_file       = file_request,
       make_iterator   = make_iterator,
       wsapi_cgi       = wsapi.cgi,
     },
+    
+    -- variables
+    
+    http_handler  = http_handler,    -- for console info, via server module
+    file_handler  = file_handler,
+    cgi_handler   = cgi_handler,
     
     --methods
     
     execute = execute,
     add_callback_handlers = add_callback_handlers,
+    
   }
 
 -----

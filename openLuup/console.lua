@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.01.30",
+  VERSION       = "2018.03.23",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -31,6 +31,7 @@ ABOUT = {
 -- 2017.07.05  add user_data, status and sdata to openLuup menu
 
 -- 2018.01.30  add invocations count to job listing
+-- 2018.03.19  add Servers menu
 
 -- TODO: HTML pages with sorted tables
 -- see: https://www.w3schools.com/w3js/w3js_sort.asp
@@ -44,6 +45,8 @@ local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
 local xml       = require "openLuup.xml"          -- for escape()
 local requests  = require "openLuup.requests"     -- for user_data, status, and sdata
+local server    = require "openLuup.server"
+local smtp      = require "openLuup.smtp"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -134,6 +137,14 @@ prefix = [[
       </div>
 
       <div class="dropdown">
+        <button class="dropbtn">Servers</button>
+        <div class="dropdown-content">
+          <a class="left" href="/console?page=http">HTTP Web</a>
+          <a class="left" href="/console?page=smtp">SMTP eMail</a>
+        </div>
+      </div>
+
+      <div class="dropdown">
         <button class="dropbtn">Logs</button>
         <div class="dropdown-content">
           <a class="left" href="/console?page=log">Log</a>
@@ -150,7 +161,6 @@ prefix = [[
         <button class="dropbtn">Backups</button>
         <div class="dropdown-content">
           <a class="left" href="/console?page=backups">Files</a>
-          <a class="left" href="/console?page=uncompressform">Uncompress...</a>
         </div>
       </div>
     </div>
@@ -355,6 +365,96 @@ function run (wsapi_env)
 --]]
 
   end
+
+  local function number (n) return ("%7d  "): format (n) end
+
+  local function httplist ()
+    local layout = "     %-42s %s %s"
+    local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
+    
+    local function printinfo (requests)
+      local calls = {}
+      for name in pairs (requests) do calls[#calls+1] = name end
+      table.sort (calls)
+      for _,name in ipairs (calls) do
+        local call = requests[name]
+        local count = call.count
+        local status = call.status
+        if count and count > 0 then
+          printout (name, "  "..status, number(count))
+        end
+      end
+    end
+    
+    print ("HTTP Web Server, " .. os.date "%c")
+    
+    print "\n Most recent incoming connections:"
+    printout ("IP address", "date       time")
+    for ip, req in pairs (server.iprequests) do
+      printout (ip, os.date(date, req.date))
+    end
+    
+      print "\n /data_request?"
+      printout ("id=... ","status", " #requests")
+      printinfo (server.http_handler)
+      
+      print "\n CGI requests"
+      printout ("URL ","status"," #requests")
+      printinfo (server.cgi_handler)
+      
+      print "\n File requests"
+      printout ("filename ","status"," #requests")
+      printinfo (server.file_handler)
+    
+  end
+  
+  local function smtplist ()
+    local layout = "     %-32s %s %s"
+    local none = "--- none ---"
+    local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
+    
+    local function devname (d)
+      local d = tonumber(d) or 0
+      local name = (luup.devices[d] or {}).description or 'system'
+      return table.concat {'[', d, '] ', name: match "^%s*(.+)"}
+    end
+    
+    print ("SMTP eMail Server, " .. os.date "%c")
+    
+    print "\n Received connections:"
+    printout("IP address", "#connects", "    date     time\n")
+    if not next (smtp.iprequests) then printout (none) end
+    for ip, req in pairs (smtp.iprequests) do
+      local connects = number (req.connects)
+      printout (ip, connects, os.date(date, req.date))
+    end
+    
+    print "\n Registered email sender IPs:"
+    printout ("IP address", "#messages", "for device\n")
+    local n = 0
+    for ip,dest in pairs (smtp.destinations) do
+      local name = devname (dest.devNo)
+      local count = number (dest.count)
+      if not ip: match "@" then n=n+1; printout (ip, count, name) end
+    end
+    if n == 0 then printout (none) end
+    
+    print "\n Registered destination mailboxes:"
+    printout ("eMail address", "#messages", "for device\n")
+    for email,dest in pairs (smtp.destinations) do
+      local name = devname (dest.devNo)
+      local count = number (dest.count)
+      if email: match "@" then printout (email, count, name) end
+    end
+    
+    print "\n Blocked senders:"
+    printout ("eMail address", '', '\n')
+    if not next (smtp.blocked) then printout (none) end
+    for email in pairs (smtp.blocked) do
+      printout (email)
+    end
+  end
+  
   
   local pages = {
     about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
@@ -364,6 +464,8 @@ function run (wsapi_env)
     log     = printlog,
     startup = function () listit (slist, "Startup Jobs") end,
     watches = watchlist,
+    http    = httplist,
+    smtp    = smtplist,
     
     uncompress      = uncompress,
     uncompressform  = uncompressform,
