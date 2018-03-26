@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.03.23",
+  VERSION       = "2018.03.25",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -846,7 +846,7 @@ local I_openLuupCamera1_xml = [[
     local function clear ()
       local now = os.time()
       local last = get "LastTripped"
-      if (tonumber (last) + timeout) <= (now + 1) then
+      if (tonumber (last) + timeout) &lt;= (now + 1) then  -- NOTE the XML escape!
         set ("Tripped", '0')
         set ("ArmedTripped", '0')
         set ("LastTripped", now)
@@ -918,8 +918,8 @@ local I_openLuupCamera1_xml = [[
             if f then
               f: write (image)
               f: close ()
-              local msg = "ArchiveVideo:%d: Format=%s, Duration=%s - %d bytes written to %s"
-              luup.log (msg:format (lul_device, p.Format or '?', p.Duration or '?', #image, filename))              
+              local msg = "ArchiveVideo: Format=%s, Duration=%s, %d bytes written to %s"
+              luup.log (msg:format (p.Format or '?', p.Duration or '?', #image, filename))              
             else
               luup.log ("ERROR writing image file: " .. (err or '?'))
             end

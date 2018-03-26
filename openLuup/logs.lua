@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.logs",
-  VERSION       = "2018.03.18",
+  VERSION       = "2018.03.25",
   DESCRIPTION   = "basic log file handling, including versioning",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -36,6 +36,7 @@ local ABOUT = {
 --              see: http://forum.micasaverde.com/index.php/topic,56847.0.html
 -- 2018.02.08   use actual scene table hex address rather than <0x0> in AltUI log
 -- 2018.03.15   provide reqistration for modules giving customised _log() and _debug() functions
+-- 2018.03.25   _debug() goes to stdout AND log file
 
 
 local socket  = require "socket"
@@ -356,7 +357,12 @@ end
 local function register (about)
   banner (about)                                  -- for version control
   local function _log (msg, name) normal.send (msg, name or about.NAME) end
-  local function _debug (...) if about.DEBUG then print (about.NAME, ...) end; end     -- debug to stdout
+  local function _debug (...) 
+    if about.DEBUG then 
+      print (about.NAME, ...)               -- debug to stdout
+      _log (table.concat ({...}, '\t'))     -- debug to log file
+    end
+  end
   return _log, _debug
 end
 

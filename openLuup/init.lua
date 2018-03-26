@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.03.21",
+  VERSION       = "2018.03.25",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -132,6 +132,10 @@ do -- set attributes, possibly decoding if required
       Compress = "LZAP",
       Directory = "backup/",
     },
+    Databases = {
+      ["--1"] = "Influx = '172.16.42.129:8089',     -- EXAMPLE Influx UDP port",
+      ["--2"] = "Graphite = '127.0.0.1:2003',       -- EXAMPLE Graphite UDP port",
+    },
     Logfile = {
       Name      = "logs/LuaUPnP.log",
       Lines     = 2000,
@@ -158,7 +162,7 @@ do -- set attributes, possibly decoding if required
       Port = 2525,
     },
     Scenes = {
-      comment = "set Prolog/Epilog to global function names to run before/after ALL scenes",
+      ["--"] = "set Prolog/Epilog to global function names to run before/after ALL scenes",
       Prolog = '',                        -- name of global function to call before any scene
       Epilog = '',                        -- ditto, after any scene
     },

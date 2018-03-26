@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.smtp",
-  VERSION       = "2018.03.20",
+  VERSION       = "2018.03.25",
   DESCRIPTION   = "SMTP server and client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -453,15 +453,20 @@ local function new_client (sock)
   -- new_client ()
 
   do -- initialisation
+    
     ip = sock:getpeername() or '?'                                    -- who's asking?
-    local connects = ((iprequests[ip] or {}).connects or 0) + 1       -- let me count the times
-    iprequests[ip] = {
-      ip = ip, 
-      date = os.time(), 
-      connects = connects,
-      mac = "00:00:00:00:00:00"}  --TODO: real MAC address - how?
-    local connect = "new SMTP client connection from %s: %s"
-    _log (connect:format (ip, tostring(sock)))
+    local info = iprequests [ip] or
+            {ip = ip, count = 0, mac = "00:00:00:00:00:00"}  --TODO: real MAC address - how?
+    info.date = os.time()
+    info.count = info.count + 1                 -- 2018.03.24
+    iprequests [ip] = info
+
+    if blocked[ip] then
+      _log ("closed incoming connection from blocked IP " .. ip)
+    else
+      local connect = "SMTP new client connection from %s: %s"
+      _log (connect:format (ip, tostring(sock)))
+    end
   end
 
   do -- configure the socket
@@ -522,10 +527,17 @@ local function start (port, config)
 end
 
 -- special email destinations for openLuup...
-local function local_email (email, message)
+local function local_email (email, data)
   -- EMAIL processing goes here!
-  local _ = message   -- unused at present
   _debug (email)
+  
+  if email == "test@openLuup.local" then
+    _log ("TO: " .. email)
+    for i,line in ipairs(data) do
+      _log (line, "luup.smtp.data")
+      print (i,line)
+    end
+  end
 end
 
 
@@ -547,7 +559,7 @@ return {
     -- variables
     destinations  = destinations,
     iprequests    = iprequests,
-    blocked        = blocked,
+    blocked       = blocked,
     
     -- methods
     start = start,

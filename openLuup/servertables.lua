@@ -147,7 +147,7 @@ local cgi_alias = setmetatable ({
     
     ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
     ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
-    ["upnp/control/hag"]          = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
+--    ["upnp/control/hag"]          = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
     ["console"]                   = "openLuup/console.lua",
     
     -- graphite_api support

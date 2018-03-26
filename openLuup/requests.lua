@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.02.18",
+  VERSION       = "2018.03.24",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -55,6 +55,8 @@ local ABOUT = {
 -- 2018.02.05  move scheduler callback handler initialisation from init module to here
 -- 2018.02.06  add static request and internal static_data() function
 -- 2018.02.18  implement lu_invoke (partially)
+-- 2018.03.24  use luup.rooms metatable methods
+
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -62,16 +64,13 @@ local xml           = require "openLuup.xml"
 local scheduler     = require "openLuup.scheduler"
 local devutil       = require "openLuup.devices"      -- for dataversion
 local logs          = require "openLuup.logs"
-local rooms         = require "openLuup.rooms"
 local scenes        = require "openLuup.scenes"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local loader        = require "openLuup.loader"       -- for static_data, service_data, and loadtime
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 
 -- Utility functions
@@ -560,9 +559,10 @@ local function room (_,p)
   local name = (p.name ~= '') and p.name
   local number = tonumber (p.room)
 
-  local function create () rooms.create (name) end
-  local function rename () rooms.rename (number, name) end
-  local function delete () rooms.delete (number) end
+  -- 2018.03.24  use luup.rooms metatable methods
+  local function create () luup.rooms.create (name) end
+  local function rename () luup.rooms.rename (number, name) end
+  local function delete () luup.rooms.delete (number) end
   local function noop () end
 
   do -- room ()

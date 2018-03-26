@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.03.23",
+  VERSION       = "2018.03.26",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -42,14 +42,16 @@ ABOUT = {
 -- 2018.03.01  register openLuup as AltUI Data Storage Provider
 -- 2018.03.18  register with local SMTP server to receive email for openLuup@openLuup.local
 -- 2018.03.21  add SendToTrash and EmptyTrash actions to apply file retention policies
+-- 2018.03.25  set openLuup variables without logging (but still trigger watches)
+--             ...also move UDP open() to io.udp.open()
 
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local vfs         = require "openLuup.virtualfilesystem"
+local ioutil      = require "openLuup.io"           -- note that this is not the same as luup.io or Lua's io.
 local lfs         = require "lfs"
 local url         = require "socket.url"
-local socket      = require "socket"                -- for UDP
 
 local INTERVAL = 120
 local MINUTES  = "2m"
@@ -77,9 +79,15 @@ local function round (x, p)
   return x - x % p
 end
 
+local function set (name, value, sid)
+  local watch = true
+--  luup.variable_set (SID.openLuup, name,   value,  ole)
+  luup.devices[ole]:variable_set (sid or SID.openLuup, name, value, watch)    -- 2018.03.25  silent setting (but watched)
+end
+
 local function display (line1, line2)
-  if line1 then luup.variable_set (SID.altui, "DisplayLine1",  line1 or '', ole) end
-  if line2 then luup.variable_set (SID.altui, "DisplayLine2",  line2 or '', ole) end
+  if line1 then set ("DisplayLine1",  line1 or '', SID.altui) end
+  if line2 then set ("DisplayLine2",  line2 or '', SID.altui) end
 end
 
 -- slightly unusual parameter list, since source file may be in virtual storage
@@ -102,10 +110,6 @@ end
 -- vital statistics
 --
 local cpu_prev = 0
-
-local function set (name, value)
-  luup.variable_set (SID.openLuup, name,   value,  ole)
-end
 
 local function mem_stats ()
   local y = {}
@@ -289,21 +293,6 @@ end
 --
 -- register openLuup as an AltUI Data Storage Provider
 --
-local udp = {
-
-    open = function (ip_and_port)   -- returns UDP socket configured for sending to given destination
-      local sock, msg, ok
-      local ip, port = ip_and_port: match "(%d+%.%d+%.%d+%.%d+):(%d+)"
-      if ip and port then 
-        sock, msg = socket.udp()
-        if sock then ok, msg = sock:setpeername(ip, port) end         -- connect to destination
-      else
-        msg = "invalid ip:port syntax '" .. tostring (ip_and_port) .. "'"
-      end
-      if ok then ok = sock end
-      return ok, msg
-    end
-  }
 
 function openLuup_storage_provider (_, p)
   local influx = "%s value=%s"
@@ -556,7 +545,7 @@ function openLuup_email (email, data)
 end
 
 -- 2018.03.18  receive and store email images for images@openLuup.local
-function openLuup_image (email, data)
+function openLuup_images (email, data)
   local message = data: decode ()             -- decode MIME message
   if type (message.body) == "table" then      -- must be multipart message
     local n = 0
@@ -587,6 +576,15 @@ function init (devNo)
   local msg
   ole = devNo
   displayHouseMode ()
+
+  do -- version number
+    local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
+    local version = ("v%d.%d.%d"): format (y%2000,m,d)
+    set ("Version", version)
+    luup.log (version)
+    local info = luup.attr_get "openLuup"
+    info.Version = version      -- put it into openLuup table too.
+  end
   
   do -- synchronised heartbeat
     local later = timers.timenow() + INTERVAL         -- some minutes in the future
@@ -596,22 +594,13 @@ function init (devNo)
     luup.log (msg)
   end
 
-  do -- version number
-    local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
-    local version = ("v%d.%d.%d"): format (y%2000,m,d)
-    luup.variable_set (SID.openLuup, "Version", version,  ole)
-    luup.log (version)
-    local info = luup.attr_get "openLuup"
-    info.Version = version      -- put it into openLuup table too.
-  end
-
   do -- callback handlers
 --    luup.register_handler ("HTTP_openLuup", "openLuup")
 --    luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
     luup.devices[devNo].action_callback (generic_action)      -- catch all undefined action calls
     luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
-    luup.register_handler ("openLuup_email", "openLuup@openLuup.local")       -- 2018.03.18
-    luup.register_handler ("openLuup_image", "images@openLuup.local")         -- 2018.03.18
+    luup.register_handler ("openLuup_email", "openLuup@openLuup.local")       -- 2018.03.18  bit bucket
+    luup.register_handler ("openLuup_images", "images@openLuup.local")        -- 2018.03.18  save image attachments
   end
 
   do -- install AltAppStore as child device
@@ -631,7 +620,7 @@ function init (devNo)
     if db then
       local err
       register_Data_Storage_Provider ()   -- 2018.03.01
-      InfluxSocket, err = udp.open (db)
+      InfluxSocket, err = ioutil.udp.open (db)
       if InfluxSocket then 
         _log (dsp .. tostring(InfluxSocket))
       else

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2018.03.22",
+  VERSION       = "2018.03.25",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -302,6 +302,45 @@ local function is_connected (device)
   return not not sock 
 end
 
+------------
+--
+-- UDP Module
+--
+
+local udp = {
+
+     -- TODO: implement UDP client/server
+     
+     -- open for send
+    open = function (ip_and_port)   -- returns UDP socket configured for sending to given destination
+      local sock, msg, ok
+      local ip, port = ip_and_port: match "(%d+%.%d+%.%d+%.%d+):(%d+)"
+      if ip and port then 
+        sock, msg = socket.udp()
+        if sock then ok, msg = sock:setpeername(ip, port) end         -- connect to destination
+      else
+        msg = "invalid ip:port syntax '" .. tostring (ip_and_port) .. "'"
+      end
+      if ok then ok = sock end
+      return ok, msg
+    end,
+    
+  }
+
+
+------------
+--
+-- TCP Module
+--
+
+local tcp = {
+  
+     -- TODO: implement TCP client/server
+     
+  }
+
+
+------------
 
 -- return methods
 
@@ -316,9 +355,9 @@ return {
     write         = write, 
   },
 
-  udp = {},     -- TODO: implement UDP client/server
+  udp = udp,
   
-  tcp = {},     -- TODO: implement TCP client/server
+  tcp = tcp,
   
 }
 

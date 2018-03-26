@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.03.22",
+  VERSION       = "2018.03.25",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -50,7 +50,8 @@ local ABOUT = {
 
 -- 2018.02.10  ensure valid error in luup.call_action() even if missing parameters
 -- 2018.03.08  extend register_handler to work with email (local SMTP server)
--- 2018.03.22  use renamed io.luupio module, use logs.register()
+-- 2018.03.22  use renamed ioutil.luupio module, use logs.register()
+-- 2018.03.24  add room functions to luup.rooms metatable
 
 
 local logs          = require "openLuup.logs"
@@ -66,7 +67,7 @@ local smtp          = require "openLuup.smtp"     -- for register_handler to wor
 
 -- luup sub-modules
 local chdev         = require "openLuup.chdev"
-local io            = require "openLuup.io"    
+local ioutil        = require "openLuup.io"    
 
 
 --  local _log() and _debug()
@@ -95,6 +96,68 @@ local scenes = {}
 -- The members are: remote_file (string), room_num (number), description(string)
 
 local remotes = {}
+
+-----
+--
+-- ROOMS methods
+--
+
+setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatable
+  
+  {
+    __tostring = function ()    -- so that print (luup.rooms) works
+      local x = {}
+      local line = '  [%d] = "%s",'
+      for n in pairs(rooms) do x[#x+1] = n end                       -- get the room indices
+      table.sort (x)                                                 -- sort them
+      for i,n in ipairs(x) do x[i] = line: format (n, rooms[n]) end   -- format them 
+      return table.concat ({'{', table.concat (x, '\n'), '}'}, '\n')  -- concatentate them
+    end,
+
+    __index = {
+
+    create = function (name, force_number) 
+      local number
+      if force_number then
+        number = force_number
+      else                -- check that room name does not already exist
+        local index = {}
+        for i,room_name in pairs (rooms) do index[room_name] = i end
+        number = index[name]
+        if not number then
+          number = (#rooms + 1)      -- next empty slot
+          _log (("creating room [%d] %s"): format (number, name or '?'))
+        end
+      end
+      rooms[number] = name
+      return number
+    end,
+
+    rename = function (number, name) 
+      if number and rooms[number] then
+        rooms[number] = name or '?'
+        _log (("renaming room [%d] %s"): format (number, name or '?'))
+      end
+    end,
+
+    delete = function (number) 
+      if number and rooms[number] then 
+        rooms[number] = nil
+         _log (("deleting room [%d]"): format (number))
+       -- check devices for reference to deleted room no.
+        for _, d in pairs (devices) do
+          if d.room_num == number then d.room_num = 0 end
+        end
+        -- check scenes for reference to deleted room no.
+        for _, s in pairs (scenes) do
+          if s.room == number then s.rename (nil, 0) end
+        end
+      end
+    end,
+    
+  }})
+
+
 
 -----
 --
@@ -819,7 +882,7 @@ return {
     device_supports_service = device_supports_service,    
     devices_by_service  = devices_by_service,   
     inet                = inet,
-    io                  = io.luupio,
+    io                  = ioutil.luupio,
     ip_set              = ip_set,
     is_night            = timers.is_night,  
     is_ready            = is_ready,

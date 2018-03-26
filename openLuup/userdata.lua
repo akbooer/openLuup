@@ -5,6 +5,7 @@ local ABOUT = {
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -49,19 +50,17 @@ local ABOUT = {
 --              ... see: http://forum.micasaverde.com/index.php/topic,50428.0.html
 
 -- 2018.03.02   remove TODO for mode change attributes
+-- 2018.03.24   use luup.rooms.create metatable method
 
 local json    = require "openLuup.json"
-local rooms   = require "openLuup.rooms"
 local logs    = require "openLuup.logs"
 local scenes  = require "openLuup.scenes"
 local chdev   = require "openLuup.chdev"
 local timers  = require "openLuup.timers"   -- for gmt_offset
 local lfs     = require "lfs"
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 --
 -- Here a complete list of top-level (scalar) attributes taken from an actual Vera user_data2 request
@@ -567,7 +566,7 @@ local function load_user_data (user_data_json)
     -- ROOMS    
     _log "loading rooms..."
     for _,x in pairs (user_data.rooms or {}) do
-      rooms.create (x.name, x.id)
+      luup.rooms.create (x.name, x.id)            -- 2018.03.24  use luup.rooms.create metatable method
       _log (("room#%d '%s'"): format (x.id,x.name)) 
     end
     _log "...room loading completed"

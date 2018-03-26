@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2018.03.22",
+  VERSION       = "2018.03.24",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -73,6 +73,7 @@ local ABOUT = {
 -- 2018.03.09   move myIP code to servertables (more easily shared with other servers, eg. SMTP)
 -- 2018.03.15   fix relative URL handling in request object
 -- 2018.03.22   export http_handler from servlet for use by console server page
+-- 2018.03.24   add connection count to iprequests
 
 
 local socket    = require "socket"
@@ -413,7 +414,11 @@ local function receive (sock)
   local headers, post_content
   
   local ip = sock:getpeername() or '?'        -- who's asking?
-  iprequests [ip] = {ip = ip, date = os.time(), mac = "00:00:00:00:00:00"} --TODO: real MAC address - how?
+  local info = iprequests [ip] or
+          {ip = ip, count = 0, mac = "00:00:00:00:00:00"} --TODO: real MAC address - how?
+  info.date = os.time()
+  info.count = info.count + 1                 -- 2018.03.24
+  iprequests [ip] = info
   
   local line, err = sock:receive()        -- read the request line
   if not err then  

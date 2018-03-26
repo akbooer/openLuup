@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.03.23",
+  VERSION       = "2018.03.25",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -32,6 +32,8 @@ ABOUT = {
 
 -- 2018.01.30  add invocations count to job listing
 -- 2018.03.19  add Servers menu
+-- 2018.03.24  add connection count to iprequests on HTTP server page
+
 
 -- TODO: HTML pages with sorted tables
 -- see: https://www.w3schools.com/w3js/w3js_sort.asp
@@ -381,7 +383,7 @@ function run (wsapi_env)
         local count = call.count
         local status = call.status
         if count and count > 0 then
-          printout (name, "  "..status, number(count))
+          printout (name, number(count), number(status))
         end
       end
     end
@@ -389,21 +391,21 @@ function run (wsapi_env)
     print ("HTTP Web Server, " .. os.date "%c")
     
     print "\n Most recent incoming connections:"
-    printout ("IP address", "date       time")
+    printout ("IP address", "#connects  ", "date       time")
     for ip, req in pairs (server.iprequests) do
-      printout (ip, os.date(date, req.date))
+      printout (ip, number(req.count), "  "..os.date(date, req.date))
     end
     
       print "\n /data_request?"
-      printout ("id=... ","status", " #requests")
+      printout ("id=... ", "#requests  ","status")
       printinfo (server.http_handler)
       
       print "\n CGI requests"
-      printout ("URL ","status"," #requests")
+      printout ("URL ", "#requests  ","status")
       printinfo (server.cgi_handler)
       
       print "\n File requests"
-      printout ("filename ","status"," #requests")
+      printout ("filename ", "#requests  ","status")
       printinfo (server.file_handler)
     
   end
@@ -419,33 +421,39 @@ function run (wsapi_env)
       return table.concat {'[', d, '] ', name: match "^%s*(.+)"}
     end
     
+    local function print_sorted (info, ok)
+      printout ("Address", "#messages", "for device\n")
+      local n = 0
+      local index = {}
+      for ip in pairs (info) do index[#index+1] = ip end
+      table.sort (index)    -- get the email addresses into order
+      for _,ip in ipairs (index) do
+        local dest = info[ip]
+        local name = devname (dest.devNo)
+        local count = number (dest.count)
+        if ok(ip) then 
+          n = n + 1
+          printout (ip, count, name) 
+        end
+      end
+      if n == 0 then printout (none) end
+    end
+    
     print ("SMTP eMail Server, " .. os.date "%c")
     
     print "\n Received connections:"
     printout("IP address", "#connects", "    date     time\n")
     if not next (smtp.iprequests) then printout (none) end
     for ip, req in pairs (smtp.iprequests) do
-      local connects = number (req.connects)
-      printout (ip, connects, os.date(date, req.date))
+      local count = number (req.count)
+      printout (ip, count, os.date(date, req.date))
     end
     
     print "\n Registered email sender IPs:"
-    printout ("IP address", "#messages", "for device\n")
-    local n = 0
-    for ip,dest in pairs (smtp.destinations) do
-      local name = devname (dest.devNo)
-      local count = number (dest.count)
-      if not ip: match "@" then n=n+1; printout (ip, count, name) end
-    end
-    if n == 0 then printout (none) end
+    print_sorted (smtp.destinations, function(x) return x:match "@" end)
     
     print "\n Registered destination mailboxes:"
-    printout ("eMail address", "#messages", "for device\n")
-    for email,dest in pairs (smtp.destinations) do
-      local name = devname (dest.devNo)
-      local count = number (dest.count)
-      if email: match "@" then printout (email, count, name) end
-    end
+    print_sorted (smtp.destinations, function(x) return not x:match "@" end)
     
     print "\n Blocked senders:"
     printout ("eMail address", '', '\n')

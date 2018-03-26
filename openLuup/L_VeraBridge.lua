@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.03.02",
+  VERSION       = "2018.03.24",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -81,12 +81,13 @@ ABOUT = {
 -- 2018.02.21   don't try and display HouseMode if none (eg. UI5)
 -- 2018.03.01   fix serviceId error for DisplayLine2 initialisation
 -- 2018.03.02   if mirroring remote House Mode, then change local Mode with immediate effect
+-- 2018.03.24   use luup.rooms.create metatable method
+
 
 local devNo                      -- our device number
 
 local chdev     = require "openLuup.chdev"
 local json      = require "openLuup.json"
-local rooms     = require "openLuup.rooms"
 local scenes    = require "openLuup.scenes"
 local userdata  = require "openLuup.userdata"
 local url       = require "socket.url"
@@ -430,7 +431,7 @@ local function GetUserData ()
       local new_room_name = "MiOS-" .. (Vera.PK_AccessPoint: gsub ("%c",''))  -- stray control chars removed!!
       userdata.attributes [t] = userdata.attributes [t] or Vera[t]
       luup.log (new_room_name)
-      rooms.create (new_room_name)
+      luup.rooms.create (new_room_name)     -- 2018.03.24  use luup.rooms.create metatable method
   
       remote_room_index = index_remote_rooms (Vera.rooms or {})
       local_room_index  = index_rooms (luup.rooms or {})
@@ -441,7 +442,7 @@ local function GetUserData ()
           if type(room_name) == "string" then
             if not local_room_index[room_name] then 
               luup.log ("creating room: " .. room_name)
-              local new = rooms.create (room_name) 
+              local new = luup.rooms.create (room_name)     -- 2018.03.24  use luup.rooms.create metatable method
               local_room_index[new] = room_name
               local_room_index[room_name] = new
             end

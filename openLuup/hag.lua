@@ -5,7 +5,7 @@ module(..., package.seeall)
 local ABOUT = {
   NAME          = "upnp.control.hag",
   VERSION       = "2018.01.27",
-  DESCRIPTION   = "a handler for redirected port_49451 /upnp/control/hag requests",
+  DESCRIPTION   = "DEPRECATED: a handler for redirected port_49451 /upnp/control/hag requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
