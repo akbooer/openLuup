@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.smtp",
-  VERSION       = "2018.03.25",
+  VERSION       = "2018.03.26",
   DESCRIPTION   = "SMTP server and client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -33,6 +33,7 @@ local ABOUT = {
 -- 2018.03.16   only deliver message header and body, not whole state
 -- 2018.03.17   add MIME decoder
 -- 2018.03.20   add IP connection and message counts
+-- 2018.03.26   add extra error logging, and AUTH LOGIN
 
 
 local socket    = require "socket"
@@ -290,6 +291,26 @@ end
 -- new_client()  - handle data transfer with SMTP client
 --
 
+--[[
+
+TODO: May need to add SSL handling...
+... what about certificates, etc.?
+
+  client, error = ssl.wrap(client, SSL_params) 
+  if not client then
+    _log (ip_port .. " SSL wrap error: " .. tostring(error))
+    return
+  end
+
+  rc, error = client:dohandshake()
+  if not rc then
+    _log(ip_port .. " SSL handshake error: " .. tostring(error))
+    return
+  end
+ 
+
+--]]
+
 local function new_client (sock)
   local expiry
   local ip        -- client's IP address
@@ -318,11 +339,41 @@ local function new_client (sock)
     state.data          = {}
   end
   
-  -- helo and ehlo initialisation
+  -- helo  initialisation
   local function helo (domain)
     reset_client ()
     state.domain = ("(%s) [%s]"): format (domain, ip)
     send_client (OK) 
+  end
+  
+  -- ehlo initialisation
+  local function ehlo (domain)
+    reset_client ()
+    state.domain = ("(%s) [%s]"): format (domain, ip)
+    send_client "250 AUTH PLAIN LOGIN" 
+  end
+  
+  -- auth
+  local function auth (method)
+    
+    -- see: https://tools.ietf.org/html/draft-murchison-sasl-login-00
+    if method == "LOGIN" then
+      send_client "334 VXNlciBOYW1lAA=="    -- "Username:"
+      local line, err = sock: receive ()
+      _debug (line or err)
+      
+      send_client "334 UGFzc3dvcmQA"        -- "Password:"
+      line, err = sock: receive ()
+      _debug (line or err)
+      send_client "235 Authentication successful."
+    end
+  
+    if method == "PLAIN" then
+      -- TODO: AUTH PLAIN
+    end
+    
+    -- other protocols here
+    
   end
   
   -- sender
@@ -333,6 +384,7 @@ local function new_client (sock)
       reply = code(501, tostring (from))    -- could be nil
     else
       if blocked[sender] then
+        _log ("blocked sender: " .. sender)
         reply = code (552)          -- rejected
       else
         state.reverse_path = sender
@@ -345,11 +397,13 @@ local function new_client (sock)
   -- receiver
   local function rcpt (to) 
     local receiver = to: match "^[Tt][Oo]:.-([^@<%s]+@[%w-%.]+).-$"
-    if state.reverse_path and destinations[receiver] then
+    if state.reverse_path and 
+      (destinations[receiver]  or ABOUT.DEBUG) then     -- 2018.03.26  accept any destination when in DEBUG mode
       local r = state.forward_path 
       r[#r+1] = receiver
       send_client (OK) 
     else
+      _log ("no such mailbox: " .. receiver)
       send_client (code(550, receiver or '?'))       -- No such user
     end
   end
@@ -392,6 +446,7 @@ local function new_client (sock)
   
   -- unknown
   local function not_implemented (d)
+    _log ("command not implemented: " .. (d or '?'))
     send_client (code(502, d or '?'))
   end
     
@@ -400,8 +455,9 @@ local function new_client (sock)
 -- MUST be provided by all receivers.  The following commands MUST be
 -- supported to conform to this specification:
     local dispatch = {
-      EHLO = helo,    -- extended HELO functionality the same as HELO, because it has no extensions!
+      EHLO = ehlo, 
       HELO = helo,
+      AUTH = auth,
       MAIL = mail,
       RCPT = rcpt,
       DATA = data,

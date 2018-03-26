@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2018.03.02",
+  VERSION       = "2018.03.24",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -51,6 +51,7 @@ local ABOUT = {
 
 -- 2018.03.02   remove TODO for mode change attributes
 -- 2018.03.24   use luup.rooms.create metatable method
+
 
 local json    = require "openLuup.json"
 local logs    = require "openLuup.logs"
@@ -527,11 +528,11 @@ local function update_plugin_versions (installed)
   for _, d in pairs (luup.devices or {}) do 
     local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
     local a = d.environment.ABOUT
+    local IP = installed[i]
     if i and a then
       local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
       if v3 then
 --        print (d.id,"v1,v2,v3", ("'%s', '%s', '%s'"): format (v1,v2,v3))
-        local IP = installed[i]
         IP.VersionMajor = v1 % 2000
         if v3 == '' then
           IP.VersionMinor = tonumber(v2)
