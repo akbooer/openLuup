@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.03.26b",
+  VERSION       = "2018.03.28",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -44,6 +44,7 @@ ABOUT = {
 -- 2018.03.21  add SendToTrash and EmptyTrash actions to apply file retention policies
 -- 2018.03.25  set openLuup variables without logging (but still trigger watches)
 --             ...also move UDP open() to io.udp.open()
+-- 2018.03.28  add application Content-Type to images@openLuup.local handler
 
 
 local json        = require "openLuup.json"
@@ -549,14 +550,16 @@ function openLuup_images (email, data)
   local message = data: decode ()             -- decode MIME message
   if type (message.body) == "table" then      -- must be multipart message
     local n = 0
-    for _, part in ipairs (message.body) do
+    for i, part in ipairs (message.body) do
       
       local ContentType = part.header["content-type"] or "text/plain"
       local ctype = ContentType: match "^%w+/%w+" 
       local cname = ContentType: match 'name%s*=%s*"([^/\\][^"]+)"'   -- avoid absolute paths
       if cname and cname: match "%.%." then cname = nil end           -- avoid any attempt to move up folder tree
+      cname = cname or os.date "Snap_%Y%m%d-%H%M%S-" .. i .. ".jpg"   -- make up a name if necessary
       
-      if cname and ctype: match "image" then    -- write out image files
+      if (ctype: match "image")               -- 2018.03.28  add application type
+      or (ctype: match "applcation") then     -- write out image files
         local f = io.open ("images/" .. cname, 'wb') 
         if f then
           n = n + 1
@@ -568,6 +571,8 @@ function openLuup_images (email, data)
     if n > 0 then 
       local saved = "%s: saved %d image files"
       _log (saved: format(email, n))
+    else
+      _log "no image attachments found"
     end
   end
 end

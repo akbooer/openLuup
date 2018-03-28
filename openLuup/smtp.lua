@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.smtp",
-  VERSION       = "2018.03.26",
+  VERSION       = "2018.03.28",
   DESCRIPTION   = "SMTP server and client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -26,6 +26,15 @@ local ABOUT = {
 --
 -- SMTP (Simple Mail Transfer Protocol) server and client
 --
+
+-- See:
+--  https://tools.ietf.org/html/rfc821                              original SMTP
+--  https://tools.ietf.org/html/rfc1869#section-4.5                 SMTP Extensions
+--  https://tools.ietf.org/html/rfc5321                             SMTP
+--  https://tools.ietf.org/html/draft-murchison-sasl-login-00       AUTH LOGIN
+--  https://tools.ietf.org/html/rfc4616                             AUTH PLAIN
+--  https://tools.ietf.org/html/rfc3207                             SMTP over TLS
+--  http://www.iana.org/assignments/sasl-mechanisms/
 
 -- 2018.03.05   initial implementation, extracted from HTTP server
 -- 2018.03.14   first release
@@ -177,11 +186,6 @@ end
 
   SMTP - Simple Mail Transfer Protocol
 
-See:
-  https://tools.ietf.org/html/rfc821
-  https://tools.ietf.org/html/rfc1869#section-4.5
-  https://tools.ietf.org/html/rfc5321
-
 Fmom RFC 821:
 
 APPENDIX E: Theory of Reply Codes
@@ -259,10 +263,9 @@ local function deliver_mail (state)
     local function deliver (info)
       if info then 
         info.count = info.count + 1                     -- 2018.03.20  increment mailbox message counter
+        _log (table.concat {"EMAIL delivery to handler for: ", info.email})
         local ok, err = scheduler.context_switch (info.devNo, info.callback, info.email, data)
-        if ok then
-          _log (table.concat {"EMAIL delivered to handler for: ", info.email})
-        else
+        if not ok then
           _log (table.concat {"ERROR delivering email to handler for: ", info.email, " : ", err})
         end
       end
@@ -350,29 +353,31 @@ local function new_client (sock)
   local function ehlo (domain)
     reset_client ()
     state.domain = ("(%s) [%s]"): format (domain, ip)
-    send_client "250 AUTH PLAIN LOGIN" 
+    send_client "250 AUTH LOGIN" 
   end
   
   -- auth
   local function auth (method)
     
     -- see: https://tools.ietf.org/html/draft-murchison-sasl-login-00
-    if method == "LOGIN" then
+    local function LOGIN ()
       send_client "334 VXNlciBOYW1lAA=="    -- "Username:"
       local line, err = sock: receive ()
       _debug (line or err)
-      
       send_client "334 UGFzc3dvcmQA"        -- "Password:"
       line, err = sock: receive ()
       _debug (line or err)
-      send_client "235 Authentication successful."
-    end
-  
-    if method == "PLAIN" then
-      -- TODO: AUTH PLAIN
+      send_client (code(235))               -- Authentication successful
     end
     
-    -- other protocols here
+    local function not_implemented ()
+      send_client (code(504, method))       -- unrecognised
+    end
+    
+    local implemented = {LOGIN = LOGIN}     -- dispatch list of implemented authorisation protocols
+    
+    local authorize = implemented[method: upper()] or not_implemented
+    authorize ()
     
   end
   
@@ -630,7 +635,7 @@ return {
       rfc2047_encoded_words = rfc2047_encoded_words,
     },
     
-    mail = {
+    client = {
       -- TODO: mail client functionality (send, secure_send, ...)
     },
     
