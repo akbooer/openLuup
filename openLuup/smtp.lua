@@ -144,19 +144,6 @@ local function decode_message (data)
     header[#header] = nil     -- remove last (blank) line
     return header
   end
-
-  -- possibly part of multipart message...  extract the bit between boundaries
-  local function read_body (boundary)
-    local body = {}
-    for line in nextline do
-      if boundary and line: find (boundary, 3, true) then  -- PLAIN match for the boundary pattern
-        break
-      else
-        body[#body+1] = line
-      end
-    end
-    return body
-  end
   
   -- decode_message ()
   local header = decode_headers(read_headers())
@@ -166,17 +153,24 @@ local function decode_message (data)
   local body = {}                     -- body part
   if boundary then
     local part = {}                   -- multipart message
-    repeat
-      local body = read_body (boundary)
-      part[#part+1] = body -- save body part (which includes its own headers)
-    until not next (body)
-    part[#part] = nil       -- remove final (empty) part
+    for line in nextline do
+      if line: find (boundary, 3, true) then  -- PLAIN match for the boundary pattern
+        part[#part+1] = body                  -- save body part (which includes its own headers)
+        body = {}
+      else
+        body[#body+1] = line
+      end
+    end
     -- now decode each individual part...
-    for i = 2,#part do                -- ...ignoring first part which is only there for non-mime clients
+    body = {}                         -- throw away last part (if any) after final boundary, and...
+    for i = 2,#part do                -- ...ignore first part which is only there for non-mime clients
       body[#body+1] = decode_message (part[i])
     end
   else
-    body = decode_content (read_body(), header)   -- just a single part      
+    for line in nextline do      -- just a single part      
+      body[#body+1] = line
+    end
+    body = decode_content (body, header)      
   end
   return {body=body, header=header}
 end
@@ -434,9 +428,10 @@ local function new_client (sock)
     data[3] = (" %s"): format (timers.rfc_5322_date())            -- timestamp
     data[4] = nil                                                 -- ensure no further data, yet
     for line, err in next_data do
-      errmsg = err
+      errmsg = err                -- TODO: bail out here if transmission error
       data[#data+1] = line        -- add to the data buffer
     end
+    _debug ("#data lines=" .. #data)
     if not errmsg then            -- otherwise we closed the socket anyway
       send_client (OK) 
       deliver_mail (state)
@@ -497,8 +492,13 @@ local function new_client (sock)
 
   -- run(), preamble to main job
   local function run ()
-    reset_client ()
-    send_client (code(220, myDomain) )
+    if blocked[ip] then
+      -- TODO: close socket
+      _log ("closed incoming connection from blocked IP " .. ip)
+    else
+      reset_client ()
+      send_client (code(220, myDomain) )
+    end
   end
   
   --  job (devNo, args, job)
@@ -522,12 +522,8 @@ local function new_client (sock)
     info.count = info.count + 1                 -- 2018.03.24
     iprequests [ip] = info
 
-    if blocked[ip] then
-      _log ("closed incoming connection from blocked IP " .. ip)
-    else
-      local connect = "SMTP new client connection from %s: %s"
-      _log (connect:format (ip, tostring(sock)))
-    end
+    local connect = "SMTP new client connection from %s: %s"
+    _log (connect:format (ip, tostring(sock)))
   end
 
   do -- configure the socket

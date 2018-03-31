@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2018.03.25",
+  VERSION       = "2018.03.28",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -47,6 +47,8 @@ local ABOUT = {
 --             see: http://forum.micasaverde.com/index.php/topic,48814.0.html
 
 -- 2018.03.22  move luup-specific IO functions into sub-module luupio
+-- 2018.03.28  add server module for core server framework methods
+
 
 -- TODO: add fully-fledged UDP and TCP server/client modules
 
@@ -341,6 +343,160 @@ local tcp = {
 
 
 ------------
+--
+-- Generic Server Module
+--
+-- This core functionality may be used by HTTP, SMTP, POP, and other servers, to provide services.
+-- It offers callbacks on connections and incoming data, and socket management including timeouts.
+--
+
+local server = {}
+
+--[[
+
+Usage:
+
+local ok, err = io.server.new (config)
+  
+function incoming (client)  -- client object is a proxy socket
+  client: receive()
+  client: send ()
+  client: close ()
+end
+
+function startup (client)
+  -- some initialisation of user code
+end
+
+--]]
+
+
+-- server.new{}, returns server object with methods: stop
+-- parameters:
+--    {
+--      port = 1234,            -- incoming port
+--      name = "SMTP",          -- server name
+--      backlog = 100,          -- queue length
+--      idletime = 30,          -- close idle socket after
+--      incoming = incoming,    -- callback for incoming data
+--      connect = connect,      -- callback on initial connection
+--    }
+--
+function server.new (config)
+  
+  config = config or {}
+  local idletime = config.CloseIdleSocketAfter or 30    -- 30 second default on no-activity timeout
+  local backlog = config.Backlog or 64                  -- default pending queue length
+  local name = config.name or "unnamed"
+  local port = tostring (config.port)
+  local connect = config.connect
+  local incoming = config.incoming
+  
+  local ip                                              -- client's IP address
+  local connects = {}                                   -- statistics of incoming connections (for console page)
+  local server, err = socket.bind ('*', port, backlog)  -- create the master listening port
+  
+  local logline = "%s %s server on port: %s " .. tostring(server)
+  local serverlog = ABOUT.NAME .. ".server"
+  local oldlog = _log
+  local function _log (msg) oldlog (msg,  serverlog) end
+  
+  -- call for every new client connection
+  local function new_client (sock)
+    local expiry
+    
+    local client = {            -- client object
+      send    = function (_, ...) return sock:send(...)      end,
+      receive = function (_, ...) return sock:receive(...)   end,
+      close   = function ()
+        sock: close ()
+        scheduler.socket_unwatch (sock)       -- immediately stop watching for incoming
+        expiry = 0                            -- let the job timeout
+      end,
+    }
+    
+    -- passthru to client callback to update timeout
+    local function callback ()
+      expiry = socket.gettime () + idletime      -- update socket expiry 
+      incoming (client)
+    end
+      
+    -- run(), preamble to main job, call user startup
+    local function run ()
+      if connect then connect (client) end
+    end
+    
+    --  job (), wait for job expiry
+    local function job ()
+      if socket.gettime () > expiry then                    -- close expired connection... 
+        _log "closing client connection"
+        sock: close ()                                      -- check socket is closed (may already be so)
+        scheduler.socket_unwatch (sock)                     -- stop watching for incoming (may already have done so)
+        return scheduler.state.Done, 0                      -- and exit
+      else
+        return scheduler.state.WaitingToStart, 5            -- ... checking every 5 seconds
+      end
+    end
+    
+    -- new_client ()
+
+    do -- initialisation
+      ip = sock:getpeername() or '?'                                    -- who's asking?
+      local info = connects [ip] or
+              {ip = ip, count = 0, mac = "00:00:00:00:00:00"}  --TODO: real MAC address - how?
+      info.date = os.time()
+      info.count = info.count + 1                 -- 2018.03.24
+      connects [ip] = info
+
+      local connect = "%s new client connection from %s: %s"
+      _log (connect:format (name, ip, tostring(sock)))
+    end
+
+    do -- configure the socket
+      expiry = socket.gettime () + idletime    -- set initial socket expiry 
+      sock:settimeout(nil)                                    -- no socket timeout on read
+      sock:setoption ("tcp-nodelay", true)                    -- allow consecutive read/writes
+      scheduler.socket_watch (sock, callback)                 -- start listening for incoming
+    end
+
+    do -- run the job
+      local _, _, jobNo = scheduler.run_job {run = run, job = job}
+      if jobNo and scheduler.job_list[jobNo] then
+        local info = "job#%d :%s new connection %s"
+        scheduler.job_list[jobNo].type = info: format (jobNo, name, tostring(sock))
+      end
+    end
+  end
+
+  -- new client connection
+  local function server_incoming (server)
+    repeat                                              -- could be multiple requests
+      local sock = server:accept()
+      if sock then new_client (sock, config) end
+    until not sock
+  end
+
+  local function stop()
+    _log (logline: format ("stopping", name, port))
+    server: close()
+  end
+
+  -- start(), create server and start listening
+  local mod, msg
+  if server then 
+    server:settimeout (0)                                       -- don't block 
+    scheduler.socket_watch (server, server_incoming)            -- start watching for incoming
+    msg = logline: format ("starting", name, port)
+    mod = {stop = stop, connects = connects}
+  else
+    msg = "error starting server: " .. tostring(err)
+  end  
+  _log (msg)
+  return mod, msg
+end
+
+
+------------
 
 -- return methods
 
@@ -358,6 +514,8 @@ return {
   udp = udp,
   
   tcp = tcp,
+  
+  server = server,
   
 }
 
