@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.smtp",
-  VERSION       = "2018.03.28",
+  VERSION       = "2018.04.02",
   DESCRIPTION   = "SMTP server and client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -43,6 +43,7 @@ local ABOUT = {
 -- 2018.03.17   add MIME decoder
 -- 2018.03.20   add IP connection and message counts
 -- 2018.03.26   add extra error logging, and AUTH LOGIN
+-- 2018.04.02   deliver to IP listener before other email handlers for faster triggering
 
 
 local socket    = require "socket"
@@ -111,12 +112,16 @@ local function decode_content (body, header)
       ["base64"] = mime.unb64,
       ["quoted-printable"] = mime.unqp,
     }
+  local function text_decoder (body)
+     return table.concat (body, '\r\n')
+  end
   local ContentTransferEncoding = header["content-transfer-encoding"]
+  _debug ("content-transfer-encoding", ContentTransferEncoding or "--none--")
   local decoder = mime_decoder[ContentTransferEncoding]
   if decoder then
     body = decoder (table.concat (body))    -- TODO: use ltn12 source/filter/sink chain instead?
   else
-    body = table.concat (body, '\r\n')
+    body = text_decoder (body)
   end
   return body
 end
@@ -151,6 +156,8 @@ local function decode_message (data)
   local ContentType = header["content-type"] or "text/plain"
   local boundary = ContentType: match 'boundary="([^"]+)"'
   local body = {}                     -- body part
+  _debug ("Content-Type:", ContentType)
+  _debug ("Boundary:", boundary or "--none--")
   if boundary then
     local part = {}                   -- multipart message
     for line in nextline do
@@ -162,6 +169,7 @@ local function decode_message (data)
       end
     end
     -- now decode each individual part...
+    _debug ("#parts:", #part)
     body = {}                         -- throw away last part (if any) after final boundary, and...
     for i = 2,#part do                -- ...ignore first part which is only there for non-mime clients
       body[#body+1] = decode_message (part[i])
@@ -264,16 +272,16 @@ local function deliver_mail (state)
         end
       end
     end
-    -- email recipients
-    for i, recipient in ipairs (state.forward_path) do
-      _debug (" Recipient #" ..i, recipient)
-      deliver (destinations[recipient])
-    end
     -- IP listener
     local ip = state.domain: match "%[(%d+%.%d+%.%d+%.%d+)%]"
     if destinations[ip] then
       _debug (" IP listener", ip)
       deliver (destinations[ip])
+    end
+    -- email recipients
+    for i, recipient in ipairs (state.forward_path) do
+      _debug (" Recipient #" ..i, recipient)
+      deliver (destinations[recipient])
     end
     return scheduler.state.Done, 0
   end

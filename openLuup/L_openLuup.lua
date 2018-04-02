@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.03.31",
+  VERSION       = "2018.04.02",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -45,6 +45,7 @@ ABOUT = {
 -- 2018.03.25  set openLuup variables without logging (but still trigger watches)
 --             ...also move UDP open() to io.udp.open()
 -- 2018.03.28  add application Content-Type to images@openLuup.local handler
+-- 2018.04.02  fixed type on openLuup_images - thanks @jswim788!
 
 
 local json        = require "openLuup.json"
@@ -547,6 +548,7 @@ end
 
 -- 2018.03.18  receive and store email images for images@openLuup.local
 function openLuup_images (email, data)
+  local function log (...) _log ("openLuup.images", ...) end
   local message = data: decode ()             -- decode MIME message
   if type (message.body) == "table" then      -- must be multipart message
     local n = 0
@@ -556,15 +558,18 @@ function openLuup_images (email, data)
       local ctype = ContentType: match "^%w+/%w+" 
       local cname = ContentType: match 'name%s*=%s*"([^/\\][^"]+)"'   -- avoid absolute paths
       if cname and cname: match "%.%." then cname = nil end           -- avoid any attempt to move up folder tree
-      cname = cname or os.date "Snap_%Y%m%d-%H%M%S-" .. i .. ".jpg"   -- make up a name if necessary
+      cname = cname or os.date "Snap_%Y%m%d-%H%M%S-" .. i .. ".jpg"   -- make up a name if necessary      
+      log ("Content-Type:", ContentType) 
       
       if (ctype: match "image")               -- 2018.03.28  add application type
-      or (ctype: match "applcation") then     -- write out image files
-        local f = io.open ("images/" .. cname, 'wb') 
+      or (ctype: match "application") then    -- write out image files  (thanks @jswim788)
+        local f, err = io.open ("images/" .. cname, 'wb') 
         if f then
           n = n + 1
           f: write (part.body)
           f: close ()
+        else
+          log ("ERROR writing:", cname, ' ', err)
         end
       end
     end
