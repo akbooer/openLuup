@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.04.02",
+  VERSION       = "2018.04.05",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -582,6 +582,22 @@ function openLuup_images (email, data)
   end
 end
 
+-- real mailbox
+function openLuup_mailbox (mailbox, data)
+  local name = tostring(os.time()): gsub("%.","_")
+  local fname = table.concat {"mail/", name, ".msg"}
+  _log ("writing: " .. fname)
+  local f, err = io.open (fname, 'wb')
+  if f then
+    for _,line in ipairs (data) do
+      f:write (line .. '\n')
+    end
+    f: close ()
+  else
+    _log ("error: " .. (err or '?'))
+  end
+end
+
 function init (devNo)
   local msg
   ole = devNo
@@ -611,6 +627,7 @@ function init (devNo)
     luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
     luup.register_handler ("openLuup_email", "openLuup@openLuup.local")       -- 2018.03.18  bit bucket
     luup.register_handler ("openLuup_images", "images@openLuup.local")        -- 2018.03.18  save image attachments
+    luup.register_handler ("openLuup_mailbox", "mail@openLuup.local")         -- 2018.04.02  actual mailbox
   end
 
   do -- install AltAppStore as child device
@@ -641,6 +658,7 @@ function init (devNo)
   do -- ensure some extra folders exist
     lfs.mkdir "images"
     lfs.mkdir "trash"
+    lfs.mkdir "mail"
   end
   
   calc_stats ()

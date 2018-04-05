@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.01.31",
+  VERSION       = "2018.04.05",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -34,6 +34,7 @@ local ABOUT = {
 
 -- 2018.01.30  changed variable numbering to start at 0 (for compatibility with ModifyUserData)
 -- 2018.01.31  add delete_vars() to device (for ModifyUserData to replace all state variables)
+-- 2018.04.05  move get/set status to chdev (more a luup thing than a devices thing)
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -200,19 +201,19 @@ local function new (devNo)
   local version               -- set device version (used to flag changes)
   local missing_action        -- an action callback to catch missing actions
   local watchers    = {}      -- list of watchers for any service or variable
-  local status      = -1      -- device status
+--  local status      = -1      -- device status
   
-  local function status_get (self)            -- 2016.04.29
-    return status
-  end
+--  local function status_get (self)            -- 2016.04.29
+--    return status
+--  end
   
-  local function status_set (self, value)     -- 2016.04.29
-    if status ~= value then
---      new_dataversion ()
-      new_userdata_dataversion ()
-      status = value
-    end
-  end
+--  local function status_set (self, value)     -- 2016.04.29
+--    if status ~= value then
+----      new_dataversion ()
+--      new_userdata_dataversion ()
+--      status = value
+--    end
+--  end
   
   -- function delete_vars
   -- parameter: device 
@@ -373,8 +374,8 @@ local function new (devNo)
       attr_get            = attr_get,
       attr_set            = attr_set,
       
-      status_get          = status_get,
-      status_set          = status_set,
+--      status_get          = status_get,
+--      status_set          = status_set,
       
       variable_set        = variable_set, 
       variable_get        = variable_get,

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.03.24",
+  VERSION       = "2018.04.05",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -56,7 +56,8 @@ local ABOUT = {
 -- 2018.02.06  add static request and internal static_data() function
 -- 2018.02.18  implement lu_invoke (partially)
 -- 2018.03.24  use luup.rooms metatable methods
-
+-- 2018.04.03  use jobs info from device for status request
+-- 2018.04.05  sdata_devices_table - reflect true state from job status
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -224,7 +225,7 @@ local function invoke (_, p)
   local D, S = {}, {}
   local dev = luup.devices[tonumber(p.DeviceNum)]
   
-  -- TODO: sort by name and parent/child structure? Too much trouble!
+  -- sort by name and parent/child structure? Too much trouble!
   if dev then
     -- Services and Actions for specific device
     for s, srv in spairs (dev.services) do
@@ -277,7 +278,7 @@ local function sdata_devices_table (devices)
         subcategory = d.subcategory_num,
         room = d.room_num,
         parent = d.device_num_parent,
-        state = -1,                       -- TODO: reflect true state from job status
+        state = d:status_get() or -1,             -- 2018.04.05 sdata: reflect true state from job status
       }
       -- add the additional information from short_code variables indexed in the service_data
       local sd = loader.service_data
@@ -365,7 +366,7 @@ local function status_devices_table (device_list, data_version)
         id = i, 
         status = d:status_get() or -1,      -- 2016.04.29
         tooltip = {display = "0"},
-        Jobs = {}, 
+        Jobs = d.jobs or {},                -- 2018.04.03
         PendingJobs = 0, 
         states = states
       }
@@ -500,7 +501,7 @@ local function user_scenes_table()
 end
 
 -- This returns the configuration data for Vera, 
--- which is a list of all devices and the UPnP variables which are persisted between resets [NOT YET IMPLEMENTED]
+-- which is a list of all devices and the UPnP variables which are persisted between resets
 -- as well as rooms, names, and other data the user sets as part of the configuration.
 local function user_data (_,p) 
   local result = "NO_CHANGES"

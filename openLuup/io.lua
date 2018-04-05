@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2018.03.28",
+  VERSION       = "2018.04.02",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -448,7 +448,7 @@ function server.new (config)
       info.count = info.count + 1                 -- 2018.03.24
       connects [ip] = info
 
-      local connect = "%s new client connection from %s: %s"
+      local connect = "%s client connection from %s: %s"
       _log (connect:format (name, ip, tostring(sock)))
     end
 

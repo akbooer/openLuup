@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.03.18",
+  VERSION       = "2018.04.05",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -43,6 +43,9 @@ local ABOUT = {
 -- 2017.05.10  add category_num and subcategory_num to create() table parameters (thanks @dklinkman)
 
 -- 2018.03.18  create default device variables if they have a defaultValue in the service definition
+-- 2018.04.03  add jobs table to device metadata (for status reporting to AltUI)
+-- 2018.04.05  move get/set status from devices to here (more a luup thing, than a device thing)
+
 
 local logs      = require "openLuup.logs"
 
@@ -218,10 +221,23 @@ local function create (x)
                               protocol = d.protocol,
                               -- other fields created on open include socket and intercept
                             }
+  dev.jobs                = {}              -- 2018.04.03
   -- note that all the following methods should be called with device:function() syntax...
   dev.is_ready            = function () return true end          -- TODO: wait on startup sequence 
   dev.status              = -1                                   -- 2016.04.29  add device status
   dev.supports_service    = function (self, service) return not not services[service] end
+
+  function dev:status_get ()            -- 2016.04.29, 2018.04.05
+    return self.status
+  end
+  
+  function dev:status_set ( value)     -- 2016.04.29, 2018.04.05
+    if self.status ~= value then
+      devutil.new_userdata_dataversion ()
+      self.status = value
+    end
+  end
+
 
   return setmetatable (luup_device, {__index = dev} )   --TODO:    __metatable = "access denied"
 end
