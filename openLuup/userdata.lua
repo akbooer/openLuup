@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2018.03.24",
+  VERSION       = "2018.04.05",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -51,6 +51,7 @@ local ABOUT = {
 
 -- 2018.03.02   remove TODO for mode change attributes
 -- 2018.03.24   use luup.rooms.create metatable method
+-- 2018.04.05   do not create status as a device attribute when loading user_data
 
 
 local json    = require "openLuup.json"
@@ -607,7 +608,9 @@ local function load_user_data (user_data_json)
         -- set other device attributes
         for a,v in pairs (d) do
           if type(v) ~= "table" and not dev.attributes[a] then
-            dev:attr_set (a, v)
+            if a ~= "status" then   -- 2018.04.05 status is NOT a device ATTRIBUTE
+              dev:attr_set (a, v)
+            end
           end
         end
         luup.devices[d.id] = dev                          -- save it

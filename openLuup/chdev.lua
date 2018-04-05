@@ -191,6 +191,9 @@ local function create (x)
   }
   
   local a = dev.attributes
+-- TODO: consider protecting device attributes...
+--  setmetatable (dev.attributes, {__newindex = 
+--          function (_,x) error ("ERROR: attempt to create new device attribute "..x,2) end})
   
   local luup_device =     -- this is the information that appears in the luup.devices table
     {
@@ -228,13 +231,13 @@ local function create (x)
   dev.supports_service    = function (self, service) return not not services[service] end
 
   function dev:status_get ()            -- 2016.04.29, 2018.04.05
-    return self.status
+    return dev.status
   end
   
-  function dev:status_set ( value)     -- 2016.04.29, 2018.04.05
-    if self.status ~= value then
+  function dev:status_set (value)     -- 2016.04.29, 2018.04.05
+    if dev.status ~= value then
       devutil.new_userdata_dataversion ()
-      self.status = value
+      dev.status = value
     end
   end
 
