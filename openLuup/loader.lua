@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.03.17",
+  VERSION       = "2018.04.06",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -49,6 +49,8 @@ local ABOUT = {
 -- 2018.03.13  add handleChildren to implementation file parser
 -- 2018.03.17  changes to enable plugin debugging by ZeroBrane Studio (thanks @explorer)
 --             see: http://forum.micasaverde.com/index.php/topic,38471.0.html
+-- 2018.04.06  use scheduler.context_switch to wrap device code compilation (for sandboxing)
+
 
 ------------------
 --
@@ -89,6 +91,8 @@ local shared_environment  = new_environment "openLuup_startup_and_scenes"
 local xml  = require "openLuup.xml"
 local json = require "openLuup.json"
 local vfs  = require "openLuup.virtualfilesystem"
+
+local scheduler = require "openLuup.scheduler"    -- for context_switch()
 
 ------------------
 
@@ -462,7 +466,14 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   --
   -----
 
-    code, error_msg = compile_lua (i.source_code, name)  -- load, compile, instantiate    
+    -- 2018.04.06  wrap compile in context_switch() ...
+    do              -- ...to get correct device numbering for sandboxed functions
+    
+      local err
+      err, code, error_msg = scheduler.context_switch (devNo,
+          compile_lua, i.source_code, name)  -- load, compile, instantiate    
+    end
+    
     if code then 
       code.luup.device = devNo        -- set local value for luup.device
       code.lul_device  = devNo        -- make lul_device in scope for the whole module

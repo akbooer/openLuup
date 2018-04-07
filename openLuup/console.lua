@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.03.26",
+  VERSION       = "2018.04.07",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -33,7 +33,7 @@ ABOUT = {
 -- 2018.01.30  add invocations count to job listing
 -- 2018.03.19  add Servers menu
 -- 2018.03.24  add connection count to iprequests on HTTP server page
-
+-- 2018.04.07  add Scheduler Sandboxes menu
 
 -- TODO: HTML pages with sorted tables
 -- see: https://www.w3schools.com/w3js/w3js_sort.asp
@@ -134,6 +134,7 @@ prefix = [[
           <a class="left" href="/console?page=jobs">Jobs</a>
           <a class="left" href="/console?page=delays">Delays</a>
           <a class="left" href="/console?page=watches">Watches</a>
+          <a class="left" href="/console?page=sandbox">Sandboxes</a>
           <a class="left" href="/console?page=startup">Startup Jobs</a>
         </div>
       </div>
@@ -463,6 +464,11 @@ function run (wsapi_env)
     end
   end
   
+  local function sandbox ()               -- 2018.04.07
+    print "Sandboxed system functions"
+    print ('\n' .. string:sandbox())
+    print ('\n' .. table:sandbox())
+  end
   
   local pages = {
     about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
@@ -474,6 +480,7 @@ function run (wsapi_env)
     watches = watchlist,
     http    = httplist,
     smtp    = smtplist,
+    sandbox = sandbox,
     
     uncompress      = uncompress,
     uncompressform  = uncompressform,

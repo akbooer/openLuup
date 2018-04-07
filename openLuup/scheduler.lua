@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.03.21",
+  VERSION       = "2018.04.07",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -44,6 +44,7 @@ local ABOUT = {
 
 -- 2018.01.30  add logging info to job structure, move timenow() and sleep() here from timers
 -- 2018.03.21  add default exit state to jobs
+-- 2018.04.07  sandbox string and table system libraries
 
 
 local logs      = require "openLuup.logs"
@@ -175,7 +176,102 @@ local job_list = setmetatable (
       end,
     } 
   )
+
+-------------
+--
+-- Sandbox for system libraries
+--
+
+--[[
+
+You can't do this the obvious way, because it needs to work for both this
+
+  string.foo(str, ...)
   
+and this
+
+  str: foo (...)
+  
+This means that the actual sandbox module table MUST have a real entry,
+and not just a metatable one, as in this easy code:
+
+local function sandbox (table)
+  local meta = {}   -- index by [device][key]
+  
+  function meta:__newindex (key, value)
+    local devNo = current_device or '?'
+    meta[devNo] = meta[devNo] or {}
+    meta[devNo][key] = value
+  end
+
+  function meta:__index (key)
+    local devNo = current_device or '?'
+    local index = meta[devNo]
+    if index then return index [key] end
+  end
+  
+  return setmetatable (table, meta)
+end
+
+So it has to be done a bit differently, as below...
+
+A side-effect is that all device contexts will see the name of any additional function 
+which has been added by any device to the sandboxed module, although it may not be functional. 
+But this visibility is also true for non-sandboxed table additions, as before, so not really an issue.
+
+--]]
+
+local function sandbox (tbl, name)
+  name = name or "{}"
+  local index ={}
+  local errmsg = "device %s attempt to call '%s.%s' (a nil value)"
+  local defmsg = "device %s defined '%s.%s' (a %s value)"
+
+  local meta = {__index = {}}   -- __index is only used for sandbox pretty-printing
+  function meta:__newindex(k,v)
+    
+    local function proxy (...) 
+      local d = current_device or '?'
+      local fct = (index[d] or {}) [k]
+      if not fct then
+        error (errmsg: format (d, name, k), 2)
+      end
+      return fct (...) 
+    end
+
+    local d = current_device or '?'   -- k,v pairs are indexed by current device number
+    local vtype = type(v)
+    _debug (defmsg: format (d, name, k, vtype))
+    index[d] = index[d] or {}
+    index[d][k] = v
+    if not self[k] then               -- only define it once (works for all device contexts)
+      rawset (self, k, (vtype == "function") and proxy or v)
+    end
+  end
+
+  function meta.__index:sandbox ()    -- totally optional pretty-printing of sandbox contents
+    local x ={name .. ".sandbox:"}
+    for d, idx in pairs (index) do
+      x[#x+1] = "  device #" .. d
+      for k,v in pairs (idx) do
+        x[#x+1] = table.concat {"    ", k, " = ", tostring(v)}
+      end
+    end
+    if #x == 1 then x[2]="    empty" end
+    return table.concat (x, '\n')
+  end
+
+  setmetatable (tbl, meta)
+end
+
+sandbox (table, "table")
+sandbox (string, "string")
+
+--
+--
+-------------
+
+
  local function missing (idx)   -- handle missing job tag
     return function (_, _, job)
       job.notes = "no action tag specified for: " .. tostring(idx)
