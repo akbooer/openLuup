@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.04.05",
+  VERSION       = "2018.04.09",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -58,6 +58,8 @@ local ABOUT = {
 -- 2018.03.24  use luup.rooms metatable methods
 -- 2018.04.03  use jobs info from device for status request
 -- 2018.04.05  sdata_devices_table - reflect true state from job status
+-- 2018.04.09  add archive_video request
+
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
@@ -746,24 +748,84 @@ user or pass = optional: override the camera's default username/password
 --]]
 
 local function request_image (_, p)
+  for a,b in pairs (p) do p[a:lower()] = b end    -- wrap parameters to lowercase, so no confusions
   local sid = "urn:micasaverde-com:serviceId:Camera1"
   local image, status
   local devNo = tonumber(p.cam)
   local cam = luup.devices[devNo]
+  local response
+  
   if cam then
-    local ip = p.ip or luup.attr_get ("ip", devNo) or ''
     local url = p.url or luup.variable_get (sid, "URL", devNo) or ''
---    local timeout = tonumber(cam:variable_get (sid, "Timeout")) or 5
-    local timeout = tonumber(p.timeout) or 5
+    local ip = p.ip or luup.attr_get ("ip", devNo) or ''
+    
+    -- note, once again, the glaring inconsistencies in Vera naming conventions
+    local user = p.user or luup.attr_get ("username", devNo) 
+    local pass = p.pass or luup.attr_get ("password", devNo) 
+    local timeout = tonumber(p.timeout) or 10
+    
     if url then
-      status, image = luup.inet.wget ("http://" .. ip .. url, timeout)
+      _, image, status = luup.inet.wget ("http://" .. ip .. url, timeout, user, pass)
+      if status ~= 200 then
+        response = "camera URL returned HTTP status: " .. status
+        image = nil
+      end
     end
+  else
+    response = "No such device"
   end
+  
   if image then
     return image, "image/jpeg"
   else
-    return "ERROR"
+    return response or "Unknown ERROR"
   end
+end
+
+--[[
+archive_video
+
+Archives a MJPEG video or a JPEG snapshot. [NB: only snapshot implemented in openLuup]
+
+Parameters:
+
+    cam: the device # of the camera.
+    duration: the duration, in seconds, of the video. The default value is 60 seconds.
+    format: set it to 1 for snapshots. If this is missing or has any other value, 
+              the archive will be a MJPEG video. 
+
+--]]
+local function archive_video (_, p)       -- 2018.04.09
+  local response
+  for a,b in pairs (p) do p[a:lower()] = b end    -- wrap parameters to lowercase, so no confusions
+  
+  if p.format == "1" then 
+    if p.cam then
+      local image, contentType = request_image (_, {cam = p.cam})
+      if contentType == "image/jpeg" then
+        local filename = os.date "%Y%m%d-%H%M%S-snapshot.jpg"
+        local f,err = io.open ("images/" .. filename, 'wb')
+        image = image or "---no image---"
+        if f then
+          f: write (image)
+          f: close ()
+          local msg = "ArchiveVideo: Format=%s, Duration=%s, %d bytes written to %s"
+          response = msg:format (p.format or '?', p.duration or '', #image, filename)
+        else
+          response = "ERROR writing image file: " .. (err or '?')
+        end
+      else
+        response = "ERROR getting image: " .. (image or '?')
+      end
+    else
+      response = "no such device"
+    end
+  else
+    response = "Video Archive NOT IMPLEMENTED (only snapshots)" 
+  end
+  
+  _log (response)
+  return response
 end
 
 --[[
@@ -898,6 +960,7 @@ local luup_requests = {
   
   action              = action, 
   alive               = alive,
+  archive_video       = archive_video,
   device              = device,
   delete_plugin       = delete_plugin,
   file                = file,

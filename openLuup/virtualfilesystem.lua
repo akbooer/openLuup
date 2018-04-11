@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.03.25",
+  VERSION       = "2018.04.09",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -834,6 +834,7 @@ local I_openLuupCamera1_xml = [[
     local child -- the motion sensor
     local smtp = require "openLuup.smtp"
     local timers = require "openLuup.timers"
+    local requests = require "openLuup.requests"
     local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
     function get (name)
       return (luup.variable_get (sid, name, child))
@@ -842,6 +843,9 @@ local I_openLuupCamera1_xml = [[
       if val ~= get (name) then
         luup.variable_set (sid, name, val, child)
       end
+    end
+    function archive (p)
+      requests.archive_video ("archive_video", p)
     end
     local function clear ()
       local now = os.time()
@@ -905,28 +909,8 @@ local I_openLuupCamera1_xml = [[
       <serviceId>urn:micasaverde-com:serviceId:Camera1</serviceId>
       <name>ArchiveVideo</name>
       <job>
-        local ip  = luup.attr_get ("ip", lul_device)
-        local url = luup.variable_get ("urn:micasaverde-com:serviceId:Camera1", "URL", lul_device)
         local p = lul_settings
-        if ip and url then
-          timeout = 5
-          local status, image = luup.inet.wget ("http://" .. ip .. url, timeout)
-          if status == 0 then
-            local filename = os.date "Snap_%Y%m%d-%H%M%S-X.jpg"
-            local f,err = io.open ("images/" .. filename, 'wb')
-            image = image or "---no image---"
-            if f then
-              f: write (image)
-              f: close ()
-              local msg = "ArchiveVideo: Format=%s, Duration=%s, %d bytes written to %s"
-              luup.log (msg:format (p.Format or '?', p.Duration or '?', #image, filename))              
-            else
-              luup.log ("ERROR writing image file: " .. (err or '?'))
-            end
-          else
-            luup.log ("ERROR getting image: " .. (image or '?'))
-          end
-        end
+        archive {cam = lul_device, Format = p.Format, Duration = p.Duration}
       </job>
     </action>
   

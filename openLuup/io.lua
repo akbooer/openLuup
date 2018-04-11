@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2018.04.02",
+  VERSION       = "2018.04.10",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -48,6 +48,7 @@ local ABOUT = {
 
 -- 2018.03.22  move luup-specific IO functions into sub-module luupio
 -- 2018.03.28  add server module for core server framework methods
+-- 2018.04.10  use servlet model for io.server incoming callbacks
 
 
 -- TODO: add fully-fledged UDP and TCP server/client modules
@@ -389,8 +390,8 @@ function server.new (config)
   local backlog = config.Backlog or 64                  -- default pending queue length
   local name = config.name or "unnamed"
   local port = tostring (config.port)
-  local connect = config.connect
-  local incoming = config.incoming
+  local servlet = config.servlet
+  
   
   local ip                                              -- client's IP address
   local connects = {}                                   -- statistics of incoming connections (for console page)
@@ -404,38 +405,12 @@ function server.new (config)
   -- call for every new client connection
   local function new_client (sock)
     local expiry
-    
-    local client = {            -- client object
-      send    = function (_, ...) return sock:send(...)      end,
-      receive = function (_, ...) return sock:receive(...)   end,
-      close   = function ()
-        sock: close ()
-        scheduler.socket_unwatch (sock)       -- immediately stop watching for incoming
-        expiry = 0                            -- let the job timeout
-      end,
-    }
+    local incoming -- defined by servlet return
     
     -- passthru to client callback to update timeout
     local function callback ()
       expiry = socket.gettime () + idletime      -- update socket expiry 
-      incoming (client)
-    end
-      
-    -- run(), preamble to main job, call user startup
-    local function run ()
-      if connect then connect (client) end
-    end
-    
-    --  job (), wait for job expiry
-    local function job ()
-      if socket.gettime () > expiry then                    -- close expired connection... 
-        _log "closing client connection"
-        sock: close ()                                      -- check socket is closed (may already be so)
-        scheduler.socket_unwatch (sock)                     -- stop watching for incoming (may already have done so)
-        return scheduler.state.Done, 0                      -- and exit
-      else
-        return scheduler.state.WaitingToStart, 5            -- ... checking every 5 seconds
-      end
+      incoming ()
     end
     
     -- new_client ()
@@ -451,16 +426,48 @@ function server.new (config)
       local connect = "%s client connection from %s: %s"
       _log (connect:format (name, ip, tostring(sock)))
     end
-
+    
+    -- create the client object... a modified socket
+    local client = {            -- client object
+        send    = function (_, ...) return sock:send(...)      end,
+        receive = function (_, ...) return sock:receive(...)   end,
+        closed = false,
+        close   = function (self)
+          if not self.closed then
+            self.closed = true
+            _log ("closing client connection " .. tostring(sock))
+            sock: close ()
+            scheduler.socket_unwatch (sock)       -- immediately stop watching for incoming
+          end
+          expiry = 0                            -- let the job timeout
+        end,
+      }
+    setmetatable (client, {__tostring = function() return tostring(sock) end})   -- for pretty log
+  
     do -- configure the socket
-      expiry = socket.gettime () + idletime    -- set initial socket expiry 
-      sock:settimeout(nil)                                    -- no socket timeout on read
-      sock:setoption ("tcp-nodelay", true)                    -- allow consecutive read/writes
-      scheduler.socket_watch (sock, callback)                 -- start listening for incoming
+      expiry = socket.gettime () + idletime     -- set initial socket expiry 
+      sock:settimeout(nil)                      -- no socket timeout on read
+      sock:setoption ("tcp-nodelay", true)      -- allow consecutive read/writes
+    end
+    
+    do -- start a new user servlet using client socket and set up its callback
+      incoming = servlet(client)                -- give client object and get user incoming callback
+      scheduler.socket_watch (sock, callback)   -- start listening for incoming
+    end
+    
+    --  job (), wait for job expiry
+    local function job ()
+      if socket.gettime () > expiry then                    -- close expired connection... 
+        _log ("connection expiry " .. tostring(sock))
+        client: close ()                                    -- check socket is closed (may already be so)
+        return scheduler.state.Done, 0                      -- and exit
+      else
+        return scheduler.state.WaitingToStart, 5            -- ... checking every 5 seconds
+      end
     end
 
     do -- run the job
-      local _, _, jobNo = scheduler.run_job {run = run, job = job}
+      local _, _, jobNo = scheduler.run_job {job = job}
       if jobNo and scheduler.job_list[jobNo] then
         local info = "job#%d :%s new connection %s"
         scheduler.job_list[jobNo].type = info: format (jobNo, name, tostring(sock))
@@ -483,7 +490,7 @@ function server.new (config)
 
   -- start(), create server and start listening
   local mod, msg
-  if server then 
+  if server and servlet then 
     server:settimeout (0)                                       -- don't block 
     scheduler.socket_watch (server, server_incoming)            -- start watching for incoming
     msg = logline: format ("starting", name, port)

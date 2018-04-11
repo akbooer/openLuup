@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.04.07",
+  VERSION       = "2018.04.10",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -45,6 +45,7 @@ local ABOUT = {
 -- 2018.01.30  add logging info to job structure, move timenow() and sleep() here from timers
 -- 2018.03.21  add default exit state to jobs
 -- 2018.04.07  sandbox string and table system libraries
+-- 2018.04.10  add get_socket_list to methods and timenow/name to the list elements
 
 
 local logs      = require "openLuup.logs"
@@ -97,11 +98,13 @@ end
 
 -- socket_watch (socket, action_with_incoming_tag),  add socket to list watched for incoming
 -- optional io parameter is pointer to a device's I/O table with an intercept flag
-local function socket_watch (sock, action, io)  
+local function socket_watch (sock, action, io, name)  
   socket_list[sock] = {
     callback = action,
     devNo = current_device,
-    io = io or {intercept = false},  -- assume no intercepts: incoming data is passed to handler
+    io = io or {intercept = false},   -- assume no intercepts: incoming data is passed to handler
+    time = timenow (),                -- just for the console Sockets page
+    name = name or "anon",            -- ditto
   }
 end
 
@@ -226,6 +229,8 @@ local function sandbox (tbl, name)
   local index ={}
   local errmsg = "device %s attempt to call '%s.%s' (a nil value)"
   local defmsg = "device %s defined '%s.%s' (a %s value)"
+  local boxmsg = "  [%d] %s"
+  local idxmsg = "    %s = %s"
 
   local meta = {__index = {}}   -- __index is only used for sandbox pretty-printing
   function meta:__newindex(k,v)
@@ -252,12 +257,12 @@ local function sandbox (tbl, name)
   function meta.__index:sandbox ()    -- totally optional pretty-printing of sandbox contents
     local x ={name .. ".sandbox:"}
     for d, idx in pairs (index) do
-      x[#x+1] = "  device #" .. d
+      x[#x+1] = boxmsg: format (d, luup.devices[d].description: match "^%s*(.-)$")
       for k,v in pairs (idx) do
-        x[#x+1] = table.concat {"    ", k, " = ", tostring(v)}
+        x[#x+1] = idxmsg: format (k, tostring(v))
       end
     end
-    if #x == 1 then x[2]="    empty" end
+    if #x == 1 then x[2]="    -- none --" end
     return table.concat (x, '\n')
   end
 
@@ -612,6 +617,7 @@ return {
     current_device    = function() return current_device end, 
     context_switch    = context_switch,
     delay_list        = function () return delay_list end,
+    get_socket_list   = function () return socket_list end,
     device_start      = device_start,
     kill_job          = kill_job,
     run_job           = run_job,

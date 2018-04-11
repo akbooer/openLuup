@@ -1,7 +1,7 @@
 local ABOUT = {
-  NAME          = "openLuup.server",
-  VERSION       = "2018.03.24",
-  DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
+  NAME          = "openLuup.http",
+  VERSION       = "2018.04.10",
+  DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
@@ -74,6 +74,7 @@ local ABOUT = {
 -- 2018.03.15   fix relative URL handling in request object
 -- 2018.03.22   export http_handler from servlet for use by console server page
 -- 2018.03.24   add connection count to iprequests
+-- 2018.04.09   add _debug() listing of external luup.inet.wget requests
 
 
 local socket    = require "socket"
@@ -245,6 +246,7 @@ local function wget (request_URI, Timeout, Username, Password)
       URL.password = Password
     end
     URL = url.build (URL)                             -- reconstruct request for external use
+    _debug (URL)
     scheme.TIMEOUT = Timeout or 5
     
     if Username and not URL_AUTHORIZATION then        -- 2017.06.14 build Authorization header
@@ -496,7 +498,7 @@ local function new_client (sock)
   sock:settimeout(nil)                                    -- this is a timeout on the HTTP read
 --  sock:settimeout(10)                                   -- this is a timeout on the HTTP read
   sock:setoption ("tcp-nodelay", true)                    -- trying to fix timeout error on long strings
-  scheduler.socket_watch (sock, incoming)                 -- start listening for incoming
+  scheduler.socket_watch (sock, incoming, nil, "HTTP")    -- start listening for incoming
 --  local err, msg, jobNo = scheduler.run_job {job = job}
   local _, _, jobNo = scheduler.run_job {job = job}
   if jobNo and scheduler.job_list[jobNo] then
@@ -534,8 +536,8 @@ local function start (port, config)
 
   -- start(), create HTTP server job and start listening
   if server then 
-    server:settimeout (0)                                       -- don't block 
-    scheduler.socket_watch (server, server_incoming)            -- start watching for incoming
+    server:settimeout (0)                                           -- don't block 
+    scheduler.socket_watch (server, server_incoming, nil, "HTTP")   -- start watching for incoming
     _log (table.concat {"starting HTTP server on ", myIP, ':', port, ' ', tostring(server)})
     return {stop = stop}
   else
