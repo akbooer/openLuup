@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.04.07",
+  VERSION       = "2018.04.12",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -34,21 +34,25 @@ ABOUT = {
 -- 2018.03.19  add Servers menu
 -- 2018.03.24  add connection count to iprequests on HTTP server page
 -- 2018.04.07  add Scheduler Sandboxes menu
+-- 2018.04.08  add Servers POP3 menu
+-- 2018.04.10  add Scheduler Sockets menu
 
--- TODO: HTML pages with sorted tables
+
+-- TODO: HTML pages with sorted tables?
 -- see: https://www.w3schools.com/w3js/w3js_sort.asp
 
 --  WSAPI Lua implementation
 
 local lfs       = require "lfs"                   -- for backup file listing
 local url       = require "socket.url"            -- for url unescape
-local luup      = require "openLuup.luup"
+local luup      = require "openLuup.luup"         -- not automatically in scope for CGIs
 local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
 local xml       = require "openLuup.xml"          -- for escape()
 local requests  = require "openLuup.requests"     -- for user_data, status, and sdata
 local server    = require "openLuup.server"
 local smtp      = require "openLuup.smtp"
+local pop3      = require "openLuup.pop3"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -134,6 +138,7 @@ prefix = [[
           <a class="left" href="/console?page=jobs">Jobs</a>
           <a class="left" href="/console?page=delays">Delays</a>
           <a class="left" href="/console?page=watches">Watches</a>
+          <a class="left" href="/console?page=sockets">Sockets</a>
           <a class="left" href="/console?page=sandbox">Sandboxes</a>
           <a class="left" href="/console?page=startup">Startup Jobs</a>
         </div>
@@ -144,6 +149,7 @@ prefix = [[
         <div class="dropdown-content">
           <a class="left" href="/console?page=http">HTTP Web</a>
           <a class="left" href="/console?page=smtp">SMTP eMail</a>
+          <a class="left" href="/console?page=pop3">POP3 eMail</a>
         </div>
       </div>
 
@@ -371,6 +377,20 @@ function run (wsapi_env)
 
   local function number (n) return ("%7d  "): format (n) end
 
+  local function printConnections (iprequests)
+    local layout1 = "     %-32s %s %s"
+    local none = "--- none ---"
+    local function printout (a,b,c) print (layout1: format (a,b or '',c or '')) end
+    print "\n Received connections:"
+    printout("IP address", "#connects", "    date     time\n")
+    if not next (iprequests) then printout (none) end
+    for ip, req in pairs (iprequests) do
+      local count = number (req.count)
+      printout (ip, count, os.date(date, req.date))
+    end
+  end
+  
+  
   local function httplist ()
     local layout = "     %-42s %s %s"
     local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
@@ -390,24 +410,19 @@ function run (wsapi_env)
     end
     
     print ("HTTP Web Server, " .. os.date "%c")
+    printConnections (server.iprequests)     
     
-    print "\n Most recent incoming connections:"
-    printout ("IP address", "#connects  ", "date       time")
-    for ip, req in pairs (server.iprequests) do
-      printout (ip, number(req.count), "  "..os.date(date, req.date))
-    end
+    print "\n /data_request?"
+    printout ("id=... ", "#requests  ","status")
+    printinfo (server.http_handler)
     
-      print "\n /data_request?"
-      printout ("id=... ", "#requests  ","status")
-      printinfo (server.http_handler)
-      
-      print "\n CGI requests"
-      printout ("URL ", "#requests  ","status")
-      printinfo (server.cgi_handler)
-      
-      print "\n File requests"
-      printout ("filename ", "#requests  ","status")
-      printinfo (server.file_handler)
+    print "\n CGI requests"
+    printout ("URL ", "#requests  ","status")
+    printinfo (server.cgi_handler)
+    
+    print "\n File requests"
+    printout ("filename ", "#requests  ","status")
+    printinfo (server.file_handler)
     
   end
   
@@ -441,14 +456,7 @@ function run (wsapi_env)
     end
     
     print ("SMTP eMail Server, " .. os.date "%c")
-    
-    print "\n Received connections:"
-    printout("IP address", "#connects", "    date     time\n")
-    if not next (smtp.iprequests) then printout (none) end
-    for ip, req in pairs (smtp.iprequests) do
-      local count = number (req.count)
-      printout (ip, count, os.date(date, req.date))
-    end
+    printConnections (smtp.iprequests)    
     
     print "\n Registered email sender IPs:"
     print_sorted (smtp.destinations, function(x) return not x:match "@" end)
@@ -462,6 +470,65 @@ function run (wsapi_env)
     for email in pairs (smtp.blocked) do
       printout (email)
     end
+  end
+  
+  local function pop3list ()
+    
+    print ("POP3 eMail Server, " .. os.date "%c")
+    printConnections (pop3.iprequests)    
+    
+    print "\n Registered accounts:"
+    
+    local layout = "     %-21s %9s"
+    local number = "%7s"
+    local header = "\n    Mailbox '%s': %d messages, %0.1fkB"
+    local accounts = pop3.accounts
+    
+    for name, folder in pairs (accounts) do
+      local mbx = pop3.mailbox.open (folder)
+      local total, bytes = mbx: status()
+      print (header: format (name, total, bytes/1e3))
+      print ('      #' .. (layout: format ("date       time", "size\n")))
+      
+      local list = {}
+      for _, size, _, timestamp in mbx:scan() do
+        list[#list+1] = {t=timestamp, l=layout:format (os.date (date, timestamp), size)}
+      end
+      table.sort (list, function (a,b) return a.t > b.t end)  -- newest first
+      if #list == 0 then 
+        print "              --- none ---" 
+      else
+        for i,x in ipairs (list) do print (number:format(i) .. x.l) end
+      end
+      print ''
+      mbx: close ()
+    end
+  end
+  
+  local function sockets ()
+    print "Watched Sockets"
+
+    local number = "%7s"
+    local layout = "     %-21s  %5s    %-20s"
+    print "      #     date       time         device           socket"
+    local list = {}
+    local sock_drawer = scheduler.get_socket_list()    -- list is indexed by socket !!
+    for sock, x in pairs (sock_drawer) do
+--    callback = action,
+--    devNo = current_device,
+--    io = io or {intercept = false},  -- assume no intercepts: incoming data is passed to handler
+      local sockname = table.concat {tostring(x.name), ' ', tostring(sock)}
+      list[#list+1] = layout: format (os.date(date, x.time), x.devNo or 0, sockname)
+    end
+    table.sort (list, function (a,b) return a > b end)
+    
+    if #list == 0 then 
+      print "      --- none ---" 
+    else
+      for i,x in ipairs (list) do print (number:format(i) .. x) end
+    end
+    print ''
+
   end
   
   local function sandbox ()               -- 2018.04.07
@@ -480,6 +547,8 @@ function run (wsapi_env)
     watches = watchlist,
     http    = httplist,
     smtp    = smtplist,
+    pop3    = pop3list,
+    sockets = sockets,
     sandbox = sandbox,
     
     uncompress      = uncompress,

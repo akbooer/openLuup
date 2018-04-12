@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2018.04.10",
+  VERSION       = "2018.04.12",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -379,28 +379,31 @@ end
 --      name = "SMTP",          -- server name
 --      backlog = 100,          -- queue length
 --      idletime = 30,          -- close idle socket after
---      incoming = incoming,    -- callback for incoming data
---      connect = connect,      -- callback on initial connection
+--      servlet = servlet,      -- callback on initial connection
+--      connects = connects,    -- a table to report connection statistics
 --    }
 --
+-- servlet is a function which is called with a client object for every new connection.
+-- it returns a function to be called for each new incoming line.
+--
+
 function server.new (config)
   
   config = config or {}
-  local idletime = config.CloseIdleSocketAfter or 30    -- 30 second default on no-activity timeout
-  local backlog = config.Backlog or 64                  -- default pending queue length
-  local name = config.name or "unnamed"
+  local idletime = config.idletime or 30                -- 30 second default on no-activity timeout
+  local backlog = config.backlog or 64                  -- default pending queue length
+  local name = config.name or "anon"
   local port = tostring (config.port)
   local servlet = config.servlet
+  local connects = config.connects or {}                -- statistics of incoming connections
   
   
   local ip                                              -- client's IP address
-  local connects = {}                                   -- statistics of incoming connections (for console page)
   local server, err = socket.bind ('*', port, backlog)  -- create the master listening port
   
   local logline = "%s %s server on port: %s " .. tostring(server)
-  local serverlog = ABOUT.NAME .. ".server"
-  local oldlog = _log
-  local function _log (msg) oldlog (msg,  serverlog) end
+  local function iolog (msg) _log (msg,  "openLuup.io.server") end
+  local _log = iolog
   
   -- call for every new client connection
   local function new_client (sock)
@@ -413,8 +416,6 @@ function server.new (config)
       incoming ()
     end
     
-    -- new_client ()
-
     do -- initialisation
       ip = sock:getpeername() or '?'                                    -- who's asking?
       local info = connects [ip] or
@@ -423,23 +424,25 @@ function server.new (config)
       info.count = info.count + 1                 -- 2018.03.24
       connects [ip] = info
 
-      local connect = "%s client connection from %s: %s"
+      local connect = "%s connection from %s %s"
       _log (connect:format (name, ip, tostring(sock)))
     end
     
     -- create the client object... a modified socket
-    local client = {            -- client object
+    local client = {                -- client object
+        ip = ip,                    -- ip address of the client
         send    = function (_, ...) return sock:send(...)      end,
         receive = function (_, ...) return sock:receive(...)   end,
         closed = false,
-        close   = function (self)
+        close   = function (self, msg)        -- note optional log message cf. standard socket close
           if not self.closed then
             self.closed = true
-            _log ("closing client connection " .. tostring(sock))
-            sock: close ()
+            local disconnect = "%s connection closed %s %s"
+            _log (disconnect: format (name, msg or '', tostring(sock)))
             scheduler.socket_unwatch (sock)       -- immediately stop watching for incoming
+            sock: close ()
           end
-          expiry = 0                            -- let the job timeout
+          expiry = 0             -- let the job timeout
         end,
       }
     setmetatable (client, {__tostring = function() return tostring(sock) end})   -- for pretty log
@@ -452,14 +455,13 @@ function server.new (config)
     
     do -- start a new user servlet using client socket and set up its callback
       incoming = servlet(client)                -- give client object and get user incoming callback
-      scheduler.socket_watch (sock, callback)   -- start listening for incoming
+      scheduler.socket_watch (sock, callback, nil, name)   -- start listening for incoming
     end
     
     --  job (), wait for job expiry
     local function job ()
       if socket.gettime () > expiry then                    -- close expired connection... 
-        _log ("connection expiry " .. tostring(sock))
-        client: close ()                                    -- check socket is closed (may already be so)
+        client: close "EXPIRED"
         return scheduler.state.Done, 0                      -- and exit
       else
         return scheduler.state.WaitingToStart, 5            -- ... checking every 5 seconds
@@ -473,7 +475,7 @@ function server.new (config)
         scheduler.job_list[jobNo].type = info: format (jobNo, name, tostring(sock))
       end
     end
-  end
+  end  -- of new_client
 
   -- new client connection
   local function server_incoming (server)
@@ -487,14 +489,14 @@ function server.new (config)
     _log (logline: format ("stopping", name, port))
     server: close()
   end
-
+  
   -- start(), create server and start listening
   local mod, msg
   if server and servlet then 
-    server:settimeout (0)                                       -- don't block 
-    scheduler.socket_watch (server, server_incoming)            -- start watching for incoming
+    server:settimeout (0)                                           -- don't block 
+    scheduler.socket_watch (server, server_incoming, nil, name)     -- start watching for incoming
     msg = logline: format ("starting", name, port)
-    mod = {stop = stop, connects = connects}
+    mod = {stop = stop}
   else
     msg = "error starting server: " .. tostring(err)
   end  

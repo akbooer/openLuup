@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.04.10",
+  VERSION       = "2018.04.12",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -46,14 +46,18 @@ ABOUT = {
 --             ...also move UDP open() to io.udp.open()
 -- 2018.03.28  add application Content-Type to images@openLuup.local handler
 -- 2018.04.02  fixed type on openLuup_images - thanks @jswim788!
+-- 2018.04.08  use POP3 module to save email to mailbox. Add events mailbox folder
 
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local vfs         = require "openLuup.virtualfilesystem"
-local ioutil      = require "openLuup.io"           -- note that this is not the same as luup.io or Lua's io.
+local ioutil      = require "openLuup.io"           -- NOT the same as luup.io or Lua's io.
+local pop3        = require "openLuup.pop3"
+
 local lfs         = require "lfs"
 local url         = require "socket.url"
+local smtp        = require "socket.smtp"             -- smtp.message() for formatting events
 
 local INTERVAL = 120
 local MINUTES  = "2m"
@@ -556,7 +560,7 @@ function openLuup_images (email, data)
       
       local ContentType = part.header["content-type"] or "text/plain"
       local ctype = ContentType: match "^%w+/%w+" 
-      local cname = ContentType: match 'name%s*=%s*"([^/\\][^"]+)"'   -- avoid absolute paths
+      local cname = ContentType: match 'name%s*=%s*"?([^/\\][^"]+)"?'   -- avoid absolute paths
       if cname and cname: match "%.%." then cname = nil end           -- avoid any attempt to move up folder tree
       cname = cname or os.date "Snap_%Y%m%d-%H%M%S-" .. i .. ".jpg"   -- make up a name if necessary      
       log ("Content-Type:", ContentType) 
@@ -582,21 +586,47 @@ function openLuup_images (email, data)
   end
 end
 
--- real mailbox
-function openLuup_mailbox (mailbox, data)
-  local name = tostring(os.time()): gsub("%.","_")
-  local fname = table.concat {"mail/", name, ".msg"}
-  _log ("writing: " .. fname)
-  local f, err = io.open (fname, 'wb')
-  if f then
-    for _,line in ipairs (data) do
-      f:write (line .. '\n')
-    end
-    f: close ()
+-- save message to mailbox
+local function save_message (path, mailbox, data)
+  local function log (...) _log (mailbox, ...) end
+  local mbx = pop3.mailbox.open (path)
+  local id, err = mbx: write (data)
+  if id then
+    log ("saved email message id: " .. id)
   else
-    _log ("error: " .. (err or '?'))
+    log ("ERROR saving email message: " .. (err or '?'))
   end
+  mbx: close()
+
 end
+
+-- real mailbox
+function openLuup_mailbox (...)
+  save_message ("mail/", ...)
+end
+
+-- events mailbox
+-- just stores the key headers of of incoming mail
+function openLuup_events (mailbox, data)
+  local message = data: decode ()             -- decode MIME message
+  local headers = message.header
+  
+  local newHeaders = {["content-type"] = "text/plain"}    -- vanilla message
+  for a,b in pairs (headers) do 
+    if type(a) == "string" and not a: match "^content" then
+      newHeaders[a] = b
+    end
+  end
+  newHeaders.subject = newHeaders.subject or "---no subject---"
+  
+  local newData = {}
+  for a in smtp.message {headers = newHeaders, body = ''} do    -- no body text
+      newData[#newData+1] = a: gsub ('\r','')                   -- remove redundant <CR>
+  end
+
+  save_message ("events/", mailbox, newData)
+end
+
 
 function init (devNo)
   local msg
@@ -626,7 +656,8 @@ function init (devNo)
     luup.devices[devNo].action_callback (generic_action)      -- catch all undefined action calls
     luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
     luup.register_handler ("openLuup_email", "openLuup@openLuup.local")       -- 2018.03.18  bit bucket
-    luup.register_handler ("openLuup_images", "images@openLuup.local")        -- 2018.03.18  save image attachments
+    luup.register_handler ("openLuup_images", "images@openLuup.local")        -- 2018.03.18  save images
+    luup.register_handler ("openLuup_events", "events@openLuup.local")        -- 2018.03.18  save events
     luup.register_handler ("openLuup_mailbox", "mail@openLuup.local")         -- 2018.04.02  actual mailbox
   end
 
@@ -656,6 +687,7 @@ function init (devNo)
   end
   
   do -- ensure some extra folders exist
+    lfs.mkdir "events"
     lfs.mkdir "images"
     lfs.mkdir "trash"
     lfs.mkdir "mail"

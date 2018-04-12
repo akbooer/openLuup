@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.04.09",
+  VERSION       = "2018.04.11",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -772,7 +772,7 @@ local function request_image (_, p)
       end
     end
   else
-    response = "No such device"
+    response = "No such device"   -- TODO: return image of this message
   end
   
   if image then

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.smtp",
-  VERSION       = "2018.04.02",
+  VERSION       = "2018.04.11",
   DESCRIPTION   = "SMTP server and client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -44,9 +44,10 @@ local ABOUT = {
 -- 2018.03.20   add IP connection and message counts
 -- 2018.03.26   add extra error logging, and AUTH LOGIN
 -- 2018.04.02   deliver to IP listener before other email handlers for faster triggering
+-- 2018.04.10   made quotes around multipart boundary optional
+-- 2018.04.11   refactor to use io.server.new()
 
 
-local socket    = require "socket"
 local smtp      = require "socket.smtp"             -- TODO: add SMTP client code for sending emails
 local mime      = require "mime"                    -- only used by mime module, not by smtp server itself
 
@@ -54,15 +55,11 @@ local logs      = require "openLuup.logs"
 local scheduler = require "openLuup.scheduler"
 local tables    = require "openLuup.servertables"
 local timers    = require "openLuup.timers"         -- for rfc_5322_date()
+local ioutil    = require "openLuup.io"               -- for core server functions
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
 
--- CONFIGURATION DEFAULTS
-
--- RFC 821 requires at least 5 minutes and a queue of 100...
-local CLOSE_IDLE_SOCKET_AFTER   = 300         -- number of seconds idle after which to close socket
-local BACKLOG = 100
 
 -----
 --
@@ -154,7 +151,7 @@ local function decode_message (data)
   local header = decode_headers(read_headers())
   
   local ContentType = header["content-type"] or "text/plain"
-  local boundary = ContentType: match 'boundary="([^"]+)"'
+  local boundary = ContentType: match 'boundary="?([^"]+)"?'
   local body = {}                     -- body part
   _debug ("Content-Type:", ContentType)
   _debug ("Boundary:", boundary or "--none--")
@@ -192,7 +189,11 @@ Fmom RFC 821:
 
 APPENDIX E: Theory of Reply Codes
 
-The three digits of the reply each have a special significance. The first digit denotes whether the response is good, bad or incomplete. An unsophisticated sender-SMTP will be able to determine its next action (proceed as planned, redo, retrench, etc.) by simply examining this first digit. A sender-SMTP that wants to know approximately what kind of error occurred (e.g., mail system error, command syntax error) may examine the second digit, reserving the third digit for the finest gradation of information.
+The three digits of the reply each have a special significance. The first digit denotes whether the 
+response is good, bad or incomplete. An unsophisticated sender-SMTP will be able to determine its next 
+action (proceed as planned, redo, retrench, etc.) by simply examining this first digit. A sender-SMTP 
+that wants to know approximately what kind of error occurred (e.g., mail system error, command syntax 
+error) may examine the second digit, reserving the third digit for the finest gradation of information.
 
 There are five values for the first digit of the reply code:
 
@@ -211,25 +212,18 @@ x3z Unspecified as yet.
 x4z Unspecified as yet.
 x5z Mail system - indicate the status of the receiver mail system.
 
-The third digit gives a finer gradation of meaning in each category specified by the second digit. The list of replies illustrates this. Each reply text is recommended rather than mandatory, and may even change according to the command with which it is associated. On the other hand, the reply codes must strictly follow the specifications in this section. Receiver implementations should not invent new codes for slightly different situations from the ones described here, but rather adapt codes already defined.
+The third digit gives a finer gradation of meaning in each category specified by the second digit. The
+list of replies illustrates this. Each reply text is recommended rather than mandatory, and may even 
+change according to the command with which it is associated. On the other hand, the reply codes must 
+strictly follow the specifications in this section. Receiver implementations should not invent new codes 
+for slightly different situations from the ones described here, but rather adapt codes already defined.
 
 --]]
-
--- reply codes
-local function code (n, text) 
-  local msg = tables.smtp_codes[n] or '%s'
-  msg = msg: format (text)
-  return table.concat {n, ' ', msg}
-end
-
-local OK = code(250)
-
-local myIP = tables.myIP
 
 local myDomain do 
   local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
   local version = ("v%d.%d.%d"): format (y%2000,m,d)
-  myDomain = ("(%s %s) [%s]"): format (ABOUT.NAME, version, myIP)
+  myDomain = ("(%s %s) [%s]"): format (ABOUT.NAME, version, tables.myIP)
 end
 
 local iprequests = {}       -- log incoming request IPs
@@ -273,7 +267,7 @@ local function deliver_mail (state)
       end
     end
     -- IP listener
-    local ip = state.domain: match "%[(%d+%.%d+%.%d+%.%d+)%]"
+    local ip = (state.domain or "[0.0.0.0]"): match "%[(%d+%.%d+%.%d+%.%d+)%]"
     if destinations[ip] then
       _debug (" IP listener", ip)
       deliver (destinations[ip])
@@ -292,304 +286,279 @@ local function deliver_mail (state)
   scheduler.run_job {job = job}
 end
 
---
--- new_client()  - handle data transfer with SMTP client
---
 
---[[
-
-TODO: May need to add SSL handling...
-... what about certificates, etc.?
-
-  client, error = ssl.wrap(client, SSL_params) 
-  if not client then
-    _log (ip_port .. " SSL wrap error: " .. tostring(error))
-    return
-  end
-
-  rc, error = client:dohandshake()
-  if not rc then
-    _log(ip_port .. " SSL handshake error: " .. tostring(error))
-    return
-  end
- 
-
---]]
-
-local function new_client (sock)
-  local expiry
-  local ip        -- client's IP address
-  
-  -- close the socket, stop watching it, and expire the job
-  local function close_client (msg)
-    local txt = table.concat {msg, ' ', tostring(sock)}
-    _log (txt)
-    sock: close ()                                -- it may be closed already
-    scheduler.socket_unwatch (sock)               -- stop watching for incoming
-    expiry = 0
-  end
-
-  local state = {}   -- the current state of the conversation  
-  
-  local function send_client (msg) 
-    _debug ("SEND:", msg)
-    return sock:send (table.concat {msg, '\r\n'}) 
-  end
-  
-  -- return this client to quiescent state
-  local function reset_client ()
-    state.domain        = nil
-    state.reverse_path  = nil
-    state.forward_path  = {}
-    state.data          = {}
-  end
-  
-  -- helo  initialisation
-  local function helo (domain)
-    reset_client ()
-    state.domain = ("(%s) [%s]"): format (domain, ip)
-    send_client (OK) 
-  end
-  
-  -- ehlo initialisation
-  local function ehlo (domain)
-    reset_client ()
-    state.domain = ("(%s) [%s]"): format (domain, ip)
-    send_client "250 AUTH LOGIN" 
-  end
-  
-  -- auth
-  local function auth (method)
-    
-    -- see: https://tools.ietf.org/html/draft-murchison-sasl-login-00
-    local function LOGIN ()
-      send_client "334 VXNlciBOYW1lAA=="    -- "Username:"
-      local line, err = sock: receive ()
-      _debug (line or err)
-      send_client "334 UGFzc3dvcmQA"        -- "Password:"
-      line, err = sock: receive ()
-      _debug (line or err)
-      send_client (code(235))               -- Authentication successful
-    end
-    
-    local function not_implemented ()
-      send_client (code(504, method))       -- unrecognised
-    end
-    
-    local implemented = {LOGIN = LOGIN}     -- dispatch list of implemented authorisation protocols
-    
-    local authorize = implemented[method: upper()] or not_implemented
-    authorize ()
-    
-  end
-  
-  -- sender
-  local function mail (from) 
-    local reply
-    local sender = from: match "[Ff][Rr][Oo][Mm]:.-([^@<%s]+@[%w-%.]+).-$"
-    if not sender then 
-      reply = code(501, tostring (from))    -- could be nil
-    else
-      if blocked[sender] then
-        _log ("blocked sender: " .. sender)
-        reply = code (552)          -- rejected
-      else
-        state.reverse_path = sender
-        reply = OK
-      end
-    end
-    send_client (reply)
-  end
-  
-  -- receiver
-  local function rcpt (to) 
-    local receiver = to: match "^[Tt][Oo]:.-([^@<%s]+@[%w-%.]+).-$"
-    if state.reverse_path and 
-      (destinations[receiver]  or ABOUT.DEBUG) then     -- 2018.03.26  accept any destination when in DEBUG mode
-      local r = state.forward_path 
-      r[#r+1] = receiver
-      send_client (OK) 
-    else
-      _log ("no such mailbox: " .. receiver)
-      send_client (code(550, receiver or '?'))       -- No such user
-    end
-  end
-  
-  -- data iterator (compatible with ltn12 source)
-  local function next_data ()
-    local line, err = sock: receive ()
-    if not line then
-      close_client ("error during SMTP DATA transfer: " .. tostring(err))
-    else
-      line = (line ~= '.') and line: gsub ("^%.%.", "%.") or nil   -- data transparency handling
-    end
-    return line, err
-  end
-
-  -- message data
-  local function data ()
-    send_client (code (354))
-    local errmsg
-    local data = state.data
-    data[1] = ("Received: from %s"): format (state.domain)
-    data[2] = (" by %s;"): format (myDomain)
-    data[3] = (" %s"): format (timers.rfc_5322_date())            -- timestamp
-    data[4] = nil                                                 -- ensure no further data, yet
-    for line, err in next_data do
-      errmsg = err                -- TODO: bail out here if transmission error
-      data[#data+1] = line        -- add to the data buffer
-    end
-    _debug ("#data lines=" .. #data)
-    if not errmsg then            -- otherwise we closed the socket anyway
-      send_client (OK) 
-      deliver_mail (state)
-      end
-  end 
-
-  -- final exit
-  local function quit ()
-    send_client (code (221, myDomain))
-    close_client "SMTP QUIT received" 
-  end
-  
-  -- unknown
-  local function not_implemented (d)
-    _log ("command not implemented: " .. (d or '?'))
-    send_client (code(502, d or '?'))
-  end
-    
--- From RFC-5321, section 4.5.1 Minimum Implementation
--- In order to make SMTP workable, the following minimum implementation
--- MUST be provided by all receivers.  The following commands MUST be
--- supported to conform to this specification:
-    local dispatch = {
-      EHLO = ehlo, 
-      HELO = helo,
-      AUTH = auth,
-      MAIL = mail,
-      RCPT = rcpt,
-      DATA = data,
-      RSET = function () reset_client() ; send_client (OK) end,
-      NOOP = function () send_client (OK) end,
-      QUIT = quit, 
-      VRFY = function () send_client (code(252)) end,   -- "unable to verify"
-    }
-  
-  -- incoming() is called by the scheduler when there is data to read
-  local function incoming ()
-    local line, err = sock: receive()         -- read the request line
-    if not err then  
-      _debug (line)
-      local cmd, params = line: match "^(%a%a%a%a)%s*(.-)$"
-      cmd = (cmd or ''): upper()
-      local fct = dispatch[cmd]
-      if fct then
-        fct (params or '')
-      else
-        not_implemented (line)
-      end
-      expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER      -- update socket expiry 
-    else
-      local msg = "socket closed"
-      if err ~= "closed" then 
-        msg = "read error: " ..  err    --eg. timeout
-      end
-      close_client (msg)
-    end
-  end
-
-  -- run(), preamble to main job
-  local function run ()
-    if blocked[ip] then
-      -- TODO: close socket
-      _log ("closed incoming connection from blocked IP " .. ip)
-    else
-      reset_client ()
-      send_client (code(220, myDomain) )
-    end
-  end
-  
-  --  job (devNo, args, job)
-  local function job ()     -- TODO: wake and exit job before timeout
-    if socket.gettime () > expiry then                    -- close expired connection... 
-      close_client "closing client connection"
-      return scheduler.state.Done, 0                      -- and exit
-    else
-      return scheduler.state.WaitingToStart, 5            -- ... checking every 5 seconds
-    end
-  end
-  
-  -- new_client ()
-
-  do -- initialisation
-    
-    ip = sock:getpeername() or '?'                                    -- who's asking?
-    local info = iprequests [ip] or
-            {ip = ip, count = 0, mac = "00:00:00:00:00:00"}  --TODO: real MAC address - how?
-    info.date = os.time()
-    info.count = info.count + 1                 -- 2018.03.24
-    iprequests [ip] = info
-
-    local connect = "SMTP new client connection from %s: %s"
-    _log (connect:format (ip, tostring(sock)))
-  end
-
-  do -- configure the socket
-    expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER    -- set initial socket expiry 
-    sock:settimeout(nil)                                    -- no socket timeout on read
-    sock:setoption ("tcp-nodelay", true)                    -- allow consecutive read/writes
-    scheduler.socket_watch (sock, incoming)                 -- start listening for incoming
-  end
-
-  do -- run the job
-    local _, _, jobNo = scheduler.run_job {run = run, job = job}
-    if jobNo and scheduler.job_list[jobNo] then
-      local info = "job#%d :SMTP new connection %s"
-      scheduler.job_list[jobNo].type = info: format (jobNo, tostring(sock))
-    end
-  end
+-- reply codes
+local function code (n, text) 
+  local msg = tables.smtp_codes[n] or '%s'
+  msg = msg: format (text)
+  return table.concat {n, ' ', msg}
 end
 
+local OK  = code(250)       -- success
+local ERR = code(451)       -- internal error code  
 
 ----
 --
 -- start (), sets up the HTTP request handler
--- returns list of utility function(s)
 -- 
-local function start (port, config)
-  config = config or {}               -- 2017.03.15 server configuration table
-  CLOSE_IDLE_SOCKET_AFTER = config.CloseIdleSocketAfter or CLOSE_IDLE_SOCKET_AFTER
-  BACKLOG = config.Backlog or BACKLOG
-  port = tostring(port)
-  
-  local server, err = socket.bind ('*', port, BACKLOG) 
+
+local function start (config)
+
+  --[[
+
+  TODO: May need to add SSL handling...
+  ... what about certificates, etc.?
+
+    client, error = ssl.wrap(client, SSL_params) 
+    if not client then
+      _log (ip_port .. " SSL wrap error: " .. tostring(error))
+      return
+    end
+
+    rc, error = client:dohandshake()
+    if not rc then
+      _log(ip_port .. " SSL handshake error: " .. tostring(error))
+      return
+    end
    
-  -- new client connection
-  local function server_incoming (server)
-    repeat                                              -- could be multiple requests
-      local sock = server:accept()
-      if sock then new_client (sock) end
-    until not sock
-  end
 
-  local function stop()
-    _log (table.concat {"stopping SMTP server on port: ", port, ' ', tostring(server)})
-    server: close()
-  end
+  --]]
 
+
+  -- SMTP servlet, called for each new client socket
+  
+  local function SMTPservlet (client)
+    local ip = client.ip        -- client's IP address
+    
+    local state = {}   -- the current state of the conversation  
+    
+    local function send_client (msg) 
+      _debug ("SEND:", msg)
+      return client:send (table.concat {msg, '\r\n'}) 
+    end
+    
+    -- return this client to quiescent state
+    local function reset_client ()
+      state.domain        = nil
+      state.reverse_path  = nil
+      state.forward_path  = {}
+      state.data          = {}
+    end
+    
+    -- SMTP commands
+
+    -- helo  initialisation
+    local function HELO (_, domain)
+      reset_client ()
+      state.domain = ("(%s) [%s]"): format (domain, ip)
+      return OK 
+    end
+    
+    -- ehlo initialisation
+    local function EHLO (_, domain)
+      reset_client ()
+      state.domain = ("(%s) [%s]"): format (domain, ip)
+      return "250 AUTH LOGIN" 
+    end
+    
+    -- auth
+    local function AUTH (_, method)
+      -- see: https://tools.ietf.org/html/draft-murchison-sasl-login-00
+      local function LOGIN ()
+        send_client "334 VXNlciBOYW1lAA=="    -- "Username:"
+        local line, err = client: receive ()
+        _debug (line or err)
+        send_client "334 UGFzc3dvcmQA"        -- "Password:"
+        line, err = client: receive ()
+        _debug (line or err)
+        return code(235)                      -- Authentication successful
+      end
+      
+      local function not_implemented (x)
+        return code(504, x)                   -- unrecognised
+      end
+      
+      local implemented = {login = LOGIN}     -- dispatch list of implemented authorisation protocols
+      
+      local authorize = implemented[method: lower()] or not_implemented
+      
+      return authorize()
+    end
+    
+    -- sender
+    local function MAIL (_, from) 
+      local reply
+      local sender = from: match "[Ff][Rr][Oo][Mm]:.-([^@<%s]+@[%w-%.]+).-$"
+      if not sender then 
+        reply = code(501, tostring (from))    -- could be nil
+      else
+        if blocked[sender] then
+          _log ("blocked sender: " .. sender)
+          reply = code (552)          -- rejected
+        else
+          state.reverse_path = sender
+          reply = OK
+        end
+      end
+      return reply
+    end
+    
+    -- receiver
+    local function RCPT (_, to) 
+      local reply
+      local receiver = to: match "^[Tt][Oo]:.-([^@<%s]+@[%w-%.]+).-$"
+      if state.reverse_path and 
+        (destinations[receiver]  or ABOUT.DEBUG) then -- 2018.03.26  accept any destination in DEBUG mode
+        local r = state.forward_path 
+        r[#r+1] = receiver
+        reply = OK 
+      else
+        _log ("no such mailbox: " .. receiver)
+        reply = code(550, receiver or '?')      -- No such user
+      end
+      return reply
+    end
+    
+    -- verify (not recommended to implement for security reasons)
+    local function VRFY () 
+      return code(252)         -- "unable to verify"
+    end
+
+    -- data iterator (compatible with ltn12 source)
+    local function next_data ()
+      local line, err = client: receive ()
+      if not line then
+        _log ("ERROR during SMTP DATA transfer: " .. tostring(err))
+        client: close()
+      else
+        line = (line ~= '.') and line: gsub ("^%.%.", "%.") or nil   -- data transparency handling
+      end
+      return line, err
+    end
+
+    -- message data
+    local function DATA ()
+      send_client (code (354))
+      local reply, errmsg
+      local data = state.data
+      data[1] = ("Received: from %s"): format (state.domain)
+      data[2] = (" by %s;"): format (myDomain)
+      data[3] = (" %s"): format (timers.rfc_5322_date())            -- timestamp
+      data[4] = nil                                                 -- ensure no further data, yet
+      for line, err in next_data do
+        errmsg = err                -- TODO: bail out here if transmission error
+        data[#data+1] = line        -- add to the data buffer
+      end
+      _debug ("#data lines=" .. #data)
+      if errmsg then
+        reply = ERR -- otherwise we closed the socket anyway
+      else
+        deliver_mail (state)    -- TODO: move this to dispatcher
+        reply = OK 
+      end
+      return reply
+    end 
+
+    local function NOOP ()
+      return OK
+    end
+
+    -- reset
+    local function RSET () 
+      reset_client()
+      return OK
+    end
+
+    -- final exit
+    local function QUIT ()
+      return code (221, myDomain)
+    end
+    
+    -- unknown
+    local function not_implemented (d)
+      d = (d or '?'):upper()
+      _log ("command not implemented: " .. d)
+      return code(502, d)
+    end
+      
+    -- From RFC-5321, section 4.5.1 Minimum Implementation
+    -- "In order to make SMTP workable, the following minimum implementation
+    -- MUST be provided by all receivers.  The following commands MUST be
+    -- supported to conform to this specification:"
+    local action = {ehlo = EHLO, helo = HELO, auth = AUTH,
+                    mail = MAIL, rcpt = RCPT, vrfy = VRFY, data = DATA,
+                    rset = RSET, noop = NOOP, quit = QUIT}
+    -- Also see section 7.3.  VRFY, EXPN, and Security:
+    --   "As discussed in Section 3.5, individual sites may want to disable
+    --   either or both of VRFY or EXPN for security reasons (see below).  As
+    --   a corollary to the above, implementations that permit this MUST NOT
+    --   appear to have verified addresses that are not, in fact, verified.
+    --   If a site disables these commands for security reasons, the SMTP
+    --   server MUST return a 252 response, rather than a code that could be
+    --   confused with successful or unsuccessful verification."
+    
+    
+    -- incoming() is called by the io.server when there is data to read
+    local function incoming ()
+      local line, err = client: receive()         -- read the request line
+      local cmd, params = (line or ''): match "^(%a%a%a%a)%s*(.-)$"
+      if not err and cmd then  
+        _debug (line)
+        cmd = (cmd or ''): lower()
+        
+        local fct = action[cmd] or not_implemented
+        local response = fct (cmd, params)
+        
+        local msg = response or ERR
+        send_client (msg)
+        
+        if cmd == "quit" then
+          client: close ()
+        end
+        
+      else
+        if err ~= "closed" then 
+          _log ("read error: " ..  err or "non-ASCII request")    --eg. timeout
+        end
+        client: close ()
+      end
+    end
+
+    -- servlet()
+
+    if blocked[ip] then
+      -- TODO: close socket
+      _log ("closed incoming connection from blocked IP " .. ip)
+    else
+      _log (myDomain)
+      reset_client ()
+      send_client (code(220, myDomain))
+    end
+    
+    return incoming   -- callback for incoming messages
+  end
+  
+  
   -- start(), create server and start listening
-  local mod, msg
-  if server then 
-    server:settimeout (0)                                       -- don't block 
-    scheduler.socket_watch (server, server_incoming)            -- start watching for incoming
-    msg = table.concat {"starting SMTP server on port: ", port, ' ', tostring(server)}
-    mod = {stop = stop}
-  else
-    msg = "error starting SMTP server: " .. tostring(err)
-  end  
-  _log (msg)
-  return mod, msg
+
+  -- RFC 821 requires at least 5 minutes idle time, and a queue of 100...
+ 
+  -- returned server object has stop method, but we'll not be using it
+  return ioutil.server.new {
+      port      = config.Port or 2525,                  -- incoming port
+      name      = "SMTP",                               -- server name
+      backlog   = config.Backlog or 100,                -- queue length
+      idletime  = config.CloseIdleSocketAfter or 300,   -- connect timeout
+      servlet   = SMTPservlet,                          -- our own servlet
+      connects  = iprequests,                           -- use our own table for info
+    }
 end
+
+
+---------------------
+--
+-- module initialisation
+--
 
 -- special email destinations for openLuup...
 local function local_email (email, data)
@@ -599,7 +568,7 @@ local function local_email (email, data)
   if email == "test@openLuup.local" then
     _log ("TO: " .. email)
     for i,line in ipairs(data) do
-      _log (line, "luup.smtp.data")
+      _log (line, "openLuup.smtp.test")
       print (i,line)
     end
   end
@@ -615,11 +584,10 @@ end
 return {
     ABOUT = ABOUT,
     
-    TEST = {          -- for testing only
-    },
+    TEST = { },           -- for testing only
     
     -- constants
-    myIP = myIP,
+    myIP = tables.myIP,
 
     -- variables
     destinations  = destinations,
