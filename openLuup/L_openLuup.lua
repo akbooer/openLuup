@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.04.15",
+  VERSION       = "2018.04.15b",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -47,6 +47,7 @@ ABOUT = {
 -- 2018.03.28  add application Content-Type to images@openLuup.local handler
 -- 2018.04.02  fixed type on openLuup_images - thanks @jswim788!
 -- 2018.04.08  use POP3 module to save email to mailbox. Add events mailbox folder
+-- 2018.04.15  fix number types in SendToTrash action
 
 
 local json        = require "openLuup.json"
@@ -476,7 +477,9 @@ function SendToTrash (p)
   
   if folder then
     luup.log "applying file retention policy..."
-    local policy = {[folder] = {types = p.FileTypes, days = p.MaxDays, maxfiles = p.MaxFiles}}
+    local days = tonumber (p.MaxDays)               -- 2018.04.15
+    local maxfiles = tonumber (p.MaxFiles)
+    local policy = {[folder] = {types = p.FileTypes, days = days, maxfiles = maxfiles}}
     local process = trash
     implement_retention_policies (policy, process)
     luup.log "...finished applying file retention policy"
