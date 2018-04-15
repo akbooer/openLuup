@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.04.14",
+  VERSION       = "2018.04.15",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -37,6 +37,7 @@ ABOUT = {
 -- 2018.04.08  add Servers POP3 menu
 -- 2018.04.10  add Scheduler Sockets menu
 -- 2018.04.14  add Images menu
+-- 2018.04.15  add Trash menu
 
 
 -- TODO: HTML pages with sorted tables?
@@ -172,6 +173,7 @@ prefix = [[
         <div class="dropdown-content">
           <a class="left" href="/console?page=backups">Backups</a>
           <a class="left" href="/console?page=images">Images</a>
+          <a class="left" href="/console?page=trash">Trash</a>
         </div>
       </div>
     </div>
@@ -194,6 +196,11 @@ prefix = [[
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
 local line = "%20s  %8s  %12s  %s %s"
 local date = "%Y-%m-%d %H:%M:%S"
+
+
+local function todate (epoch)
+  return os.date (date, epoch)
+end
 
 
 -- global entry point called by WSAPI connector
@@ -232,7 +239,7 @@ function run (wsapi_env)
       local status = table.concat {state[b.status] or '', '[', b.logging.invocations, ']'}
       jlist[#jlist+1] = {
         t = b.expiry,
-        l = line: format (os.date (date, b.expiry + 0.5), b.devNo or "system", 
+        l = line: format (todate(b.expiry + 0.5), b.devNo or "system", 
                             status, b.type or '?', b.notes or '')
       }
     end
@@ -277,7 +284,7 @@ function run (wsapi_env)
     local dtype = delays: format (b.delay, b.type or '')
     dlist[#dlist+1] = {
       t = b.time,
-      l = line: format (os.date (date, b.time), b.devNo, "Delay", dtype, '')
+      l = line: format (todate(b.time), b.devNo, "Delay", dtype, '')
     }
   end
 
@@ -395,7 +402,7 @@ function run (wsapi_env)
     if not next (iprequests) then printout (none) end
     for ip, req in pairs (iprequests) do
       local count = number (req.count)
-      printout (ip, count, os.date(date, req.date))
+      printout (ip, count, todate(req.date))
     end
   end
   
@@ -546,11 +553,46 @@ function run (wsapi_env)
     print ('\n' .. table:sandbox())
   end
   
-  local function images ()
-    local files = get_matching_files_from ("images/", '^.-%..-$')     -- *.*
+  local function images_form ()
+    local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
     
-    print "Images"
+    print ("Images  " .. os.date "%c", '\n')
+    
+    print [[
+      <div>         
+        <form action="/console?page=images">
+          <select name="images" size="15">]]
+    local option = '<option value="%s">%s</option>'
+    for i,f in ipairs (files) do 
+      print (option: format (i, f.name))
+    end
+    print [[</select>
+          <br><br>
+          <input type="submit">
+        </form>
+      </div>]]
+    print ''
+  end
+  
+  local function images ()
+    local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
+    
+    print ("Images  " .. os.date "%c", '\n')
+    
+    print "<div>"
+    local option = '<a href="/images/%s">%s</a>'
+    for i,f in ipairs (files) do 
+      print (option: format (f.name, f.name))
+    end
+    print "</div>"
+    print ''
+  end
+ 
+  local function trash ()
+    local files = get_matching_files_from ("trash/", '^[^%.]+%.[^%.]+$')     -- *.*
+    print ("Trash  " .. os.date "%c", '\n')
     for i,f in ipairs (files) do print (i, f.name) end
+    if #files == 0 then print "       --- none ---" end
     print ''
   end
   
@@ -568,6 +610,7 @@ function run (wsapi_env)
     pop3    = pop3list,
     sockets = sockets,
     sandbox = sandbox,
+    trash   = trash,
     
     uncompress      = uncompress,
     uncompressform  = uncompressform,
