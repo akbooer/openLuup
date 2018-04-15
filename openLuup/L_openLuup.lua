@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.04.12",
+  VERSION       = "2018.04.15",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -463,12 +463,10 @@ function SendToTrash (p)
     os.rename (file, "trash/" .. filename)
   end
   
-  lfs.mkdir "trash"   -- make sure destination exists
-  
   -- try to protect ourself from any damage!
   local locked = {"openLuup", "cgi", "cgi-bin", "cmh", "files", "icons", "trash", "whisper", "www"}
   local prohibited = {}
-  for _, dir in ipairs(locked) do prohibited[dir] = dir end
+  for _, dir in ipairs(locked) do prohibited[dir] = dir end   -- turn list into indexed table
   
   local folder = (p.Folder or ''): match "^[%./\\]*(.-)[/\\]*$" -- just pull out the relevant path
   if prohibited[folder] then

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.04.09",
+  VERSION       = "2018.04.15",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -849,16 +849,16 @@ local I_openLuupCamera1_xml = [[
     end
     local function clear ()
       local now = os.time()
-      local last = get "LastTripped"
+      local last = get "LastTrip"
       if (tonumber (last) + timeout) &lt;= (now + 1) then  -- NOTE the XML escape!
         set ("Tripped", '0')
         set ("ArmedTripped", '0')
-        set ("LastTripped", now)
+        set ("LastTrip", now)
       end
     end
     local function openLuupCamera (ip, mail)      -- email callback
       set ("Tripped", '1')
-      set ("LastTripped", os.time())
+      set ("LastTrip", os.time())
       if get "Armed" == '1' then set ("ArmedTripped", '1') end
       timers.call_delay (clear, timeout, '', "camera motion reset")
     end
@@ -870,7 +870,7 @@ local I_openLuupCamera1_xml = [[
             var:format("Armed",1), 
             var:format("ArmedTripped", 0),
             var:format("Tripped", 0), 
-            var:format("LastTripped", 0),
+            var:format("LastTrip", 0),
           }
         local ptr = luup.chdev.start (devNo)
         local altid = "openLuupCamera"

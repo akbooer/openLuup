@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.04.12",
+  VERSION       = "2018.04.14",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -36,6 +36,7 @@ ABOUT = {
 -- 2018.04.07  add Scheduler Sandboxes menu
 -- 2018.04.08  add Servers POP3 menu
 -- 2018.04.10  add Scheduler Sockets menu
+-- 2018.04.14  add Images menu
 
 
 -- TODO: HTML pages with sorted tables?
@@ -167,12 +168,14 @@ prefix = [[
       </div>
 
       <div class="dropdown">
-        <button class="dropbtn">Backups</button>
+        <button class="dropbtn">Files</button>
         <div class="dropdown-content">
-          <a class="left" href="/console?page=backups">Files</a>
+          <a class="left" href="/console?page=backups">Backups</a>
+          <a class="left" href="/console?page=images">Images</a>
         </div>
       </div>
     </div>
+    
     <div class="content">
     <pre>
 ]],
@@ -304,21 +307,27 @@ function run (wsapi_env)
     end
   end
   
+  -- returns specified file in a list of tables {date=x, name=y, size=z}
+  local function get_matching_files_from (folder, pattern)
+    local files = {}
+    for f in lfs.dir (folder) do
+      local date = f: match (pattern)
+      if date then
+        local attr = lfs.attributes (folder .. f) or {}
+        local size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))
+        files[#files+1] = {date = date, name = f, size = size}
+      end
+    end
+    table.sort (files, function (a,b) return a.date > b.date end)       -- sort newest to oldest
+    return files
+  end
+  
   local function backups (p)
     local dir = luup.attr_get "openLuup.Backup.Directory" or "backup/"
     print ("Backup directory: ", dir)
     print ''
     local pattern = "backup%.openLuup%-%w+%-([%d%-]+)%.?%w*"
-    local files = {}
-    for f in lfs.dir (dir) do
-      local date = f: match (pattern)
-      if date then
-        local attr = lfs.attributes (dir .. f) or {}
-        local size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))
-        files[#files+1] = {date = date, name = f, size = size}
-      end
-    end
-    table.sort (files, function (a,b) return a.date > b.date end)       -- newest to oldest
+    local files = get_matching_files_from ("backup/", pattern)
     local list = "%-12s %4s   %s"
     print (list:format ("yyyy-mm-dd", "(kB)", "filename"))
     for _,f in ipairs (files) do 
@@ -537,10 +546,19 @@ function run (wsapi_env)
     print ('\n' .. table:sandbox())
   end
   
+  local function images ()
+    local files = get_matching_files_from ("images/", '^.-%..-$')     -- *.*
+    
+    print "Images"
+    for i,f in ipairs (files) do print (i, f.name) end
+    print ''
+  end
+  
   local pages = {
     about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
     backups = backups,
     delays  = function () listit (dlist, "Delayed Callbacks") end,
+    images  = images,
     jobs    = function () listit (jlist, "Scheduled Jobs") end,
     log     = printlog,
     startup = function () listit (slist, "Startup Jobs") end,
