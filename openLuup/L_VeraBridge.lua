@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.03.24",
+  VERSION       = "2018.04.17",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -82,6 +82,8 @@ ABOUT = {
 -- 2018.03.01   fix serviceId error for DisplayLine2 initialisation
 -- 2018.03.02   if mirroring remote House Mode, then change local Mode with immediate effect
 -- 2018.03.24   use luup.rooms.create metatable method
+-- 2018.04.17   add specific attributes (onDashboard) to bridged devices 
+--              thanks @rafale77, see: http://forum.micasaverde.com/index.php/topic,79879.0.html
 
 
 local devNo                      -- our device number
@@ -273,6 +275,13 @@ local function create_new (cloneId, dev, room)
     ip              = dev.ip, 
     mac             = dev.mac, 
   }  
+  
+  local attr = d.attributes
+  local extras = {"onDashboard"}        -- 2018.04.17  add other specific attributes
+  for _,name in ipairs (extras) do 
+    attr[name] = dev[name]
+  end
+  
   luup.devices[cloneId] = d   -- remember to put into the devices table! (chdev.create doesn't do that)
 end
 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2018.02.19",
+  VERSION       = "2018.04.16",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -51,6 +51,7 @@ local ABOUT = {
 -- 2018.01.18   add optional 3-rd return parameter 'final_delay' and also scene.prolog and epilog calls
 -- 2018.01.30   cancel timer jobs on scene delete, round next scene run time, etc..
 -- 2018.02.19   add log messages for scene cancellation by global and local Lua code
+-- 2018.04.16   remove scene watcher callback, now redundant with scene finalizers
 
 
 local logs      = require "openLuup.logs"
@@ -240,11 +241,10 @@ local function create (scene_json)
   end
 
   -- called if SOMEBODY changes ANY device variable in ANY service used in this scene's actions
-  local function scene_watcher (...)
+--  local function scene_watcher (...)
 --    luup.log ("SCENE_WATCHER: " .. json.encode {
 --              {scene=scene.id, name=scene.name}, ...})
-    -- TODO: use this to clear scene 'running' flag
-  end
+--  end
 
   local function scene_rename (name, room)
     scene.name = name or scene.name
@@ -262,7 +262,6 @@ local function create (scene_json)
   -- also, remove any triggers related to unknown devices
   -- also, add warning message trigger to any scene with triggers  -- 2017.08.08
   local function verify ()
-    local silent = true     -- don't log watch callbacks
     for _, g in ipairs (scene.groups or {}) do
       local actions = g.actions or {}
       local n = #actions 
@@ -270,8 +269,9 @@ local function create (scene_json)
         local a = actions[i]
         local dev = luup.devices[tonumber(a.device)]
         if dev then
-          local name = "_scene" .. scene.id
-          devutil.variable_watch (dev, scene_watcher, a.service, nil, name, silent) -- NB: ALL variables in service
+--          local silent = true     -- don't log watch callbacks
+--          local name = "_scene" .. scene.id
+--          devutil.variable_watch (dev, scene_watcher, a.service, nil, name, silent) -- NB: ALL variables in service
         else
           table.remove (actions,i)
         end
