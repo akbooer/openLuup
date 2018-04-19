@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.04.17",
+  VERSION       = "2018.04.19",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -489,19 +489,21 @@ end
 function EmptyTrash (p)
   local yes = p.AreYouSure or ''
   if yes: lower() == "yes" then
+    local n = 0
     luup.log "emptying trash/ folder..."
     for file in lfs.dir "trash" do
       local hidden = file: match "^%."                -- hidden files start with '.'
       if not hidden then
         local ok,err = os.remove ("trash/" .. file)
         if ok then
-          luup.log ("deleted " .. file)
+          n = n + 1
+--          luup.log ("deleted " .. file)
         else
           luup.log ("unable to delete " .. file .. " : " .. (err or '?'))
         end
       end
     end
-    luup.log "...done!"
+    luup.log (n .. " files permanently deleted from trash")
   end
 end
 

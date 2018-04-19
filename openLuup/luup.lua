@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.03.25",
+  VERSION       = "2018.04.18",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -52,6 +52,7 @@ local ABOUT = {
 -- 2018.03.08  extend register_handler to work with email (local SMTP server)
 -- 2018.03.22  use renamed ioutil.luupio module, use logs.register()
 -- 2018.03.24  add room functions to luup.rooms metatable
+-- 2018.04.18  optional protocol prefix in register_handler request
 
 
 local logs          = require "openLuup.logs"
@@ -622,7 +623,25 @@ end
 -- function_name will be called and whatever string and content_type it returns will be returned.
 --
 -- The request is made with the URL: data_request?id=lr_[the registered name] on port 3480. 
+--[[
 
+openLuup extension permits a prefix to the request name to denote the relevant protocol,
+so that this single call may be used for a number of different types of callback event:
+
+  luup.register_handler ("xxx", "protocol:address")
+  
+  where protocol = [ mailto, smtp, tcp, udp, ... ]
+  
+  eg: 
+  luup.register_handler ("myHandler", "tcp:1234")                     -- incoming TCP connection on port 1234
+  luup.register_handler ("myHandler", "udp:1234")                     -- incoming UDP -- " --
+  luup.register_handler ("myHandler", "mailto:me@openLuup.local")     -- incoming email for me@...
+  
+  the mailto: or smtp: protocol may be omitted for incoming email addresses of the form a@b...
+  
+  luup.register_handler ("myHandler", "me@openLuup.local")
+  
+--]]
 local function register_handler (...)
   local global_function_name, request_name = parameters ({"string", "string"}, ...)
   local fct = entry_point (global_function_name, "luup.register_handler")
@@ -631,11 +650,26 @@ local function register_handler (...)
     -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
     local msg = ("global_function_name=%s, request=%s"): format (global_function_name, request_name)
     _log (msg, "luup.register_handler")
-    local email = request_name: match "@"       -- not an HTTP request, but an SMTP email address
-    if email  then                              -- 2018.03.08
-      smtp.register_handler (fct, request_name)
+    
+    -- 2018.04.18  optional alphameric protocol prefix in register_handler request
+    local protocol, address = request_name: match "^(%a+):([^:]+)$"     --  abc:xxx
+    if protocol then
+      local valid = {mailto = smtp, smtp = smtp, udp = ioutil.udp}
+      local scheme = valid[protocol: lower()]
+      if scheme then 
+        scheme.register_handler (fct, address)
+      else
+        _log ("ERROR, invalid register_handler protocol: " .. request_name)
+      end
+      
+    -- usual data_request handler, or smtp email (for legacy compatibility)
     else
-      server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
+      local email = request_name: match "@"       -- not an HTTP request, but an SMTP email address
+      if email  then                              -- 2018.03.08
+        smtp.register_handler (fct, request_name)
+      else
+        server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
+      end
     end
   end
 end

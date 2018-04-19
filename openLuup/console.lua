@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.04.15",
+  VERSION       = "2018.04.19",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -38,6 +38,7 @@ ABOUT = {
 -- 2018.04.10  add Scheduler Sockets menu
 -- 2018.04.14  add Images menu
 -- 2018.04.15  add Trash menu
+-- 2018.04.19  add Servers UDP menu
 
 
 -- TODO: HTML pages with sorted tables?
@@ -55,6 +56,7 @@ local requests  = require "openLuup.requests"     -- for user_data, status, and 
 local server    = require "openLuup.server"
 local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
+local ioutil    = require "openLuup.io"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -152,6 +154,7 @@ prefix = [[
           <a class="left" href="/console?page=http">HTTP Web</a>
           <a class="left" href="/console?page=smtp">SMTP eMail</a>
           <a class="left" href="/console?page=pop3">POP3 eMail</a>
+          <a class="left" href="/console?page=udp" >UDP  datagrams</a>
         </div>
       </div>
 
@@ -521,6 +524,37 @@ function run (wsapi_env)
     end
   end
   
+  local function udplist ()
+    print ("UDP datagram Listeners, " .. os.date "%c")
+    printConnections (ioutil.udp.iprequests)    
+    
+    print "\n Registered listeners:"
+    local list = {}
+--[[
+       udp.listeners[port] = {                     -- record info for console server page
+            callback = callback, 
+            devNo = scheduler.current_device (),
+            port = port,
+            count = 0,
+          }
+--]]
+    print        "    port           #datagrams for device \n"
+    local listeners = "%8s            %5d     [%d] %s"
+    for port, x in pairs(ioutil.udp.listeners) do
+      local devname = luup.devices[x.devNo] or "system"
+      list[#list+1] = {port = port, l = listeners:format (port, x.count, x.devNo, devname)}
+    end
+    table.sort (list, function (a,b) return a.port < b.port end)
+    if #list == 0 then 
+      print "              --- none ---" 
+    else
+      for i,x in ipairs (list) do print (x.l) end
+    end
+    print ''
+  
+  end
+  
+  
   local function sockets ()
     print "Watched Sockets"
 
@@ -553,38 +587,20 @@ function run (wsapi_env)
     print ('\n' .. table:sandbox())
   end
   
-  local function images_form ()
-    local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
-    
-    print ("Images  " .. os.date "%c", '\n')
-    
-    print [[
-      <div>         
-        <form action="/console?page=images">
-          <select name="images" size="15">]]
-    local option = '<option value="%s">%s</option>'
-    for i,f in ipairs (files) do 
-      print (option: format (i, f.name))
-    end
-    print [[</select>
-          <br><br>
-          <input type="submit">
-        </form>
-      </div>]]
-    print ''
-  end
-  
   local function images ()
     local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
     
     print ("Images  " .. os.date "%c", '\n')
     
-    print "<div>"
-    local option = '<a href="/images/%s">%s</a>'
+    print [[<nav>]]
+    local option = '%s <a href="/images/%s" target="image">%s</a>'
     for i,f in ipairs (files) do 
-      print (option: format (f.name, f.name))
+      print (option: format (number(i), f.name, f.name))
     end
-    print "</div>"
+    print "</nav>"
+--    print [[<iframe name="output" rows=60 cols=50 height="700px" width="50%" >]]
+    print [[<article><iframe name="image" width="50%" ></article>]]
+
     print ''
   end
  
@@ -611,6 +627,7 @@ function run (wsapi_env)
     sockets = sockets,
     sandbox = sandbox,
     trash   = trash,
+    udp     = udplist,
     
     uncompress      = uncompress,
     uncompressform  = uncompressform,

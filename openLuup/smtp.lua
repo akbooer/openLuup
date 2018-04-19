@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.smtp",
-  VERSION       = "2018.04.11",
+  VERSION       = "2018.04.12",
   DESCRIPTION   = "SMTP server and client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -306,7 +306,7 @@ local function start (config)
 
   --[[
 
-  TODO: May need to add SSL handling...
+  TODO: May need to add SSL handling... OpenSSL self-signed certificate?
   ... what about certificates, etc.?
 
     client, error = ssl.wrap(client, SSL_params) 
@@ -428,8 +428,7 @@ local function start (config)
     local function next_data ()
       local line, err = client: receive ()
       if not line then
-        _log ("ERROR during SMTP DATA transfer: " .. tostring(err))
-        client: close()
+        client: close ("ERROR during SMTP DATA transfer: " .. tostring(err))
       else
         line = (line ~= '.') and line: gsub ("^%.%.", "%.") or nil   -- data transparency handling
       end
@@ -517,11 +516,8 @@ local function start (config)
         end
         
       else
-        if err ~= "closed" then 
-          _log ("read error: " ..  err or "non-ASCII request")    --eg. timeout
-        end
-        client: close ()
-      end
+        client: close ("read error: " ..  (err or "non-ASCII request"))    --eg. timeout
+       end
     end
 
     -- servlet()

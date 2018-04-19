@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2018.04.12",
+  VERSION       = "2018.04.19",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -49,6 +49,7 @@ local ABOUT = {
 -- 2018.03.22  move luup-specific IO functions into sub-module luupio
 -- 2018.03.28  add server module for core server framework methods
 -- 2018.04.10  use servlet model for io.server incoming callbacks
+-- 2018.04.19  add udp.register_handler for incomgin datagrams
 
 
 -- TODO: add fully-fledged UDP and TCP server/client modules
@@ -307,28 +308,91 @@ end
 
 ------------
 --
--- UDP Module
+-- Server/Client modules
 --
 
-local udp = {
+-- utility function to log incoming connection requests for console server pages
+local function log_request (connects, ip)
+  ip = ip or '?'
+  local info = connects [ip] or
+          {ip = ip, count = 0, mac = "00:00:00:00:00:00"}  --TODO: real MAC address - how?
+  info.date = os.time()
+  info.count = info.count + 1
+  connects [ip] = info
+end
 
-     -- TODO: implement UDP client/server
-     
-     -- open for send
-    open = function (ip_and_port)   -- returns UDP socket configured for sending to given destination
-      local sock, msg, ok
-      local ip, port = ip_and_port: match "(%d+%.%d+%.%d+%.%d+):(%d+)"
-      if ip and port then 
-        sock, msg = socket.udp()
-        if sock then ok, msg = sock:setpeername(ip, port) end         -- connect to destination
-      else
-        msg = "invalid ip:port syntax '" .. tostring (ip_and_port) .. "'"
-      end
-      if ok then ok = sock end
-      return ok, msg
-    end,
-    
+------------
+--
+-- UDP Module
+--
+-- This is a bit different from a normal client/server connection model, because UDP is transaction-free.
+-- You can open socket to send a datagram somewhere, and also listen on one to receive from elsewhere.
+
+
+local udp = {
+    iprequests = {},    -- table of incoming connections, indexed by IP
+    listeners  = {},    -- table of registered listener ports
   }
+
+   -- open for send
+  function udp.open (ip_and_port)   -- returns UDP socket configured for sending to given destination
+    local sock, msg, ok
+    local ip, port = ip_and_port: match "(%d+%.%d+%.%d+%.%d+):(%d+)"
+    if ip and port then 
+      sock, msg = socket.udp()
+      if sock then ok, msg = sock:setpeername(ip, port) end         -- connect to destination
+    else
+      msg = "invalid ip:port syntax '" .. tostring (ip_and_port) .. "'"
+    end
+    if ok then ok = sock end
+    return ok, msg
+  end
+    
+    
+  -- register a handler for the incoming datagram
+  -- callback function is called with table {datagram = ..., ip = ...}
+  function udp.register_handler (callback, port)
+    local sock, msg, ok = socket.udp()                -- create the UDP socket
+    local function udplog (msg) _log (msg,  "openLuup.io.udp") end
+    local _log = udplog
+
+    -- this callback invoked by the scheduler in protected mode (and caller device context)
+    local function incoming ()
+      local datagram, ip 
+      repeat
+        datagram, ip = sock:receivefrom()             -- non-blocking since timeout = 0 (also get sender IP)
+        if datagram then 
+          ip = ip or '?'
+          log_request (udp.iprequests, ip)                          -- log the IP request
+          local list = udp.listeners[port] or {count = 0}
+          list.count = list.count + 1                               -- log the listener port
+          callback (port, {datagram = datagram, ip = ip}, "udp")     -- call the user-defined handler
+        end
+      until not datagram
+    end
+
+    -- register_handler()
+    if sock then
+      sock:settimeout (0)                           -- don't block! 
+      ok, msg = sock:setsockname('*', port)         -- listen for any incoming datagram on port
+      if ok and callback then
+        
+        udp.listeners[port] = {                     -- record info for console server page
+            callback = callback, 
+            devNo = scheduler.current_device (),
+            port = port,
+            count = 0,
+          }
+        
+        scheduler.socket_watch (sock, incoming, nil, "UDP ")     -- start watching for incoming
+        msg = "listening for UDP datagram on port " .. port
+        _log (msg)
+      else
+        _log (msg or "unknown error or missing callback function")
+      end
+    end
+  
+  end
 
 
 ------------
@@ -348,7 +412,7 @@ local tcp = {
 -- Generic Server Module
 --
 -- This core functionality may be used by HTTP, SMTP, POP, and other servers, to provide services.
--- It offers callbacks on connections and incoming data, and socket management including timeouts.
+-- It offers callbacks on connections and incoming data, and socket management, including timeouts.
 --
 
 local server = {}
@@ -418,12 +482,7 @@ function server.new (config)
     
     do -- initialisation
       ip = sock:getpeername() or '?'                                    -- who's asking?
-      local info = connects [ip] or
-              {ip = ip, count = 0, mac = "00:00:00:00:00:00"}  --TODO: real MAC address - how?
-      info.date = os.time()
-      info.count = info.count + 1                 -- 2018.03.24
-      connects [ip] = info
-
+      log_request (connects, ip)
       local connect = "%s connection from %s %s"
       _log (connect:format (name, ip, tostring(sock)))
     end
@@ -490,7 +549,7 @@ function server.new (config)
     server: close()
   end
   
-  -- start(), create server and start listening
+  -- new (), create server and start listening
   local mod, msg
   if server and servlet then 
     server:settimeout (0)                                           -- don't block 

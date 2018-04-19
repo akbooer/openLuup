@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2018.03.15",
+  VERSION       = "2018.04.14",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -49,7 +49,7 @@ local ABOUT = {
 -- 2018.02.04  correct long-standing noon calculation error around equinox (thanks @a-lurker)
 -- 2018.02.25  move sol_ra_dec from TEST to normal exported function
 -- 2018.03.15  add RFC 5322 format date (for SMTP)
-
+-- 2018.04.14  add util module to export useful utility time functions
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -82,7 +82,14 @@ local function asin(x)    return math.asin(x)/dr    end
 local function acos(x)    return math.acos(x)/dr    end
 local function atan2(y,x) return math.atan2(y,x)/dr end 
 
--- utility function, string time to unix epoch
+----------
+--
+-- utility functions
+--
+
+
+
+--string time to unix epoch
 -- time should be in the format: "yyyy-mm-dd hh:mm:ss"
 local function time2unix (time)
   local epoch
@@ -106,6 +113,39 @@ local function rfc_5322_date (epoch)
   local offset = os.date ("!%H%M", time_zone())
   return ("%s %+05d"): format (datetime, offset)  -- timestamp
 end
+
+local function ISOdateTime (unixTime)       -- return ISO 8601 date/time: YYYY-MM-DDThh:mm:ss
+  return os.date ("%Y-%m-%dT%H:%M:%S", unixTime)
+end
+
+local function UNIXdateTime (time)          -- return Unix time value for ISO date/time extended-format...   
+--  if string.find (time, "^%d+$") then return tonumber (time) end
+  local field   = {string.match (time, "^(%d%d%d%d)-?(%d?%d?)(-?)(%d?%d?)T?(%d?%d?):?(%d?%d?):?(%d?%d?)") }
+  if #field == 0 then return end
+  local name    = {"year", "month", "MDsep", "day", "hour", "min", "sec"}
+  local default = {0, 1, '-', 1, 12, 0, 0}
+  if #field[2] == 2 and field[3] == '' and #field[4] == 1 then  -- an ORDINAL date: year-daynumber
+    local base   = os.time {year = 2000, month = 1, day = 1}
+    local offset = ((field[2]..field[4]) -1) * 24 * 60 * 60
+    local fixed  = os.date ("*t", base + offset)
+    field[2] = fixed.month
+    field[4] = fixed.day
+  end
+  local datetime = {}
+  for i,j in ipairs (name) do
+    if not field[i] or field[i] == ''
+      then datetime[j] = default[i]
+      else datetime[j] = field[i]
+    end
+  end
+  return os.time (datetime)
+end
+
+
+-------------
+--
+-- Sun position
+--
 
 -- Sol's RA, DEC, and mean longitude, at given epoch
 local function sol_ra_dec (t)
@@ -434,7 +474,7 @@ local function cpu_clock ()
 end
   
 -- see: http://lua-users.org/wiki/TimeZone
-local function gmt_offset ()
+local function gmt_offset ()    -- TODO: gmt_offset()  what about DST?
   local now = os.time()
   local localdate = os.date("!*t", now)
   return os.difftime(now, os.time(localdate)) / 3600
@@ -454,7 +494,7 @@ return {
    -- constants
   loadtime    = loadtime,
  
-   -- functions
+   -- timer functions
   cpu_clock     = cpu_clock,
   gmt_offset    = gmt_offset,
   sunrise       = sunrise,
@@ -465,6 +505,20 @@ return {
   call_timer    = call_timer,
   sol_ra_dec    = sol_ra_dec,
   rfc_5322_date = rfc_5322_date,
+  
+  -- modules
+  
+  util = {                              -- utility time functions
+    
+    -- convert epoch to string
+    epoch2ISOdate = ISOdateTime,        -- return ISO 8601 date/time: YYYY-MM-DDThh:mm:ss
+    epoch2rfc5322 = rfc_5322_date,      -- RFC 5322 format date  day, DD MMM YYYY HH:MM:SS +/-hhmm
+    
+    -- convert string to epoch
+    ISOdate2epoch  = UNIXdateTime,      -- Unix epoch for ISO date/time extended-format
+    datetime2epoch = time2unix,         -- time should be in the format: "yyyy-mm-dd hh:mm:ss"
+  },
+  
 }
 
 ----
