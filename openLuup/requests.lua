@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.04.11",
+  VERSION       = "2018.04.22",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -59,6 +59,7 @@ local ABOUT = {
 -- 2018.04.03  use jobs info from device for status request
 -- 2018.04.05  sdata_devices_table - reflect true state from job status
 -- 2018.04.09  add archive_video request
+-- 2018.04.22  add &id=lua request (not yet done &DeviceNum=xxx - doesn't seem to work on Vera anyway)
 
 
 local server        = require "openLuup.server"
@@ -915,6 +916,38 @@ end
 -- Miscellaneous
 --
 
+--  TODO: add &id=lua&DeviceNum=xxx request
+local function lua ()    -- 2018.04.22 
+  local lines = {}
+  local function print (x) lines[#lines+1] = x end
+  
+  print "--Devices with UPNP implementations:"
+
+  -- implementation files
+  local ignore = {['']=1,X=1}
+  for i,d in pairs (luup.devices) do
+      local impl = luup.attr_get ("impl_file", i)
+      if impl and not ignore [impl] then print ("-lu_lua&DeviceNum=" ..i) end
+  end
+
+  print "\n\n--GLOBAL LUA CODE:"
+
+  -- scenes
+  for i,s in pairs (luup.scenes) do
+      local lua = s:user_table().lua
+      if #lua > 0 then
+          print ("function scene_" .. i .. "()")
+          print (lua)
+          print "end"
+      end
+  end
+  -- startup code
+  local glc = luup.attr_get "StartupCode"
+
+  print(glc)
+  return table.concat (lines, '\n')
+end
+
 -- return OK if the engine is running
 local function alive () return "OK" end
 
@@ -968,6 +1001,7 @@ local luup_requests = {
   invoke              = invoke,
   jobstatus           = jobstatus,
   live_energy_usage   = live_energy_usage,
+  lua                 = lua,
   reload              = reload,
   request_image       = request_image,
   room                = room,

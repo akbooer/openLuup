@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.04.19",
+  VERSION       = "2018.04.22",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -395,6 +395,12 @@ function run (wsapi_env)
   end
 
   local function number (n) return ("%7d  "): format (n) end
+  
+  local function devname (d)
+    d = tonumber(d) or 0
+    local name = (luup.devices[d] or {}).description or 'system'
+    return table.concat {'[', d, '] ', name: match "^%s*(.+)"}
+  end
 
   local function printConnections (iprequests)
     local layout1 = "     %-32s %s %s"
@@ -449,12 +455,6 @@ function run (wsapi_env)
     local layout = "     %-32s %s %s"
     local none = "--- none ---"
     local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
-    
-    local function devname (d)
-      local d = tonumber(d) or 0
-      local name = (luup.devices[d] or {}).description or 'system'
-      return table.concat {'[', d, '] ', name: match "^%s*(.+)"}
-    end
     
     local function print_sorted (info, ok)
       printout ("Address", "#messages", "for device\n")
@@ -528,8 +528,6 @@ function run (wsapi_env)
     print ("UDP datagram Listeners, " .. os.date "%c")
     printConnections (ioutil.udp.iprequests)    
     
-    print "\n Registered listeners:"
-    local list = {}
 --[[
        udp.listeners[port] = {                     -- record info for console server page
             callback = callback, 
@@ -538,20 +536,46 @@ function run (wsapi_env)
             count = 0,
           }
 --]]
+    print "\n Registered listeners:"
+    local list = {}
     print        "    port           #datagrams for device \n"
-    local listeners = "%8s            %5d     [%d] %s"
+    local listeners = "%8s            %5d     %s"
     for port, x in pairs(ioutil.udp.listeners) do
-      local devname = luup.devices[x.devNo] or "system"
-      list[#list+1] = {port = port, l = listeners:format (port, x.count, x.devNo, devname)}
+      local name = devname (x.devNo)
+      list[#list+1] = {port = port, l = listeners:format (port, x.count, name)}
     end
     table.sort (list, function (a,b) return a.port < b.port end)
     if #list == 0 then 
       print "              --- none ---" 
     else
-      for i,x in ipairs (list) do print (x.l) end
+      for _,x in ipairs (list) do print (x.l) end
     end
     print ''
   
+--[[
+      udp.senders[#udp.senders+1] = {                         -- can't index by port, perhaps not unique
+          devNo = scheduler.current_device (),
+          ip_and_port = ip_and_port,
+          sock = sock,
+          count = 0,      -- don't, at the moment, count number of datagrams sent
+        }
+ --]]
+    print "\n Opened for write:"
+    list = {}
+    print        "    ip:port                   by device \n"
+    local senders = "%20s          %s"
+    for i, x in pairs(ioutil.udp.senders) do
+      local name = devname (x.devNo)
+      list[i] = {ip_and_port = x.ip_and_port, l = senders:format (x.ip_and_port, name)}
+    end
+    table.sort (list, function (a,b) return a.ip_and_port < b.ip_and_port end)
+    if #list == 0 then 
+      print "              --- none ---" 
+    else
+      for _,x in ipairs (list) do print (x.l) end
+    end
+    print ''
+ 
   end
   
   

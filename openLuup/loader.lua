@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.04.06",
+  VERSION       = "2018.04.22",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -50,6 +50,7 @@ local ABOUT = {
 -- 2018.03.17  changes to enable plugin debugging by ZeroBrane Studio (thanks @explorer)
 --             see: http://forum.micasaverde.com/index.php/topic,38471.0.html
 -- 2018.04.06  use scheduler.context_switch to wrap device code compilation (for sandboxing)
+-- 2018.04.22  parse_impl_xml added action field for /data_request?id=lua&DeviceNum=... 
 
 
 ------------------
@@ -79,6 +80,7 @@ local function _pristine_environment ()
   ENV.arg = nil                     -- don't want to expose command line arguments
   ENV.ABOUT = nil                   -- or this module's ABOUT!
   ENV.module = function () end      -- module is noop
+  ENV.socket = nil                  -- somehow this got in there (from openLuup.log?)
   return new_environment
 end
 
@@ -92,7 +94,7 @@ local xml  = require "openLuup.xml"
 local json = require "openLuup.json"
 local vfs  = require "openLuup.virtualfilesystem"
 
-local scheduler = require "openLuup.scheduler"    -- for context_switch()
+local scheduler = require "openLuup.scheduler"  -- for context_switch()
 
 ------------------
 
@@ -309,6 +311,7 @@ local function parse_impl_xml (impl_xml, raw_xml)
     source_code = source_code,
     startup     = i.startup,
     files       = i.files,                              -- 2018.03.17  ZeroBrane debugging support
+    actions     = actions,                              -- 2018.04.22  added for /data_request?id=lua
   }
 end
 
@@ -456,7 +459,7 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   -- 2018.03.17 from @explorer: ZeroBrane debugging support:
   -- use actual filenames to make it work with ZeroBrane
   -- limitations:
-  -- works only when I_pugin.xml code is in <functions> or <files>, not both
+  -- works only when I_plugin.xml code is in <functions> or <files>, not both
   -- only single file is supported now
   -- TODO: consider not concatenating the source code in parse_impl_xml but compiling them separately.
   -- for code in XML files, keep XML but start XML lines with comments "-- " to match the line number.

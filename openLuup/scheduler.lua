@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.04.10",
+  VERSION       = "2018.04.22",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -46,6 +46,7 @@ local ABOUT = {
 -- 2018.03.21  add default exit state to jobs
 -- 2018.04.07  sandbox string and table system libraries
 -- 2018.04.10  add get_socket_list to methods and timenow/name to the list elements
+-- 2018.04.22  fix missing device 0 description in meta.__index:sandbox ()
 
 
 local logs      = require "openLuup.logs"
@@ -229,14 +230,14 @@ local function sandbox (tbl, name)
   local index ={}
   local errmsg = "device %s attempt to call '%s.%s' (a nil value)"
   local defmsg = "device %s defined '%s.%s' (a %s value)"
-  local boxmsg = "  [%d] %s"
-  local idxmsg = "    %s = %s"
+  local boxmsg = "\n  [%d] %s"
+  local idxmsg = "      %s = %s"
 
   local meta = {__index = {}}   -- __index is only used for sandbox pretty-printing
   function meta:__newindex(k,v)
     
     local function proxy (...) 
-      local d = current_device or '?'
+      local d = current_device or 0
       local fct = (index[d] or {}) [k]
       if not fct then
         error (errmsg: format (d, name, k), 2)
@@ -244,7 +245,7 @@ local function sandbox (tbl, name)
       return fct (...) 
     end
 
-    local d = current_device or '?'   -- k,v pairs are indexed by current device number
+    local d = current_device or 0   -- k,v pairs are indexed by current device number
     local vtype = type(v)
     _debug (defmsg: format (d, name, k, vtype))
     index[d] = index[d] or {}
@@ -257,12 +258,14 @@ local function sandbox (tbl, name)
   function meta.__index:sandbox ()    -- totally optional pretty-printing of sandbox contents
     local x ={name .. ".sandbox:"}
     for d, idx in pairs (index) do
-      x[#x+1] = boxmsg: format (d, luup.devices[d].description: match "^%s*(.-)$")
+      local devname = (luup.devices[d] or {description = "System"}).description  -- 2018.04.22
+      x[#x+1] = boxmsg: format (d, devname: match "^%s*(.-)$")
       for k,v in pairs (idx) do
         x[#x+1] = idxmsg: format (k, tostring(v))
       end
     end
-    if #x == 1 then x[2]="    -- none --" end
+    if #x == 1 then x[2]="\n    -- none --" end
+    x[#x+1] =''                 -- blank line at end
     return table.concat (x, '\n')
   end
 

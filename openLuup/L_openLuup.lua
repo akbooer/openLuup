@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.04.19",
+  VERSION       = "2018.04.23",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -532,6 +532,7 @@ end
 function openLuup_ticker ()
   calc_stats()
   -- might want to do more here...
+  -- TODO: update gmt_offset system attribute? (to accommodate DST change)
 end
 
 function openLuup_synchronise ()

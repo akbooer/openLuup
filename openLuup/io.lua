@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2018.04.19",
+  VERSION       = "2018.04.22",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -330,8 +330,9 @@ end
 
 
 local udp = {
-    iprequests = {},    -- table of incoming connections, indexed by IP
-    listeners  = {},    -- table of registered listener ports
+    iprequests  = {},     -- incoming connections, indexed by IP
+    listeners   = {},     -- registered listener ports
+    senders     = {},     -- opened sender ports
   }
 
    -- open for send
@@ -340,7 +341,15 @@ local udp = {
     local ip, port = ip_and_port: match "(%d+%.%d+%.%d+%.%d+):(%d+)"
     if ip and port then 
       sock, msg = socket.udp()
-      if sock then ok, msg = sock:setpeername(ip, port) end         -- connect to destination
+      if sock then ok, msg = sock:setpeername(ip, port) end   -- connect to destination
+      
+      -- record info for console server page
+      udp.senders[#udp.senders+1] = {                         -- can't index by port, perhaps not unique
+          devNo = scheduler.current_device (),
+          ip_and_port = ip_and_port,
+          sock = sock,
+          count = 0,      -- don't, at the moment, count number of datagrams sent
+        }
     else
       msg = "invalid ip:port syntax '" .. tostring (ip_and_port) .. "'"
     end
@@ -350,7 +359,7 @@ local udp = {
     
     
   -- register a handler for the incoming datagram
-  -- callback function is called with table {datagram = ..., ip = ...}
+  -- callback function is called with (port, {datagram = ..., ip = ...}, "udp")
   function udp.register_handler (callback, port)
     local sock, msg, ok = socket.udp()                -- create the UDP socket
     local function udplog (msg) _log (msg,  "openLuup.io.udp") end

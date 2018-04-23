@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2018.04.14",
+  VERSION       = "2018.04.22",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -82,11 +82,42 @@ local function asin(x)    return math.asin(x)/dr    end
 local function acos(x)    return math.acos(x)/dr    end
 local function atan2(y,x) return math.atan2(y,x)/dr end 
 
+
+---------
+--
+-- 2018.04.20  include timezone functions from http://lua-users.org/wiki/TimeZone
+--
+
+-- Compute the difference in seconds between local time and UTC.
+local function get_timezone()
+  local now = os.time()
+  return os.difftime(now, os.time(os.date("!*t", now)))
+end
+
+-- Return a timezone string in ISO 8601:2000 standard form (+hhmm or -hhmm)
+local function get_tzoffset(timezone)
+  local h, m = math.modf(timezone / 3600)
+  return string.format("%+.4d", 100 * h + 60 * m)
+end
+
+-- return the timezone offset in seconds, as it was on the time given by ts
+-- Eric Feliksik
+local function get_timezone_offset(ts)
+	local utcdate   = os.date("!*t", ts)
+	local localdate = os.date("*t", ts)
+	localdate.isdst = false -- this is the trick
+	return os.difftime(os.time(localdate), os.time(utcdate))
+end
+
+--
+--
+--------------
+
+
 ----------
 --
 -- utility functions
 --
-
 
 
 --string time to unix epoch
@@ -517,6 +548,15 @@ return {
     -- convert string to epoch
     ISOdate2epoch  = UNIXdateTime,      -- Unix epoch for ISO date/time extended-format
     datetime2epoch = time2unix,         -- time should be in the format: "yyyy-mm-dd hh:mm:ss"
+    
+    tz = {    -- 2018.04.20  timezone functions from http://lua-users.org/wiki/TimeZone
+
+      get = get_timezone,                -- difference in seconds between local time and UTC.
+      get_ISO8601_offset = get_tzoffset, -- tz string in ISO 8601:2000 standard form (+hhmm or -hhmm)
+      get_offset = get_timezone_offset,  -- tz offset in seconds, as at given time given
+    
+    },
+    
   },
   
 }

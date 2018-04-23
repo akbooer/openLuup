@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2017.03.31",
+  VERSION       = "2018.04.23",
   DESCRIPTION   = "read Device / Service / Implementation XML files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -39,7 +39,13 @@ local ABOUT = {
 -- 2016.04.14  @explorer expanded tags to alpha-numerics and underscores
 -- 2016.04.15  fix attribute skipping (got lost in previous edit)
 -- 2016.05.10  allow ':' as part of tag name
+
 -- 2017.03.31  make escape() and unescape() global
+
+-- 2018.04.22  remove spaces at each end of comments (part of issue highlighted by a-lurker)
+-- see: http://forum.micasaverde.com/index.php/topic,53871.msg379551.html#msg379551
+-- and: http://forum.micasaverde.com/index.php/topic,53871.msg379790.html#msg379790
+-- 2018.04.23  ignore empty tags (remaining part of above issue?)
 
 
 -- utility function for escaping XML special characters
@@ -77,7 +83,7 @@ local function decode (info)
   local xml = {}
   -- remove such like: <!-- This is a comment -->,  thanks @vosmont
   -- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
-  if info then info = info: gsub ("<!%-%-.-%-%->", '') end
+  if info then info = info: gsub ("%s*<!%-%-.-%-%->%s*", '') end    -- 2018.04.22 remove spaces at each end
   --
   local result = info
   for a,b in (info or ''): gmatch "<([%w:_]+).->(.-)</%1>" do -- find matching opening and closing tags, ignore attributes
@@ -91,7 +97,9 @@ local function decode (info)
       if #b == 1 then result[a] = b[1] end        -- collapse one-element lists to simple items
     end
   else
-    if result then   -- in case of failure, simply return whole string as 'error message'
+    if result                     -- in case of failure, simply return whole string as 'error message'
+    and #result > 0               -- 2018.04.23 ignore empty tags
+    then
       msg = unescape (result)
     end
     result = nil    -- ...and nil for xml result

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.04.04",
+  VERSION       = "2018.04.23",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -46,19 +46,19 @@ local ABOUT = {
 -- 2018.02.25  add ip address to openLuup.Server
 -- 2018.03.09  add SMTP server
 -- 2018.04.04  add POP3 server
+-- 2018.04.23  re-order module loading (to tidy startup log banners)
 
-
-local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
 
 local logs = require "openLuup.logs"
-local lfs  = require "lfs"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 _log (lfs.currentdir(),":: openLuup STARTUP ")
 logs.banner (ABOUT)   -- for version control
 
-luup = require "openLuup.luup"       -- here's the GLOBAL luup environment
+local loader = require "openLuup.loader"  -- keep this first... it prototypes the global environment
+
+luup = require "openLuup.luup"            -- here's the GLOBAL luup environment
 
 local server        = require "openLuup.server"
 local smtp          = require "openLuup.smtp"
@@ -68,7 +68,9 @@ local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local compress      = require "openLuup.compression"
 local json          = require "openLuup.json"
-local mime          = require "mime"
+
+local mime  = require "mime"
+local lfs   = require "lfs"
 
 -- what it says...
 local function compile_and_run (lua, name)
@@ -235,6 +237,11 @@ do -- log rotate and possible rename
   _log "init phase completed"
   logs.rotate (config.Logfile or {})
   _log "init phase completed"
+end
+
+do -- TODO: tidy up obsolete files
+--  os.remove "openLuup/rooms.lua"
+--  os.remove "openLuup/hag.lua"
 end
 
 local status
