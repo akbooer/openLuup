@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2018.04.23",
+  VERSION       = "2018.04.24",
   DESCRIPTION   = "read Device / Service / Implementation XML files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -27,9 +27,8 @@ local ABOUT = {
 --
 -- general xml reader: this is just good enough to read device and implementation .xml files
 -- doesn't cope with XML attributes or empty elements: <tag />
+-- does cope with comments (thanks @vosmont and @a-lurker)
 --
--- DOES cope with comments (thanks @vosmont)
-
 -- TODO: proper XML parser rather than nasty hack?
 --
 
@@ -42,10 +41,11 @@ local ABOUT = {
 
 -- 2017.03.31  make escape() and unescape() global
 
--- 2018.04.22  remove spaces at each end of comments (part of issue highlighted by a-lurker)
+-- 2018.04.22  remove spaces at each end of comments (part of issue highlighted by @a-lurker)
 -- see: http://forum.micasaverde.com/index.php/topic,53871.msg379551.html#msg379551
 -- and: http://forum.micasaverde.com/index.php/topic,53871.msg379790.html#msg379790
 -- 2018.04.23  ignore empty tags (remaining part of above issue?)
+-- 2018.04.24  remove extract() function completely (final part of above issue??)
 
 
 -- utility function for escaping XML special characters
@@ -59,22 +59,6 @@ end
 
 local function escape (x)
   return (x: gsub ([=[[<>"'&]]=], fwd))
-end
-
-
--- XML:extract ("name", "subname", "subsubname", ...)
--- return named part or empty list
-local function extract (self, name, name2, ...)
-  local x = (self or {}) [name]
-  if x then 
-    if name2 then
-      return extract (x, name2, ...) 
-    else
-      if type(x) == "table" and #x == 0 then x = {x} end   -- make it a one element list
-      return x
-    end
-  end
-  return {}   -- always return something
 end
 
 
@@ -153,7 +137,6 @@ return {
   escape = escape,
   unescape = unescape,
   
-  extract = extract,
   decode  = decode, 
   encode  = encode,
 }

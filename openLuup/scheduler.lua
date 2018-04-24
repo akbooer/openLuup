@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.04.22",
+  VERSION       = "2018.04.23",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -223,6 +223,11 @@ A side-effect is that all device contexts will see the name of any additional fu
 which has been added by any device to the sandboxed module, although it may not be functional. 
 But this visibility is also true for non-sandboxed table additions, as before, so not really an issue.
 
+Note: there is STILL a potential issue here - if a function is defined twice, then it will overwrite
+the existing sandbox proxy function, since __newindex is NOT called once the table has that key.
+
+TODO: do not permit non-function definitions for sandboxed tables?
+
 --]]
 
 local function sandbox (tbl, name)
@@ -234,7 +239,8 @@ local function sandbox (tbl, name)
   local idxmsg = "      %s = %s"
 
   local meta = {__index = {}}   -- __index is only used for sandbox pretty-printing
-  function meta:__newindex(k,v)
+  
+  function meta:__newindex(k,v)   -- only ever called if key not already defined
     
     local function proxy (...) 
       local d = current_device or 0
@@ -261,7 +267,7 @@ local function sandbox (tbl, name)
       local devname = (luup.devices[d] or {description = "System"}).description  -- 2018.04.22
       x[#x+1] = boxmsg: format (d, devname: match "^%s*(.-)$")
       for k,v in pairs (idx) do
-        x[#x+1] = idxmsg: format (k, tostring(v))
+        x[#x+1] = idxmsg: format (k, tostring(tbl[k]))
       end
     end
     if #x == 1 then x[2]="\n    -- none --" end

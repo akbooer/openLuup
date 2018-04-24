@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.04.22",
+  VERSION       = "2018.04.24",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -51,6 +51,7 @@ local ABOUT = {
 --             see: http://forum.micasaverde.com/index.php/topic,38471.0.html
 -- 2018.04.06  use scheduler.context_switch to wrap device code compilation (for sandboxing)
 -- 2018.04.22  parse_impl_xml added action field for /data_request?id=lua&DeviceNum=... 
+-- 2018.04.24 replace 'extract' code in xml module (thanks again, @a-lurker)
 
 
 ------------------
@@ -325,13 +326,20 @@ end
 
 -- parse service files
 local function parse_service_xml (service_xml)
-  local actions   = xml.extract (service_xml, "scpd", "actionList", "action")   -- 2016.02.22 added "scpd" nesting
-  local variables = xml.extract (service_xml, "scpd", "serviceStateTable", "stateVariable") -- ditto
+  
+  -- 2018.04.24 replace 'extract' code in xml module
+  local actions, variables = {}, {}
+  local scpd = service_xml.scpd   
+  if scpd then
+    actions = (scpd.actionList or {}).action or actions
+    variables = (scpd.serviceStateTable or {}).stateVariable or variables
+  end
+  
   -- now build the return argument list  {returnName = RelatedStateVariable, ...}
   -- indexed by action name
   local returns = {}
   for _,a in ipairs (actions) do
-    local argument = xml.extract (a, "argumentList", "argument")
+    local argument = (a.argumentList or {}).argument    -- 2018.04.24  replace 'extract'
     local list = {}
     if type (argument) == "table" then  -- 2016.05.21  fix for invalid argument list in parse_service_xml
       for _,k in ipairs (argument) do

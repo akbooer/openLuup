@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.04.18",
+  VERSION       = "2018.04.23",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -654,7 +654,11 @@ local function register_handler (...)
     -- 2018.04.18  optional alphameric protocol prefix in register_handler request
     local protocol, address = request_name: match "^(%a+):([^:]+)$"     --  abc:xxx
     if protocol then
-      local valid = {mailto = smtp, smtp = smtp, udp = ioutil.udp}
+      local valid = {                 -- 2018.04.23  format for easier reading
+          ["mailto"]  = smtp, 
+          ["smtp"]    = smtp, 
+          ["udp"]     = ioutil.udp,
+        }
       local scheme = valid[protocol: lower()]
       if scheme then 
         scheme.register_handler (fct, address)

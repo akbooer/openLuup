@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2018.04.05",
+  VERSION       = "2018.04.24",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -52,6 +52,7 @@ local ABOUT = {
 -- 2018.03.02   remove TODO for mode change attributes
 -- 2018.03.24   use luup.rooms.create metatable method
 -- 2018.04.05   do not create status as a device attribute when loading user_data
+-- 2018.04.23   update_plugin_versions additions for ALT... plugins and MySensors
 
 
 local json    = require "openLuup.json"
@@ -525,20 +526,37 @@ local function update_plugin_versions (installed)
     if id then index_by_type[tostring(id)] = i end
   end
   
-  -- go through devices looking for plugins with ABOUT.VERSION
+  -- go through LOCAL devices looking for plugins with ABOUT.VERSION
   for _, d in pairs (luup.devices or {}) do 
     local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
     local a = d.environment.ABOUT
     local IP = installed[i]
-    if i and a then
-      local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
-      if v3 then
---        print (d.id,"v1,v2,v3", ("'%s', '%s', '%s'"): format (v1,v2,v3))
-        IP.VersionMajor = v1 % 2000
-        if v3 == '' then
-          IP.VersionMinor = tonumber(v2)
-        else
-          IP.VersionMinor = table.concat ({tonumber(v2),tonumber(v3)}, '.') .. prerelease
+    
+    if IP and d.device_num_parent == 0 then   -- LOCAL devices only!
+      if i and a then
+        local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
+        if v3 then
+          IP.VersionMajor = v1 % 2000
+          if v3 == '' then
+            IP.VersionMinor = tonumber(v2)
+          else
+            IP.VersionMinor = table.concat ({tonumber(v2),tonumber(v3)}, '.') .. prerelease
+          end
+        end
+      
+      else    -- it gets harder, so go through variables...               example syntax
+        local known = {
+            ["urn:upnp-org:serviceId:altui1"]         = "Version",           --v2.15
+            ["urn:upnp-org:serviceId:althue1"] 	     = "Version",           --v0.94
+            ["urn:upnp-arduino-cc:serviceId:arduino1"]  = "PluginVersion",   -- 1.4
+          }
+        for _,v in ipairs (d.variables) do    --    (v.srv, v.name, v.value, ...)
+          local name = known[v.srv]
+          if name == v.name then
+            IP.VersionMajor = v.value: match "v?(.*)"   -- remove leading 'v', if present
+            IP.VersionMinor = ''      -- TODO: some refinement possible here with other variables?
+            break
+          end
         end
       end
     end

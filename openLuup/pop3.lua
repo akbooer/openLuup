@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.pop3",
-  VERSION       = "2018.04.10",
+  VERSION       = "2018.04.23",
   DESCRIPTION   = "POP3 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -416,7 +416,7 @@ local function start (config)
         if newstate == update then 
           if state == transaction then  -- only update mailbox from transaction state,
             local n = maildrop: update "delete"   -- delete files marked for delete
-            if n > 0 then _log (n .. "messages deleted") end
+            if n > 0 then _log (n .. " messages deleted") end
           end
           client: close() 
         end
@@ -424,10 +424,7 @@ local function start (config)
         state = newstate or state
         
       else
-        if err ~= "closed" then 
-          _log ("read error: " ..  err or "non-ASCII request")    --eg. timeout
-        end
-        client: close ()
+        client: close ("read error: " ..  (err or "non-ASCII request"))    --eg. timeout
       end
     end
     
