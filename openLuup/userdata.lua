@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2018.04.24",
+  VERSION       = "2018.04.25",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -526,14 +526,15 @@ local function update_plugin_versions (installed)
     if id then index_by_type[tostring(id)] = i end
   end
   
-  -- go through LOCAL devices looking for plugins with ABOUT.VERSION
+  -- go through LOCAL devices looking for clues about their version numbers
   for _, d in pairs (luup.devices or {}) do 
     local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
     local a = d.environment.ABOUT
     local IP = installed[i]
     
     if IP and d.device_num_parent == 0 then   -- LOCAL devices only!
-      if i and a then
+      
+      if i and a then     -- plugins with ABOUT.VERSION
         local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
         if v3 then
           IP.VersionMajor = v1 % 2000

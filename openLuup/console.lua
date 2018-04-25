@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.04.22",
+  VERSION       = "2018.04.25",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -51,7 +51,6 @@ local url       = require "socket.url"            -- for url unescape
 local luup      = require "openLuup.luup"         -- not automatically in scope for CGIs
 local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
-local xml       = require "openLuup.xml"          -- for escape()
 local requests  = require "openLuup.requests"     -- for user_data, status, and sdata
 local server    = require "openLuup.server"
 local smtp      = require "openLuup.smtp"
@@ -300,6 +299,8 @@ function run (wsapi_env)
   end
 
   local function printlog (p)
+    local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
+    local function escape (x) return (x: gsub ([=[[<>"'&]]=], fwd)) end
     local name = luup.attr_get "openLuup.Logfile.Name" or "LuaUPnP.log"
     local ver = p.version
     if ver then
@@ -313,7 +314,7 @@ function run (wsapi_env)
     if f then
       local x = f:read "*a"
       f: close()
-      print (xml.escape (x))       -- thanks @a-lurker
+      print (escape (x))       -- thanks @a-lurker
     end
   end
   
@@ -606,9 +607,13 @@ function run (wsapi_env)
   end
   
   local function sandbox ()               -- 2018.04.07
-    print "Sandboxed system functions"
-    print ('\n' .. string:sandbox())
-    print ('\n' .. table:sandbox())
+    print "Sandboxed system tables"
+    for _,v in pairs (_G) do
+      local meta = ((type(v) == "table") and getmetatable(v)) or {}
+      if meta.__newindex and meta.__tostring then   -- not foolproof, but good enough?
+        print ('\n' .. tostring(v))
+      end
+    end
   end
   
   local function images ()

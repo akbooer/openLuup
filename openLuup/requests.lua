@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.04.22",
+  VERSION       = "2018.04.25",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -64,7 +64,6 @@ local ABOUT = {
 
 local server        = require "openLuup.server"
 local json          = require "openLuup.json"
-local xml           = require "openLuup.xml"
 local scheduler     = require "openLuup.scheduler"
 local devutil       = require "openLuup.devices"      -- for dataversion
 local logs          = require "openLuup.logs"
@@ -72,6 +71,8 @@ local scenes        = require "openLuup.scenes"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local loader        = require "openLuup.loader"       -- for static_data, service_data, and loadtime
+
+local xml = loader.xml    -- 2018.04.25  for xml.encode()
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
