@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.04.25",
+  VERSION       = "2018.04.26",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -236,9 +236,10 @@ local function sandbox (tbl, name)
 
   function meta.__tostring ()    -- totally optional pretty-printing of sandboxed table contents
     local boxmsg = "\n   [%d] %s"
-    local idxmsg = "        %-10s = %s"
+    local idxmsg = "        %-12s = %s"
     local x = {name .. ".sandbox:", '', "   Private items (by device):"}
     local empty = #x
+    local function p(l) x[#x+1] = l end
     local function devname (d) 
       return ((luup.devices[d] or {}).description or "System"): match "^%s*(.+)" 
     end
@@ -249,13 +250,13 @@ local function sandbox (tbl, name)
       return table.concat (y, '\n')
     end
     for d, idx in pairs (lookup) do
-      x[#x+1] = boxmsg: format (d, devname(d))
-      x[#x+1] = sorted(idx)
+      p (boxmsg: format (d, devname(d)))
+      p (sorted(idx))
     end
     if #x == empty then x[#x+1] ="\n        -- none --" end
-    x[#x+1] = "\n   Shared items: \n"
-    x[#x+1] = sorted (tbl) 
-    x[#x+1] =''                 -- blank line at end
+    p "\n   Shared items: \n"
+    p (sorted (tbl))
+    p ""                 -- blank line at end
     return table.concat (x, '\n')
   end
 
@@ -447,7 +448,7 @@ local function device_start (entry_point, devNo, name)
   local jobNo = create_job ({job = startup_job}, {}, devNo)
   local job = job_list[jobNo]
   local text = "job#%d :plugin %s"
-  job.type = text: format (jobNo, name or '')
+  job.type = text: format (jobNo, (name or ''): match "^%s*(.+)")
   startup_list[jobNo] = job  -- put this into the startup job list too 
   return jobNo
 end    

@@ -62,7 +62,7 @@ local ABOUT = {
 -- 2018.04.22  add &id=lua request (not yet done &DeviceNum=xxx - doesn't seem to work on Vera anyway)
 
 
-local server        = require "openLuup.server"
+local http          = require "openLuup.http"
 local json          = require "openLuup.json"
 local scheduler     = require "openLuup.scheduler"
 local devutil       = require "openLuup.devices"      -- for dataversion
@@ -124,7 +124,7 @@ end
 
 local function iprequests_table () 
   local info = {}
-  for _,x in pairs (server.iprequests) do
+  for _,x in pairs (http.iprequests) do
     info[#info + 1] = x
   end
   return info 
@@ -954,7 +954,7 @@ local function alive () return "OK" end
 
 -- file access
 local function file (_,p) 
-  local _,f = server.wget ("http://localhost:3480/" .. (p.parameters or '')) 
+  local _,f = http.wget ("http://localhost:3480/" .. (p.parameters or '')) 
   return f 
 end
 
@@ -1032,7 +1032,7 @@ do -- CALLBACK HANDLERS
     extendedList[name]        = proc
     extendedList["lu_"..name] = proc              -- add compatibility with old-style call names
   end
-  server.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
+  http.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
 end
 
 luup_requests.ABOUT = ABOUT   -- add module info (NOT part of request list!)

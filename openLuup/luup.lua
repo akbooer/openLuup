@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.04.23",
+  VERSION       = "2018.04.25",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -57,7 +57,7 @@ local ABOUT = {
 
 local logs          = require "openLuup.logs"
 
-local server        = require "openLuup.server"
+local http          = require "openLuup.http"
 local scheduler     = require "openLuup.scheduler"
 local devutil       = require "openLuup.devices"
 local Device_0      = require "openLuup.gateway"
@@ -672,7 +672,7 @@ local function register_handler (...)
       if email  then                              -- 2018.03.08
         smtp.register_handler (fct, request_name)
       else
-        server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
+        http.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
       end
     end
   end
@@ -724,7 +724,7 @@ local inet = {
 -- If Username and Password are specified, they will be used for HTTP Basic Authentication.
 --
   wget = function (URL, Timeout, Username, Password)
-  return server.wget (URL, Timeout, Username, Password)
+  return http.wget (URL, Timeout, Username, Password)
   end
 }
 

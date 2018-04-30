@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.04.05",
+  VERSION       = "2018.04.30",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -35,6 +35,9 @@ local ABOUT = {
 -- 2018.01.30  changed variable numbering to start at 0 (for compatibility with ModifyUserData)
 -- 2018.01.31  add delete_vars() to device (for ModifyUserData to replace all state variables)
 -- 2018.04.05  move get/set status to chdev (more a luup thing than a devices thing)
+-- 2018.04.25  inspired to start work on 'VariableWithHistory'
+-- see: http://forum.micasaverde.com/index.php/topic,16166.0.html
+-- and: http://blog.abodit.com/2013/02/variablewithhistory-making-persistence-invisible-making-history-visible/
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -89,11 +92,26 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
 end
   
 function variable:set (value)
-  new_dataversion ()                              -- say value has changed
+  local t = scheduler.timenow()                   -- time to millisecond resolution
+  -- 2018.04.25 'VariableWithHistory'
+  -- note that retention policies are not implemented here, so the history just grows
+  local history = self.history 
+  if history then 
+    local n = #history
+    local v = tonumber(value)                     -- only numeric values at the moment
+    if v then
+      history[n+1] = t
+      history[n+2] = v
+    end
+  end
+  --
+  local n = dataversion.value + 1                 -- say value has changed
+  dataversion.value = n
+  
   self.old      = self.value or "EMPTY"
   self.value    = tostring(value or '')           -- set new value (all device variables are strings)
-  self.time     = os.time()                       -- save time of change
-  self.version  = dataversion.value               -- save version number
+  self.time     = math.floor(t)                   -- save time of change (to nearest second)
+  self.version  = n                               -- save version number
   return self
 end
 

@@ -52,7 +52,7 @@ local luup      = require "openLuup.luup"         -- not automatically in scope 
 local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
 local requests  = require "openLuup.requests"     -- for user_data, status, and sdata
-local server    = require "openLuup.server"
+local http      = require "openLuup.http"
 local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
@@ -436,19 +436,19 @@ function run (wsapi_env)
     end
     
     print ("HTTP Web Server, " .. os.date "%c")
-    printConnections (server.iprequests)     
+    printConnections (http.iprequests)     
     
     print "\n /data_request?"
     printout ("id=... ", "#requests  ","status")
-    printinfo (server.http_handler)
+    printinfo (http.http_handler)
     
     print "\n CGI requests"
     printout ("URL ", "#requests  ","status")
-    printinfo (server.cgi_handler)
+    printinfo (http.cgi_handler)
     
     print "\n File requests"
     printout ("filename ", "#requests  ","status")
-    printinfo (server.file_handler)
+    printinfo (http.file_handler)
     
   end
   
