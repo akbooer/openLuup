@@ -57,7 +57,7 @@ local ABOUT = {
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
 local timers    = require "openLuup.timers"
-local loader    = require "openLuup.loader"
+local loader    = require "openLuup.loader"       -- for shared_environment and compile_lua()
 local scheduler = require "openLuup.scheduler"    -- simply for adding notes to the timer jobs 
 local devutil   = require "openLuup.devices"      -- for new_userdata_dataversion
 

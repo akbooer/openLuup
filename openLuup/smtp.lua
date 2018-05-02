@@ -610,3 +610,42 @@ return {
   }
 
 -----
+
+--[[
+
+-- CLIENT EXAMPLE:
+
+local myEmail = "Raspberry Pi: RPi@openLuup.local;" 
+local message_out = "It works!!\r\n"
+local send_to     = "events@openLuup.local"
+local sender      = myEmail
+local subject_out = "message dated " .. os.date "%c"
+
+local smtp = require "socket.smtp"
+
+local mesgt    = {
+  headers  = {
+    to       = send_to,
+    from     = sender,
+    subject  = subject_out},
+  body     = message_out}
+
+for a in smtp.message(mesgt) do
+    print(a)
+end
+
+local result, x   = smtp.send {
+  from     = sender,
+  rcpt     =  {send_to},
+  source   =  smtp.message(mesgt),
+  server   = "172.16.42.151",
+  port     = "2525",
+--  user     = myEmail,
+--  password = "verasmtp",
+    
+}
+
+print (result, x)
+
+---
+--]]

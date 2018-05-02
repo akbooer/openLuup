@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.04.25",
+  VERSION       = "2018.05.01",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -53,6 +53,8 @@ local ABOUT = {
 -- 2018.03.22  use renamed ioutil.luupio module, use logs.register()
 -- 2018.03.24  add room functions to luup.rooms metatable
 -- 2018.04.18  optional protocol prefix in register_handler request
+-- 2018.04.30  'silent' variable attribute to mute logging
+-- 2018.05.01  use new_userdata_dataversion () when changing room structure
 
 
 local logs          = require "openLuup.logs"
@@ -131,6 +133,7 @@ setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatab
         end
       end
       rooms[number] = name
+      devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
       return number
     end,
 
@@ -153,6 +156,7 @@ setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatab
         for _, s in pairs (scenes) do
           if s.room == number then s.rename (nil, 0) end
         end
+      devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
       end
     end,
     
@@ -272,7 +276,7 @@ end
 -- parameters: service (string), variable (string), value (string), device (string or number), [startup (bool)]
 -- returns: nothing 
 local function variable_set (service, name, value, device, startup)
-    -- shorten long variable strings, removing control characters
+    -- shorten long variable strings, removing control characters, ...just for logging!
     local function truncate (text)
       text = (text or ''): gsub ("%c", ' ')
       if #text > 120 then text = text: sub (1,115) .. "..." end    -- truncate long variable values
@@ -288,7 +292,7 @@ local function variable_set (service, name, value, device, startup)
   name = tostring(name)
   value = tostring (value)
   local var = dev:variable_set (service, name, value, not startup) 
-  if var then
+  if var and not var.silent then            -- 2018.04.30  'silent' attribute to mute logging
     local old = var.old  or "MISSING"
     local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
     local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
@@ -301,14 +305,16 @@ end
 -- parameters: service (string), variable (string), device (string or number)
 -- returns: value (string) and Unix time stamp (number) of when the variable last changed
 local function variable_get (service, name, device)
-  device = device or scheduler.current_device()    -- undocumented luup feature!
+  device = device or scheduler.current_device()           -- undocumented luup feature!
   local dev = devices[device]
   if not dev then 
     log_missing_dev_srv_name (device, service, name, "luup.variable_get")
     return
   end
   local var = dev:variable_get (service, name) or {}
-  return var.value, var.time
+  local tim = var.time 
+  if tim then tim = math.floor(tim) end                   -- ensure time is an integer
+  return var.value, tim
 end
 
 

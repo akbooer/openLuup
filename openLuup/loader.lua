@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.04.25",
+  VERSION       = "2018.05.01",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -51,8 +51,7 @@ local ABOUT = {
 --             see: http://forum.micasaverde.com/index.php/topic,38471.0.html
 -- 2018.04.06  use scheduler.context_switch to wrap device code compilation (for sandboxing)
 -- 2018.04.22  parse_impl_xml added action field for /data_request?id=lua&DeviceNum=... 
--- 2018.04.24  replace 'extract' code in xml module (thanks again, @a-lurker)
--- 2018.04.25  incorporate XML module (too short, now to justify separate file)
+-- 2018.04.25  incorporate XML module (too short, now, to justify separate file)
 
 
 ------------------
@@ -107,10 +106,12 @@ local scheduler = require "openLuup.scheduler"  -- for context_switch()
 
 -- general xml reader: this is just good enough to read device and implementation .xml files
 -- doesn't cope with XML attributes or empty elements: <tag />
--- does cope with comments (thanks @vosmont and @a-lurker)
 --
 -- TODO: proper XML parser rather than nasty hack?
 --
+
+-- 2015.11.03  cope with comments (thanks @vosmont and @a-lurker)
+-- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
 
 -- 2016.02.22  skip XML attributes but still parse element
 -- 2016.02.23  remove reader and caching, rename encode/decode 
@@ -125,51 +126,53 @@ local scheduler = require "openLuup.scheduler"  -- for context_switch()
 -- see: http://forum.micasaverde.com/index.php/topic,53871.msg379551.html#msg379551
 -- and: http://forum.micasaverde.com/index.php/topic,53871.msg379790.html#msg379790
 -- 2018.04.23  ignore empty tags (remaining part of above issue?)
--- 2018.04.24  remove extract() function completely (final part of above issue??)
+-- 2018.04.24  remove extract() function completely (final part of above issue?? thanks again, @a-lurker)
+-- 2018.04.25  incorporate XML module into loader (too short, now to justify separate file)
+-- 2018.05.01  restructure decode(), only export encode(), save XML tag attributes (but don't process)
 
 
-local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
-local rev = {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'}
-
-local function unescape(x)
-  return (x: gsub ("&(%w+);", rev))   -- extra parentheses to remove second return parameter
-end
-
-local function escape (x)
-  return (x: gsub ([=[[<>"'&]]=], fwd))
+local escape do
+  local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
+  escape = function (x) return (x: gsub ([=[[<>"'&]]=], fwd)) end
 end
 
 
+local unescape do
+  local rev = {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'}
+  unescape = function (x) return (x: gsub ("&(%w+);", rev)) end
+end
+
+-- decode() 
+-- empty tags are unnamed empty tables, <foo></foo>  -->  {}
+-- non-xml tag contents are strings, <foo>&lt;not xml&gt;</foo>	 -->  {foo = "<not xml>"}
 local function decode (info)
-  local msg
   local xml = {}
-  -- remove such like: <!-- This is a comment -->,  thanks @vosmont
-  -- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
-  if info then info = info: gsub ("%s*<!%-%-.-%-%->%s*", '') end    -- 2018.04.22 remove spaces at each end
-  --
+  -- must start with a letter or underscore, can contain letters, digits, hyphens, underscores, and period
+  local tag_pair = "%s*<([%a_][%w:_%-%.]*)(.-)>(.-)</%1>%s*"
+  
+  if info then info = info: gsub ("%s*<!%-%-.-%-%->%s*", '') end  -- remove <!-- This is a comment -->
+  
   local result = info
-  for a,b in (info or ''): gmatch "<([%w:_]+).->(.-)</%1>" do -- find matching opening and closing tags, ignore attributes
-    local x,y = decode (b)                                -- get the value of the contents
-    xml[a] = xml[a] or {}                                 -- if this tag doesn't exist, start a list of values
-    xml[a][#xml[a]+1] = x or y   -- add new value to the list (might be table x, or just text y)
-    result = xml
+  for a,attr,b in (info or ''): gmatch (tag_pair) do -- find opening and closing tags
+    result = xml                      -- OK, this has at least one valid XML open/close tag pair
+    if #b > 0 then                    -- ignore empty tags
+      local x = decode (b)            -- get the value of the contents
+      xml[a] = xml[a] or {}           -- if this tag doesn't exist, start a list of values
+      xml[a][#xml[a]+1] = x           -- add new value to the list (might be table, or just text)
+    end 
   end 
+  
   if type (result) == "table" then
     for a,b in pairs (result) do                  -- go through the contents
       if #b == 1 then result[a] = b[1] end        -- collapse one-element lists to simple items
     end
-  else
-    if result                     -- in case of failure, simply return whole string as 'error message'
-    and #result > 0               -- 2018.04.23 ignore empty tags
-    then
-      msg = unescape (result)
-    end
-    result = nil    -- ...and nil for xml result
+  else                                -- if no tagged structures, then return the unescaped info string
+    if result then result = unescape (result) end
   end
-  return result, msg
+  return result
 end
 
-
+-- encode(), input argument should be a table, optional wrapper gives name tag to whole structure
 local function encode (Lua, wrapper)
   local xml = {}        -- or perhaps    {'<?xml version="1.0"?>\n'}
   local function p(x)
@@ -200,7 +203,8 @@ local function encode (Lua, wrapper)
     local dispatch = {table = tbl, string = str, number = str}
     return (dispatch [type(x)] or err) (x)
   end
-  -- wrapper parameter allows outer level of tags (with attributes)
+  
+  -- encode(), wrapper parameter allows outer level of tags (with attributes)
   local ok, msg = pcall (value, Lua, wrapper) 
   if ok then ok = table.concat (xml) end
   return ok, msg
@@ -261,6 +265,16 @@ local categories_lookup =             -- info about device types and categories
   {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:1"},
   {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:2"},
   {id = 24, name = "Siren",              type = mcv  .. "Siren:1"},
+--[[
+also:  --TODO: find out device types for new categories
+  25 	Weather 		
+  26 	Philips Controller 		
+  27 	Appliance 		
+  28 	UV Sensor 		
+  29 	Mouse Trap 		
+  30 	Doorbell 		
+  31 	Keypad
+]]
 }
 
 local cat_by_dev = {}                         -- category number lookup by device type
@@ -642,6 +656,8 @@ end
 return {
   ABOUT = ABOUT,
 
+  TEST = {xml = xml}, -- the only user of xml.decode() is this loader module
+  
   -- tables
   service_data        = service_data,
   shared_environment  = shared_environment,
@@ -658,8 +674,8 @@ return {
   read_device         = read_device,
   read_impl           = read_impl,
   read_json           = read_json,
-
-  -- modules
-  xml = xml,
+  
+  -- module
+  xml = {encode = xml.encode},        -- decode () is not used externally
   
 }

@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.04.30",
+  VERSION       = "2018.05.02",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -28,6 +28,9 @@ ABOUT = {
 --   * useful device variables
 --   * useful actions
 --   * plugin-specific configuration
+--   * SMTP mail handlers
+--   * Data Storage Provider gateways>
+--   * Retention policy implementation for directories
 --   * etc., etc...
 --
 
@@ -48,6 +51,7 @@ ABOUT = {
 -- 2018.04.02  fixed type on openLuup_images - thanks @jswim788!
 -- 2018.04.08  use POP3 module to save email to mailbox. Add events mailbox folder
 -- 2018.04.15  fix number types in SendToTrash action
+-- 2018.05.02  add StartTime device variable, also on Control panel (thanks @rafale77)
 
 
 local json        = require "openLuup.json"
@@ -697,6 +701,7 @@ function init (devNo)
     lfs.mkdir "mail"
   end
   
+  set ("StartTime", luup.attr_get "openLuup.Status.StartTime")        -- 2018.05.02
   calc_stats ()
   
   return true, msg, ABOUT.NAME

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.04.30",
+  VERSION       = "2018.05.01",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -38,6 +38,7 @@ local ABOUT = {
 -- 2018.04.25  inspired to start work on 'VariableWithHistory'
 -- see: http://forum.micasaverde.com/index.php/topic,16166.0.html
 -- and: http://blog.abodit.com/2013/02/variablewithhistory-making-persistence-invisible-making-history-visible/
+-- 2018.05.01  use millisecond resolution time for variable history (luup.variable_get truncates this)
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -84,6 +85,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       id        = varID,                          -- unique ID
       name      = name,                           -- name (unique within service)
       srv       = serviceId,
+      silent    = nil,                            -- set to true to mute logging
       watchers  = {},                             -- callback hooks
       -- methods
       set       = variable.set,
@@ -93,13 +95,15 @@ end
   
 function variable:set (value)
   local t = scheduler.timenow()                   -- time to millisecond resolution
+  value = tostring(value or '')                   -- all device variables are strings
+  --
   -- 2018.04.25 'VariableWithHistory'
   -- note that retention policies are not implemented here, so the history just grows
   local history = self.history 
-  if history then 
-    local n = #history
+  if history and value ~= self.value then         -- only record CHANGES in value
     local v = tonumber(value)                     -- only numeric values at the moment
     if v then
+      local n = #history
       history[n+1] = t
       history[n+2] = v
     end
@@ -109,8 +113,8 @@ function variable:set (value)
   dataversion.value = n
   
   self.old      = self.value or "EMPTY"
-  self.value    = tostring(value or '')           -- set new value (all device variables are strings)
-  self.time     = math.floor(t)                   -- save time of change (to nearest second)
+  self.value    = value                           -- set new value 
+  self.time     = t                               -- save time of change
   self.version  = n                               -- save version number
   return self
 end

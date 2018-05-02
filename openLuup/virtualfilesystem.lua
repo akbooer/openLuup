@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.04.15",
+  VERSION       = "2018.05.02",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -115,8 +115,22 @@ local D_openLuup_json = [[
 					"left": "0",
 					"Display": {
 						"Service": "openLuup",
-						"Variable": "Version",
+						"Variable": "StartTime",
 						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "openLuup",
+						"Variable": "Version",
+						"Top": 120,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -132,7 +146,7 @@ local D_openLuup_json = [[
 						"text": "<a href='console' target='_blank'>CONSOLE interface</a>"
 					},
 					"Display": {
-						"Top": 140,
+						"Top": 160,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -148,7 +162,7 @@ local D_openLuup_json = [[
 						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
 					},
 					"Display": {
-						"Top": 180,
+						"Top": 200,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -969,7 +983,7 @@ retentions = 5m:7d,1h:30d,3h:1y,1d:10y
 
 [10minute]
 pattern = \.10m$
-retentions = 5m:7d,1h:30d,3h:1y,1d:10y
+retentions = 10m:7d,1h:30d,3h:1y,1d:10y
 
 [20minute]
 pattern = \.20m$
