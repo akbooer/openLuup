@@ -83,6 +83,7 @@ local socket    = require "socket"
 local url       = require "socket.url"
 local http      = require "socket.http"
 local https     = require "ssl.https"
+local http_digest = require "http-digest"               -- 2018.05.07
 local ltn12     = require "ltn12"                       -- for wget handling
 local mime      = require "mime"                        -- for basic authorization in wget
 
@@ -242,6 +243,7 @@ local function wget (request_URI, Timeout, Username, Password)
     local URL = request.URL
     URL.scheme = URL.scheme or "http"                 -- assumed undefined is http request
     if URL.scheme == "https" then scheme = https end  -- 2016.03.20
+    if URL.scheme == "http-digest" then scheme = http-digest --2018.05.07
     if URL_AUTHORIZATION then                         -- 2017.06.15
       URL.user = Username                             -- add authorization credentials to URL
       URL.password = Password
@@ -266,12 +268,10 @@ local function wget (request_URI, Timeout, Username, Password)
     else
       result, status = scheme.request (URL)
     end
---  
   end
-  
   local wget_status = status                          -- wget has a strange return code
   if status == 200 then
-    wget_status = 0 
+    wget_status = 0
   else                                                -- 2017.05.05 add error logging
     local error_message = "WGET status: %s, request: %s"  -- 2017.05.25 fix wget error logging format
     _log (error_message: format (status, request_URI))
