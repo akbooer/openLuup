@@ -267,10 +267,44 @@ local function wget (request_URI, Timeout, Username, Password)
   
   local wget_status = status                          -- wget has a strange return code
   if status == 200 then
-    wget_status = 0 
-  else                                                -- 2017.05.05 add error logging
-    local error_message = "WGET status: %s, request: %s"  -- 2017.05.25 fix wget error logging format
-    _log (error_message: format (status, request_URI))
+    wget_status = 0
+  else
+    
+    local http_digest = require "http-digest"
+    local scheme = http
+    local URL = request.URL
+    URL.scheme = URL.scheme or "http"                 -- assumed undefined is http request
+    if URL.scheme == "https" then scheme = https end  -- 2016.03.20
+    if URL_AUTHORIZATION then                         -- 2017.06.15
+      URL.user = Username                             -- add authorization credentials to URL
+      URL.password = Password
+    end
+    URL = url.build (URL)                             -- reconstruct request for external use
+    scheme.TIMEOUT = Timeout or 5
+    
+    if Username and not URL_AUTHORIZATION then        -- 2017.06.14 build Authorization header
+      local flag
+      local auth = table.concat {Username, ':', Password or ''}
+      local headers = {
+          Authorization = "Basic " .. mime.b64 (auth),
+        }
+      result = {}
+      flag, status = scheme.request {
+          url=URL, 
+          sink=ltn12.sink.table(result),
+          headers = headers,
+        }
+      result = table.concat (result)
+    else
+      result, status, tab = http_digest.request (URL)
+    end
+    local wget_status = status                          -- wget has a strange return code
+    if status == 200 then
+      wget_status = 0
+    else                                                -- 2017.05.05 add error logging
+      local error_message = "WGET status: %s, request: %s"  -- 2017.05.25 fix wget error logging format
+      _log (error_message: format (status, request_URI))
+    end
   end
   return wget_status, result or '', status            -- note reversal of parameter order cf. http.request()
 end
