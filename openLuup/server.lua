@@ -262,16 +262,13 @@ local function wget (request_URI, Timeout, Username, Password)
     else
       result, status = scheme.request (URL)
     end
-    local wget_status = status                          -- wget has a strange return code
-    if status == 401 then                                     -- Retry with digest
-      local http_digest = require "http-digest"               -- 2018.05.07
-      scheme = http_digest                                    
-      result, status = scheme.request (URL)
-    end
+--  
   end
+  
+  local wget_status = status                          -- wget has a strange return code
   if status == 200 then
-    wget_status = 0
-  else                                               
+    wget_status = 0 
+  else                                                -- 2017.05.05 add error logging
     local error_message = "WGET status: %s, request: %s"  -- 2017.05.25 fix wget error logging format
     _log (error_message: format (status, request_URI))
   end
