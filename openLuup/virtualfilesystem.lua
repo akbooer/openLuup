@@ -300,7 +300,7 @@ local S_openLuup_svc = [[
     </action>
 
     <action>
-      <name>RunScene</name>
+      <name>RunopenLuupScene</name>
       <argumentList>
         <argument>
           <name>scn</name>
