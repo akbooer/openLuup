@@ -1,7 +1,7 @@
 local ABOUT = {
-  NAME          = "openLuup.server",
-  VERSION       = "2018.03.22",
-  DESCRIPTION   = "HTTP/HTTPS GET/POST requests server core and luup.inet.wget client",
+  NAME          = "openLuup.http",
+  VERSION       = "2018.04.12",
+  DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
@@ -73,6 +73,10 @@ local ABOUT = {
 -- 2018.03.09   move myIP code to servertables (more easily shared with other servers, eg. SMTP)
 -- 2018.03.15   fix relative URL handling in request object
 -- 2018.03.22   export http_handler from servlet for use by console server page
+-- 2018.03.24   add connection count to iprequests
+-- 2018.04.09   add _debug() listing of external luup.inet.wget requests
+-- 2018.04.11   refactor to use io.server.new()
+-- 2018.04.12   don't bother to try and response to closed socket!
 
 
 local socket    = require "socket"
@@ -83,7 +87,7 @@ local ltn12     = require "ltn12"                       -- for wget handling
 local mime      = require "mime"                        -- for basic authorization in wget
 
 local logs      = require "openLuup.logs"
-local scheduler = require "openLuup.scheduler"
+local ioutil    = require "openLuup.io"                 -- for core server functions
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local servlet   = require "openLuup.servlet"
 
@@ -92,9 +96,7 @@ local _log, _debug = logs.register (ABOUT)
 
 -- CONFIGURATION DEFAULTS
 
-local BACKLOG                   = 2000      -- used in socket.bind() for queue length
 local CHUNKED_LENGTH            = 16000     -- size of chunked transfers
-local CLOSE_IDLE_SOCKET_AFTER   = 90        -- number of seconds idle after which to close socket
 local MAX_HEADER_LINES          = 100       -- limit lines to help mitigate DOS attack or other client errors
 local URL_AUTHORIZATION         = true      -- use URL rather than Authorization header for wget basic authorization
 
@@ -104,7 +106,7 @@ local PORT -- filled in during start()
 
 local status_codes = tables.status_codes
 
-local iprequests = {}     -- log of incoming requests {ip = ..., mac = ..., time = ...} indexed by ip
+local iprequests = {}     -- log of incoming requests for console Server page
 
 local myIP = tables.myIP
 
@@ -161,7 +163,7 @@ local self_reference = {
   [myIP] = true,
 }
 
-local function request_object (request_URI, headers, post_content, method, http_version, sock, ip)
+local function request_object (request_URI, headers, post_content, method, http_version, client, ip)
   
   local request_start = socket.gettime()
   
@@ -210,7 +212,8 @@ local function request_object (request_URI, headers, post_content, method, http_
       internal      = internal,
       parameters    = parameters or {},
       request_start = request_start,
-      sock          = sock,
+      sock          = client,     -- TODO: deprecated
+      client        = client,     -- alias, to highlight difference from normal socket
       ip            = ip,
     }
 end
@@ -244,6 +247,7 @@ local function wget (request_URI, Timeout, Username, Password)
       URL.password = Password
     end
     URL = url.build (URL)                             -- reconstruct request for external use
+    _debug (URL)
     scheme.TIMEOUT = Timeout or 5
     
     if Username and not URL_AUTHORIZATION then        -- 2017.06.14 build Authorization header
@@ -373,21 +377,22 @@ end
 
 -- build response and send it
 local function respond (request, ...)
-  local sock = request.sock
-
+  local client = request.client
+  if client.closed then return end    -- 2018.04.12 don't bother to try and response to closed socket!
+  
   local headers, response, chunked = http_response (...)
-  send (sock, headers)
+  send (client, headers)
   
   local ok, err, nc
   if chunked then
-    ok, err, nc= send_chunked (sock, response, CHUNKED_LENGTH)
+    ok, err, nc= send_chunked (client, response, CHUNKED_LENGTH)
   else
-    ok, err, nc = send (sock, response)
+    ok, err, nc = send (client, response)
   end
   
   local t = math.floor (1000*(socket.gettime() - request.request_start))
   local completed = "request completed (%d bytes, %d chunks, %d ms) %s"
-  _log (completed:format (#response, nc, t, tostring(sock)))
+  _log (completed:format (#response, nc, t, tostring(client)))
   
 end
  
@@ -408,35 +413,31 @@ local function http_read_headers (sock)
 end
 
 -- receive client request
-local function receive (sock)
+local function receive (client)
   local request                               -- the request object
   local headers, post_content
-  
-  local ip = sock:getpeername() or '?'        -- who's asking?
-  iprequests [ip] = {ip = ip, date = os.time(), mac = "00:00:00:00:00:00"} --TODO: real MAC address - how?
-  
-  local line, err = sock:receive()        -- read the request line
+    
+  local line, err = client:receive()        -- read the request line
   if not err then  
-    _log (line .. ' ' .. tostring(sock))
+    _log (line .. ' ' .. tostring(client))
     
     -- Request-Line = Method SP Request-URI SP HTTP-Version CRLF
     local method, request_URI, http_version = line: match "^(%u+)%s+(.-)%s+(HTTP/%d%.%d)%s*$"
     
-    headers, err = http_read_headers (sock)
+    headers, err = http_read_headers (client)
     if method == "POST" then
       local length = tonumber(headers["Content-Length"]) or 0
-      post_content, err = sock:receive(length)
+      post_content, err = client:receive(length)
     end
   
-    request = request_object (request_URI, headers, post_content, method, http_version, sock, ip)
+    request = request_object (request_URI, headers, post_content, method, http_version, client, client.ip)
      
     if not (method == "GET" or method == "POST") then
       err = "Unsupported HTTP request:" .. method
     end
   
   else
-    sock: close ()
-    _log (("socket closed: %s %s"): format (err or '?', tostring (sock)))
+    client: close (ABOUT.NAME .. ".receive " .. err)
   end
   return request, err
 end
@@ -452,52 +453,21 @@ end
 -- (may handle multiple requests sequentially)
 --
 
-local function new_client (sock)
-  local expiry
+local function HTTPservlet (client)
   
-  local function incoming (sock)
-    local request, err = receive (sock)                       -- get the request         
+  -- incoming() is called by the io.server when there is data to read
+  local function incoming ()
+    local request, err = receive (client)                         -- get the request         
     if not err then
-      --  returns are as in err, msg, jobNo = scheduler.run_job ()
-      local _, _, _ = servlet.execute (request, respond)
-    end
-    
-    expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER      -- update socket expiry 
-    if err and (err ~= "closed") then 
-      _log ("read error: " ..  tostring(err) .. ' ' .. tostring(sock))
-      sock: close ()                                -- it may be closed already
-      scheduler.socket_unwatch (sock)               -- stop watching for incoming
-      expiry = 0
-    end
-  end
-
---  local function job (devNo, args, job)
-  local function job ()
-    if socket.gettime () > expiry then                    -- close expired connection... 
-      _log ("closing client connection: " .. tostring(sock))
-      sock: close ()                                      -- it may be closed already
-      scheduler.socket_unwatch (sock)                     -- stop watching for incoming
-      return scheduler.state.Done, 0                      -- and exit
-    else
-      return scheduler.state.WaitingToStart, 5            -- ... checking every 5 seconds
+      local err, msg, jobNo = servlet.execute (request, respond)  --  returns are as for scheduler.run_job ()
+      local _, _, _ = err, msg, jobNo                             -- unused, at present
+    else 
+      client: close (ABOUT.NAME.. ".incoming " .. err)
     end
   end
   
-  -- new_client ()
-  local ip = sock:getpeername() or '?'                    -- who's asking?
-  local connect = "new client connection from %s: %s"
-  _log (connect:format (ip, tostring(sock)))
-  expiry = socket.gettime () + CLOSE_IDLE_SOCKET_AFTER    -- set initial socket expiry 
-  sock:settimeout(nil)                                    -- this is a timeout on the HTTP read
---  sock:settimeout(10)                                   -- this is a timeout on the HTTP read
-  sock:setoption ("tcp-nodelay", true)                    -- trying to fix timeout error on long strings
-  scheduler.socket_watch (sock, incoming)                 -- start listening for incoming
---  local err, msg, jobNo = scheduler.run_job {job = job}
-  local _, _, jobNo = scheduler.run_job {job = job}
-  if jobNo and scheduler.job_list[jobNo] then
-    local info = "job#%d :HTTP new connection %s"
-    scheduler.job_list[jobNo].type = info: format (jobNo, tostring(sock))
-  end
+  -- HTTPservlet ()
+  return incoming   -- callback for incoming messages
 end
 
 ----
@@ -505,41 +475,24 @@ end
 -- start (), sets up the HTTP request handler
 -- returns list of utility function(s)
 -- 
-local function start (port, config)
-  config = config or {}               -- 2017.03.15 server configuration table
-  BACKLOG = config.Backlog or BACKLOG
-  CHUNKED_LENGTH = config.ChunkedLength or CHUNKED_LENGTH
-  CLOSE_IDLE_SOCKET_AFTER = config.CloseIdleSocketAfter or CLOSE_IDLE_SOCKET_AFTER
+local function start (config)
   URL_AUTHORIZATION = config.WgetAuthorization == "URL"
-  PORT = port
+  PORT = tostring(config.Port or 3480)
   
-  local server, msg = socket.bind ('*', port, BACKLOG) 
-   
-  -- new client connection
-  local function server_incoming (server)
-    repeat                                              -- could be multiple requests
-      local sock = server:accept()
-      if sock then new_client (sock) end
-    until not sock
-  end
+  -- start(), create HTTP server
+  return ioutil.server.new {
+      port      = PORT,                                 -- incoming port
+      name      = "HTTP",                               -- server name
+      backlog   = config.Backlog or 2000,               -- queue length
+      idletime  = config.CloseIdleSocketAfter or 90,    -- connect timeout
+      servlet   = HTTPservlet,                          -- our own servlet
+      connects  = iprequests,                           -- use our own table for info
+    }
 
-  local function stop()
-    server: close()
-  end
-
-  -- start(), create HTTP server job and start listening
-  if server then 
-    server:settimeout (0)                                       -- don't block 
-    scheduler.socket_watch (server, server_incoming)            -- start watching for incoming
-    _log (table.concat {"starting HTTP server on ", myIP, ':', port, ' ', tostring(server)})
-    return {stop = stop}
-  else
-    _log ("error starting server: " .. (msg or '?'))
-  end  
 end
 
---- return module variables and methods
 
+--- return module variables and methods
 return {
     ABOUT = ABOUT,
     
@@ -563,7 +516,6 @@ return {
     --methods
     add_callback_handlers = servlet.add_callback_handlers,
     wget = wget,
-    send = send,
     start = start,
   }
 
