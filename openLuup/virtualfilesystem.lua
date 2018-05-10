@@ -218,7 +218,16 @@ local I_openLuup_impl = [[
         EmptyTrash (lul_settings)
       </job>
     </action>
-    
+
+     <action>
+      <serviceId>openLuup</serviceId>
+      <run>
+	local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+	luup.call_action(sid, "RunScene",{ SceneNum=lul_settings.scn }, 0)
+        </run>
+      </argumentList>
+    </action>
+
     <action>
       <serviceId>openLuup</serviceId>
       <name>SetHouseMode</name>
@@ -288,7 +297,17 @@ local S_openLuup_svc = [[
         </argument>
       </argumentList>
     </action>
-  
+
+    <action>
+      <name>RunScene</name>
+      <argumentList>
+        <argument>
+          <name>scn</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+
     <action>
       <name>SetHouseMode</name>
       <argumentList>
