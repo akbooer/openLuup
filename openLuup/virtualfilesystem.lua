@@ -221,6 +221,7 @@ local I_openLuup_impl = [[
 
      <action>
       <serviceId>openLuup</serviceId>
+      <name>RunopenLuupScene</name>
       <run>
 	local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
 	luup.call_action(sid, "RunScene",{ SceneNum=lul_settings.scn }, 0)
