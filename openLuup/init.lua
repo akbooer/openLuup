@@ -48,7 +48,7 @@ local ABOUT = {
 -- 2018.04.04  add POP3 server
 -- 2018.04.23  re-order module loading (to tidy startup log banners)
 -- 2018.04.25  change server module name back to http, and use opeLuup.HTTP... attributes
--- 2018.08.11  add ArmedTripped function to pulse
+-- 2018.05.11  add ArmedTripped function to pulse
 
 
 local logs = require "openLuup.logs"
