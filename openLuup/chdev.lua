@@ -169,7 +169,7 @@ local function create (x)
   dev:attr_set {
     id              = x.devNo,                                          -- device id
     altid           = x.internal_id and tostring(x.internal_id) or '',  -- altid (called id in luup.devices, confusing, yes?)
-    category_num    = x.category_num or d.category_num,     -- 2017.05.10
+    category_num    = tonumber(x.category_num or d.category_num),     -- 2017.05.10 --2018.05.11
     device_type     = d.device_type or '',
     device_file     = x.upnp_file,
     device_json     = d.json_file,
