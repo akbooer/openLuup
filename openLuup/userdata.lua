@@ -624,7 +624,7 @@ local function load_user_data (user_data_json)
             username        = d.username,
             password        = d.password,
             category_num    = d.category_num,
-            subcategory_num = d.subcategory_num
+            subcategory_num = d.subcategory_num,
           }
         dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
         -- set other device attributes
