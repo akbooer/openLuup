@@ -48,6 +48,7 @@ local ABOUT = {
 -- 2018.04.04  add POP3 server
 -- 2018.04.23  re-order module loading (to tidy startup log banners)
 -- 2018.04.25  change server module name back to http, and use opeLuup.HTTP... attributes
+-- 2018.08.11  add ArmedTripped function to pulse
 
 
 local logs = require "openLuup.logs"
@@ -94,6 +95,17 @@ end
 local chkpt = 1
 local function openLuupPulse ()
   chkpt = chkpt + 1
+  for k, v in pairs(luup.devices) do
+    if v.category_num == 4 and (v.subcategory_num == 3 or v.subcategory_num == 6) then
+      local trip = luup.variable_set("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", k)
+      local arm = luup.variable_set("urn:micasaverde-com:serviceId:SecuritySensor1", "Armed", k)
+      if trip == "1" and arm == "1" then
+        luup.variable_set("urn:micasaverde-com:serviceId:SecuritySensor1", "ArmedTripped", "1", k)
+      else
+        luup.variable_set("urn:micasaverde-com:serviceId:SecuritySensor1", "ArmedTripped", "0", k)
+      end
+    end
+  end
   local delay = tonumber (luup.attr_get "openLuup.UserData.Checkpoint") or 6  -- periodic pulse ( default 6 minutes)
   timers.call_delay(openLuupPulse, delay*60, '', 'openLuup checkpoint #' .. chkpt)  
   -- CHECKPOINT !
