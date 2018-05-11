@@ -45,6 +45,7 @@ local ABOUT = {
 -- 2018.03.18  create default device variables if they have a defaultValue in the service definition
 -- 2018.04.03  add jobs table to device metadata (for status reporting to AltUI)
 -- 2018.04.05  move get/set status from devices to here (more a luup thing, than a device thing)
+-- 2018.05.11  Added category and subcategory. Fixed type inconsistency.
 
 
 local logs      = require "openLuup.logs"
@@ -197,7 +198,7 @@ local function create (x)
   
   local luup_device =     -- this is the information that appears in the luup.devices table
     {
-      category_num        = a.category_num,
+      category_num        = tonumber(a.category_num),
       description         = a.name,
       device_num_parent   = a.id_parent,
       device_type         = a.device_type, 
@@ -254,7 +255,7 @@ end
 local function create_device (
       device_type, internal_id, description, upnp_file, upnp_impl, 
       ip, mac, hidden, invisible, parent, room, pluginnum, statevariables,
-      pnpid, nochildsync, aeskey, reload, nodupid  
+      pnpid, nochildsync, aeskey, reload, nodupid, category_num, subcategory_num  
   )
   local devNo = tonumber (luup.attr_get "Device_Num_Next")
   luup.attr_set ("Device_Num_Next", devNo + 1)
@@ -278,6 +279,8 @@ local function create_device (
     aeskey = aeskey,                    -- (string)   no idea
     reload = reload,                    -- (boolean)
     nodupid = nodupid,                  -- (boolean)  no idea
+    category_num = category_num,        -- (number)
+    subcategory_num = subcategory_num   -- (number)
   }
   return devNo, dev
 end
