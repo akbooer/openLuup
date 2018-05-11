@@ -130,8 +130,8 @@ end
 do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, replaced by openLuup)
   luup.attr_set ("Device_Num_Next", 1)  -- this may get overwritten by a subsequent user_data load
 
-  local device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum
-  local _ = {device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum}
+  local device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum, category_num, subcategory_num
+  local _ = {device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum, category_num, subcategory_num}
   invisible = true
   luup.create_device ("urn:schemas-micasaverde-com:device:ZWaveNetwork:1", '',
     "ZWave", "D_ZWaveNetwork.xml", upnp_impl, ip, mac, hidden, invisible)
