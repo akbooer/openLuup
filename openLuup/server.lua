@@ -77,6 +77,7 @@ local ABOUT = {
 -- 2018.04.09   add _debug() listing of external luup.inet.wget requests
 -- 2018.04.11   refactor to use io.server.new()
 -- 2018.04.12   don't bother to try and response to closed socket!
+-- 2018.05.07   Add digest auth retry
 
 
 local socket    = require "socket"
