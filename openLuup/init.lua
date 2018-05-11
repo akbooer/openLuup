@@ -96,7 +96,7 @@ local chkpt = 1
 local function openLuupPulse ()
   chkpt = chkpt + 1
   for k, v in pairs(luup.devices) do
-    if v.category_num == 4 and v.id_parent == 0 then
+    if v.category_num == 4 and v.device_parent_num == "0" then
       local trip = luup.variable_get("urn:micasaverde-com:serviceId:SecuritySensor1", "Tripped", k)
       local arm = luup.variable_get("urn:micasaverde-com:serviceId:SecuritySensor1", "Armed", k)
       if trip == "1" and arm == "1" then
