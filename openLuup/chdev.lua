@@ -280,7 +280,7 @@ local function create_device (
     reload = reload,                    -- (boolean)
     nodupid = nodupid,                  -- (boolean)  no idea
     category_num = category_num,        -- (number)
-    subcategory_num = subcategory_num   -- (number)
+    subcategory_num = subcategory_num,  -- (number)
   }
   return devNo, dev
 end
