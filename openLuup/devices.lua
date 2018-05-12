@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2016.11.19",
+  VERSION       = "2018.05.01",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -30,7 +30,16 @@ local ABOUT = {
 -- 2016.04.15  added per-device variable numbering (thanks @explorer)
 -- 2016.04.29  added device status
 -- 2016.07.19  improve call_action error handling
--- 2016.11.19  addeed callback name to watch callback structure
+-- 2016.11.19  added callback name to watch callback structure
+
+-- 2018.01.30  changed variable numbering to start at 0 (for compatibility with ModifyUserData)
+-- 2018.01.31  add delete_vars() to device (for ModifyUserData to replace all state variables)
+-- 2018.04.05  move get/set status to chdev (more a luup thing than a devices thing)
+-- 2018.04.25  inspired to start work on 'VariableWithHistory'
+-- see: http://forum.micasaverde.com/index.php/topic,16166.0.html
+-- and: http://blog.abodit.com/2013/02/variablewithhistory-making-persistence-invisible-making-history-visible/
+-- 2018.05.01  use millisecond resolution time for variable history (luup.variable_get truncates this)
+
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 
@@ -68,27 +77,45 @@ local variable = {}             -- variable CLASS
 function variable.new (name, serviceId, devNo)    -- factory for new variables
   local device = device_list[devNo] or {}
   local vars = device.variables or {}
-  local varID = #vars + 1
+  local varID = #vars                             -- 2018.01.31
   new_userdata_dataversion ()                     -- say structure has changed
-  vars[varID] = {
+  vars[varID + 1] = {                             -- 2018.01.31
       -- variables
       dev       = devNo,
       id        = varID,                          -- unique ID
       name      = name,                           -- name (unique within service)
       srv       = serviceId,
+      silent    = nil,                            -- set to true to mute logging
       watchers  = {},                             -- callback hooks
       -- methods
       set       = variable.set,
     }
-  return vars[varID]
+  return vars[#vars]
 end
   
 function variable:set (value)
-  new_dataversion ()                              -- say value has changed
+  local t = scheduler.timenow()                   -- time to millisecond resolution
+  value = tostring(value or '')                   -- all device variables are strings
+  --
+  -- 2018.04.25 'VariableWithHistory'
+  -- note that retention policies are not implemented here, so the history just grows
+  local history = self.history 
+  if history and value ~= self.value then         -- only record CHANGES in value
+    local v = tonumber(value)                     -- only numeric values at the moment
+    if v then
+      local n = #history
+      history[n+1] = t
+      history[n+2] = v
+    end
+  end
+  --
+  local n = dataversion.value + 1                 -- say value has changed
+  dataversion.value = n
+  
   self.old      = self.value or "EMPTY"
-  self.value    = tostring(value or '')           -- set new value (all device variables are strings)
-  self.time     = os.time()                       -- save time of change
-  self.version  = dataversion.value               -- save version number
+  self.value    = value                           -- set new value 
+  self.time     = t                               -- save time of change
+  self.version  = n                               -- save version number
   return self
 end
 
@@ -172,6 +199,8 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
       srv[var] = srv[var] or {}
       local watch = srv[var]
       watch[#watch+1] = callback  -- set the watch on the variable or service
+    else
+      -- no service id
     end
   end
 end
@@ -194,20 +223,36 @@ local function new (devNo)
   local version               -- set device version (used to flag changes)
   local missing_action        -- an action callback to catch missing actions
   local watchers    = {}      -- list of watchers for any service or variable
-  local status      = -1      -- device status
+--  local status      = -1      -- device status
   
-  local function status_get (self)            -- 2016.04.29
-    return status
-  end
+--  local function status_get (self)            -- 2016.04.29
+--    return status
+--  end
   
-  local function status_set (self, value)     -- 2016.04.29
-    if status ~= value then
---      new_dataversion ()
-      new_userdata_dataversion ()
-      status = value
+--  local function status_set (self, value)     -- 2016.04.29
+--    if status ~= value then
+----      new_dataversion ()
+--      new_userdata_dataversion ()
+--      status = value
+--    end
+--  end
+  
+  -- function delete_vars
+  -- parameter: device 
+  -- deletes all variables in all services (but retains actions)
+  local function delete_vars (dev)
+    local v = dev.variables
+    for i in ipairs(v) do v[i] = nil end    -- clear each element, don't replace whole table
+    
+    for _,svc in pairs(dev.services) do
+      local v = svc.variables
+      for name in pairs (v) do    -- remove all the old service variables!
+        v[name] = nil             -- clear each element, don't replace whole table
+      end
     end
+    
+    new_userdata_dataversion ()
   end
-  
   
   -- function: variable_set
   -- parameters: service (string), variable (string), value (string), watch (boolean)
@@ -351,12 +396,14 @@ local function new (devNo)
       attr_get            = attr_get,
       attr_set            = attr_set,
       
-      status_get          = status_get,
-      status_set          = status_set,
+--      status_get          = status_get,
+--      status_set          = status_set,
       
       variable_set        = variable_set, 
       variable_get        = variable_get,
       version_get         = function () return version end,
+      
+      delete_vars         = delete_vars,    -- 2018.01.31
     }
     
   return device_list[devNo]

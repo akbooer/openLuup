@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2018.04.12",
+  VERSION       = "2018.05.11",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -77,7 +77,7 @@ local ABOUT = {
 -- 2018.04.09   add _debug() listing of external luup.inet.wget requests
 -- 2018.04.11   refactor to use io.server.new()
 -- 2018.04.12   don't bother to try and response to closed socket!
--- 2018.05.07   Add digest auth retry
+-- 2018.04.25   change module name (back) to openLuup.http, as that's all it does now
 
 
 local socket    = require "socket"
@@ -228,6 +228,7 @@ end
 local function wget (request_URI, Timeout, Username, Password) 
   local result, status
   local request = request_object (request_URI)        -- build the request
+  local responseHeaders
   
   if request.internal then
     
@@ -258,20 +259,20 @@ local function wget (request_URI, Timeout, Username, Password)
           Authorization = "Basic " .. mime.b64 (auth),
         }
       result = {}
-      flag, status = scheme.request {
+      flag, status, responseHeaders = scheme.request {
           url=URL, 
           sink=ltn12.sink.table(result),
           headers = headers,
         }
       result = table.concat (result)
     else
-      result, status = scheme.request (URL)
+      result, status, responseHeaders = scheme.request (URL)
     end
     if status == 401 then                                     -- Retry with digest
-      local http_digest = require "http-digest"               -- 2018.05.07		
+      local http_digest = require "http-digest"               -- 2018.05.07
       URL = ("http://" ..Username.. ":" ..Password.. "@" ..string.gsub(request_URI,"http://",""))
       scheme = http_digest
-      result, status = scheme.request (URL)
+      result, status, responseHeaders = scheme.request (URL)
     end
   end
   
@@ -282,7 +283,8 @@ local function wget (request_URI, Timeout, Username, Password)
     local error_message = "WGET status: %s, request: %s"  -- 2017.05.25 fix wget error logging format
     _log (error_message: format (status, request_URI))
   end
-  return wget_status, result or '', status            -- note reversal of parameter order cf. http.request()
+  -- note reversal of first two parameters order cf. http.request()
+  return wget_status, result or '', status, responseHeaders
 end
 
 
@@ -384,7 +386,7 @@ end
 -- build response and send it
 local function respond (request, ...)
   local client = request.client
-  if client.closed then return end    -- 2018.04.12 don't bother to try and response to closed socket!
+  if client.closed then return end    -- 2018.04.12 don't bother to try and respond to closed socket!
   
   local headers, response, chunked = http_response (...)
   send (client, headers)

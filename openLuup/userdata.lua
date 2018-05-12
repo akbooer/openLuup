@@ -1,12 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2017.04.19",
+  VERSION       = "2018.05.11",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -43,19 +44,27 @@ local ABOUT = {
 
 -- 2017.01.18   add HouseMode variable to openLuup device, to mirror attribute, so this can be used as a trigger
 -- 2017.04.19   sort devices_table() output (thanks @a-lurker)
+-- 2017.07.19   ignore temporary "high numbered" scenes (VeraBridge)
+-- 2017.08.27   fix non-numeric device ids in save_user_data()
+--              ...allows renumbering of device ids using luup.attr_set()
+--              ... see: http://forum.micasaverde.com/index.php/topic,50428.0.html
+
+-- 2018.03.02   remove TODO for mode change attributes
+-- 2018.03.24   use luup.rooms.create metatable method
+-- 2018.04.05   do not create status as a device attribute when loading user_data
+-- 2018.04.23   update_plugin_versions additions for ALT... plugins and MySensors
+-- 2018-05.11   Adding device category and subcategory
+
 
 local json    = require "openLuup.json"
-local rooms   = require "openLuup.rooms"
 local logs    = require "openLuup.logs"
 local scenes  = require "openLuup.scenes"
 local chdev   = require "openLuup.chdev"
 local timers  = require "openLuup.timers"   -- for gmt_offset
 local lfs     = require "lfs"
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 --
 -- Here a complete list of top-level (scalar) attributes taken from an actual Vera user_data2 request
@@ -105,7 +114,7 @@ attr ("longitude", "0.0")
 -- other parameters
 attr ("TemperatureFormat", "C")
 attr ("PK_AccessPoint", "88800000")
-attr ("currency", "£")
+attr ("currency", "Â£")
 attr ("date_format", "dd/mm/yy")
 attr ("model", "Not a Vera")
 attr ("timeFormat", "24hr")
@@ -121,7 +130,7 @@ luup.log "startup code completed"
 --  Using_2G = 0,
 --  breach_delay = "30",
 --  category_filter = {},
-  currency = "£",
+  currency = "Â£",
   date_format = "dd/mm/yy",
 --  device_sync = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21",
 --  devices = {},
@@ -134,8 +143,8 @@ luup.log "startup code completed"
 --  local_udn = "uuid:4d494342-5342-5645-0000-000002b03069",
   longitude = "0.0",
   mode_change_delay = "30",
-  mode_change_mode = '',      -- TODO: implement mode_change_mode
-  mode_change_time = '',      -- TODO: implement mode_change_time
+  mode_change_mode = '',
+  mode_change_time = '',
   model = "Not a Vera",
 --  net_pnp = "0",
 --  overview_tabs = {},
@@ -518,20 +527,38 @@ local function update_plugin_versions (installed)
     if id then index_by_type[tostring(id)] = i end
   end
   
-  -- go through devices looking for plugins with ABOUT.VERSION
+  -- go through LOCAL devices looking for clues about their version numbers
   for _, d in pairs (luup.devices or {}) do 
     local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
     local a = d.environment.ABOUT
-    if i and a then
-      local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
-      if v3 then
---        print (d.id,"v1,v2,v3", ("'%s', '%s', '%s'"): format (v1,v2,v3))
-        local IP = installed[i]
-        IP.VersionMajor = v1 % 2000
-        if v3 == '' then
-          IP.VersionMinor = tonumber(v2)
-        else
-          IP.VersionMinor = table.concat ({tonumber(v2),tonumber(v3)}, '.') .. prerelease
+    local IP = installed[i]
+    
+    if IP and d.device_num_parent == 0 then   -- LOCAL devices only!
+      
+      if i and a then     -- plugins with ABOUT.VERSION
+        local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
+        if v3 then
+          IP.VersionMajor = v1 % 2000
+          if v3 == '' then
+            IP.VersionMinor = tonumber(v2)
+          else
+            IP.VersionMinor = table.concat ({tonumber(v2),tonumber(v3)}, '.') .. prerelease
+          end
+        end
+      
+      else    -- it gets harder, so go through variables...               example syntax
+        local known = {
+            ["urn:upnp-org:serviceId:altui1"]         = "Version",           --v2.15
+            ["urn:upnp-org:serviceId:althue1"] 	     = "Version",           --v0.94
+            ["urn:upnp-arduino-cc:serviceId:arduino1"]  = "PluginVersion",   -- 1.4
+          }
+        for _,v in ipairs (d.variables) do    --    (v.srv, v.name, v.value, ...)
+          local name = known[v.srv]
+          if name == v.name then
+            IP.VersionMajor = v.value: match "v?(.*)"   -- remove leading 'v', if present
+            IP.VersionMinor = ''      -- TODO: some refinement possible here with other variables?
+            break
+          end
         end
       end
     end
@@ -561,7 +588,7 @@ local function load_user_data (user_data_json)
     -- ROOMS    
     _log "loading rooms..."
     for _,x in pairs (user_data.rooms or {}) do
-      rooms.create (x.name, x.id)
+      luup.rooms.create (x.name, x.id)            -- 2018.03.24  use luup.rooms.create metatable method
       _log (("room#%d '%s'"): format (x.id,x.name)) 
     end
     _log "...room loading completed"
@@ -596,12 +623,16 @@ local function load_user_data (user_data_json)
             disabled        = d.disabled,
             username        = d.username,
             password        = d.password,
+            category_num    = d.category_num,
+            subcategory_num = d.subcategory_num,
           }
         dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
         -- set other device attributes
         for a,v in pairs (d) do
           if type(v) ~= "table" and not dev.attributes[a] then
-            dev:attr_set (a, v)
+            if a ~= "status" then   -- 2018.04.05 status is NOT a device ATTRIBUTE
+              dev:attr_set (a, v)
+            end
           end
         end
         luup.devices[d.id] = dev                          -- save it
@@ -612,13 +643,15 @@ local function load_user_data (user_data_json)
     _log "loading scenes..."
     local Nscn = 0
     for _, scene in ipairs (user_data.scenes or {}) do
-      local new, msg = scenes.create (scene)
-      if new and scene.id then
-        Nscn = Nscn + 1
-        luup.scenes[scene.id] = new
-        _log (("[%s] %s"): format (scene.id or '?', scene.name))
-      else
-        _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
+      if tonumber(scene.id) < 1e5 then        -- 2017.0719 ignore temporary "high numbered" scenes (VeraBridge)
+        local new, msg = scenes.create (scene)
+        if new and scene.id then
+          Nscn = Nscn + 1
+          luup.scenes[scene.id] = new
+          _log (("[%s] %s"): format (scene.id or '?', scene.name))
+        else
+          _log (table.concat {"error in scene id ", scene.id or '?', ": ", msg or "unknown error"})
+        end
       end
     end
     _log ("number of scenes = " .. Nscn)
@@ -702,6 +735,7 @@ local function devices_table (device_list)
       status          = status,
     }
     for a,b in pairs (d.attributes) do tbl[a] = b end
+    tbl.id = tonumber(tbl.id) or tbl.id      -- 2017.08.27  fix for non-numeric device id
     info[#info+1] = tbl
   end
   return info

@@ -27,7 +27,7 @@ What **openLuup** does:
 
 What it doesn't do:
 
-*    Some less-used HTML requests are not yet implemented, eg. lu_invoke.
+*    Some less-used HTML requests are not yet implemented.
 *    Doesn't support the incoming or timeout action tags in service files,   but does support the device-level incoming tag (for asynchronous socket I/O.)
 *    Doesn’t directly support local serial I/O hardware (there are work-arounds.)
 *    Doesn't run encrypted, or licensed, plugins.
