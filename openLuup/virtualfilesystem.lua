@@ -953,6 +953,45 @@ local I_openLuupCamera1_xml = [[
 </implementation>
 ]]
 
+-- Security Sensor devices
+local I_openLuupSecuritySensor1_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <functions>
+  local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
+
+  function get (name)
+    return (luup.variable_get (sid, name, lul_device))
+  end
+
+  function set (name, val)
+    if val ~= get (name) then
+      luup.variable_set (sid, name, val, lul_device)
+    end
+  end
+
+  function ArmedTrippedCheck()
+    if get "Armed" == '1' and get "Tripped" == '1' then set ("ArmedTripped", '1')
+    else set ("ArmedTripped", '0')
+    end
+  end
+
+  function startup()
+    luup.variable_watch("ArmedTrippedCheck", "Tripped", sid, lul_device)
+  end
+  </functions>
+  <actionList>
+	  <action>
+	  <serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
+	  <name>SetArmed</name>
+	  <run>
+        set ("Armed", lul_settings.newArmedValue)
+	  </run>
+	  </action>
+  </actionList>
+  <startup>startup</startup>
+</implementation>
+]]
 -----
 --
 -- DataYours schema and aggregation definitions for AltUI DataStorage Provider
