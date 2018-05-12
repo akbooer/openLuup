@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2018.04.25",
+  VERSION       = "2018.05.11",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
