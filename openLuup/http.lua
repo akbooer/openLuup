@@ -268,7 +268,12 @@ local function wget (request_URI, Timeout, Username, Password)
     else
       result, status, responseHeaders = scheme.request (URL)
     end
---  
+    if status == 401 then                                     -- Retry with digest
+      local http_digest = require "http-digest"               -- 2018.05.07
+      URL = ("http://" ..Username.. ":" ..Password.. "@" ..string.gsub(request_URI,"http://",""))
+      scheme = http_digest
+      result, status, responseHeaders = scheme.request (URL)
+    end
   end
   
   local wget_status = status                          -- wget has a strange return code
