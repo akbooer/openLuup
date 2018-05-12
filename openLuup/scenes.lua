@@ -370,8 +370,8 @@ local function create (scene_json)
       local job = scheduler.job_list[j]
       local text = info: format (j, t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
       job.type = text
-      jobs[#jobs+1] = j               -- save the jobs we're running
       t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers
+      jobs[#jobs+1] = j               -- save the jobs we're running
     end
   end
 
