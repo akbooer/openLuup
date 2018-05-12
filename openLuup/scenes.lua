@@ -194,6 +194,10 @@ local function create (scene_json)
       ok, user_finalizer, del = lua_code (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20, 2018.01.17,8
       if ok == false then
         _log (scene.name .. " prevented from running by local scene Lua")
+        if t then                                       -- 2018.05.11 Rafale77
+          t.next_run = next_time
+          devutil.new_userdata_dataversion ()
+        end
         return    -- LOCAL cancel
       end
     end
@@ -367,8 +371,8 @@ local function create (scene_json)
       local text = info: format (j, t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
       job.type = text
       jobs[#jobs+1] = j               -- save the jobs we're running
+      t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers
     end
-    t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers -- 2018.05.11 Update next_run even if job did not run
   end
 
   devutil.new_userdata_dataversion ()               -- 2017.07.19
