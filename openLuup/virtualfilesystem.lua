@@ -221,10 +221,10 @@ local I_openLuup_impl = [[
 
      <action>
       <serviceId>openLuup</serviceId>
-      <name>RunopenLuupScene</name>
+      <name>RunScene</name>
       <run>
 	local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
-	luup.call_action(sid, "RunScene",{ SceneNum=lul_settings.scn }, 0)
+	luup.call_action(sid, "RunScene",{ SceneNum=lul_settings.SceneNum }, 0)
         </run>
       </argumentList>
     </action>
@@ -300,10 +300,10 @@ local S_openLuup_svc = [[
     </action>
 
     <action>
-      <name>RunopenLuupScene</name>
+      <name>RunScene</name>
       <argumentList>
         <argument>
-          <name>scn</name>
+          <name>SceneNum</name>
           <direction>in</direction>
         </argument>
       </argumentList>
