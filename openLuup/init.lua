@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.04.29",
+  VERSION       = "2018.05.15",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -244,7 +244,6 @@ do -- TODO: tidy up obsolete files
 --  os.remove "openLuup/server.lua"
 --  os.remove "openLuup/rooms.lua"
 --  os.remove "openLuup/hag.lua"
---  os.remove "openLuup/xml.lua"
 end
 
 local status

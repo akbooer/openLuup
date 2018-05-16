@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.04.05",
+  VERSION       = "2018.05.14",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -103,15 +103,17 @@ local function create (x)
   local dev = devutil.new (x.devNo)   -- create the proto-device
   local services = dev.services
   
-  local ok, d, err = pcall (loader.assemble_device, x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
+--  local ok, d, err = pcall (loader.assemble_device, x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
+  local ok, d, err = true, loader.assemble_device (x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
 
-  if not ok then
-    local fmt = "ERROR [%d] %s / %s / %s : %s"
-    local msg = fmt: format (x.devNo, x.upnp_file or x.device_type or '', 
-                                        x.upnp_impl or '', x.json_file or '', d or '?')
-    _log (msg, "luup.create_device")
-    return
-  end
+--  if not ok or not d then
+--    local fmt = "ERROR [%d] %s / %s / %s : %s"
+--    local msg = fmt: format (x.devNo, x.upnp_file or x.device_type or '', 
+--                                        x.upnp_impl or '', x.json_file or '', d or err or '?')
+--    _log (msg, "luup.create_device")
+--    return
+--  end
+  d = d or {}
   if err then _log (err) end
   local fmt = "[%d] %s / %s / %s"
   local msg = fmt: format (x.devNo, x.upnp_file or d.device_type or '', d.impl_file or '', d.json_file or '')
@@ -168,7 +170,7 @@ local function create (x)
   dev:attr_set {
     id              = x.devNo,                                          -- device id
     altid           = x.internal_id and tostring(x.internal_id) or '',  -- altid (called id in luup.devices, confusing, yes?)
-    category_num    = x.category_num or d.category_num,     -- 2017.05.10
+    category_num    = tonumber (x.category_num or d.category_num) or 0,     -- 2017.05.10, 2018-05-12
     device_type     = d.device_type or '',
     device_file     = x.upnp_file,
     device_json     = d.json_file,

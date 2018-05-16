@@ -365,7 +365,8 @@ function TestSceneRequests:test_scene_list ()
 end
 
 -- now the same thing over again going through the whole HTTP client request / server response chain 
-  local server = require "openLuup.server"
+  local server = require "openLuup.http"
+  server.start {Port = "3480"}
   server.add_callback_handlers (requests)       -- tell the HTTP server to use these callbacks
 
 function TestSceneRequests:test_wget_scene_list ()
