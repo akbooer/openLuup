@@ -1,12 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2017.05.05",
+  VERSION       = "2018.04.26",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -41,13 +42,29 @@ local ABOUT = {
 -- 2017.05.01  add user-defined parameter settings to a job, see luup.job.set[ting]
 -- 2017.05.05  update current time in handling of delays
 
+-- 2018.01.30  add logging info to job structure, move timenow() and sleep() here from timers
+-- 2018.03.21  add default exit state to jobs
+-- 2018.04.07  sandbox string and table system libraries
+-- 2018.04.10  add get_socket_list to methods and timenow/name to the list elements
+-- 2018.04.22  fix missing device 0 description in meta.__index:sandbox ()
+-- 2018.04.25  update sandbox function (I believe that this one actually works properly)
+
+
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
-logs.banner (ABOUT)   -- for version control
+-- LOCAL aliases for timenow() and sleep() functions
+
+local timenow = socket.gettime    -- system time in seconds, with millsecond resolution
+
+-- Sleeps a certain number of milliseconds
+-- NB: doesn't use CPU cycles, but does block the whole process...  not advised!!
+local function sleep (milliseconds)
+  socket.sleep ((tonumber (milliseconds) or 0)/1000)      -- wait a bit
+end
 
 
 -- LOCAL variables
@@ -69,7 +86,7 @@ local function add_to_delay_list (fct, seconds, data, devNo, type)
     delay = seconds,
     devNo = devNo or current_device,
     type = type,
-    time = socket.gettime() + seconds, 
+    time = timenow() + seconds, 
     parameter = data, 
   }
 end
@@ -83,11 +100,13 @@ end
 
 -- socket_watch (socket, action_with_incoming_tag),  add socket to list watched for incoming
 -- optional io parameter is pointer to a device's I/O table with an intercept flag
-local function socket_watch (sock, action, io)  
+local function socket_watch (sock, action, io, name)  
   socket_list[sock] = {
     callback = action,
     devNo = current_device,
-    io = io or {intercept = false},  -- assume no intercepts: incoming data is passed to handler
+    io = io or {intercept = false},   -- assume no intercepts: incoming data is passed to handler
+    time = timenow (),                -- just for the console Sockets page
+    name = name or "anon",            -- ditto
   }
 end
 
@@ -113,49 +132,6 @@ local function context_switch (devNo, fct, ...)
   end
   return restore (pcall (fct, ...))
 end
-
--------
---
--- SANDBOX - protect the top-level global libraries...
--- allow modification individually by device, but report the change
---
-
-local meta = {}  -- 3-dimensional sandbox [deviceNo][table][index]
-
-local sys_index = {}
-
-local function metamethod (table, index, value)
-  local devNo = current_device or '?'
-  meta[devNo] = meta[devNo] or {}
-  local meta  = meta[devNo]
-  meta[table] = meta[table] or {}
-  meta        = meta[table]
-  if value then
-    meta[index] = value
-    _log (("device %s modifying library '%s' with %s = %s"): 
-      format (devNo, sys_index[table] or '?', index, tostring(value)), "WARNING")
-  end
-  return meta[index]
-end
-
-local function sandbox (table)
-  return setmetatable (table, {__index = metamethod, __newindex = metamethod})
-end
-
-local function sandbox_system_libraries ()
-  local idx = {}
-  for a in pairs (_G) do idx[#idx+1] = a end
-  table.sort (idx)                -- just to be neat
-  for _,a in ipairs (idx) do
-    local b = _G[a]
-    if type (b) == "table" and b ~= _G then 
-      sys_index[b] = a
-      _log (a, "openLuup.sandbox")
-      sandbox (b)
-    end
-  end
-end
-
 
 -- CONSTANTS
 
@@ -205,7 +181,96 @@ local job_list = setmetatable (
       end,
     } 
   )
+
+-------------
+--
+-- Sandbox for system libraries
+--
+-- Lua 5.1 strings are very special since EVERY string has a metatable with {__index = string}
+-- You can't sandbox this in the obvious way, because it needs to work for both this
+--
+--   string.foo(str, ...)
+--
+-- and this
+--
+--   str: foo (...)
+--
+-- the code below doesn't prevent modification of the original table's contents
+-- this would have to be done by an empty proxy table with its own __newindex() method
+-- other library modules can generally be sandboxed just with shallow copies
+--
+ 
+local function sandbox (tbl, name)
   
+  local devmsg = "device %s %s '%s.%s' (a %s value)"
+  local function fail(...) error(devmsg: format (...), 3) end
+
+  name = name or "{}"
+  local lookup = {}             -- user function lookup indexed by [device][key]
+  local meta = {__index = {}}   -- used to store proxy functions for each new key
+  
+  function meta:__newindex(k,v)   -- only ever called if key not already defined
+  -- so this sandbox can't protect the original table keys from being changed
+  -- for that, you'd need another layer which makes a shallow copy for each user context
+    
+    -- this is the proxy function which actually calls the user-defined function
+    local function proxy (...) 
+      local d = current_device or 0
+      local fct = (lookup[d] or {}) [k]
+      if not fct then
+        fail (d, "attempted to reference", name, k, "nil")
+      end
+      return fct (...) 
+    end
+
+    local d = current_device or 0   -- k,v pairs are indexed by current device number
+    local vtype = type(v)
+    if vtype ~= "function" then fail (d, "attempted to define", name, k, vtype) end
+    _log (devmsg: format (d, "defined", name, k, vtype), ABOUT.NAME..".sandbox")
+    lookup[d] = lookup[d] or {}
+    lookup[d][k] = v
+    if not tbl[k] then                  -- proxy only needs to be set once
+      rawset (meta.__index, k, proxy)
+    end
+  end
+
+  function meta.__tostring ()    -- totally optional pretty-printing of sandboxed table contents
+    local boxmsg = "\n   [%d] %s"
+    local idxmsg = "        %-12s = %s"
+    local x = {name .. ".sandbox:", '', "   Private items (by device):"}
+    local empty = #x
+    local function p(l) x[#x+1] = l end
+    local function devname (d) 
+      return ((luup.devices[d] or {}).description or "System"): match "^%s*(.+)" 
+    end
+    local function sorted(t)
+      local y = {}
+      for k,v in pairs (t) do y[#y+1] = idxmsg: format (k, tostring(v)) end
+      table.sort (y)
+      return table.concat (y, '\n')
+    end
+    for d, idx in pairs (lookup) do
+      p (boxmsg: format (d, devname(d)))
+      p (sorted(idx))
+    end
+    if #x == empty then x[#x+1] ="\n        -- none --" end
+    p "\n   Shared items: \n"
+    p (sorted (tbl))
+    p ""                 -- blank line at end
+    return table.concat (x, '\n')
+  end
+
+  setmetatable (tbl, meta)
+end
+
+
+sandbox (string, "string")
+
+--
+--
+-------------
+
+
  local function missing (idx)   -- handle missing job tag
     return function (_, _, job)
       job.notes = "no action tag specified for: " .. tostring(idx)
@@ -216,10 +281,12 @@ end
  
 -- dispatch a task
 local function dispatch (job, method)
+  job.logging.invocations = job.logging.invocations + 1  -- how do I run thee?  Let me count the ways.
   local ok, status, timeout = context_switch (job.devNo, job.tag[method] or missing(method), 
                                                   job.target, job.arguments, job) 
   timeout = tonumber (timeout) or 0
   if ok then 
+    status = status or state.Done                 -- 2018.03.21  add default exit state to jobs
     if not valid_state[status or ''] then
       job.notes = "invalid job state returned: " .. tostring(status)
       status = state.Aborted
@@ -229,7 +296,7 @@ local function dispatch (job, method)
     _log ("job aborted : " .. tostring(status))
     status = state.Aborted
   end  
-  job.now = socket.gettime()        -- 2017.05.05  update, since dispatched task may have taken a while
+  job.now = timenow()        -- 2017.05.05  update, since dispatched task may have taken a while
   job.expiry = job.now + timeout
   if exit_state[job.status] then
     job.expiry = job.now + job_linger
@@ -244,6 +311,7 @@ end
 -- parameters: job_number (number), device (string or number)
 -- returns: job_status (number), notes (string)
 local function status (job_number, device)
+  local _ = device
   -- TODO: find out what job 'notes' are
   local info = job_list[job_number] or {}
   -- TODO: implement job number filtering
@@ -265,7 +333,7 @@ local function create_job (action, arguments, devNo, target_device)
       notes       =  '',                -- TODO: find out what job 'notes' are _really_ for - think it's 'comments'?
       timeout     = 0,
       type        = nil,                -- used in request id=status, and possibly elsewhere
-      expiry      = socket.gettime (),                 -- time to go
+      expiry      = timenow(),          -- time to go
       target      = target_device,
       settings    = {},                 -- 2017.05.01  user-defined parameter list
       -- job tag entry points
@@ -273,6 +341,11 @@ local function create_job (action, arguments, devNo, target_device)
         job       = action.job,
         incoming  = action.incoming,
         timeout   = action.timeout,
+      },
+      -- log info
+      logging = {
+        created     = timenow(),
+        invocations = 0,          -- number of times invoked
       },
       -- dispatcher
       dispatch  = dispatch,
@@ -308,6 +381,7 @@ local function run_job (action, arguments, devNo, target_device)
   
   if action.run then              -- run executes immediately and returns true or false
     local ok, response, error_msg = context_switch (devNo, action.run, target, args) 
+    local _ = error_msg     -- unused at present
     args = {}               -- erase input arguments, in case we go on to a <job> (Luup does this)
     
     if not ok then return -1, response end         -- pcall error return with message in response
@@ -364,6 +438,7 @@ local function device_start (entry_point, devNo, name)
     local completion = "%s completed: status=%s, msg=%s, name=%s"
     local text = completion: format (label, tostring(a),tostring(b), tostring(c))
     _log (text)
+    local _ = job   -- unused at present
 --    if job.notes == '' then
 --      job.notes = text      -- use this as the startup job comments
 --    end
@@ -373,29 +448,10 @@ local function device_start (entry_point, devNo, name)
   local jobNo = create_job ({job = startup_job}, {}, devNo)
   local job = job_list[jobNo]
   local text = "job#%d :plugin %s"
-  job.type = text: format (jobNo, name or '')
+  job.type = text: format (jobNo, (name or ''): match "^%s*(.+)")
   startup_list[jobNo] = job  -- put this into the startup job list too 
   return jobNo
 end    
-    -- TODO: device startup status and messages
-  --[[
-  startup": {
-
-    "tasks": 
-
-[
-
-        {
-            "id": 1,
-            "status": 2,
-            "type": "Test Plugin[58]",
-            "comments": "Lua Engine Failed to Load"
-        }
-    ]
-
-},
-  ]]--
-
 
 -- step through one cycle of task processing
 local function task_callbacks ()
@@ -413,7 +469,7 @@ local function task_callbacks ()
   
     for jobNo, job in pairs (local_job_list) do 
       
-      job.now = socket.gettime ()
+      job.now = timenow()
       
       if job.status == state.WaitingToStart and job.now >= job.expiry then
         job.status = state.InProgress   -- wake up after timeout period
@@ -433,7 +489,7 @@ local function task_callbacks ()
         end
       end
 
-      job.now = socket.gettime()        -- 2017.05.05  update, since dispatched job may have taken a while
+      job.now = timenow()        -- 2017.05.05  update, since dispatched job may have taken a while
       if exit_state[job.status] and job.now > job.expiry then 
         job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local_job_list)
       end
@@ -499,14 +555,14 @@ local function luup_callbacks ()
 --  until #watch_list == 0 or N > 5   -- guard against race condition: a changes b, b changes a
   
   -- call_delay list  
-  local now = socket.gettime()
+  local now = timenow()
   local old_list = delay_list 
   delay_list = {}                        -- new list, because callbacks may add to delay list
   for _, schedule in ipairs (old_list) do 
     if schedule.time <= now then 
       local ok, msg = context_switch (schedule.devNo, schedule.callback, schedule.parameter) 
       if not ok then _log (tostring(schedule.callback) .. " ERROR: " .. (msg or '?'), "luup.delay_callback") end
-      now = socket.gettime()        -- 2017.05.05  update, since dispatched task may have taken a while
+      now = timenow()        -- 2017.05.05  update, since dispatched task may have taken a while
     else
       delay_list[#delay_list+1] = schedule   -- carry forward into new list      
     end
@@ -514,6 +570,7 @@ local function luup_callbacks ()
 end
 
 local function stop (code)
+  local _ = code          -- unused at present
   _log ("schedule stop request after " .. next_job_number .. " jobs")
   exit_code = 0
 end
@@ -551,20 +608,21 @@ return {
     startup_list      = startup_list,
     --methods
     add_to_delay_list = add_to_delay_list,
-    current_context   = function() return current_device end, -- TODO: deprecated
     current_device    = function() return current_device end, 
     context_switch    = context_switch,
     delay_list        = function () return delay_list end,
+    get_socket_list   = function () return socket_list end,
     device_start      = device_start,
     kill_job          = kill_job,
     run_job           = run_job,
     status            = status,   
-    watch_callback    = watch_callback,
-    sandbox           = sandbox_system_libraries,
     socket_watch      = socket_watch,
     socket_unwatch    = socket_unwatch,
+    sleep             = sleep,
     start             = start,
     stop              = stop,
+    timenow           = timenow,
+    watch_callback    = watch_callback,
 }
 
 ------------

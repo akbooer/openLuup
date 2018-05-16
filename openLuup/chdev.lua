@@ -1,12 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2017.05.10",
+  VERSION       = "2018.04.05",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -41,16 +42,19 @@ local ABOUT = {
 
 -- 2017.05.10  add category_num and subcategory_num to create() table parameters (thanks @dklinkman)
 
+-- 2018.03.18  create default device variables if they have a defaultValue in the service definition
+-- 2018.04.03  add jobs table to device metadata (for status reporting to AltUI)
+-- 2018.04.05  move get/set status from devices to here (more a luup thing, than a device thing)
+
+
 local logs      = require "openLuup.logs"
 
 local devutil   = require "openLuup.devices"
 local loader    = require "openLuup.loader"
 local scheduler = require "openLuup.scheduler"
 
---  local log
-local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
-
-logs.banner (ABOUT)   -- for version control
+--  local _log() and _debug()
+local _log, _debug = logs.register (ABOUT)
 
 -- utilities
 
@@ -95,6 +99,7 @@ local function create (x)
   -- {devNo, device_type, internal_id, description, upnp_file, upnp_impl, 
   -- ip, mac, hidden, invisible, parent, room, pluginnum, statevariables, ...}
   
+  _debug (x.description)
   local dev = devutil.new (x.devNo)   -- create the proto-device
   local services = dev.services
   
@@ -125,6 +130,21 @@ local function create (x)
     end
   end
   
+  -- 2018.03.18  create default device variables if they have a defaultValue in the service definition
+  -- this is so that newly created devices have, at least, a minimal set of variables with defaults
+  -- these may well get overwritten in the following block when statevariables are enumerated
+  for _,srv in ipairs(d.service_list or {}) do
+    local sdata = loader.service_data         -- delve into the loader's cache of service info
+    local sid = srv.serviceId
+    _debug (sid)
+    for _, var in ipairs ((sdata[sid] or {}).variables or {}) do
+      if var.defaultValue then
+        _debug (var.name, var.defaultValue)
+        dev:variable_set (sid, var.name, var.defaultValue)
+      end
+    end
+  end
+
   -- go through the variables and set them
   -- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
   if type(x.statevariables) == "table" then
@@ -171,6 +191,9 @@ local function create (x)
   }
   
   local a = dev.attributes
+-- TODO: consider protecting device attributes...
+--  setmetatable (dev.attributes, {__newindex = 
+--          function (_,x) error ("ERROR: attempt to create new device attribute "..x,2) end})
   
   local luup_device =     -- this is the information that appears in the luup.devices table
     {
@@ -201,10 +224,23 @@ local function create (x)
                               protocol = d.protocol,
                               -- other fields created on open include socket and intercept
                             }
+  dev.jobs                = {}              -- 2018.04.03
   -- note that all the following methods should be called with device:function() syntax...
   dev.is_ready            = function () return true end          -- TODO: wait on startup sequence 
   dev.status              = -1                                   -- 2016.04.29  add device status
   dev.supports_service    = function (self, service) return not not services[service] end
+
+  function dev:status_get ()            -- 2016.04.29, 2018.04.05
+    return dev.status
+  end
+  
+  function dev:status_set (value)     -- 2016.04.29, 2018.04.05
+    if dev.status ~= value then
+      devutil.new_userdata_dataversion ()
+      dev.status = value
+    end
+  end
+
 
   return setmetatable (luup_device, {__index = dev} )   --TODO:    __metatable = "access denied"
 end

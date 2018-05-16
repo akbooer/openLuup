@@ -5,7 +5,7 @@ module(..., package.seeall)
 ABOUT = {
   NAME          = "graphite_cgi",
   VERSION       = "2017.02.21",
-  DESCRIPTION   = "Graphite",
+  DESCRIPTION   = "WSAPI CGI interface to Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
   DOCUMENTATION = "",

@@ -1,5 +1,7 @@
 -- first-time download and install of openLuup files from GitHub
 
+-- 2018.02.17  add local ./www/ directory
+
 local lua = "lua5.1"     -- change this to "lua" if required
 
 local x = os.execute
@@ -36,6 +38,7 @@ _, code = http.request{
 assert (code == 200, "GitHub download failed with code " .. code)
 
 p "creating required files and folders"
+lfs.mkdir "www"
 lfs.mkdir "files"
 lfs.mkdir "icons"
 lfs.mkdir "backup"    -- thanks @a-lurker

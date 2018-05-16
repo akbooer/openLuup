@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2017.02.21",
+  VERSION       = "2018.05.02",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2017 AK Booer
+  Copyright 2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -115,8 +115,22 @@ local D_openLuup_json = [[
 					"left": "0",
 					"Display": {
 						"Service": "openLuup",
-						"Variable": "Version",
+						"Variable": "StartTime",
 						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "openLuup",
+						"Variable": "Version",
+						"Top": 120,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -132,7 +146,7 @@ local D_openLuup_json = [[
 						"text": "<a href='console' target='_blank'>CONSOLE interface</a>"
 					},
 					"Display": {
-						"Top": 140,
+						"Top": 160,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -148,7 +162,7 @@ local D_openLuup_json = [[
 						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
 					},
 					"Display": {
-						"Top": 180,
+						"Top": 200,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -156,6 +170,17 @@ local D_openLuup_json = [[
 				}
 			]
 		}
+  ],
+  "eventList2": [
+    {
+      "id": 1,
+      "label": {
+        "lang_tag": "triggers_are_not_implemented",
+        "text": "Triggers not implemented, use Watch instead"
+      },
+      "serviceId": "openLuup",
+      "argumentList": []
+    }
   ],
   "DeviceType": "openLuup"
 }
@@ -180,9 +205,26 @@ local I_openLuup_impl = [[
     
     <action>
       <serviceId>openLuup</serviceId>
-      <name>GetStats</name>
+      <name>SendToTrash</name>
+      <job>
+        SendToTrash (lul_settings)
+      </job>
+    </action>
+    
+    <action>
+      <serviceId>openLuup</serviceId>
+      <name>EmptyTrash</name>
+      <job>
+        EmptyTrash (lul_settings)
+      </job>
+    </action>
+    
+    <action>
+      <serviceId>openLuup</serviceId>
+      <name>SetHouseMode</name>
       <run>
-      -- note that there's no code, but the action has return parameters (see service file)
+        local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+        luup.call_action (sid, "SetHouseMode", lul_settings)
       </run>
     </action>
   
@@ -216,26 +258,47 @@ local S_openLuup_svc = [[
     </action>
 
     <action>
-      <name>GetStats</name>
+      <name>SendToTrash</name>
       <argumentList>
         <argument>
-          <name>CPU</name>
-          <direction>out</direction>
-          <relatedStateVariable>CpuLoad</relatedStateVariable>
+          <name>Folder</name>
+          <direction>in</direction>
         </argument>
         <argument>
-          <name>Memory</name>
-          <direction>out</direction>
-          <relatedStateVariable>Memory_Mb</relatedStateVariable>
+          <name>MaxDays</name>
+          <direction>in</direction>
         </argument>
         <argument>
-          <name>Uptime</name>
-          <direction>out</direction>
-          <relatedStateVariable>Uptime_Days</relatedStateVariable>
+          <name>MaxFiles</name>
+          <direction>in</direction>
+        </argument>
+        <argument>
+          <name>FileTypes</name>
+          <direction>in</direction>
         </argument>
       </argumentList>
     </action>
   
+    <action>
+      <name>EmptyTrash</name>
+      <argumentList>
+        <argument>
+          <name>AreYouSure</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+  
+    <action>
+      <name>SetHouseMode</name>
+      <argumentList>
+        <argument>
+          <name>Mode</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+
   </actionList>
 </scpd>
 ]]
@@ -439,8 +502,8 @@ local D_VeraBridge_dev = [[
     <manufacturer>akbooer</manufacturer>
     <manufacturerURL></manufacturerURL>
     <modelDescription>Vera Bridge for openLuup</modelDescription>
-    <modelName>v2.0</modelName>
-    <modelNumber>1</modelNumber>
+    <modelName>VeraBridge</modelName>
+    <modelNumber>3</modelNumber>
     <handleChildren>1</handleChildren>
     <Category_Num>1</Category_Num>
     <UDN></UDN>
@@ -550,6 +613,14 @@ local I_VeraBridge_impl = [[
   			return 4,0
   		</job>
     </action>
+    <action>
+  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+  		<name>GetVeraScenes</name>
+  		<job>
+  			GetVeraScenes ()
+  			return 4,0
+  		</job>
+    </action>
   </actionList>
 </implementation>
 ]]
@@ -564,6 +635,9 @@ local S_VeraBridge_svc = [[
   <actionList>
     <action>
       <name>GetVeraFiles</name>
+    </action>
+    <action>
+      <name>GetVeraScenes</name>
     </action>
   </actionList>
 </scpd>
@@ -749,6 +823,116 @@ local I_ZWay_xml = [[
 </implementation>
 ]]
 
+-- testing new ZWay implementation
+local I_ZWay2_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <functions>
+    local M = require "L_ZWay2"
+    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
+    function startup (...)
+      return M.init (...)
+    end
+  </functions>
+  <startup>startup</startup>
+</implementation>
+]]
+
+-- Camera with child Motion Detector triggered by email
+local I_openLuupCamera1_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <handleChildren>1</handleChildren>
+  <functions>
+    local timeout = 30
+    local child -- the motion sensor
+    local smtp = require "openLuup.smtp"
+    local timers = require "openLuup.timers"
+    local requests = require "openLuup.requests"
+    local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
+    function get (name)
+      return (luup.variable_get (sid, name, child))
+    end
+    function set (name, val)
+      if val ~= get (name) then
+        luup.variable_set (sid, name, val, child)
+      end
+    end
+    function archive (p)
+      requests.archive_video ("archive_video", p)
+    end
+    local function clear ()
+      local now = os.time()
+      local last = get "LastTrip"
+      if (tonumber (last) + timeout) &lt;= (now + 1) then  -- NOTE the XML escape!
+        set ("Tripped", '0')
+        set ("ArmedTripped", '0')
+        set ("LastTrip", now)
+      end
+    end
+    local function openLuupCamera (ip, mail)      -- email callback
+      set ("Tripped", '1')
+      set ("LastTrip", os.time())
+      if get "Armed" == '1' then set ("ArmedTripped", '1') end
+      timers.call_delay (clear, timeout, '', "camera motion reset")
+    end
+    function startup (devNo)
+      local smtp = require "openLuup.smtp"
+      do -- install MotionSensor as child device
+        local var = "urn:micasaverde-com:serviceId:SecuritySensor1,%s=%s\n"
+        local statevariables = table.concat {
+            var:format("Armed",1), 
+            var:format("ArmedTripped", 0),
+            var:format("Tripped", 0), 
+            var:format("LastTrip", 0),
+          }
+        local ptr = luup.chdev.start (devNo)
+        local altid = "openLuupCamera"
+        local description = luup.devices[devNo].description .." Motion Sensor"
+        local device_type = "urn:schemas-micasaverde-com:device:MotionSensor:1"
+        local upnp_file = "D_MotionSensor1.xml"
+        local upnp_impl = ''
+        luup.chdev.append (devNo, ptr, altid, description, device_type, upnp_file, upnp_impl, statevariables)
+        luup.chdev.sync (devNo, ptr)  
+      end
+      for dnum,d in pairs (luup.devices) do
+        if d.device_num_parent == devNo then
+          child = dnum
+          luup.attr_set ("subcategory_num", 3, child)  -- motion detector subtype
+        end
+      end
+      local ip = luup.attr_get ("ip", devNo)
+      ip = (ip or ''): match "%d+%.%d+%.%d+%.%d+"
+      if ip then
+        smtp.register_handler (openLuupCamera, ip)     -- receive mail from camera IP
+      end
+      return true, "OK", "I_openLuupCamera1"
+    end
+  </functions>
+  <actionList>
+    
+    <action>
+  		<serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
+      <name>SetArmed</name>
+      <run>
+        set ("Armed", lul_settings.newArmedValue)
+      </run>
+    </action>
+    
+    <action>
+      <serviceId>urn:micasaverde-com:serviceId:Camera1</serviceId>
+      <name>ArchiveVideo</name>
+      <job>
+        local p = lul_settings
+        archive {cam = lul_device, Format = p.Format, Duration = p.Duration}
+      </job>
+    </action>
+  
+  </actionList>
+  <startup>startup</startup>
+</implementation>
+]]
+
 -----
 --
 -- DataYours schema and aggregation definitions for AltUI DataStorage Provider
@@ -799,7 +983,7 @@ retentions = 5m:7d,1h:30d,3h:1y,1d:10y
 
 [10minute]
 pattern = \.10m$
-retentions = 5m:7d,1h:30d,3h:1y,1d:10y
+retentions = 10m:7d,1h:30d,3h:1y,1d:10y
 
 [20minute]
 pattern = \.20m$
@@ -877,6 +1061,9 @@ local manifest = {
     ["D_ZWay.xml"]  = D_ZWay_xml,
     ["D_ZWay.json"] = D_ZWay_json,
     ["I_ZWay.xml"]  = I_ZWay_xml,
+    ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
+    
+    ["I_openLuupCamera1.xml"] = I_openLuupCamera1_xml,
     
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,

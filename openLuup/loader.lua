@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2016.11.06",
-  DESCRIPTION   = "Loader for Device, Implementation, and JSON files",
+  VERSION       = "2018.05.01",
+  DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -45,6 +45,15 @@ local ABOUT = {
 -- 2016.11.06  make "crlf" the default I/O protocol
 --             see: http://forum.micasaverde.com/index.php/topic,37661.msg298022.html#msg298022
 
+-- 2018.02.19  remove obsolete icon_redirect functionality (now done in servlet file request handler)
+-- 2018.03.13  add handleChildren to implementation file parser
+-- 2018.03.17  changes to enable plugin debugging by ZeroBrane Studio (thanks @explorer)
+--             see: http://forum.micasaverde.com/index.php/topic,38471.0.html
+-- 2018.04.06  use scheduler.context_switch to wrap device code compilation (for sandboxing)
+-- 2018.04.22  parse_impl_xml added action field for /data_request?id=lua&DeviceNum=... 
+-- 2018.04.25  incorporate XML module (too short, now, to justify separate file)
+
+
 ------------------
 --
 -- save a pristine environment for new device contexts and scene/startup code
@@ -65,6 +74,8 @@ local function _pristine_environment ()
     local new = shallow_copy (ENV)
     new._NAME = name                -- add environment name global
     new._G = new                    -- self reference - this IS the new global environment
+--    new.table = shallow_copy (ENV.table)    -- can sandbox individual tables like this, if necessary
+--    but string library has to be sandboxed quite differently, see scheduler sandbox function
     return new 
   end
 
@@ -72,6 +83,8 @@ local function _pristine_environment ()
   ENV.arg = nil                     -- don't want to expose command line arguments
   ENV.ABOUT = nil                   -- or this module's ABOUT!
   ENV.module = function () end      -- module is noop
+  ENV.socket = nil                  -- somehow this got in there (from openLuup.log?)
+  ENV._G = nil                      -- each one gets its own, above
   return new_environment
 end
 
@@ -81,9 +94,132 @@ local shared_environment  = new_environment "openLuup_startup_and_scenes"
 
 ------------------
 
-local xml  = require "openLuup.xml"
 local json = require "openLuup.json"
 local vfs  = require "openLuup.virtualfilesystem"
+
+local scheduler = require "openLuup.scheduler"  -- for context_switch()
+
+------------------
+--
+-- XML module
+--
+
+-- general xml reader: this is just good enough to read device and implementation .xml files
+-- doesn't cope with XML attributes or empty elements: <tag />
+--
+-- TODO: proper XML parser rather than nasty hack?
+--
+
+-- 2015.11.03  cope with comments (thanks @vosmont and @a-lurker)
+-- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
+
+-- 2016.02.22  skip XML attributes but still parse element
+-- 2016.02.23  remove reader and caching, rename encode/decode 
+-- 2016.02.24  escape special characters in encode and decode
+-- 2016.04.14  @explorer expanded tags to alpha-numerics and underscores
+-- 2016.04.15  fix attribute skipping (got lost in previous edit)
+-- 2016.05.10  allow ':' as part of tag name
+
+-- 2017.03.31  make escape() and unescape() global
+
+-- 2018.04.22  remove spaces at each end of comments (part of issue highlighted by @a-lurker)
+-- see: http://forum.micasaverde.com/index.php/topic,53871.msg379551.html#msg379551
+-- and: http://forum.micasaverde.com/index.php/topic,53871.msg379790.html#msg379790
+-- 2018.04.23  ignore empty tags (remaining part of above issue?)
+-- 2018.04.24  remove extract() function completely (final part of above issue?? thanks again, @a-lurker)
+-- 2018.04.25  incorporate XML module into loader (too short, now to justify separate file)
+-- 2018.05.01  restructure decode(), only export encode(), save XML tag attributes (but don't process)
+
+
+local escape do
+  local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
+  escape = function (x) return (x: gsub ([=[[<>"'&]]=], fwd)) end
+end
+
+
+local unescape do
+  local rev = {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'}
+  unescape = function (x) return (x: gsub ("&(%w+);", rev)) end
+end
+
+-- decode() 
+-- empty tags are unnamed empty tables, <foo></foo>  -->  {}
+-- non-xml tag contents are strings, <foo>&lt;not xml&gt;</foo>	 -->  {foo = "<not xml>"}
+local function decode (info)
+  local xml = {}
+  -- must start with a letter or underscore, can contain letters, digits, hyphens, underscores, and period
+  local tag_pair = "%s*<([%a_][%w:_%-%.]*)(.-)>(.-)</%1>%s*"
+  
+  if info then info = info: gsub ("%s*<!%-%-.-%-%->%s*", '') end  -- remove <!-- This is a comment -->
+  
+  local result = info
+  for a,attr,b in (info or ''): gmatch (tag_pair) do -- find opening and closing tags
+    result = xml                      -- OK, this has at least one valid XML open/close tag pair
+    if #b > 0 then                    -- ignore empty tags
+      local x = decode (b)            -- get the value of the contents
+      xml[a] = xml[a] or {}           -- if this tag doesn't exist, start a list of values
+      xml[a][#xml[a]+1] = x           -- add new value to the list (might be table, or just text)
+    end 
+  end 
+  
+  if type (result) == "table" then
+    for a,b in pairs (result) do                  -- go through the contents
+      if #b == 1 then result[a] = b[1] end        -- collapse one-element lists to simple items
+    end
+  else                                -- if no tagged structures, then return the unescaped info string
+    if result then result = unescape (result) end
+  end
+  return result
+end
+
+-- encode(), input argument should be a table, optional wrapper gives name tag to whole structure
+local function encode (Lua, wrapper)
+  local xml = {}        -- or perhaps    {'<?xml version="1.0"?>\n'}
+  local function p(x)
+    if type (x) ~= "table" then x = {x} end
+    for _, y in ipairs (x) do xml[#xml+1] = y end
+  end
+  
+  local function value (x, name, depth)
+    local function spc ()  p ((' '):rep (2*depth)) end
+    local function atag () spc() ; p {'<', name,'>'} end
+    local function ztag () p {'</',name:match "^[^%s]+",'>\n'} end
+    local function str (x) atag() ; p(escape (tostring(x): gsub("%s+", ' '))) ; ztag() end
+    local function err (x) error ("xml: unsupported data type "..type (x)) end
+    local function tbl (x)
+      local y
+      if #x == 0 then y = {x} else y = x end
+      for i, z in ipairs (y) do
+        i = {}
+        for a in pairs (z) do i[#i+1] = a end
+        table.sort (i, function (a,b) return tostring(a) < tostring (b) end)
+        if name then atag() ; p '\n' end
+        for _,a in ipairs (i) do value(z[a], a, depth+1) end
+        if name then spc() ; ztag() end
+      end
+    end
+    
+    depth = depth or 0
+    local dispatch = {table = tbl, string = str, number = str}
+    return (dispatch [type(x)] or err) (x)
+  end
+  
+  -- encode(), wrapper parameter allows outer level of tags (with attributes)
+  local ok, msg = pcall (value, Lua, wrapper) 
+  if ok then ok = table.concat (xml) end
+  return ok, msg
+end
+
+
+local xml = {
+   
+    escape = escape,
+    unescape = unescape,
+    
+    decode  = decode, 
+    encode  = encode,
+  }
+
 
 ------------------
 
@@ -129,6 +265,16 @@ local categories_lookup =             -- info about device types and categories
   {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:1"},
   {id = 23, name = "Alarm Partition",    type = mcv  .. "AlarmPartition:2"},
   {id = 24, name = "Siren",              type = mcv  .. "Siren:1"},
+--[[
+also:  --TODO: find out device types for new categories
+  25 	Weather 		
+  26 	Philips Controller 		
+  27 	Appliance 		
+  28 	UV Sensor 		
+  29 	Mouse Trap 		
+  30 	Doorbell 		
+  31 	Keypad
+]]
 }
 
 local cat_by_dev = {}                         -- category number lookup by device type
@@ -268,6 +414,19 @@ local function parse_impl_xml (impl_xml, raw_xml)
   local file_pos = raw_xml:find "<files>" or 0
   local func_pos = raw_xml:find "<functions>" or 0
   local files_first = file_pos < func_pos   
+  
+  -----
+  --
+  -- 2018.03.17 from @explorer: ZeroBrane debugging support:
+  -- determine the number of line breaks in the XML before functions start and insert them in front of the functions
+  -- to help debugger’s current position when going through the code from I_device.xml
+  if i.functions then
+    local _, line_count = string.gsub( raw_xml:sub(0, func_pos), "\n", "")
+    i.functions = string.rep("\n", line_count) .. i.functions
+  end
+  --
+  -----
+  
   -- load 
   local loadList = {}   
   if not files_first then loadList[#loadList+1] = i.functions end   -- append any xml file functions
@@ -282,9 +441,12 @@ local function parse_impl_xml (impl_xml, raw_xml)
   local source_code = table.concat (loadList, '\n')             -- concatenate the code
 
   return {
+    handle_children = i.handleChildren,                 -- 2018.03.13
     protocol    = i.settings and i.settings.protocol,   -- may be defined here, but more normally in device file
     source_code = source_code,
     startup     = i.startup,
+    files       = i.files,                              -- 2018.03.17  ZeroBrane debugging support
+    actions     = actions,                              -- 2018.04.22  added for /data_request?id=lua
   }
 end
 
@@ -298,13 +460,20 @@ end
 
 -- parse service files
 local function parse_service_xml (service_xml)
-  local actions   = xml.extract (service_xml, "scpd", "actionList", "action")   -- 2016.02.22 added "scpd" nesting
-  local variables = xml.extract (service_xml, "scpd", "serviceStateTable", "stateVariable") -- ditto
+  
+  -- 2018.04.24 replace 'extract' code in xml module
+  local actions, variables = {}, {}
+  local scpd = service_xml.scpd   
+  if scpd then
+    actions = (scpd.actionList or {}).action or actions
+    variables = (scpd.serviceStateTable or {}).stateVariable or variables
+  end
+  
   -- now build the return argument list  {returnName = RelatedStateVariable, ...}
   -- indexed by action name
   local returns = {}
   for _,a in ipairs (actions) do
-    local argument = xml.extract (a, "argumentList", "argument")
+    local argument = (a.argumentList or {}).argument    -- 2018.04.24  replace 'extract'
     local list = {}
     if type (argument) == "table" then  -- 2016.05.21  fix for invalid argument list in parse_service_xml
       for _,k in ipairs (argument) do
@@ -338,37 +507,15 @@ local function read_service (service_file)
   return info
 end
 
-local icon_path      -- redirect path set by function below (if called at all)
-
--- called with new path for icon access, eg "http://172.16.42.151:3480/icons/"
-local function icon_redirect (path)
-  icon_path = json.encode (path): sub (1,-2)    -- strip off trailing double quote character
-end
-
--- force port 3480 access for all icons
-local function rewrite_icon_path (j)
-  return (j: gsub ('"[^"]+%.[ps][nw][gf]"', 
-    function (x)
-      if x: match '"http' then return x end
-      local new = icon_path .. x: match '[^"/=]+%.%a+"'
---      print ("icon: ", x, new)
-      return new
-    end
-    ))
-end
-
 
 -- read JSON file, if present.
 -- openLuup doesn't use the json files, except to put into the static_data structure
--- which is passed on to any UI through the /data_request?id=user_Data HTTP request.
+-- which is passed on to any UI through the /data_request?id=user_data HTTP request.
 local function read_json (json_file)
   local data, msg
   if json_file then 
     local j = cached_read (json_file)     -- 2016.05.24, restore caching to use virtual file system for .json files
     if j then 
-      if icon_path then                   -- 2016.02.23
-        j = rewrite_icon_path (j)
-      end
       data, msg = json.decode (j) 
     end
   end
@@ -448,8 +595,30 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   -- load and compile the amalgamated code from <files>, <functions>, <actions>, and <startup> tags
   local code, error_msg
   if i.source_code then
-    local name = ("[%d] %s"): format (devNo, file or '?')
-    code, error_msg = compile_lua (i.source_code, name)  -- load, compile, instantiate    
+    
+  -----
+  --
+  -- 2018.03.17 from @explorer: ZeroBrane debugging support:
+  -- use actual filenames to make it work with ZeroBrane
+  -- limitations:
+  -- works only when I_plugin.xml code is in <functions> or <files>, not both
+  -- only single file is supported now
+  -- TODO: consider not concatenating the source code in parse_impl_xml but compiling them separately.
+  -- for code in XML files, keep XML but start XML lines with comments "-- " to match the line number.
+
+--    local name = ("[%d] %s"): format (devNo, file or '?')
+    local name = i.files or file or '?'                  -- 2018.03.17
+  --
+  -----
+
+    -- 2018.04.06  wrap compile in context_switch() ...
+    do              -- ...to get correct device numbering for sandboxed functions
+    
+      local err
+      err, code, error_msg = scheduler.context_switch (devNo,
+          compile_lua, i.source_code, name)  -- load, compile, instantiate    
+    end
+    
     if code then 
       code.luup.device = devNo        -- set local value for luup.device
       code.lul_device  = devNo        -- make lul_device in scope for the whole module
@@ -457,9 +626,10 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
     i.source_code = nil   -- free up for garbage collection
   end
 
-  -- look for protocol in both device and implementation files 
-  d.protocol = d.protocol or i.protocol or "crlf"   -- 2015.11.06
-
+  -- look for protocol AND handleChildren in BOTH device and implementation files 
+  d.protocol = d.protocol or i.protocol or "crlf"               -- 2015.11.06
+  d.handle_children = d.handle_children or i.handle_children    -- 2018.03.13
+  
   -- set up code environment (for context switching)
   code = code or {}
   d.environment     = code  
@@ -486,6 +656,8 @@ end
 return {
   ABOUT = ABOUT,
 
+  TEST = {xml = xml}, -- the only user of xml.decode() is this loader module
+  
   -- tables
   service_data        = service_data,
   shared_environment  = shared_environment,
@@ -494,7 +666,6 @@ return {
   -- methods
   assemble_device     = assemble_device_from_files,
   compile_lua         = compile_lua,
-  icon_redirect       = icon_redirect,
   new_environment     = new_environment,
   parse_service_xml   = parse_service_xml,
   parse_device_xml    = parse_device_xml,
@@ -503,5 +674,8 @@ return {
   read_device         = read_device,
   read_impl           = read_impl,
   read_json           = read_json,
-
+  
+  -- module
+  xml = {encode = xml.encode},        -- decode () is not used externally
+  
 }
