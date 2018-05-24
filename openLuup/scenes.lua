@@ -1,10 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-<<<<<<< HEAD
-  VERSION       = "2018.05.11",
-=======
   VERSION       = "2018.05.16",
->>>>>>> pr/2
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
