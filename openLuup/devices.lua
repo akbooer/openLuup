@@ -1,7 +1,7 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  DESCRIPTION   = "low-level device/service/variable objects",
   VERSION       = "2018.05.15",
+  DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
