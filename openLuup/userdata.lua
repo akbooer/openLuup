@@ -710,7 +710,7 @@ local function devices_table (device_list)
         id = item.id, 
         service = item.srv,
         variable = item.name,
-        value = item.value,
+        value = item.value or {},
       }
     end
     local curls 
