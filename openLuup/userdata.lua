@@ -1,6 +1,10 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
+<<<<<<< HEAD
   VERSION       = "2018.05.24",
+=======
+  VERSION       = "2018.05.14",
+>>>>>>> pr/2
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -530,7 +534,7 @@ local function update_plugin_versions (installed)
   -- go through LOCAL devices looking for clues about their version numbers
   for _, d in pairs (luup.devices or {}) do 
     local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
-    local a = d.environment.ABOUT
+    local a = (d.environment or {}).ABOUT
     local IP = installed[i]
     
     if IP and d.device_num_parent == 0 then   -- LOCAL devices only!

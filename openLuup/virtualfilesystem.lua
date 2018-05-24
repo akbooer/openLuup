@@ -237,6 +237,15 @@ local I_openLuup_impl = [[
         luup.call_action (sid, "SetHouseMode", lul_settings)
       </run>
     </action>
+
+    <action>    <!-- added by @rafale77 -->
+      <serviceId>openLuup</serviceId>
+      <name>RunScene</name>
+      <run>
+        local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+        luup.call_action(sid, "RunScene", {SceneNum = lul_settings.SceneNum}, 0)
+      </run>
+    </action>
   
   </actionList>
 </implementation>
@@ -314,6 +323,16 @@ local S_openLuup_svc = [[
       <argumentList>
         <argument>
           <name>Mode</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+    
+    <action>    <!-- added by @rafale77 -->
+      <name>RunScene</name>
+      <argumentList>
+        <argument>
+          <name>SceneNum</name>
           <direction>in</direction>
         </argument>
       </argumentList>
@@ -625,6 +644,7 @@ local I_VeraBridge_impl = [[
   <files>openLuup/L_VeraBridge.lua</files>
   <startup>init</startup>
   <actionList>
+    
     <action>
   		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
   		<name>GetVeraFiles</name>
@@ -633,6 +653,7 @@ local I_VeraBridge_impl = [[
   			return 4,0
   		</job>
     </action>
+    
     <action>
   		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
   		<name>GetVeraScenes</name>
@@ -641,6 +662,17 @@ local I_VeraBridge_impl = [[
   			return 4,0
   		</job>
     </action>
+    
+    <action>
+      <!-- added here to allow scenes to access this as an action (Device 0 is not visible) -->
+  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+  		<name>SetHouseMode</name>
+  		<job>
+  			SetHouseMode (lul_settings)
+  			return 4,0
+  		</job>
+    </action>
+  
   </actionList>
 </implementation>
 ]]
@@ -653,11 +685,16 @@ local S_VeraBridge_svc = [[
     <minor>0</minor>
   </specVersion>
   <actionList>
+    <action> <name>GetVeraFiles</name> </action>
+    <action> <name>GetVeraScenes</name> </action>
     <action>
-      <name>GetVeraFiles</name>
-    </action>
-    <action>
-      <name>GetVeraScenes</name>
+      <name>SetHouseMode</name>
+      <argumentList>
+        <argument>
+          <name>Mode</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
     </action>
   </actionList>
 </scpd>

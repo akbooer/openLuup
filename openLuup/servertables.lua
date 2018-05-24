@@ -16,6 +16,9 @@
 -- 2018.03.06  added SMTP status codes
 -- 2018.03.09  added myIP, moved from openLuup.server
 -- 2018.03.15  updated SMTP reply codes according to RFC 5321
+-- 2018.04.14  removed upnp/ from CGI directories and HAG module...
+--              ["upnp/control/hag"] = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
+
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
 
@@ -137,8 +140,6 @@ local cgi_prefix = {
     "metrics",      -- ditto
     "render",       -- ditto
     
-    "upnp",         -- for Luup HAG requests --- DEPRECATED, Feb 2018 ---
-    
     "ZWaveAPI",     -- Z-Wave.me Advanced API (requires Z-Way plugin)
     "ZAutomation",  -- Z-Wave.me Virtual Device API
   }
@@ -151,7 +152,6 @@ local cgi_alias = setmetatable ({
     
     ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
     ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
---    ["upnp/control/hag"]          = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
     ["console"]                   = "openLuup/console.lua",
     
     -- graphite_api support
