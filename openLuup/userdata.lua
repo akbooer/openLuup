@@ -111,7 +111,7 @@ attr ("longitude", "0.0")
 -- other parameters
 attr ("TemperatureFormat", "C")
 attr ("PK_AccessPoint", "88800000")
-attr ("currency", "£")
+attr ("currency", "Â£")
 attr ("date_format", "dd/mm/yy")
 attr ("model", "Not a Vera")
 attr ("timeFormat", "24hr")
@@ -127,7 +127,7 @@ luup.log "startup code completed"
 --  Using_2G = 0,
 --  breach_delay = "30",
 --  category_filter = {},
-  currency = "£",
+  currency = "Â£",
   date_format = "dd/mm/yy",
 --  device_sync = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21",
 --  devices = {},
@@ -685,7 +685,7 @@ local function devices_table (device_list)
         id = item.id, 
         service = item.srv,
         variable = item.name,
-        value = item.value,
+        value = item.value or {},
       }
     end
     local curls 
