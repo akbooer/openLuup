@@ -1,10 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-<<<<<<< HEAD
   VERSION       = "2018.05.24",
-=======
-  VERSION       = "2018.05.14",
->>>>>>> pr/2
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
