@@ -2,7 +2,8 @@ local t = require "tests.luaunit"
 
 -- openLuup.logs TESTS
 
-local room = require "openLuup.rooms"
+local luup = require "openLuup.luup"
+local room = luup.rooms
 
 TestRooms = {}
 

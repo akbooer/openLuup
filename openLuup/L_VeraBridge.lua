@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.03.02",
+  VERSION       = "2018.05.15",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -81,12 +81,16 @@ ABOUT = {
 -- 2018.02.21   don't try and display HouseMode if none (eg. UI5)
 -- 2018.03.01   fix serviceId error for DisplayLine2 initialisation
 -- 2018.03.02   if mirroring remote House Mode, then change local Mode with immediate effect
+-- 2018.03.24   use luup.rooms.create metatable method
+-- 2018.04.17   add specific attributes (onDashboard) to bridged devices 
+--              thanks @rafale77, see: http://forum.micasaverde.com/index.php/topic,79879.0.html
+-- 2018.05.15   add SetHouseMode (for remote machine) to set of visible actions (for use in scenes)
+
 
 local devNo                      -- our device number
 
 local chdev     = require "openLuup.chdev"
 local json      = require "openLuup.json"
-local rooms     = require "openLuup.rooms"
 local scenes    = require "openLuup.scenes"
 local userdata  = require "openLuup.userdata"
 local url       = require "socket.url"
@@ -272,6 +276,13 @@ local function create_new (cloneId, dev, room)
     ip              = dev.ip, 
     mac             = dev.mac, 
   }  
+  
+  local attr = d.attributes
+  local extras = {"onDashboard"}        -- 2018.04.17  add other specific attributes
+  for _,name in ipairs (extras) do 
+    attr[name] = dev[name]
+  end
+  
   luup.devices[cloneId] = d   -- remember to put into the devices table! (chdev.create doesn't do that)
 end
 
@@ -430,7 +441,7 @@ local function GetUserData ()
       local new_room_name = "MiOS-" .. (Vera.PK_AccessPoint: gsub ("%c",''))  -- stray control chars removed!!
       userdata.attributes [t] = userdata.attributes [t] or Vera[t]
       luup.log (new_room_name)
-      rooms.create (new_room_name)
+      luup.rooms.create (new_room_name)     -- 2018.03.24  use luup.rooms.create metatable method
   
       remote_room_index = index_remote_rooms (Vera.rooms or {})
       local_room_index  = index_rooms (luup.rooms or {})
@@ -441,7 +452,7 @@ local function GetUserData ()
           if type(room_name) == "string" then
             if not local_room_index[room_name] then 
               luup.log ("creating room: " .. room_name)
-              local new = rooms.create (room_name) 
+              local new = luup.rooms.create (room_name)     -- 2018.03.24  use luup.rooms.create metatable method
               local_room_index[new] = room_name
               local_room_index[room_name] = new
             end
@@ -765,6 +776,14 @@ function GetVeraScenes()
   end
 end
 
+
+function SetHouseMode (p)         -- 2018.05.15
+  if tonumber (p.Mode) then
+    local request = "/data_request?id=action&serviceId=%s&DeviceNum=0&action=SetHouseMode&Mode=%s"
+    local url = request: format(SID.hag, p.Mode)
+    remote_request (url)
+  end
+end
 --
 -- GENERIC ACTION HANDLER
 --

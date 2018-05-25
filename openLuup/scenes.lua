@@ -51,13 +51,15 @@ local ABOUT = {
 -- 2018.01.18   add optional 3-rd return parameter 'final_delay' and also scene.prolog and epilog calls
 -- 2018.01.30   cancel timer jobs on scene delete, round next scene run time, etc..
 -- 2018.02.19   add log messages for scene cancellation by global and local Lua code
+-- 2018.04.16   remove scene watcher callback, now redundant with scene finalizers
+-- 2018.05.16   correct next run time (thanks to @rafale77 for diagnosis and suggestions)
 -- 2018.05.25   fixed scene interval passing from scene to timer function
 
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
 local timers    = require "openLuup.timers"
-local loader    = require "openLuup.loader"
+local loader    = require "openLuup.loader"       -- for shared_environment and compile_lua()
 local scheduler = require "openLuup.scheduler"    -- simply for adding notes to the timer jobs 
 local devutil   = require "openLuup.devices"      -- for new_userdata_dataversion
 
@@ -154,6 +156,10 @@ local function create (scene_json)
   
   local function scene_runner (t, next_time)              -- called by timer, trigger, or manual run
     local lul_trigger, lul_timer
+    if t and next_time then           -- 2018.05.16  update the next scheduled time...
+      t.next_run = next_time          -- ...regardless of whether or not it runs this time (thanks @rafale77)
+      devutil.new_userdata_dataversion ()         -- increment version, so that display updates
+    end
     if not runs_in_current_mode (scene) then 
       _log (scene.name .. " does not run in current House Mode")
       return 
@@ -194,6 +200,10 @@ local function create (scene_json)
       ok, user_finalizer, del = lua_code (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20, 2018.01.17,8
       if ok == false then
         _log (scene.name .. " prevented from running by local scene Lua")
+        if t then                                       -- 2018.05.11 Rafale77
+          t.next_run = next_time
+          devutil.new_userdata_dataversion ()
+        end
         return    -- LOCAL cancel
       end
     end
@@ -205,7 +215,7 @@ local function create (scene_json)
     local runner = "command"
     if t then
       t.last_run = scene.last_run             -- timer or trigger specific run time
-      t.next_run = next_time                  -- only non-nil for timers
+--      t.next_run = next_time                  -- only non-nil for timers
       runner = (t.name ~= '' and t.name) or '?'
     end
     
@@ -241,11 +251,10 @@ local function create (scene_json)
   end
 
   -- called if SOMEBODY changes ANY device variable in ANY service used in this scene's actions
-  local function scene_watcher (...)
+--  local function scene_watcher (...)
 --    luup.log ("SCENE_WATCHER: " .. json.encode {
 --              {scene=scene.id, name=scene.name}, ...})
-    -- TODO: use this to clear scene 'running' flag
-  end
+--  end
 
   local function scene_rename (name, room)
     scene.name = name or scene.name
@@ -259,21 +268,16 @@ local function create (scene_json)
   end
 
   -- delete any actions which refer to non-existent devices
-  -- also, add listeners to the device AND service to watch for changes
   -- also, remove any triggers related to unknown devices
   -- also, add warning message trigger to any scene with triggers  -- 2017.08.08
   local function verify ()
-    local silent = true     -- don't log watch callbacks
     for _, g in ipairs (scene.groups or {}) do
       local actions = g.actions or {}
       local n = #actions 
       for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
         local a = actions[i]
         local dev = luup.devices[tonumber(a.device)]
-        if dev then
-          local name = "_scene" .. scene.id
-          devutil.variable_watch (dev, scene_watcher, a.service, nil, name, silent) -- NB: ALL variables in service
-        else
+        if not dev then
           table.remove (actions,i)
         end
       end      
