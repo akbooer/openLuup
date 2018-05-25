@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2018.03.05",
+  VERSION       = "2018.04.14",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -199,6 +199,20 @@ Device_0.services[SID].actions =
     --   If Reload is 1 the LuaUPnP engine will reload after the UserData is modified. 
     --   For more information read http://wiki.micasaverde.com/index.php/ModifyUserData
     -- and http://forum.micasaverde.com/index.php/topic,55598.msg343277.html#msg343277
+    
+    --[[
+          UserData JSON structure contains:
+          {
+            InstalledPlugins = {},
+            PluginSettings = {},
+            StartupCode = "...",
+            devices = {},
+            rooms = {},
+            scenes = {},
+            sections = {},
+            users = {}
+          }
+    --]]
     ModifyUserData = {
       extra_returns = {UserData = "{}"},     -- 2018.01.28  action return info
       job = function (_, p) 
@@ -323,7 +337,6 @@ Device_0.services[SID].actions =
     },
     
     -- action=SetHouseMode&Mode=...
-    -- TODO: mode change delay (easy to do with job or call_delay)
     SetHouseMode = { 
       run = function (_, p) 
         local valid = {

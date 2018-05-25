@@ -185,6 +185,24 @@ function TestScenes:test_verify_all ()
   s.verify_all ()
 end
 
+local pretty = require "pretty"
+
+function TestScenes:test_room_rename ()
+  local scene = {}
+  for a,b in pairs (example_scene) do -- make local copy of template
+    scene[a] = b
+  end
+  local roomNo = luup.rooms.create "TestScenesRoom"
+  scene.room = roomNo
+  scene.name = "TestScenes:test_room"
+  local sc, err = s.create (scene)    -- works with Lua or JSON scene definition
+  print(pretty(luup.scenes))
+  t.assertIsNil (err)
+  t.assertEquals (sc.room_num, roomNo)
+  luup.rooms.delete (roomNo)
+  print (sc)
+  t.assertEquals (sc.room_num, 0)  
+end
 
 function TestScenes:test_ ()
   

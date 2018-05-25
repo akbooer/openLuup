@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.03.21",
+  VERSION       = "2018.04.26",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -44,6 +44,10 @@ local ABOUT = {
 
 -- 2018.01.30  add logging info to job structure, move timenow() and sleep() here from timers
 -- 2018.03.21  add default exit state to jobs
+-- 2018.04.07  sandbox string and table system libraries
+-- 2018.04.10  add get_socket_list to methods and timenow/name to the list elements
+-- 2018.04.22  fix missing device 0 description in meta.__index:sandbox ()
+-- 2018.04.25  update sandbox function (I believe that this one actually works properly)
 
 
 local logs      = require "openLuup.logs"
@@ -96,11 +100,13 @@ end
 
 -- socket_watch (socket, action_with_incoming_tag),  add socket to list watched for incoming
 -- optional io parameter is pointer to a device's I/O table with an intercept flag
-local function socket_watch (sock, action, io)  
+local function socket_watch (sock, action, io, name)  
   socket_list[sock] = {
     callback = action,
     devNo = current_device,
-    io = io or {intercept = false},  -- assume no intercepts: incoming data is passed to handler
+    io = io or {intercept = false},   -- assume no intercepts: incoming data is passed to handler
+    time = timenow (),                -- just for the console Sockets page
+    name = name or "anon",            -- ditto
   }
 end
 
@@ -175,7 +181,96 @@ local job_list = setmetatable (
       end,
     } 
   )
+
+-------------
+--
+-- Sandbox for system libraries
+--
+-- Lua 5.1 strings are very special since EVERY string has a metatable with {__index = string}
+-- You can't sandbox this in the obvious way, because it needs to work for both this
+--
+--   string.foo(str, ...)
+--
+-- and this
+--
+--   str: foo (...)
+--
+-- the code below doesn't prevent modification of the original table's contents
+-- this would have to be done by an empty proxy table with its own __newindex() method
+-- other library modules can generally be sandboxed just with shallow copies
+--
+ 
+local function sandbox (tbl, name)
   
+  local devmsg = "device %s %s '%s.%s' (a %s value)"
+  local function fail(...) error(devmsg: format (...), 3) end
+
+  name = name or "{}"
+  local lookup = {}             -- user function lookup indexed by [device][key]
+  local meta = {__index = {}}   -- used to store proxy functions for each new key
+  
+  function meta:__newindex(k,v)   -- only ever called if key not already defined
+  -- so this sandbox can't protect the original table keys from being changed
+  -- for that, you'd need another layer which makes a shallow copy for each user context
+    
+    -- this is the proxy function which actually calls the user-defined function
+    local function proxy (...) 
+      local d = current_device or 0
+      local fct = (lookup[d] or {}) [k]
+      if not fct then
+        fail (d, "attempted to reference", name, k, "nil")
+      end
+      return fct (...) 
+    end
+
+    local d = current_device or 0   -- k,v pairs are indexed by current device number
+    local vtype = type(v)
+    if vtype ~= "function" then fail (d, "attempted to define", name, k, vtype) end
+    _log (devmsg: format (d, "defined", name, k, vtype), ABOUT.NAME..".sandbox")
+    lookup[d] = lookup[d] or {}
+    lookup[d][k] = v
+    if not tbl[k] then                  -- proxy only needs to be set once
+      rawset (meta.__index, k, proxy)
+    end
+  end
+
+  function meta.__tostring ()    -- totally optional pretty-printing of sandboxed table contents
+    local boxmsg = "\n   [%d] %s"
+    local idxmsg = "        %-12s = %s"
+    local x = {name .. ".sandbox:", '', "   Private items (by device):"}
+    local empty = #x
+    local function p(l) x[#x+1] = l end
+    local function devname (d) 
+      return ((luup.devices[d] or {}).description or "System"): match "^%s*(.+)" 
+    end
+    local function sorted(t)
+      local y = {}
+      for k,v in pairs (t) do y[#y+1] = idxmsg: format (k, tostring(v)) end
+      table.sort (y)
+      return table.concat (y, '\n')
+    end
+    for d, idx in pairs (lookup) do
+      p (boxmsg: format (d, devname(d)))
+      p (sorted(idx))
+    end
+    if #x == empty then x[#x+1] ="\n        -- none --" end
+    p "\n   Shared items: \n"
+    p (sorted (tbl))
+    p ""                 -- blank line at end
+    return table.concat (x, '\n')
+  end
+
+  setmetatable (tbl, meta)
+end
+
+
+sandbox (string, "string")
+
+--
+--
+-------------
+
+
  local function missing (idx)   -- handle missing job tag
     return function (_, _, job)
       job.notes = "no action tag specified for: " .. tostring(idx)
@@ -353,7 +448,7 @@ local function device_start (entry_point, devNo, name)
   local jobNo = create_job ({job = startup_job}, {}, devNo)
   local job = job_list[jobNo]
   local text = "job#%d :plugin %s"
-  job.type = text: format (jobNo, name or '')
+  job.type = text: format (jobNo, (name or ''): match "^%s*(.+)")
   startup_list[jobNo] = job  -- put this into the startup job list too 
   return jobNo
 end    
@@ -516,6 +611,7 @@ return {
     current_device    = function() return current_device end, 
     context_switch    = context_switch,
     delay_list        = function () return delay_list end,
+    get_socket_list   = function () return socket_list end,
     device_start      = device_start,
     kill_job          = kill_job,
     run_job           = run_job,

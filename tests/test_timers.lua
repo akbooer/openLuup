@@ -21,7 +21,6 @@ end
 -- basics
 
 function TestTimers:test_methods_present ()
-  t.assertIsFunction (timers.sleep)
   t.assertIsFunction (timers.sunrise)
   t.assertIsFunction (timers.sunset)
   t.assertIsFunction (timers.is_night)
@@ -30,10 +29,6 @@ function TestTimers:test_methods_present ()
 end
 
 -- individual functions
-
-function TestTimers:test_sleep ()
-  timers.sleep (2000)                   -- two seconds delay
-end
 
 function TestTimers:test_night()
   t.assertIsBoolean (timers.is_night())

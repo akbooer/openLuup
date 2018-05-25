@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.03.23",
+  VERSION       = "2018.04.25",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -32,21 +32,30 @@ ABOUT = {
 
 -- 2018.01.30  add invocations count to job listing
 -- 2018.03.19  add Servers menu
+-- 2018.03.24  add connection count to iprequests on HTTP server page
+-- 2018.04.07  add Scheduler Sandboxes menu
+-- 2018.04.08  add Servers POP3 menu
+-- 2018.04.10  add Scheduler Sockets menu
+-- 2018.04.14  add Images menu
+-- 2018.04.15  add Trash menu
+-- 2018.04.19  add Servers UDP menu
 
--- TODO: HTML pages with sorted tables
+
+-- TODO: HTML pages with sorted tables?
 -- see: https://www.w3schools.com/w3js/w3js_sort.asp
 
 --  WSAPI Lua implementation
 
 local lfs       = require "lfs"                   -- for backup file listing
 local url       = require "socket.url"            -- for url unescape
-local luup      = require "openLuup.luup"
+local luup      = require "openLuup.luup"         -- not automatically in scope for CGIs
 local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
-local xml       = require "openLuup.xml"          -- for escape()
 local requests  = require "openLuup.requests"     -- for user_data, status, and sdata
-local server    = require "openLuup.server"
+local http      = require "openLuup.http"
 local smtp      = require "openLuup.smtp"
+local pop3      = require "openLuup.pop3"
+local ioutil    = require "openLuup.io"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -132,6 +141,8 @@ prefix = [[
           <a class="left" href="/console?page=jobs">Jobs</a>
           <a class="left" href="/console?page=delays">Delays</a>
           <a class="left" href="/console?page=watches">Watches</a>
+          <a class="left" href="/console?page=sockets">Sockets</a>
+          <a class="left" href="/console?page=sandbox">Sandboxes</a>
           <a class="left" href="/console?page=startup">Startup Jobs</a>
         </div>
       </div>
@@ -141,6 +152,8 @@ prefix = [[
         <div class="dropdown-content">
           <a class="left" href="/console?page=http">HTTP Web</a>
           <a class="left" href="/console?page=smtp">SMTP eMail</a>
+          <a class="left" href="/console?page=pop3">POP3 eMail</a>
+          <a class="left" href="/console?page=udp" >UDP  datagrams</a>
         </div>
       </div>
 
@@ -158,12 +171,15 @@ prefix = [[
       </div>
 
       <div class="dropdown">
-        <button class="dropbtn">Backups</button>
+        <button class="dropbtn">Files</button>
         <div class="dropdown-content">
-          <a class="left" href="/console?page=backups">Files</a>
+          <a class="left" href="/console?page=backups">Backups</a>
+          <a class="left" href="/console?page=images">Images</a>
+          <a class="left" href="/console?page=trash">Trash</a>
         </div>
       </div>
     </div>
+    
     <div class="content">
     <pre>
 ]],
@@ -182,6 +198,11 @@ prefix = [[
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
 local line = "%20s  %8s  %12s  %s %s"
 local date = "%Y-%m-%d %H:%M:%S"
+
+
+local function todate (epoch)
+  return os.date (date, epoch)
+end
 
 
 -- global entry point called by WSAPI connector
@@ -220,7 +241,7 @@ function run (wsapi_env)
       local status = table.concat {state[b.status] or '', '[', b.logging.invocations, ']'}
       jlist[#jlist+1] = {
         t = b.expiry,
-        l = line: format (os.date (date, b.expiry + 0.5), b.devNo or "system", 
+        l = line: format (todate(b.expiry + 0.5), b.devNo or "system", 
                             status, b.type or '?', b.notes or '')
       }
     end
@@ -265,7 +286,7 @@ function run (wsapi_env)
     local dtype = delays: format (b.delay, b.type or '')
     dlist[#dlist+1] = {
       t = b.time,
-      l = line: format (os.date (date, b.time), b.devNo, "Delay", dtype, '')
+      l = line: format (todate(b.time), b.devNo, "Delay", dtype, '')
     }
   end
 
@@ -278,6 +299,8 @@ function run (wsapi_env)
   end
 
   local function printlog (p)
+    local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
+    local function escape (x) return (x: gsub ([=[[<>"'&]]=], fwd)) end
     local name = luup.attr_get "openLuup.Logfile.Name" or "LuaUPnP.log"
     local ver = p.version
     if ver then
@@ -291,8 +314,23 @@ function run (wsapi_env)
     if f then
       local x = f:read "*a"
       f: close()
-      print (xml.escape (x))       -- thanks @a-lurker
+      print (escape (x))       -- thanks @a-lurker
     end
+  end
+  
+  -- returns specified file in a list of tables {date=x, name=y, size=z}
+  local function get_matching_files_from (folder, pattern)
+    local files = {}
+    for f in lfs.dir (folder) do
+      local date = f: match (pattern)
+      if date then
+        local attr = lfs.attributes (folder .. f) or {}
+        local size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))
+        files[#files+1] = {date = date, name = f, size = size}
+      end
+    end
+    table.sort (files, function (a,b) return a.date > b.date end)       -- sort newest to oldest
+    return files
   end
   
   local function backups (p)
@@ -300,16 +338,7 @@ function run (wsapi_env)
     print ("Backup directory: ", dir)
     print ''
     local pattern = "backup%.openLuup%-%w+%-([%d%-]+)%.?%w*"
-    local files = {}
-    for f in lfs.dir (dir) do
-      local date = f: match (pattern)
-      if date then
-        local attr = lfs.attributes (dir .. f) or {}
-        local size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))
-        files[#files+1] = {date = date, name = f, size = size}
-      end
-    end
-    table.sort (files, function (a,b) return a.date > b.date end)       -- newest to oldest
+    local files = get_matching_files_from ("backup/", pattern)
     local list = "%-12s %4s   %s"
     print (list:format ("yyyy-mm-dd", "(kB)", "filename"))
     for _,f in ipairs (files) do 
@@ -367,7 +396,27 @@ function run (wsapi_env)
   end
 
   local function number (n) return ("%7d  "): format (n) end
+  
+  local function devname (d)
+    d = tonumber(d) or 0
+    local name = (luup.devices[d] or {}).description or 'system'
+    return table.concat {'[', d, '] ', name: match "^%s*(.+)"}
+  end
 
+  local function printConnections (iprequests)
+    local layout1 = "     %-32s %s %s"
+    local none = "--- none ---"
+    local function printout (a,b,c) print (layout1: format (a,b or '',c or '')) end
+    print "\n Received connections:"
+    printout("IP address", "#connects", "    date     time\n")
+    if not next (iprequests) then printout (none) end
+    for ip, req in pairs (iprequests) do
+      local count = number (req.count)
+      printout (ip, count, todate(req.date))
+    end
+  end
+  
+  
   local function httplist ()
     local layout = "     %-42s %s %s"
     local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
@@ -381,30 +430,25 @@ function run (wsapi_env)
         local count = call.count
         local status = call.status
         if count and count > 0 then
-          printout (name, "  "..status, number(count))
+          printout (name, number(count), number(status))
         end
       end
     end
     
     print ("HTTP Web Server, " .. os.date "%c")
+    printConnections (http.iprequests)     
     
-    print "\n Most recent incoming connections:"
-    printout ("IP address", "date       time")
-    for ip, req in pairs (server.iprequests) do
-      printout (ip, os.date(date, req.date))
-    end
+    print "\n /data_request?"
+    printout ("id=... ", "#requests  ","status")
+    printinfo (http.http_handler)
     
-      print "\n /data_request?"
-      printout ("id=... ","status", " #requests")
-      printinfo (server.http_handler)
-      
-      print "\n CGI requests"
-      printout ("URL ","status"," #requests")
-      printinfo (server.cgi_handler)
-      
-      print "\n File requests"
-      printout ("filename ","status"," #requests")
-      printinfo (server.file_handler)
+    print "\n CGI requests"
+    printout ("URL ", "#requests  ","status")
+    printinfo (http.cgi_handler)
+    
+    print "\n File requests"
+    printout ("filename ", "#requests  ","status")
+    printinfo (http.file_handler)
     
   end
   
@@ -413,39 +457,32 @@ function run (wsapi_env)
     local none = "--- none ---"
     local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
     
-    local function devname (d)
-      local d = tonumber(d) or 0
-      local name = (luup.devices[d] or {}).description or 'system'
-      return table.concat {'[', d, '] ', name: match "^%s*(.+)"}
+    local function print_sorted (info, ok)
+      printout ("Address", "#messages", "for device\n")
+      local n = 0
+      local index = {}
+      for ip in pairs (info) do index[#index+1] = ip end
+      table.sort (index)    -- get the email addresses into order
+      for _,ip in ipairs (index) do
+        local dest = info[ip]
+        local name = devname (dest.devNo)
+        local count = number (dest.count)
+        if ok(ip) then 
+          n = n + 1
+          printout (ip, count, name) 
+        end
+      end
+      if n == 0 then printout (none) end
     end
     
     print ("SMTP eMail Server, " .. os.date "%c")
-    
-    print "\n Received connections:"
-    printout("IP address", "#connects", "    date     time\n")
-    if not next (smtp.iprequests) then printout (none) end
-    for ip, req in pairs (smtp.iprequests) do
-      local connects = number (req.connects)
-      printout (ip, connects, os.date(date, req.date))
-    end
+    printConnections (smtp.iprequests)    
     
     print "\n Registered email sender IPs:"
-    printout ("IP address", "#messages", "for device\n")
-    local n = 0
-    for ip,dest in pairs (smtp.destinations) do
-      local name = devname (dest.devNo)
-      local count = number (dest.count)
-      if not ip: match "@" then n=n+1; printout (ip, count, name) end
-    end
-    if n == 0 then printout (none) end
+    print_sorted (smtp.destinations, function(x) return not x:match "@" end)
     
     print "\n Registered destination mailboxes:"
-    printout ("eMail address", "#messages", "for device\n")
-    for email,dest in pairs (smtp.destinations) do
-      local name = devname (dest.devNo)
-      local count = number (dest.count)
-      if email: match "@" then printout (email, count, name) end
-    end
+    print_sorted (smtp.destinations, function(x) return x:match "@" end)
     
     print "\n Blocked senders:"
     printout ("eMail address", '', '\n')
@@ -455,17 +492,171 @@ function run (wsapi_env)
     end
   end
   
+  local function pop3list ()
+    
+    print ("POP3 eMail Server, " .. os.date "%c")
+    printConnections (pop3.iprequests)    
+    
+    print "\n Registered accounts:"
+    
+    local layout = "     %-21s %9s"
+    local number = "%7s"
+    local header = "\n    Mailbox '%s': %d messages, %0.1fkB"
+    local accounts = pop3.accounts
+    
+    for name, folder in pairs (accounts) do
+      local mbx = pop3.mailbox.open (folder)
+      local total, bytes = mbx: status()
+      print (header: format (name, total, bytes/1e3))
+      print ('      #' .. (layout: format ("date       time", "size\n")))
+      
+      local list = {}
+      for _, size, _, timestamp in mbx:scan() do
+        list[#list+1] = {t=timestamp, l=layout:format (os.date (date, timestamp), size)}
+      end
+      table.sort (list, function (a,b) return a.t > b.t end)  -- newest first
+      if #list == 0 then 
+        print "              --- none ---" 
+      else
+        for i,x in ipairs (list) do print (number:format(i) .. x.l) end
+      end
+      print ''
+      mbx: close ()
+    end
+  end
+  
+  local function udplist ()
+    print ("UDP datagram Listeners, " .. os.date "%c")
+    printConnections (ioutil.udp.iprequests)    
+    
+--[[
+       udp.listeners[port] = {                     -- record info for console server page
+            callback = callback, 
+            devNo = scheduler.current_device (),
+            port = port,
+            count = 0,
+          }
+--]]
+    print "\n Registered listeners:"
+    local list = {}
+    print        "    port           #datagrams for device \n"
+    local listeners = "%8s            %5d     %s"
+    for port, x in pairs(ioutil.udp.listeners) do
+      local name = devname (x.devNo)
+      list[#list+1] = {port = port, l = listeners:format (port, x.count, name)}
+    end
+    table.sort (list, function (a,b) return a.port < b.port end)
+    if #list == 0 then 
+      print "              --- none ---" 
+    else
+      for _,x in ipairs (list) do print (x.l) end
+    end
+    print ''
+  
+--[[
+      udp.senders[#udp.senders+1] = {                         -- can't index by port, perhaps not unique
+          devNo = scheduler.current_device (),
+          ip_and_port = ip_and_port,
+          sock = sock,
+          count = 0,      -- don't, at the moment, count number of datagrams sent
+        }
+ --]]
+    print "\n Opened for write:"
+    list = {}
+    print        "    ip:port                   by device \n"
+    local senders = "%20s          %s"
+    for i, x in pairs(ioutil.udp.senders) do
+      local name = devname (x.devNo)
+      list[i] = {ip_and_port = x.ip_and_port, l = senders:format (x.ip_and_port, name)}
+    end
+    table.sort (list, function (a,b) return a.ip_and_port < b.ip_and_port end)
+    if #list == 0 then 
+      print "              --- none ---" 
+    else
+      for _,x in ipairs (list) do print (x.l) end
+    end
+    print ''
+ 
+  end
+  
+  
+  local function sockets ()
+    print "Watched Sockets"
+
+    local number = "%7s"
+    local layout = "     %-21s  %5s    %-20s"
+    print "      #     date       time         device           socket"
+    local list = {}
+    local sock_drawer = scheduler.get_socket_list()    -- list is indexed by socket !!
+    for sock, x in pairs (sock_drawer) do
+--    callback = action,
+--    devNo = current_device,
+--    io = io or {intercept = false},  -- assume no intercepts: incoming data is passed to handler
+      local sockname = table.concat {tostring(x.name), ' ', tostring(sock)}
+      list[#list+1] = layout: format (os.date(date, x.time), x.devNo or 0, sockname)
+    end
+    table.sort (list, function (a,b) return a > b end)
+    
+    if #list == 0 then 
+      print "      --- none ---" 
+    else
+      for i,x in ipairs (list) do print (number:format(i) .. x) end
+    end
+    print ''
+
+  end
+  
+  local function sandbox ()               -- 2018.04.07
+    print "Sandboxed system tables"
+    for _,v in pairs (_G) do
+      local meta = ((type(v) == "table") and getmetatable(v)) or {}
+      if meta.__newindex and meta.__tostring then   -- not foolproof, but good enough?
+        print ('\n' .. tostring(v))
+      end
+    end
+  end
+  
+  local function images ()
+    local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
+    
+    print ("Images  " .. os.date "%c", '\n')
+    
+    print [[<nav>]]
+    local option = '%s <a href="/images/%s" target="image">%s</a>'
+    for i,f in ipairs (files) do 
+      print (option: format (number(i), f.name, f.name))
+    end
+    print "</nav>"
+--    print [[<iframe name="output" rows=60 cols=50 height="700px" width="50%" >]]
+    print [[<article><iframe name="image" width="50%" ></article>]]
+
+    print ''
+  end
+ 
+  local function trash ()
+    local files = get_matching_files_from ("trash/", '^[^%.]+%.[^%.]+$')     -- *.*
+    print ("Trash  " .. os.date "%c", '\n')
+    for i,f in ipairs (files) do print (i, f.name) end
+    if #files == 0 then print "       --- none ---" end
+    print ''
+  end
   
   local pages = {
     about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
     backups = backups,
     delays  = function () listit (dlist, "Delayed Callbacks") end,
+    images  = images,
     jobs    = function () listit (jlist, "Scheduled Jobs") end,
     log     = printlog,
     startup = function () listit (slist, "Startup Jobs") end,
     watches = watchlist,
     http    = httplist,
     smtp    = smtplist,
+    pop3    = pop3list,
+    sockets = sockets,
+    sandbox = sandbox,
+    trash   = trash,
+    udp     = udplist,
     
     uncompress      = uncompress,
     uncompressform  = uncompressform,

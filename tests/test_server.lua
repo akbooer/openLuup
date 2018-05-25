@@ -11,7 +11,9 @@ local t = require "tests.luaunit"
 --    3) CGIs implementented with Lua WSAPI
 --
 
-local s = require "openLuup.server"
+local s  = require "openLuup.http"
+local s2 = require "openLuup.servlet"
+
 local json = require "openLuup.json"
 
 
@@ -20,7 +22,6 @@ TestServerUtilities = {}
 function TestServerUtilities:test_methodlist ()
   t.assertIsFunction (s.add_callback_handlers)
   t.assertIsFunction (s.wget)
-  t.assertIsFunction (s.send)
   t.assertIsFunction (s.start)
 end
 
@@ -41,7 +42,7 @@ end
 function TestServerUtilities:test_content_iterator ()
   local content = "abc123"
   local mc = s.TEST.make_content
-  local mi = s.TEST.make_iterator
+  local mi = s2.TEST.make_iterator
   local i = mi (content)
   t.assertIsFunction (i)        -- this is the iterator function
   local c = i()
@@ -79,6 +80,7 @@ function TestServerUtilities:test_request_object ()
     post_content = ""
     }
 
+  o.request_start = nil   -- can't know what this will be
   t.assertItemsEquals (o, correct)
 end
 
@@ -86,7 +88,7 @@ TestServerRequests = {}
 
 
 function TestServerRequests:test_http_file ()
-  local hf = s.TEST.http_file
+  local hf = s2.TEST.http_file
   local ro = s.TEST.request_object
   local ob = ro "http:localhost:3480/index.html"
   local s,h,i = hf (ob)
@@ -99,7 +101,7 @@ function TestServerRequests:test_http_file ()
 end
 
 function TestServerRequests:test_http_file_not_found ()
-  local hf = s.TEST.http_file
+  local hf = s2.TEST.http_file
   local ro = s.TEST.request_object
   local s,h,i = hf (ro "http:localhost:3480/qwertyuiop")
   t.assertIsNumber (s)
@@ -112,7 +114,7 @@ function TestServerRequests:test_http_file_not_found ()
 end
 
 function TestServerRequests:test_data_request ()
-  local dr = s.TEST.data_request
+  local dr = s2.TEST.data_request
   local ro = s.TEST.request_object
   -- special TEST request returns JSON-encoded handler parameter list
   local ob = ro "http://127.0.0.1:3480/data_request?id=TEST&p1=abc&p2=123"
@@ -132,7 +134,7 @@ function TestServerRequests:test_data_request ()
 end
 
 function TestServerRequests:test_wsapi_cgi ()
-  local cg = s.TEST.wsapi_cgi
+  local cg = s2.TEST.wsapi_cgi
   local ro = s.TEST.request_object
   local u = "http://0.0.0.0:3480/cgi-bin/cmh/sysinfo.sh"    -- CGI requests are handled by WSAPI
   local o = ro(u)
@@ -150,7 +152,7 @@ TestServerResponses = {}
 
 function TestServerResponses:test_response_simple ()
   local re = s.TEST.http_response
-  local mi = s.TEST.make_iterator
+  local mi = s2.TEST.make_iterator
   local status = 200
   local content = "Test content"
   local headers = {
@@ -169,7 +171,7 @@ end
 
 function TestServerResponses:test_response_chunked ()
   local re = s.TEST.http_response
-  local mi = s.TEST.make_iterator
+  local mi = s2.TEST.make_iterator
   local status = 200
   local content = "Test content"
   local headers = {

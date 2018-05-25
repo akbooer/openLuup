@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.03.23",
+  VERSION       = "2018.05.15",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -28,6 +28,9 @@ ABOUT = {
 --   * useful device variables
 --   * useful actions
 --   * plugin-specific configuration
+--   * SMTP mail handlers
+--   * Data Storage Provider gateways>
+--   * Retention policy implementation for directories
 --   * etc., etc...
 --
 
@@ -42,14 +45,24 @@ ABOUT = {
 -- 2018.03.01  register openLuup as AltUI Data Storage Provider
 -- 2018.03.18  register with local SMTP server to receive email for openLuup@openLuup.local
 -- 2018.03.21  add SendToTrash and EmptyTrash actions to apply file retention policies
+-- 2018.03.25  set openLuup variables without logging (but still trigger watches)
+--             ...also move UDP open() to io.udp.open()
+-- 2018.03.28  add application Content-Type to images@openLuup.local handler
+-- 2018.04.02  fixed type on openLuup_images - thanks @jswim788!
+-- 2018.04.08  use POP3 module to save email to mailbox. Add events mailbox folder
+-- 2018.04.15  fix number types in SendToTrash action
+-- 2018.05.02  add StartTime device variable, also on Control panel (thanks @rafale77)
 
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local vfs         = require "openLuup.virtualfilesystem"
+local ioutil      = require "openLuup.io"           -- NOT the same as luup.io or Lua's io.
+local pop3        = require "openLuup.pop3"
+
 local lfs         = require "lfs"
 local url         = require "socket.url"
-local socket      = require "socket"                -- for UDP
+local smtp        = require "socket.smtp"             -- smtp.message() for formatting events
 
 local INTERVAL = 120
 local MINUTES  = "2m"
@@ -77,9 +90,15 @@ local function round (x, p)
   return x - x % p
 end
 
+local function set (name, value, sid)
+  local watch = true
+--  luup.variable_set (SID.openLuup, name,   value,  ole)
+  luup.devices[ole]:variable_set (sid or SID.openLuup, name, value, watch)    -- 2018.03.25  silent setting (but watched)
+end
+
 local function display (line1, line2)
-  if line1 then luup.variable_set (SID.altui, "DisplayLine1",  line1 or '', ole) end
-  if line2 then luup.variable_set (SID.altui, "DisplayLine2",  line2 or '', ole) end
+  if line1 then set ("DisplayLine1",  line1 or '', SID.altui) end
+  if line2 then set ("DisplayLine2",  line2 or '', SID.altui) end
 end
 
 -- slightly unusual parameter list, since source file may be in virtual storage
@@ -102,10 +121,6 @@ end
 -- vital statistics
 --
 local cpu_prev = 0
-
-local function set (name, value)
-  luup.variable_set (SID.openLuup, name,   value,  ole)
-end
 
 local function mem_stats ()
   local y = {}
@@ -289,21 +304,6 @@ end
 --
 -- register openLuup as an AltUI Data Storage Provider
 --
-local udp = {
-
-    open = function (ip_and_port)   -- returns UDP socket configured for sending to given destination
-      local sock, msg, ok
-      local ip, port = ip_and_port: match "(%d+%.%d+%.%d+%.%d+):(%d+)"
-      if ip and port then 
-        sock, msg = socket.udp()
-        if sock then ok, msg = sock:setpeername(ip, port) end         -- connect to destination
-      else
-        msg = "invalid ip:port syntax '" .. tostring (ip_and_port) .. "'"
-      end
-      if ok then ok = sock end
-      return ok, msg
-    end
-  }
 
 function openLuup_storage_provider (_, p)
   local influx = "%s value=%s"
@@ -468,12 +468,10 @@ function SendToTrash (p)
     os.rename (file, "trash/" .. filename)
   end
   
-  lfs.mkdir "trash"   -- make sure destination exists
-  
   -- try to protect ourself from any damage!
   local locked = {"openLuup", "cgi", "cgi-bin", "cmh", "files", "icons", "trash", "whisper", "www"}
   local prohibited = {}
-  for _, dir in ipairs(locked) do prohibited[dir] = dir end
+  for _, dir in ipairs(locked) do prohibited[dir] = dir end   -- turn list into indexed table
   
   local folder = (p.Folder or ''): match "^[%./\\]*(.-)[/\\]*$" -- just pull out the relevant path
   if prohibited[folder] then
@@ -483,7 +481,9 @@ function SendToTrash (p)
   
   if folder then
     luup.log "applying file retention policy..."
-    local policy = {[folder] = {types = p.FileTypes, days = p.MaxDays, maxfiles = p.MaxFiles}}
+    local days = tonumber (p.MaxDays)               -- 2018.04.15
+    local maxfiles = tonumber (p.MaxFiles)
+    local policy = {[folder] = {types = p.FileTypes, days = days, maxfiles = maxfiles}}
     local process = trash
     implement_retention_policies (policy, process)
     luup.log "...finished applying file retention policy"
@@ -493,19 +493,21 @@ end
 function EmptyTrash (p)
   local yes = p.AreYouSure or ''
   if yes: lower() == "yes" then
+    local n = 0
     luup.log "emptying trash/ folder..."
     for file in lfs.dir "trash" do
       local hidden = file: match "^%."                -- hidden files start with '.'
       if not hidden then
         local ok,err = os.remove ("trash/" .. file)
         if ok then
-          luup.log ("deleted " .. file)
+          n = n + 1
+--          luup.log ("deleted " .. file)
         else
           luup.log ("unable to delete " .. file .. " : " .. (err or '?'))
         end
       end
     end
-    luup.log "...done!"
+    luup.log (n .. " files permanently deleted from trash")
   end
 end
 
@@ -534,6 +536,7 @@ end
 function openLuup_ticker ()
   calc_stats()
   -- might want to do more here...
+  -- TODO: update gmt_offset system attribute? (to accommodate DST change)
 end
 
 function openLuup_synchronise ()
@@ -556,37 +559,96 @@ function openLuup_email (email, data)
 end
 
 -- 2018.03.18  receive and store email images for images@openLuup.local
-function openLuup_image (email, data)
+function openLuup_images (email, data)
+  local function log (...) _log ("openLuup.images", ...) end
   local message = data: decode ()             -- decode MIME message
   if type (message.body) == "table" then      -- must be multipart message
     local n = 0
-    for _, part in ipairs (message.body) do
+    for i, part in ipairs (message.body) do
       
       local ContentType = part.header["content-type"] or "text/plain"
       local ctype = ContentType: match "^%w+/%w+" 
-      local cname = ContentType: match 'name%s*=%s*"([^/\\][^"]+)"'   -- avoid absolute paths
+      local cname = ContentType: match 'name%s*=%s*"?([^/\\][^"]+)"?'   -- avoid absolute paths
       if cname and cname: match "%.%." then cname = nil end           -- avoid any attempt to move up folder tree
+      cname = cname or os.date "Snap_%Y%m%d-%H%M%S-" .. i .. ".jpg"   -- make up a name if necessary      
+      log ("Content-Type:", ContentType) 
       
-      if cname and ctype: match "image" then    -- write out image files
-        local f = io.open ("images/" .. cname, 'wb') 
+      if (ctype: match "image")               -- 2018.03.28  add application type
+      or (ctype: match "application") then    -- write out image files  (thanks @jswim788)
+        local f, err = io.open ("images/" .. cname, 'wb') 
         if f then
           n = n + 1
           f: write (part.body)
           f: close ()
+        else
+          log ("ERROR writing:", cname, ' ', err)
         end
       end
     end
     if n > 0 then 
       local saved = "%s: saved %d image files"
       _log (saved: format(email, n))
+    else
+      _log "no image attachments found"
     end
   end
 end
+
+-- save message to mailbox
+local function save_message (path, mailbox, data)
+  local function log (...) _log (mailbox, ...) end
+  local mbx = pop3.mailbox.open (path)
+  local id, err = mbx: write (data)
+  if id then
+    log ("saved email message id: " .. id)
+  else
+    log ("ERROR saving email message: " .. (err or '?'))
+  end
+  mbx: close()
+
+end
+
+-- real mailbox
+function openLuup_mailbox (...)
+  save_message ("mail/", ...)
+end
+
+-- events mailbox
+-- just stores the key headers of of incoming mail
+function openLuup_events (mailbox, data)
+  local message = data: decode ()             -- decode MIME message
+  local headers = message.header
+  
+  local newHeaders = {["content-type"] = "text/plain"}    -- vanilla message
+  for a,b in pairs (headers) do 
+    if type(a) == "string" and not a: match "^content" then
+      newHeaders[a] = b
+    end
+  end
+  newHeaders.subject = newHeaders.subject or "---no subject---"
+  
+  local newData = {}
+  for a in smtp.message {headers = newHeaders, body = ''} do    -- no body text
+      newData[#newData+1] = a: gsub ('\r','')                   -- remove redundant <CR>
+  end
+
+  save_message ("events/", mailbox, newData)
+end
+
 
 function init (devNo)
   local msg
   ole = devNo
   displayHouseMode ()
+
+  do -- version number
+    local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
+    local version = ("v%d.%d.%d"): format (y%2000,m,d)
+    set ("Version", version)
+    luup.log (version)
+    local info = luup.attr_get "openLuup"
+    info.Version = version      -- put it into openLuup table too.
+  end
   
   do -- synchronised heartbeat
     local later = timers.timenow() + INTERVAL         -- some minutes in the future
@@ -596,22 +658,15 @@ function init (devNo)
     luup.log (msg)
   end
 
-  do -- version number
-    local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
-    local version = ("v%d.%d.%d"): format (y%2000,m,d)
-    luup.variable_set (SID.openLuup, "Version", version,  ole)
-    luup.log (version)
-    local info = luup.attr_get "openLuup"
-    info.Version = version      -- put it into openLuup table too.
-  end
-
   do -- callback handlers
 --    luup.register_handler ("HTTP_openLuup", "openLuup")
 --    luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
     luup.devices[devNo].action_callback (generic_action)      -- catch all undefined action calls
     luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
-    luup.register_handler ("openLuup_email", "openLuup@openLuup.local")       -- 2018.03.18
-    luup.register_handler ("openLuup_image", "images@openLuup.local")         -- 2018.03.18
+    luup.register_handler ("openLuup_email", "openLuup@openLuup.local")       -- 2018.03.18  bit bucket
+    luup.register_handler ("openLuup_images", "images@openLuup.local")        -- 2018.03.18  save images
+    luup.register_handler ("openLuup_events", "events@openLuup.local")        -- 2018.03.18  save events
+    luup.register_handler ("openLuup_mailbox", "mail@openLuup.local")         -- 2018.04.02  actual mailbox
   end
 
   do -- install AltAppStore as child device
@@ -631,19 +686,23 @@ function init (devNo)
     if db then
       local err
       register_Data_Storage_Provider ()   -- 2018.03.01
-      InfluxSocket, err = udp.open (db)
+      InfluxSocket, err = ioutil.udp.open (db)
       if InfluxSocket then 
         _log (dsp .. tostring(InfluxSocket))
       else
-        _log (dsp .. (err or '')) end
+        _log (dsp .. (err or '')) 
+      end
     end
   end
   
   do -- ensure some extra folders exist
+    lfs.mkdir "events"
     lfs.mkdir "images"
     lfs.mkdir "trash"
+    lfs.mkdir "mail"
   end
   
+  set ("StartTime", luup.attr_get "openLuup.Status.StartTime")        -- 2018.05.02
   calc_stats ()
   
   return true, msg, ABOUT.NAME
