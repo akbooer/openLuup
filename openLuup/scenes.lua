@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2018.05.16",
+  VERSION       = "2018.05.25",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -53,6 +53,7 @@ local ABOUT = {
 -- 2018.02.19   add log messages for scene cancellation by global and local Lua code
 -- 2018.04.16   remove scene watcher callback, now redundant with scene finalizers
 -- 2018.05.16   correct next run time (thanks to @rafale77 for diagnosis and suggestions)
+-- 2018.05.25   fixed scene interval passing from scene to timer function
 
 
 local logs      = require "openLuup.logs"
@@ -155,11 +156,11 @@ local function create (scene_json)
 
   local function scene_runner (t, next_time)              -- called by timer, trigger, or manual run
     local lul_trigger, lul_timer
-      if t and next_time then           -- 2018.05.16  update the next scheduled time...
-        t.next_run = next_time          -- ...regardless of whether or not it runs this time (thanks @rafale77)
-        devutil.new_userdata_dataversion ()         -- increment version, so that display updates
-      end
-    if not runs_in_current_mode (scene) then
+    if t and next_time then           -- 2018.05.16  update the next scheduled time...
+      t.next_run = next_time          -- ...regardless of whether or not it runs this time (thanks @rafale77)
+      devutil.new_userdata_dataversion ()         -- increment version, so that display updates
+    end
+    if not runs_in_current_mode (scene) then 
       _log (scene.name .. " does not run in current House Mode")
       return
     end
@@ -365,12 +366,12 @@ local function create (scene_json)
   local info = "job#%d :timer '%s' for scene [%d] %s"
   local time = ""
   for _, t in ipairs (scene.timers or {}) do
-    if t.type == 1 then
+    if t.type == 1 then  -- 2018.05.25 Rafale77
       time = t.interval
     else
       time = t.time
     end
-    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, time,
+    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, time, 
                           t.days_of_week or t.days_of_month, t, recurring)
     if j and scheduler.job_list[j] then
       local job = scheduler.job_list[j]

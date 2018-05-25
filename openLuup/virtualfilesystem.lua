@@ -307,6 +307,16 @@ local S_openLuup_svc = [[
         </argument>
       </argumentList>
     </action>
+    
+    <action>    <!-- added by @rafale77 -->
+      <name>RunScene</name>
+      <argumentList>
+        <argument>
+          <name>SceneNum</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
 
     <action>    <!-- added by @rafale77 -->
       <name>RunScene</name>
