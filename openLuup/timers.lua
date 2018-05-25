@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2018.04.22",
+  VERSION       = "2018.05.25",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -50,7 +50,7 @@ local ABOUT = {
 -- 2018.02.25  move sol_ra_dec from TEST to normal exported function
 -- 2018.03.15  add RFC 5322 format date (for SMTP)
 -- 2018.04.14  add util module to export useful utility time functions
-
+-- 2018.05.25  fixed interval target call
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
 -- The function callbacks are actual functions, not named globals.
@@ -410,9 +410,10 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
     if u then
       local base = timenow()       -- 2017.07.14
       local increment = math.max (v * multiplier[u], 1)    -- 2017.07.14
-      -- dont_increment parameter added since target is called twice (by start_timer and timer.job)
+      -- dont_increment parameter added since target is called twice (by start_timer and timer.job). Rafale77 reverted. Blocks interval increment
       target = function (dont_increment)
-        if not dont_increment then base = base + increment end    -- 2017.07.12
+--        if not dont_increment then base = base + increment end    -- 2017.07.12 
+        base + increment end                                        -- 2018.08.25
         return base 
       end
       return start_timer () 
