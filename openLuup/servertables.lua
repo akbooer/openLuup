@@ -94,14 +94,17 @@ local status_codes = {
 }
 
 
+-- see: https://www.iana.org/assignments/smtp-enhanced-status-codes/smtp-enhanced-status-codes.xhtml
 local smtp_codes = {
   [211] = "System status, or system help reply",
   [214] = "Help message",
   [220] = "%s Service ready",                                               -- <domain>
   [221] = "%s Service closing transmission channel",                        -- <domain>
+  [235] = "Authentication successful",
   [250] = "OK",      -- Requested mail action okay
   [251] = "User not local; will forward to <%s>",                             -- <forward-path>
   [252] = "Cannot VRFY user, but will accept message and attempt delivery",
+  [334] = "%s",                                                             -- AUTH challenge (in base64)
   [354] = "Start mail input; end with <CRLF>.<CRLF>",
   [421] = "%s Service not available, closing transmission channel",         -- <domain>
   [450] = "Requested mail action not taken: mailbox <%s> unavailable",        -- <mailbox>
@@ -112,15 +115,16 @@ local smtp_codes = {
   [501] = "Syntax error in parameters or arguments <%s>",
   [502] = "Command <%s> not implemented",                                      -- <command>
   [503] = "Bad sequence of commands",
-  [504] = "Command parameter not implemented",
+  [504] = "Command parameter <%s> not implemented",
+  [521] = "Host does not accept mail",
   [550] = "Requested action not taken: <%s> unavailable",                       -- <mailbox>
   [551] = "User not local; please try <%s>",                                   -- <forward-path>
   [552] = "Requested mail action aborted: exceeded storage allocation",
   [553] = "Requested action not taken: mailbox name not allowed",
   [554] = "Transaction failed",
   [555] = "MAIL FROM/RCPT TO parameters not recognized or not implemented",
+  [556] = "Domain does not accept mail",
 }
-
 
 -- CGI prefixes: HTTP requests with any of these path roots are treated as CGIs
 local cgi_prefix = {
@@ -147,7 +151,7 @@ local cgi_alias = setmetatable ({
     
     ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
     ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
-    ["upnp/control/hag"]          = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
+--    ["upnp/control/hag"]          = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
     ["console"]                   = "openLuup/console.lua",
     
     -- graphite_api support

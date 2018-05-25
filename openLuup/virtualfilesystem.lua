@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.03.23",
+  VERSION       = "2018.05.02",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -115,8 +115,22 @@ local D_openLuup_json = [[
 					"left": "0",
 					"Display": {
 						"Service": "openLuup",
-						"Variable": "Version",
+						"Variable": "StartTime",
 						"Top": 100,
+						"Left": 50,
+						"Width": 75,
+						"Height": 20
+					}
+				},
+				{
+					"ControlGroup":"2",
+					"ControlType": "variable",
+					"top": "3",
+					"left": "0",
+					"Display": {
+						"Service": "openLuup",
+						"Variable": "Version",
+						"Top": 120,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -132,7 +146,7 @@ local D_openLuup_json = [[
 						"text": "<a href='console' target='_blank'>CONSOLE interface</a>"
 					},
 					"Display": {
-						"Top": 140,
+						"Top": 160,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -148,7 +162,7 @@ local D_openLuup_json = [[
 						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
 					},
 					"Display": {
-						"Top": 180,
+						"Top": 200,
 						"Left": 50,
 						"Width": 75,
 						"Height": 20
@@ -834,6 +848,7 @@ local I_openLuupCamera1_xml = [[
     local child -- the motion sensor
     local smtp = require "openLuup.smtp"
     local timers = require "openLuup.timers"
+    local requests = require "openLuup.requests"
     local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
     function get (name)
       return (luup.variable_get (sid, name, child))
@@ -843,18 +858,21 @@ local I_openLuupCamera1_xml = [[
         luup.variable_set (sid, name, val, child)
       end
     end
+    function archive (p)
+      requests.archive_video ("archive_video", p)
+    end
     local function clear ()
       local now = os.time()
-      local last = get "LastTripped"
-      if (tonumber (last) + timeout) <= (now + 1) then
+      local last = get "LastTrip"
+      if (tonumber (last) + timeout) &lt;= (now + 1) then  -- NOTE the XML escape!
         set ("Tripped", '0')
         set ("ArmedTripped", '0')
-        set ("LastTripped", now)
+        set ("LastTrip", now)
       end
     end
     local function openLuupCamera (ip, mail)      -- email callback
       set ("Tripped", '1')
-      set ("LastTripped", os.time())
+      set ("LastTrip", os.time())
       if get "Armed" == '1' then set ("ArmedTripped", '1') end
       timers.call_delay (clear, timeout, '', "camera motion reset")
     end
@@ -866,7 +884,7 @@ local I_openLuupCamera1_xml = [[
             var:format("Armed",1), 
             var:format("ArmedTripped", 0),
             var:format("Tripped", 0), 
-            var:format("LastTripped", 0),
+            var:format("LastTrip", 0),
           }
         local ptr = luup.chdev.start (devNo)
         local altid = "openLuupCamera"
@@ -905,28 +923,8 @@ local I_openLuupCamera1_xml = [[
       <serviceId>urn:micasaverde-com:serviceId:Camera1</serviceId>
       <name>ArchiveVideo</name>
       <job>
-        local ip  = luup.attr_get ("ip", lul_device)
-        local url = luup.variable_get ("urn:micasaverde-com:serviceId:Camera1", "URL", lul_device)
         local p = lul_settings
-        if ip and url then
-          timeout = 5
-          local status, image = luup.inet.wget ("http://" .. ip .. url, timeout)
-          if status == 0 then
-            local filename = os.date "Snap_%Y%m%d-%H%M%S-X.jpg"
-            local f,err = io.open ("images/" .. filename, 'wb')
-            image = image or "---no image---"
-            if f then
-              f: write (image)
-              f: close ()
-              local msg = "ArchiveVideo:%d: Format=%s, Duration=%s - %d bytes written to %s"
-              luup.log (msg:format (lul_device, p.Format or '?', p.Duration or '?', #image, filename))              
-            else
-              luup.log ("ERROR writing image file: " .. (err or '?'))
-            end
-          else
-            luup.log ("ERROR getting image: " .. (image or '?'))
-          end
-        end
+        archive {cam = lul_device, Format = p.Format, Duration = p.Duration}
       </job>
     </action>
   
@@ -985,7 +983,7 @@ retentions = 5m:7d,1h:30d,3h:1y,1d:10y
 
 [10minute]
 pattern = \.10m$
-retentions = 5m:7d,1h:30d,3h:1y,1d:10y
+retentions = 10m:7d,1h:30d,3h:1y,1d:10y
 
 [20minute]
 pattern = \.20m$

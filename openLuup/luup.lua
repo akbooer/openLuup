@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.03.22",
+  VERSION       = "2018.05.01",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -50,12 +50,16 @@ local ABOUT = {
 
 -- 2018.02.10  ensure valid error in luup.call_action() even if missing parameters
 -- 2018.03.08  extend register_handler to work with email (local SMTP server)
--- 2018.03.22  use renamed io.luupio module, use logs.register()
+-- 2018.03.22  use renamed ioutil.luupio module, use logs.register()
+-- 2018.03.24  add room functions to luup.rooms metatable
+-- 2018.04.18  optional protocol prefix in register_handler request
+-- 2018.04.30  'silent' variable attribute to mute logging
+-- 2018.05.01  use new_userdata_dataversion () when changing room structure
 
 
 local logs          = require "openLuup.logs"
 
-local server        = require "openLuup.server"
+local http          = require "openLuup.http"
 local scheduler     = require "openLuup.scheduler"
 local devutil       = require "openLuup.devices"
 local Device_0      = require "openLuup.gateway"
@@ -66,7 +70,7 @@ local smtp          = require "openLuup.smtp"     -- for register_handler to wor
 
 -- luup sub-modules
 local chdev         = require "openLuup.chdev"
-local io            = require "openLuup.io"    
+local ioutil        = require "openLuup.io"    
 
 
 --  local _log() and _debug()
@@ -95,6 +99,70 @@ local scenes = {}
 -- The members are: remote_file (string), room_num (number), description(string)
 
 local remotes = {}
+
+-----
+--
+-- ROOMS methods
+--
+
+setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatable
+  
+  {
+    __tostring = function ()    -- so that print (luup.rooms) works
+      local x = {}
+      local line = '  [%d] = "%s",'
+      for n in pairs(rooms) do x[#x+1] = n end                       -- get the room indices
+      table.sort (x)                                                 -- sort them
+      for i,n in ipairs(x) do x[i] = line: format (n, rooms[n]) end   -- format them 
+      return table.concat ({'{', table.concat (x, '\n'), '}'}, '\n')  -- concatentate them
+    end,
+
+    __index = {
+
+    create = function (name, force_number) 
+      local number
+      if force_number then
+        number = force_number
+      else                -- check that room name does not already exist
+        local index = {}
+        for i,room_name in pairs (rooms) do index[room_name] = i end
+        number = index[name]
+        if not number then
+          number = (#rooms + 1)      -- next empty slot
+          _log (("creating room [%d] %s"): format (number, name or '?'))
+        end
+      end
+      rooms[number] = name
+      devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
+      return number
+    end,
+
+    rename = function (number, name) 
+      if number and rooms[number] then
+        rooms[number] = name or '?'
+        _log (("renaming room [%d] %s"): format (number, name or '?'))
+      end
+    end,
+
+    delete = function (number) 
+      if number and rooms[number] then 
+        rooms[number] = nil
+         _log (("deleting room [%d]"): format (number))
+       -- check devices for reference to deleted room no.
+        for _, d in pairs (devices) do
+          if d.room_num == number then d.room_num = 0 end
+        end
+        -- check scenes for reference to deleted room no.
+        for _, s in pairs (scenes) do
+          if s.room == number then s.rename (nil, 0) end
+        end
+      devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
+      end
+    end,
+    
+  }})
+
+
 
 -----
 --
@@ -208,7 +276,7 @@ end
 -- parameters: service (string), variable (string), value (string), device (string or number), [startup (bool)]
 -- returns: nothing 
 local function variable_set (service, name, value, device, startup)
-    -- shorten long variable strings, removing control characters
+    -- shorten long variable strings, removing control characters, ...just for logging!
     local function truncate (text)
       text = (text or ''): gsub ("%c", ' ')
       if #text > 120 then text = text: sub (1,115) .. "..." end    -- truncate long variable values
@@ -224,7 +292,7 @@ local function variable_set (service, name, value, device, startup)
   name = tostring(name)
   value = tostring (value)
   local var = dev:variable_set (service, name, value, not startup) 
-  if var then
+  if var and not var.silent then            -- 2018.04.30  'silent' attribute to mute logging
     local old = var.old  or "MISSING"
     local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
     local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
@@ -237,14 +305,16 @@ end
 -- parameters: service (string), variable (string), device (string or number)
 -- returns: value (string) and Unix time stamp (number) of when the variable last changed
 local function variable_get (service, name, device)
-  device = device or scheduler.current_device()    -- undocumented luup feature!
+  device = device or scheduler.current_device()           -- undocumented luup feature!
   local dev = devices[device]
   if not dev then 
     log_missing_dev_srv_name (device, service, name, "luup.variable_get")
     return
   end
   local var = dev:variable_get (service, name) or {}
-  return var.value, var.time
+  local tim = var.time 
+  if tim then tim = math.floor(tim) end                   -- ensure time is an integer
+  return var.value, tim
 end
 
 
@@ -559,7 +629,25 @@ end
 -- function_name will be called and whatever string and content_type it returns will be returned.
 --
 -- The request is made with the URL: data_request?id=lr_[the registered name] on port 3480. 
+--[[
 
+openLuup extension permits a prefix to the request name to denote the relevant protocol,
+so that this single call may be used for a number of different types of callback event:
+
+  luup.register_handler ("xxx", "protocol:address")
+  
+  where protocol = [ mailto, smtp, tcp, udp, ... ]
+  
+  eg: 
+  luup.register_handler ("myHandler", "tcp:1234")                     -- incoming TCP connection on port 1234
+  luup.register_handler ("myHandler", "udp:1234")                     -- incoming UDP -- " --
+  luup.register_handler ("myHandler", "mailto:me@openLuup.local")     -- incoming email for me@...
+  
+  the mailto: or smtp: protocol may be omitted for incoming email addresses of the form a@b...
+  
+  luup.register_handler ("myHandler", "me@openLuup.local")
+  
+--]]
 local function register_handler (...)
   local global_function_name, request_name = parameters ({"string", "string"}, ...)
   local fct = entry_point (global_function_name, "luup.register_handler")
@@ -568,11 +656,30 @@ local function register_handler (...)
     -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
     local msg = ("global_function_name=%s, request=%s"): format (global_function_name, request_name)
     _log (msg, "luup.register_handler")
-    local email = request_name: match "@"       -- not an HTTP request, but an SMTP email address
-    if email  then                              -- 2018.03.08
-      smtp.register_handler (fct, request_name)
+    
+    -- 2018.04.18  optional alphameric protocol prefix in register_handler request
+    local protocol, address = request_name: match "^(%a+):([^:]+)$"     --  abc:xxx
+    if protocol then
+      local valid = {                 -- 2018.04.23  format for easier reading
+          ["mailto"]  = smtp, 
+          ["smtp"]    = smtp, 
+          ["udp"]     = ioutil.udp,
+        }
+      local scheme = valid[protocol: lower()]
+      if scheme then 
+        scheme.register_handler (fct, address)
+      else
+        _log ("ERROR, invalid register_handler protocol: " .. request_name)
+      end
+      
+    -- usual data_request handler, or smtp email (for legacy compatibility)
     else
-      server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
+      local email = request_name: match "@"       -- not an HTTP request, but an SMTP email address
+      if email  then                              -- 2018.03.08
+        smtp.register_handler (fct, request_name)
+      else
+        http.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
+      end
     end
   end
 end
@@ -623,7 +730,7 @@ local inet = {
 -- If Username and Password are specified, they will be used for HTTP Basic Authentication.
 --
   wget = function (URL, Timeout, Username, Password)
-  return server.wget (URL, Timeout, Username, Password)
+  return http.wget (URL, Timeout, Username, Password)
   end
 }
 
@@ -819,7 +926,7 @@ return {
     device_supports_service = device_supports_service,    
     devices_by_service  = devices_by_service,   
     inet                = inet,
-    io                  = io.luupio,
+    io                  = ioutil.luupio,
     ip_set              = ip_set,
     is_night            = timers.is_night,  
     is_ready            = is_ready,
