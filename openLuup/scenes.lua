@@ -51,6 +51,7 @@ local ABOUT = {
 -- 2018.01.18   add optional 3-rd return parameter 'final_delay' and also scene.prolog and epilog calls
 -- 2018.01.30   cancel timer jobs on scene delete, round next scene run time, etc..
 -- 2018.02.19   add log messages for scene cancellation by global and local Lua code
+-- 2018.05.25   fixed scene interval passing from scene to timer function
 
 
 local logs      = require "openLuup.logs"
@@ -359,8 +360,14 @@ local function create (scene_json)
   local recurring = true
   local jobs = meta.jobs
   local info = "job#%d :timer '%s' for scene [%d] %s"
+  local time = ""
   for _, t in ipairs (scene.timers or {}) do
-    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, t.time or t.interval, 
+    if t.type == 1 then  -- 2018.05.25 Rafale77
+      time = t.interval
+    else
+      time = t.time
+    end
+    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, time, 
                           t.days_of_week or t.days_of_month, t, recurring)
     if j and scheduler.job_list[j] then
       local job = scheduler.job_list[j]
