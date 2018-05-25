@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.04.17",
+  VERSION       = "2018.05.15",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -84,6 +84,7 @@ ABOUT = {
 -- 2018.03.24   use luup.rooms.create metatable method
 -- 2018.04.17   add specific attributes (onDashboard) to bridged devices 
 --              thanks @rafale77, see: http://forum.micasaverde.com/index.php/topic,79879.0.html
+-- 2018.05.15   add SetHouseMode (for remote machine) to set of visible actions (for use in scenes)
 
 
 local devNo                      -- our device number
@@ -775,6 +776,14 @@ function GetVeraScenes()
   end
 end
 
+
+function SetHouseMode (p)         -- 2018.05.15
+  if tonumber (p.Mode) then
+    local request = "/data_request?id=action&serviceId=%s&DeviceNum=0&action=SetHouseMode&Mode=%s"
+    local url = request: format(SID.hag, p.Mode)
+    remote_request (url)
+  end
+end
 --
 -- GENERIC ACTION HANDLER
 --

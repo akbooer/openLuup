@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2018.04.25",
+  VERSION       = "2018.05.24",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -53,6 +53,7 @@ local ABOUT = {
 -- 2018.03.24   use luup.rooms.create metatable method
 -- 2018.04.05   do not create status as a device attribute when loading user_data
 -- 2018.04.23   update_plugin_versions additions for ALT... plugins and MySensors
+-- 2018-05.11   Adding device category and subcategory
 
 
 local json    = require "openLuup.json"
@@ -113,7 +114,7 @@ attr ("longitude", "0.0")
 -- other parameters
 attr ("TemperatureFormat", "C")
 attr ("PK_AccessPoint", "88800000")
-attr ("currency", "£")
+attr ("currency", "Â£")
 attr ("date_format", "dd/mm/yy")
 attr ("model", "Not a Vera")
 attr ("timeFormat", "24hr")
@@ -129,7 +130,7 @@ luup.log "startup code completed"
 --  Using_2G = 0,
 --  breach_delay = "30",
 --  category_filter = {},
-  currency = "£",
+  currency = "Â£",
   date_format = "dd/mm/yy",
 --  device_sync = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21",
 --  devices = {},
@@ -529,7 +530,7 @@ local function update_plugin_versions (installed)
   -- go through LOCAL devices looking for clues about their version numbers
   for _, d in pairs (luup.devices or {}) do 
     local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
-    local a = d.environment.ABOUT
+    local a = (d.environment or {}).ABOUT
     local IP = installed[i]
     
     if IP and d.device_num_parent == 0 then   -- LOCAL devices only!
@@ -622,6 +623,8 @@ local function load_user_data (user_data_json)
             disabled        = d.disabled,
             username        = d.username,
             password        = d.password,
+            category_num    = d.category_num,
+            subcategory_num = d.subcategory_num,
           }
         dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
         -- set other device attributes
@@ -707,7 +710,7 @@ local function devices_table (device_list)
         id = item.id, 
         service = item.srv,
         variable = item.name,
-        value = item.value,
+        value = item.value or {},
       }
     end
     local curls 

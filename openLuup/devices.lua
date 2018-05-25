@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.05.01",
+  VERSION       = "2018.05.15",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -92,11 +92,12 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
     }
   return vars[#vars]
 end
-  
+ 
+ 
 function variable:set (value)
   local t = scheduler.timenow()                   -- time to millisecond resolution
   value = tostring(value or '')                   -- all device variables are strings
-  --
+  
   -- 2018.04.25 'VariableWithHistory'
   -- note that retention policies are not implemented here, so the history just grows
   local history = self.history 
@@ -109,6 +110,7 @@ function variable:set (value)
     end
   end
   --
+  
   local n = dataversion.value + 1                 -- say value has changed
   dataversion.value = n
   
@@ -223,19 +225,6 @@ local function new (devNo)
   local version               -- set device version (used to flag changes)
   local missing_action        -- an action callback to catch missing actions
   local watchers    = {}      -- list of watchers for any service or variable
---  local status      = -1      -- device status
-  
---  local function status_get (self)            -- 2016.04.29
---    return status
---  end
-  
---  local function status_set (self, value)     -- 2016.04.29
---    if status ~= value then
-----      new_dataversion ()
---      new_userdata_dataversion ()
---      status = value
---    end
---  end
   
   -- function delete_vars
   -- parameter: device 
@@ -395,9 +384,6 @@ local function new (devNo)
       
       attr_get            = attr_get,
       attr_set            = attr_set,
-      
---      status_get          = status_get,
---      status_set          = status_set,
       
       variable_set        = variable_set, 
       variable_get        = variable_get,

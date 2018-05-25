@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2018.04.25",
+  VERSION       = "2018.05.11",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -134,6 +134,7 @@ local function parse_parameters (query)
   local p = {}
   for n,v in query: gmatch "([%w_]+)=([^&]*)" do          -- parameters separated by unescaped "&"
     if v ~= '' then p[n] = url.unescape(v) end            -- now can unescape parameter values
+    -- TODO: should non-blank parameters also be added from URL line?
   end
   return p
 end
@@ -268,7 +269,12 @@ local function wget (request_URI, Timeout, Username, Password)
     else
       result, status, responseHeaders = scheme.request (URL)
     end
---  
+    if status == 401 then                                     -- Retry with digest
+      local http_digest = require "http-digest"               -- 2018.05.07
+      URL = ("http://" ..Username.. ":" ..Password.. "@" ..string.gsub(request_URI,"http://",""))
+      scheme = http_digest
+      result, status, responseHeaders = scheme.request (URL)
+    end
   end
   
   local wget_status = status                          -- wget has a strange return code
