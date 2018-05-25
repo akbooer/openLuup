@@ -365,9 +365,7 @@ end
 --
 local function call_timer (fct, timer_type, time, days, data, recurring)
   local first_time = true
-  if timer_type ~= "1" then
   time = (tostring(time or '')): lower ()
-  end
   local target           -- fwd ref to function which calculates target time of next call
 
   -- NB: all timers (except absolute) can be implemented as jobs which timeout and get re-run
