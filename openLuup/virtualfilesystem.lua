@@ -309,16 +309,6 @@ local S_openLuup_svc = [[
     </action>
 
     <action>
-      <name>RunScene</name>
-      <argumentList>
-        <argument>
-          <name>SceneNum</name>
-          <direction>in</direction>
-        </argument>
-      </argumentList>
-    </action>
-
-    <action>
       <name>SetHouseMode</name>
       <argumentList>
         <argument>
