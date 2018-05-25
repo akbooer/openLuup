@@ -24,11 +24,11 @@ local ABOUT = {
 
 -- the loader cache is preset with these files
 
--- the local references mean that these files will not be removed from the 
--- ephemeral cache table by garbage collection 
+-- the local references mean that these files will not be removed from the
+-- ephemeral cache table by garbage collection
 --
 -- openLuup reload script files and index.html to redirect to AltUI.
--- device files for "openLuup", "AltAppStore", and "VeraBridge". 
+-- device files for "openLuup", "AltAppStore", and "VeraBridge".
 -- DataYours configuration files.
 
 local D_openLuup_dev = [[
@@ -192,17 +192,17 @@ local I_openLuup_impl = [[
   <files>openLuup/L_openLuup.lua</files>
   <startup>init</startup>
   <actionList>
-    
+
     <action>
       <serviceId>openLuup</serviceId>
       <name>Test</name>
       <run>
         luup.log "openLuup Test action called"
-        luup.variable_set ("openLuup", "Test", lul_settings.TestValue, lul_device) 
+        luup.variable_set ("openLuup", "Test", lul_settings.TestValue, lul_device)
         luup.log "openLuup Test action completed"
       </run>
     </action>
-    
+
     <action>
       <serviceId>openLuup</serviceId>
       <name>SendToTrash</name>
@@ -210,7 +210,7 @@ local I_openLuup_impl = [[
         SendToTrash (lul_settings)
       </job>
     </action>
-    
+
     <action>
       <serviceId>openLuup</serviceId>
       <name>EmptyTrash</name>
@@ -236,7 +236,7 @@ local I_openLuup_impl = [[
         luup.call_action(sid, "RunScene", {SceneNum = lul_settings.SceneNum}, 0)
       </run>
     </action>
-  
+
   </actionList>
 </implementation>
 ]]
@@ -287,7 +287,7 @@ local S_openLuup_svc = [[
         </argument>
       </argumentList>
     </action>
-  
+
     <action>
       <name>EmptyTrash</name>
       <argumentList>
@@ -308,6 +308,16 @@ local S_openLuup_svc = [[
       </argumentList>
     </action>
     
+    <action>    <!-- added by @rafale77 -->
+      <name>RunScene</name>
+      <argumentList>
+        <argument>
+          <name>SceneNum</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
+
     <action>    <!-- added by @rafale77 -->
       <name>RunScene</name>
       <argumentList>
@@ -486,7 +496,7 @@ local S_AltAppStore_svc = [[
     <stateVariable sendEvents="no">
       <name>metadata</name>
       <dataType>string</dataType>
-    </stateVariable>	
+    </stateVariable>
 	</serviceStateTable>
   <actionList>
     <action>
@@ -624,7 +634,7 @@ local I_VeraBridge_impl = [[
   <files>openLuup/L_VeraBridge.lua</files>
   <startup>init</startup>
   <actionList>
-    
+
     <action>
   		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
   		<name>GetVeraFiles</name>
@@ -633,7 +643,7 @@ local I_VeraBridge_impl = [[
   			return 4,0
   		</job>
     </action>
-    
+
     <action>
   		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
   		<name>GetVeraScenes</name>
@@ -642,7 +652,7 @@ local I_VeraBridge_impl = [[
   			return 4,0
   		</job>
     </action>
-    
+
     <action>
       <!-- added here to allow scenes to access this as an action (Device 0 is not visible) -->
   		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
@@ -652,7 +662,7 @@ local I_VeraBridge_impl = [[
   			return 4,0
   		</job>
     </action>
-  
+
   </actionList>
 </implementation>
 ]]
@@ -918,9 +928,9 @@ local I_openLuupCamera1_xml = [[
       do -- install MotionSensor as child device
         local var = "urn:micasaverde-com:serviceId:SecuritySensor1,%s=%s\n"
         local statevariables = table.concat {
-            var:format("Armed",1), 
+            var:format("Armed",1),
             var:format("ArmedTripped", 0),
-            var:format("Tripped", 0), 
+            var:format("Tripped", 0),
             var:format("LastTrip", 0),
           }
         local ptr = luup.chdev.start (devNo)
@@ -930,7 +940,7 @@ local I_openLuupCamera1_xml = [[
         local upnp_file = "D_MotionSensor1.xml"
         local upnp_impl = ''
         luup.chdev.append (devNo, ptr, altid, description, device_type, upnp_file, upnp_impl, statevariables)
-        luup.chdev.sync (devNo, ptr)  
+        luup.chdev.sync (devNo, ptr)
       end
       for dnum,d in pairs (luup.devices) do
         if d.device_num_parent == devNo then
@@ -947,7 +957,7 @@ local I_openLuupCamera1_xml = [[
     end
   </functions>
   <actionList>
-    
+
     <action>
   		<serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
       <name>SetArmed</name>
@@ -955,7 +965,7 @@ local I_openLuupCamera1_xml = [[
         set ("Armed", lul_settings.newArmedValue)
       </run>
     </action>
-    
+
     <action>
       <serviceId>urn:micasaverde-com:serviceId:Camera1</serviceId>
       <name>ArchiveVideo</name>
@@ -964,7 +974,7 @@ local I_openLuupCamera1_xml = [[
         archive {cam = lul_device, Format = p.Format, Duration = p.Duration}
       </job>
     </action>
-  
+
   </actionList>
   <startup>startup</startup>
 </implementation>
@@ -1020,7 +1030,7 @@ local storage_schemas_conf = [[
 # and first match wins. This file is read whenever a file create is required.
 #
 #  [name]  (used in log reporting)
-#  pattern = regex 
+#  pattern = regex
 #  retentions = timePerPoint:timeToStore, timePerPoint:timeToStore, ...
 
 #  2016.01.24  @akbooer
@@ -1089,7 +1099,7 @@ local storage_aggregation_conf = [[
 # and first match wins. This file is read whenever a file create is required.
 #
 #  [name]
-#  pattern = <regex>    
+#  pattern = <regex>
 #  xFilesFactor = <float between 0 and 1>
 #  aggregationMethod = <average|sum|last|max|min>
 #
@@ -1118,29 +1128,29 @@ local unknown_wsp = [[
 -----
 
 local manifest = {
-    
+
     ["D_openLuup.xml"]  = D_openLuup_dev,
     ["D_openLuup.json"] = D_openLuup_json,
     ["I_openLuup.xml"]  = I_openLuup_impl,
     ["S_openLuup.xml"]  = S_openLuup_svc,
-    
+
     ["D_AltAppStore.xml"]  = D_AltAppStore_dev,
     ["D_AltAppStore.json"] = D_AltAppStore_json,
     ["I_AltAppStore.xml"]  = I_AltAppStore_impl,
     ["S_AltAppStore.xml"]  = S_AltAppStore_svc,
-    
+
     ["D_VeraBridge.xml"]  = D_VeraBridge_dev,
     ["D_VeraBridge.json"] = D_VeraBridge_json,
     ["I_VeraBridge.xml"]  = I_VeraBridge_impl,
     ["S_VeraBridge.xml"]  = S_VeraBridge_svc,
-    
+
     ["D_ZWay.xml"]  = D_ZWay_xml,
     ["D_ZWay.json"] = D_ZWay_json,
     ["I_ZWay.xml"]  = I_ZWay_xml,
     ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
-    
+
     ["I_openLuupCamera1.xml"] = I_openLuupCamera1_xml,
-    
+
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,
     ["openLuup_reload.bat"] = openLuup_reload_bat,
@@ -1148,25 +1158,25 @@ local manifest = {
     ["storage-schemas.conf"]      = storage_schemas_conf,
     ["storage-aggregation.conf"]  = storage_aggregation_conf,
     ["unknown.wsp"]               = unknown_wsp,
-    
+
   }
 
 -----
 
 return {
   ABOUT = ABOUT,
-  
+
 --  manifest = setmetatable (manifest, {__mode = "kv"}),
   manifest = manifest,
-  
-  attributes = function (filename) 
+
+  attributes = function (filename)
     local y = manifest[filename]
     if type(y) == "string" then return {mode = "file", size = #y} end
   end,
-  
+
   open = function (filename, mode)
     mode = mode or 'r'
-    
+
     if mode: match "r" then
       if manifest[filename] then
         return {
@@ -1177,14 +1187,14 @@ return {
         return nil, "file not found:" .. (filename or '')
       end
     end
-    
+
     if mode: match "w" then
       return {
         write = function (_, contents) manifest[filename] = contents end,
         close = function () filename = nil end,
       }
     end
-    
+
     return nil, "unknown mode for vfs.open: " .. mode
   end,
 
@@ -1195,5 +1205,3 @@ return {
 }
 
 -----
-
-
