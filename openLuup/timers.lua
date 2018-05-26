@@ -405,7 +405,6 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   -- Time should be a number of seconds, minutes, or hours using an optional 'h' or 'm' suffix.
   -- Example: 30=call in 30 seconds, 5m=call in 5 minutes, 2h=call in 2 hours.
   local function interval ()
---    local timeb = "30m"
     local multiplier = {[''] = 1, m = 60, h = 3600}
     local v,u = time: match "(%d+)([hm]?)"
     if u then
