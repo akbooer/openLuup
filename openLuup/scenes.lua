@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2018.05.16",
+  VERSION       = "2018.05.25",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -25,7 +25,7 @@ local ABOUT = {
 -- openLuup SCENES module
 
 --
--- all scene-related functions 
+-- all scene-related functions
 -- see: http://wiki.micasaverde.com/index.php/Scene_Syntax for stored scene syntax
 --
 -- 2016.03.11   verify that scenes don't reference non-existent devices.  Thanks @delle
@@ -53,13 +53,14 @@ local ABOUT = {
 -- 2018.02.19   add log messages for scene cancellation by global and local Lua code
 -- 2018.04.16   remove scene watcher callback, now redundant with scene finalizers
 -- 2018.05.16   correct next run time (thanks to @rafale77 for diagnosis and suggestions)
+-- 2018.05.25   fixed scene interval passing from scene to timer function
 
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
 local timers    = require "openLuup.timers"
 local loader    = require "openLuup.loader"       -- for shared_environment and compile_lua()
-local scheduler = require "openLuup.scheduler"    -- simply for adding notes to the timer jobs 
+local scheduler = require "openLuup.scheduler"    -- simply for adding notes to the timer jobs
 local devutil   = require "openLuup.devices"      -- for new_userdata_dataversion
 
 --  local logs
@@ -70,11 +71,11 @@ logs.banner (ABOUT)   -- for version control
 
 --[[
 
-Whilst 'actions' and 'timers' are straight-forward, the 'trigger' functionality of Luup is severely flawed, IMHO, through the close connection to UPnP service files and .json files.  
+Whilst 'actions' and 'timers' are straight-forward, the 'trigger' functionality of Luup is severely flawed, IMHO, through the close connection to UPnP service files and .json files.
 
 The goal would be to have an interface like HomeSeer, with extremely intuitive syntax to define triggers and conditions.  To support this at the openLuup engine level, all trigger conditions are handled through a standard initial luup.variable_watch call - so no new infrastructure is needed - to a handler which then evaulates the condition and, if true, continues to evaluate further states required for the scene to run.
 
-Sept 2015 - ALTUI now provides this functionality through its own variable watch callback 
+Sept 2015 - ALTUI now provides this functionality through its own variable watch callback
 which then triggers scenes if some Lua boolean expression is true
 ALTUI also provides a great editor interface with the blockly module.
 
@@ -140,19 +141,19 @@ end
 local function create (scene_json)
   local scene, lua_code, luup_scene, user_finalizer, final_delay
   local prolog, epilog
-  
+
   local function scene_finisher (started)                               -- called at end of scene
-    if scene.last_run == started then 
+    if scene.last_run == started then
       if type(user_finalizer) == "function" then user_finalizer() end   -- call the user-defined finalizer code
       luup_scene.running = false                                        -- clear running flag only if we set it
     end
-    
-    if type (epilog) == "function" then 
+
+    if type (epilog) == "function" then
       epilog (scene.id)
     end
 
   end
-  
+
   local function scene_runner (t, next_time)              -- called by timer, trigger, or manual run
     local lul_trigger, lul_timer
     if t and next_time then           -- 2018.05.16  update the next scheduled time...
@@ -161,16 +162,16 @@ local function create (scene_json)
     end
     if not runs_in_current_mode (scene) then 
       _log (scene.name .. " does not run in current House Mode")
-      return 
+      return
     end
-    if luup_scene.paused then 
+    if luup_scene.paused then
       _log (scene.name .. " is currently paused")
-      return 
+      return
     end
     if t then     -- we were started by a trigger or timer
-      if tonumber (t.enabled) ~= 1  then 
+      if tonumber (t.enabled) ~= 1  then
         _log "timer disabled"
-        return 
+        return
       end
       if t.device then    -- 2017.07.20
         lul_trigger = t
@@ -178,31 +179,35 @@ local function create (scene_json)
         lul_timer = t
       end
     end
-    
+
     do      -- 2018.01.18   scene prolog and epilog calls
       local s = luup.attr_get "openLuup.Scenes" or {}
       prolog = scene_environment[s.Prolog]     -- find the global procedure reference in the scene/startup environment
       epilog = scene_environment[s.Epilog]
     end
-    
+
     local global_ok
-    if type (prolog) == "function" then 
+    if type (prolog) == "function" then
       global_ok = prolog (scene.id, lul_trigger, lul_timer)
       if global_ok == false then
         _log (scene.name .. " prevented from running by global scene prolog Lua")
         return    -- GLOBAL cancel
       end
     end
-    
+
     local ok, del
     if lua_code then
       ok, user_finalizer, del = lua_code (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20, 2018.01.17,8
       if ok == false then
         _log (scene.name .. " prevented from running by local scene Lua")
+--        if t then                                       -- 2018.05.11 Rafale77
+--          t.next_run = next_time
+--          devutil.new_userdata_dataversion ()
+--        end
         return    -- LOCAL cancel
       end
     end
-    
+
     final_delay = tonumber(del) or 30
     scene.last_run = os.time()                -- scene run time
     luup_scene.running = true
@@ -213,11 +218,11 @@ local function create (scene_json)
 --      t.next_run = next_time                  -- only non-nil for timers
       runner = (t.name ~= '' and t.name) or '?'
     end
-    
+
     local msg = ("scene %d, %s, initiated by %s"): format (scene.id, scene.name, runner)
     _log (msg, "luup.scenes")
     _log_altui_scene (scene)                  -- log for altUI to see
-    
+
     local max_delay = 0
     local label = "scene#" .. scene.id
     for _, group in ipairs (scene.groups) do  -- schedule the various delay groups
@@ -225,10 +230,10 @@ local function create (scene_json)
       if delay > max_delay then max_delay = delay end
       timers.call_delay (group_runner, delay, group.actions, label .. "group delay")
     end
-    timers.call_delay (scene_finisher, max_delay + final_delay, scene.last_run, 
+    timers.call_delay (scene_finisher, max_delay + final_delay, scene.last_run,
       label .. " finisher")    -- say we're finished
   end
-  
+
   local function scene_stopper (scn)
     -- 2018.01.30 pause the whole scene
     luup_scene.paused = true
@@ -268,14 +273,14 @@ local function create (scene_json)
   local function verify ()
     for _, g in ipairs (scene.groups or {}) do
       local actions = g.actions or {}
-      local n = #actions 
+      local n = #actions
       for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
         local a = actions[i]
         local dev = luup.devices[tonumber(a.device)]
         if not dev then
           table.remove (actions,i)
         end
-      end      
+      end
     end
     -- triggers
     local triggers = scene.triggers or {}
@@ -300,10 +305,10 @@ local function create (scene_json)
     scn, err = json.decode (scene_json)     -- or decode the JSON
   end
   if not scn then return nil, err end
-  
+
   lua_code, err = load_lua_code (scn.lua or '', scn.id or (#luup.scenes + 1))   -- load the Lua
   if err then return nil, err end
-  
+
 --[[
   scene should be something like
     {
@@ -316,12 +321,12 @@ local function create (scene_json)
       lua       = "....",
       paused    = "0",        -- also this! "1" == paused
     }
-    
+
     -- also notification_only = device_no,  which hides the scene ???
 --]]
 
   scene = scn   -- there may be other data there than that which is possibly modified below...
-  
+
   scene.Timestamp   = scn.Timestamp or os.time()   -- creation time stamp
   scene.favorite    = scn.favorite or false
   scene.groups      = scn.groups or {}
@@ -331,9 +336,9 @@ local function create (scene_json)
   scene.room        = tonumber (scn.room) or 0       -- TODO: ensure room number valid
   scene.timers      = scn.timers or {}
   scene.triggers    = scn.triggers or {}             -- 2016.05.19
-  
+
   verify()   -- check that non-existent devices are not referenced
-  
+
   local meta = {
     -- variables
     running     = false,    -- set to true when run and reset 30 seconds after last action
@@ -345,22 +350,28 @@ local function create (scene_json)
     user_table  = user_table,
     verify      = verify,
   }
-  
+
   luup_scene = {
       description = scene.name,
       hidden = false,
       page = 0,           -- TODO: discover what page and remote are for
-      paused = tonumber (scene.paused) == 1,     -- 2016.04.30 
+      paused = tonumber (scene.paused) == 1,     -- 2016.04.30
       remote = 0,
       room_num = scene.room,
     }
-  
+
   -- start the timers
   local recurring = true
   local jobs = meta.jobs
   local info = "job#%d :timer '%s' for scene [%d] %s"
+  local time = ""
   for _, t in ipairs (scene.timers or {}) do
-    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, t.time or t.interval, 
+    if t.type == 1 then  -- 2018.05.25 Rafale77
+      rtime = t.interval
+    else
+      rtime = t.time
+    end
+    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, rtime, 
                           t.days_of_week or t.days_of_month, t, recurring)
     if j and scheduler.job_list[j] then
       local job = scheduler.job_list[j]
@@ -373,9 +384,9 @@ local function create (scene_json)
 
   devutil.new_userdata_dataversion ()               -- 2017.07.19
 
--- luup.scenes contains all the scenes in the system as a table indexed by the scene number. 
+-- luup.scenes contains all the scenes in the system as a table indexed by the scene number.
   return setmetatable (luup_scene, {
-      __index = meta, 
+      __index = meta,
       __tostring = function () return (json.encode (user_table())) or '?' end,
     })
 end
@@ -384,7 +395,7 @@ end
 
 return {
     ABOUT = ABOUT,
-    
+
     -- constants
     environment   = scene_environment,      -- to be shared with startup code
     -- variables

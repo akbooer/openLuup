@@ -77,6 +77,7 @@ local ABOUT = {
 -- 2018.04.09   add _debug() listing of external luup.inet.wget requests
 -- 2018.04.11   refactor to use io.server.new()
 -- 2018.04.12   don't bother to try and response to closed socket!
+-- 2018.05.07   Add digest auth retry
 
 
 local socket    = require "socket"
@@ -266,7 +267,12 @@ local function wget (request_URI, Timeout, Username, Password)
     else
       result, status = scheme.request (URL)
     end
---  
+    if status == 401 then                                     -- Retry with digest
+      local http_digest = require "http-digest"               -- 2018.05.07		
+      URL = ("http://" ..Username.. ":" ..Password.. "@" ..string.gsub(request_URI,"http://",""))
+      scheme = http_digest
+      result, status = scheme.request (URL)
+    end
   end
   
   local wget_status = status                          -- wget has a strange return code

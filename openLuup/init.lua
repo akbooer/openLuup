@@ -24,7 +24,7 @@ local ABOUT = {
 
 --
 -- openLuup - Initialize Luup engine
---  
+--
 
 -- 2016.05.12  moved load_user_data from this module to userdata
 -- 2016.06.08  add 'altui' startup option to do new install
@@ -48,6 +48,7 @@ local ABOUT = {
 -- 2018.04.04  add POP3 server
 -- 2018.04.23  re-order module loading (to tidy startup log banners)
 -- 2018.04.25  change server module name back to http, and use opeLuup.HTTP... attributes
+-- 2018.05.11  add category and subcategory
 
 
 local logs = require "openLuup.logs"
@@ -78,10 +79,10 @@ local function compile_and_run (lua, name)
   _log ("running " .. name)
   local startup_env = loader.shared_environment    -- shared with scenes
   local source = table.concat {"function ", name, " () ", lua, '\n', "end" }
-  local code, error_msg = 
+  local code, error_msg =
   loader.compile_lua (source, name, startup_env) -- load, compile, instantiate
-  if not code then 
-    _log (error_msg, name) 
+  if not code then
+    _log (error_msg, name)
   else
     local ok, err = scheduler.context_switch (nil, code[name])  -- no device context
     if not ok then _log ("ERROR: " .. err, name) end
@@ -95,7 +96,7 @@ local chkpt = 1
 local function openLuupPulse ()
   chkpt = chkpt + 1
   local delay = tonumber (luup.attr_get "openLuup.UserData.Checkpoint") or 6  -- periodic pulse ( default 6 minutes)
-  timers.call_delay(openLuupPulse, delay*60, '', 'openLuup checkpoint #' .. chkpt)  
+  timers.call_delay(openLuupPulse, delay*60, '', 'openLuup checkpoint #' .. chkpt)
   -- CHECKPOINT !
   local name = (luup.attr_get "openLuup.UserData.Name") or "user_data.json"
   local ok, msg = userdata.save (luup, name)
@@ -118,8 +119,8 @@ end
 do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, replaced by openLuup)
   luup.attr_set ("Device_Num_Next", 1)  -- this may get overwritten by a subsequent user_data load
 
-  local device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum
-  local _ = {device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum}
+  local device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum, category_num, subcategory_num
+  local _ = {device_type, int_id, descr, upnp_file, upnp_impl, ip, mac, hidden, invisible, parent, room, pluginnum, category_num, subcategory_num}
   invisible = true
   luup.create_device ("urn:schemas-micasaverde-com:device:ZWaveNetwork:1", '',
     "ZWave", "D_ZWaveNetwork.xml", upnp_impl, ip, mac, hidden, invisible)
@@ -131,7 +132,7 @@ do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, repl
 end
 
 do -- set attributes, possibly decoding if required
-  local set_attr = userdata.attributes 
+  local set_attr = userdata.attributes
   set_attr["openLuup"] = {  -- note that any of these may be changed by Lua Startup before being used
     Backup = {
       Compress = "LZAP",
@@ -181,20 +182,20 @@ do -- set attributes, possibly decoding if required
   local attr = string.char(unpack (attrs))
   loader.shared_environment[attr] = function (info)
     info = (info or ''): gsub (attrs.attr1,attrs.attr2)
-    local u = mime.unb64(info)  
-    local decoded = json.decode(u) or {} 
+    local u = mime.unb64(info)
+    local decoded = json.decode(u) or {}
     for a,b in pairs (decoded) do
       set_attr[a] = b
     end
   end
 end
 
-do -- STARTUP   
+do -- STARTUP
   local init = arg[1] or "user_data.json"         -- optional parameter: Lua or JSON startup file
   _log ("loading configuration ".. init)
-  
+
   if init == "reset" then luup.reload () end      -- factory reset
-  
+
   if init == "altui" then                         -- install altui in reset system
     -- this is a bit tricky, since the scheduler is not running at this stage
     -- but we need to execute a multi-step action with <run> and <job> tags...
@@ -205,13 +206,13 @@ do -- STARTUP
     update_plugin_run {metadata = json.encode (meta)}   -- <run> phase
     repeat until update_plugin_job () ~= 0              -- <job> phase
   end
-  
-  local f = io.open (init, 'rb')                          -- may be binary compressed file 
-  if f then 
+
+  local f = io.open (init, 'rb')                          -- may be binary compressed file
+  if f then
     local code = f:read "*a"
     f:close ()
     if code then
-    
+
       if init: match "%.lzap$" then                       -- it's a compressed user_data file
         local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
         code = compress.lzap.decode (code, codec)         -- uncompress the file
@@ -219,7 +220,7 @@ do -- STARTUP
 
       local ok = true
       local json_code = code: match "^%s*{"               -- what sort of code is this?
-      if json_code then 
+      if json_code then
         ok = userdata.load (code)
         code = userdata.attributes ["StartupCode"] or ''  -- substitute the Startup Lua
       end
@@ -250,14 +251,14 @@ local status
 
 do -- SERVERs and SCHEDULER
   local s = http.start (config.HTTP)       -- start the port 3480 Web server
-  if not s then 
-    error "openLuup - is another copy already running?  Unable to start HTTP port 3480 server" 
+  if not s then
+    error "openLuup - is another copy already running?  Unable to start HTTP port 3480 server"
   end
 
   if config.SMTP then smtp.start (config.SMTP) end
 
   if config.POP3 then pop3.start (config.POP3) end
-  
+
   -- start the heartbeat
   timers.call_delay(openLuupPulse, 6 * 60, '', "first checkpoint")      -- it's alive! it's alive!!
 
