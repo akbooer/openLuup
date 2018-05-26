@@ -367,11 +367,11 @@ local function create (scene_json)
   local time = ""
   for _, t in ipairs (scene.timers or {}) do
     if t.type == 1 then  -- 2018.05.25 Rafale77
-      time = t.interval
+      rtime = t.interval
     else
-      time = t.time
+      rtime = t.time
     end
-    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, time, 
+    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, rtime, 
                           t.days_of_week or t.days_of_month, t, recurring)
     if j and scheduler.job_list[j] then
       local job = scheduler.job_list[j]
