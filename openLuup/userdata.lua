@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2018.05.14",
+  VERSION       = "2018.05.28",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -53,6 +53,7 @@ local ABOUT = {
 -- 2018.03.24   use luup.rooms.create metatable method
 -- 2018.04.05   do not create status as a device attribute when loading user_data
 -- 2018.04.23   update_plugin_versions additions for ALT... plugins and MySensors
+-- 2018.05.25   restore openLuup variables on reload (for history)
 
 
 local json    = require "openLuup.json"
@@ -113,7 +114,7 @@ attr ("longitude", "0.0")
 -- other parameters
 attr ("TemperatureFormat", "C")
 attr ("PK_AccessPoint", "88800000")
-attr ("currency", "£")
+attr ("currency", "Â£")
 attr ("date_format", "dd/mm/yy")
 attr ("model", "Not a Vera")
 attr ("timeFormat", "24hr")
@@ -129,7 +130,7 @@ luup.log "startup code completed"
 --  Using_2G = 0,
 --  breach_delay = "30",
 --  category_filter = {},
-  currency = "£",
+  currency = "Â£",
   date_format = "dd/mm/yy",
 --  device_sync = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21",
 --  devices = {},
@@ -600,6 +601,10 @@ local function load_user_data (user_data_json)
         local room = tonumber (d.room) or 0
         ol:attr_set {room = room}     -- set the device attribute...
         ol.room_num = room            -- ... AND the device table (Luup is SO bad...)
+        -- 2018.05.25 restore openLuup variables
+        for _,v in ipairs ((d.states) or {}) do
+          ol: variable_set (v.service, v.variable, v.value)
+        end
         -- 2017.01.18 create openLuup HouseMode variable
         ol:variable_set ("openLuup", "HouseMode", luup.attr_get "Mode")  
       else

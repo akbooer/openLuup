@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.04.25",
+  VERSION       = "2018.05.25",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -39,6 +39,8 @@ ABOUT = {
 -- 2018.04.14  add Images menu
 -- 2018.04.15  add Trash menu
 -- 2018.04.19  add Servers UDP menu
+-- 2018.05.15  add Historian menu
+-- 2018.05.19  use openLuup ABOUT, not console
 
 
 -- TODO: HTML pages with sorted tables?
@@ -132,6 +134,7 @@ prefix = [[
         <div class="dropdown-content">
           <a class="left" href="/console?page=about">About</a>
           <a class="left" href="/console?page=parameters">Parameters</a>
+          <a class="left" href="/console?page=historian">Historian</a>
         </div>
       </div>
 
@@ -400,7 +403,9 @@ function run (wsapi_env)
   local function devname (d)
     d = tonumber(d) or 0
     local name = (luup.devices[d] or {}).description or 'system'
-    return table.concat {'[', d, '] ', name: match "^%s*(.+)"}
+    name = name: match "^%s*(.+)"
+    local number = table.concat {'[', d, '] '}
+    return number .. name, number, name
   end
 
   local function printConnections (iprequests)
@@ -641,8 +646,48 @@ function run (wsapi_env)
     print ''
   end
   
+  local function historian ()
+    local N = 0
+    local H = {}
+    for _,d in pairs (luup.devices) do
+      for _,v in ipairs (d.variables) do
+        N = N + 1
+        local history = v.history
+        if history and #history > 0 then 
+          H[#H+1] = {v.dev, v.srv: match "[^:]+$", v.name, #history/2}
+        end
+      end
+    end
+    
+    table.sort (H,  -- sort by device numver, then service, then variable name
+      function(a,b) 
+        if a[1] < b[1] then return true end
+        if a[1] == b[1] then
+          if a[2] < b[2] then return true end
+          if a[2] == b[2] then return a[3] < b[3] end
+        end
+      end)
+    
+    local layout = "%7s %8s  %10s%-24s %-20s %s"
+    local T = 0
+    for k,v in ipairs(H) do
+      T = T + v[4]
+      local _, number, name =  devname(v[1])
+      H[k] =  layout:format (k, v[4], number, name, v[2], v[3])
+    end
+    
+    print ("Data Historian, " .. os.date(date))
+    print ("\n  Total number of device variables:", N)
+    print  "\n  Variables with History:"
+    print (layout: format ('', "#points", "device ", "name", "service", "variable"))
+    print (table.concat (H,'\n'))
+    print ("\n  Total number of history points:", T)
+  end
+  
+  local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
+  
   local pages = {
-    about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
+    about   = function () for a,b in pairs (ABOUTopenLuup) do print (a .. ' : ' .. tostring(b)) end end,
     backups = backups,
     delays  = function () listit (dlist, "Delayed Callbacks") end,
     images  = images,
@@ -657,6 +702,8 @@ function run (wsapi_env)
     sandbox = sandbox,
     trash   = trash,
     udp     = udplist,
+    
+    historian   = historian,
     
     uncompress      = uncompress,
     uncompressform  = uncompressform,

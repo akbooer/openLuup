@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2018.02.27",
+  VERSION       = "2018.05.17",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2018",
@@ -44,6 +44,8 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 --              see: http://forum.micasaverde.com/index.php/topic,40406.msg299810.html#msg299810
 
 -- 2018.02.24   upgrade SSL encryption to tls v1.2 after GitHub deprecation of v1 protocol
+-- 2018.05.15   use trash/ not /tmp/ with openLuup, to avoid permissions issue with /tmp (apparently)
+-- 2018.05.17   allow .svg as well as .png icon files
 
 
 local https     = require "ssl.https"
@@ -482,7 +484,12 @@ function update_plugin_run(args)
     return false
   end
   
-  downloads = table.concat ({'', "tmp", "AltAppStore",''}, pathSeparator)
+  if Vera then
+    downloads = table.concat ({'', "tmp", "AltAppStore",''}, pathSeparator)
+  else  -- 2018.05.15 use trash/ not /tmp/ with openLuup, to avoid permissions issue with /tmp (apparently)
+    lfs.mkdir "trash"   -- ensure the trash/directory is present
+    downloads = table.concat ({"trash", "AltAppStore",''}, pathSeparator)
+  end
   lfs.mkdir (downloads)
   local updater = GitHub (r.source)
     
@@ -568,7 +575,7 @@ function update_plugin_job()
       local attributes = lfs.attributes (source)
       if file: match "^[^%.]" and attributes.mode == "file" then
         local destination
-        if file:match ".+%.png$" then    -- ie. *.png
+        if file:match ".+%.[ps][nv]g$" then    -- 2018.05.17  ie. *.png or *.svg (or pvg or sng !!)
           Nicon = Nicon + 1
           destination = icon_folder .. file
           file_copy (source, destination)

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.05.05",
+  VERSION       = "2018.05.28",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -39,6 +39,7 @@ local ABOUT = {
 -- see: http://forum.micasaverde.com/index.php/topic,16166.0.html
 -- and: http://blog.abodit.com/2013/02/variablewithhistory-making-persistence-invisible-making-history-visible/
 -- 2018.05.01  use millisecond resolution time for variable history (luup.variable_get truncates this)
+-- 2018.05.25  use circular buffer for history cache, add history meta-functions, history watcher
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -65,12 +66,80 @@ local device_list  = {}         -- internal list of devices
 
 local sys_watchers = {}         -- list of system-wide (ie. non-device-specific) watchers
 
+local history_watchers = {}     -- for data historian watchers
+
+local CacheSize = 1000          -- default value over-ridden by initalisation configuration
+
 -----
 --
 -- VARIABLE object 
 -- 
 -- Note that there is no "get" function, object variables can be read directly (but setting should use the method)
 --
+
+-- metahistory methods are shared between all variable instances
+-- and manage data retrieval from the in-memory history cache
+local metahistory = {}
+  
+  -- get the latest time (with millisecond precision) and value
+  function metahistory: newest ()
+    local history = self.history
+    if history and #history > 0 then
+      local n = 2 * self.hipoint
+      return history[n-1], history[n]
+    end
+  end
+  
+  -- get the oldest time (with millisecond precision) and value
+  function metahistory: oldest ()
+    local history = self.history
+    if history and #history > 0 then
+      local n = 2 * self.hipoint
+      return history[n+1] or history[1], history[n+2] or history[2]   -- cache may not yet be full
+    end
+  end
+  
+  -- get the value at or before given time t
+  function metahistory: at (t)
+  
+    -- return location of largest time element in history <= t using bisection, or nil if none
+    local function locate (history, hipoint, t)
+      local function bisect (a,b)
+        if a >= b then return a end
+        local c = math.ceil ((a+b)/2)
+--        if t < history[c+c-1]     -- TODO: unwrap circular buffer
+        if t < history[(2*(c-1+hipoint-1) % #history)+1]     -- unwrap circular buffer
+          then return bisect (a,c-1)
+          else return bisect (c,b)
+        end
+      end 
+      local n = #history / 2
+      if n == 0 or t < history[1]   -- oldest point is at 2*hipoint+1 or 1
+        then return nil 
+        else return bisect (1, n) 
+      end
+    end
+    
+    -- at()
+    local history = self.history
+    if history and #history > 0 then
+      local i = locate (history, self.hipoint, t)
+      if i then
+        local j = i + i
+        return history[j-1], history[j]
+      end
+    end
+  end
+
+  -- ipairs iterator
+  function metahistory: iter(x, i)
+    i = i + 1
+    local j = i + i
+    if j <= #x then
+      return i, x[j-1], x[j]
+    end
+  end
+
 
 local variable = {}             -- variable CLASS
 
@@ -79,7 +148,9 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
   local vars = device.variables or {}
   local varID = #vars                             -- 2018.01.31
   new_userdata_dataversion ()                     -- say structure has changed
-  vars[varID + 1] = {                             -- 2018.01.31
+  vars[varID + 1] =                               -- 2018.01.31
+  setmetatable (                                  -- 2018.05.25 add history methods 
+    {
       -- variables
       dev       = devNo,
       id        = varID,                          -- unique ID
@@ -89,7 +160,8 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       watchers  = {},                             -- callback hooks
       -- methods
       set       = variable.set,
-    }
+    }, 
+      {__index = metahistory} )
   return vars[#vars]
 end
  
@@ -99,14 +171,17 @@ function variable:set (value)
   value = tostring(value or '')                   -- all device variables are strings
   
   -- 2018.04.25 'VariableWithHistory'
-  -- note that retention policies are not implemented here, so the history just grows
+  -- history is implemented as a circular buffer, limited to CacheSize time/value pairs
   local history = self.history 
   if history and value ~= self.value then         -- only record CHANGES in value
-    local v = tonumber(value)                     -- only numeric values at the moment
+    local v = tonumber(value)                     -- only numeric values
     if v then
-      local n = #history
-      history[n+1] = t
-      history[n+2] = v
+      local hipoint = (self.hipoint or 0) % CacheSize + 1
+      local n = hipoint + hipoint
+      self.hipoint = hipoint
+      history[n-1] = t
+      history[n]   = v
+      scheduler.watch_callback {var = self, watchers = history_watchers} -- for write-thru disc cache
     end
   end
   --
@@ -203,6 +278,11 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
       watch[#watch+1] = callback  -- set the watch on the variable or service
     else
       -- no service id
+      if variable == "history" then
+        callback.name = "data historian"
+        callback.silent = true
+        history_watchers[1] = callback    -- only allow one of these
+      end
     end
   end
 end
@@ -413,6 +493,9 @@ return {
   variable_watch            = variable_watch,
   new_dataversion           = new_dataversion,
   new_userdata_dataversion  = new_userdata_dataversion,
+  
+  set_cache_size  = function(s) CacheSize = s end,
+  
 }
 
 
