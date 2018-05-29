@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.05.02",
+  VERSION       = "2018.05.28",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -52,6 +52,7 @@ ABOUT = {
 -- 2018.04.08  use POP3 module to save email to mailbox. Add events mailbox folder
 -- 2018.04.15  fix number types in SendToTrash action
 -- 2018.05.02  add StartTime device variable, also on Control panel (thanks @rafale77)
+-- 2018.05.16  SendToTrash applied to the trash/ folder will DELETE selected files
 
 
 local json        = require "openLuup.json"
@@ -469,7 +470,7 @@ function SendToTrash (p)
   end
   
   -- try to protect ourself from any damage!
-  local locked = {"openLuup", "cgi", "cgi-bin", "cmh", "files", "icons", "trash", "whisper", "www"}
+  local locked = {"openLuup", "cgi", "cgi-bin", "cmh", "files", "history", "icons", "whisper", "www"}
   local prohibited = {}
   for _, dir in ipairs(locked) do prohibited[dir] = dir end   -- turn list into indexed table
   
@@ -485,6 +486,7 @@ function SendToTrash (p)
     local maxfiles = tonumber (p.MaxFiles)
     local policy = {[folder] = {types = p.FileTypes, days = days, maxfiles = maxfiles}}
     local process = trash
+    if folder == "trash" then process = os.remove end   -- actually DELETE files if policy applied to trash/
     implement_retention_policies (policy, process)
     luup.log "...finished applying file retention policy"
   end
@@ -690,7 +692,8 @@ function init (devNo)
       if InfluxSocket then 
         _log (dsp .. tostring(InfluxSocket))
       else
-        _log (dsp .. (err or '')) end
+        _log (dsp .. (err or '')) 
+      end
     end
   end
   

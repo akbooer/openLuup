@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.04.05",
+  VERSION       = "2018.05.25",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -23,7 +23,7 @@ local ABOUT = {
 ]]
 }
 
--- This file not only contains the luup.chdev submodule, 
+-- This file not only contains the luup.chdev submodule,
 -- but also the luup-level facility for creating a device
 -- after all, in the end, every device is a child device.
 
@@ -45,6 +45,8 @@ local ABOUT = {
 -- 2018.03.18  create default device variables if they have a defaultValue in the service definition
 -- 2018.04.03  add jobs table to device metadata (for status reporting to AltUI)
 -- 2018.04.05  move get/set status from devices to here (more a luup thing, than a device thing)
+-- 2018.05.14  ensure (sub)category numeric (thanks @rafale77)
+-- 2018.05.14  remove pcall from create() to propagate errors
 
 
 local logs      = require "openLuup.logs"
@@ -62,7 +64,7 @@ local _log, _debug = logs.register (ABOUT)
 -- see: https://en.wikipedia.org/wiki/Universally_unique_identifier
 --
 -- A UUID is simply a 128-bit value. The meaning of each bit is defined by any of several variants.
--- For human-readable display, many systems use a canonical format using hexadecimal text with inserted hyphen characters. -- For example:    de305d54-75b4-431b-adb2-eb6b9e546014 
+-- For human-readable display, many systems use a canonical format using hexadecimal text with inserted hyphen characters. -- For example:    de305d54-75b4-431b-adb2-eb6b9e546014
 --
 
 local UUID = (function ()
@@ -79,7 +81,7 @@ local UUID = (function ()
 end) ()
 
 -- convert string statevariable definition into Lua table of device variables
-local function varlist_to_table (statevariables) 
+local function varlist_to_table (statevariables)
   -- syntax is: "serviceId,variable=value" separated by new lines
   local vars = {}
   for srv, var, val in statevariables: gmatch "%s*([^,]+),([^=]+)=(%C*)" do
@@ -88,35 +90,29 @@ local function varlist_to_table (statevariables)
   return vars
 end
 
--- 
+--
 -- function: create (x)
 -- parameters: see below
 --
--- This creates the device with the parameters given, and returns the device object 
+-- This creates the device with the parameters given, and returns the device object
 -- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
 --
 local function create (x)
-  -- {devNo, device_type, internal_id, description, upnp_file, upnp_impl, 
+  -- {devNo, device_type, internal_id, description, upnp_file, upnp_impl,
   -- ip, mac, hidden, invisible, parent, room, pluginnum, statevariables, ...}
-  
+
   _debug (x.description)
   local dev = devutil.new (x.devNo)   -- create the proto-device
   local services = dev.services
-  
-  local ok, d, err = pcall (loader.assemble_device, x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
 
-  if not ok then
-    local fmt = "ERROR [%d] %s / %s / %s : %s"
-    local msg = fmt: format (x.devNo, x.upnp_file or x.device_type or '', 
-                                        x.upnp_impl or '', x.json_file or '', d or '?')
-    _log (msg, "luup.create_device")
-    return
-  end
-  if err then _log (err) end
+  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
+
+  d = d or {}
   local fmt = "[%d] %s / %s / %s"
   local msg = fmt: format (x.devNo, x.upnp_file or d.device_type or '', d.impl_file or '', d.json_file or '')
   _log (msg, "luup.create_device")
-  
+  if err then _log (err) end
+
   if d.action_list then
     -- create and set service actions (from implementation file)
     -- each action_list element is a structure with (possibly) run/job/timeout/incoming functions
@@ -129,7 +125,7 @@ local function create (x)
       a.returns = sdata.returns[a.name]
     end
   end
-  
+
   -- 2018.03.18  create default device variables if they have a defaultValue in the service definition
   -- this is so that newly created devices have, at least, a minimal set of variables with defaults
   -- these may well get overwritten in the following block when statevariables are enumerated
@@ -155,7 +151,7 @@ local function create (x)
 
   -- schedule device startup code
   local device_name = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?'))
-  if d.entry_point then 
+  if d.entry_point then
     if tonumber (x.disabled) ~= 1 then
       scheduler.device_start (d.entry_point, x.devNo, device_name)         -- schedule startup in device context
     else
@@ -163,12 +159,12 @@ local function create (x)
       _log (fmt: format (x.devNo), "luup.create_device")
     end
   end
-  
+
   -- set known attributes
   dev:attr_set {
     id              = x.devNo,                                          -- device id
     altid           = x.internal_id and tostring(x.internal_id) or '',  -- altid (called id in luup.devices, confusing, yes?)
-    category_num    = x.category_num or d.category_num,     -- 2017.05.10
+    category_num    = tonumber (x.category_num or d.category_num) or 0,     -- 2017.05.10, 2018-05-12
     device_type     = d.device_type or '',
     device_file     = x.upnp_file,
     device_json     = d.json_file,
@@ -179,28 +175,28 @@ local function create (x)
     local_udn       = UUID,
     manufacturer    = d.manufacturer or '',
     model           = d.modelName or '',
-    name            = device_name, 
+    name            = device_name,
     plugin          = tostring(x.pluginnum or ''),
     password        = x.password,
     room            = tostring(tonumber (x.room or 0)),   -- why it's a string, I have no idea
     subcategory_num = tonumber (x.subcategory_num or d.subcategory_num) or 0,     -- 2017.05.10
-    time_created    = os.time(), 
+    time_created    = os.time(),
     username        = x.username,
     ip              = x.ip or '',
     mac             = x.mac or '',
   }
-  
+
   local a = dev.attributes
 -- TODO: consider protecting device attributes...
---  setmetatable (dev.attributes, {__newindex = 
+--  setmetatable (dev.attributes, {__newindex =
 --          function (_,x) error ("ERROR: attempt to create new device attribute "..x,2) end})
-  
+
   local luup_device =     -- this is the information that appears in the luup.devices table
     {
-      category_num        = a.category_num,
+      category_num        = tonumber(a.category_num),
       description         = a.name,
       device_num_parent   = a.id_parent,
-      device_type         = a.device_type, 
+      device_type         = a.device_type,
       embedded            = false,                  -- if embedded, it doesn't have its own room
       hidden              = x.hidden or false,        -- if hidden, it's not shown on the dashboard
       id                  = a.altid,
@@ -211,9 +207,9 @@ local function create (x)
       room_num            = tonumber (a.room),
       subcategory_num     = tonumber (a.subcategory_num),
       udn                 = a.local_udn,
-      user                = a.username or '',    
+      user                = a.username or '',
     }
-  
+
   -- fill out extra data in the proto-device
   dev.category_name       = d.category_name
   dev.handle_children     = d.handle_children == "1"
@@ -226,14 +222,14 @@ local function create (x)
                             }
   dev.jobs                = {}              -- 2018.04.03
   -- note that all the following methods should be called with device:function() syntax...
-  dev.is_ready            = function () return true end          -- TODO: wait on startup sequence 
+  dev.is_ready            = function () return true end          -- TODO: wait on startup sequence
   dev.status              = -1                                   -- 2016.04.29  add device status
   dev.supports_service    = function (self, service) return not not services[service] end
 
   function dev:status_get ()            -- 2016.04.29, 2018.04.05
     return dev.status
   end
-  
+
   function dev:status_set (value)     -- 2016.04.29, 2018.04.05
     if dev.status ~= value then
       devutil.new_userdata_dataversion ()
@@ -252,9 +248,9 @@ end
 -- returns: the device number AND the device object
 --
 local function create_device (
-      device_type, internal_id, description, upnp_file, upnp_impl, 
+      device_type, internal_id, description, upnp_file, upnp_impl,
       ip, mac, hidden, invisible, parent, room, pluginnum, statevariables,
-      pnpid, nochildsync, aeskey, reload, nodupid  
+      pnpid, nochildsync, aeskey, reload, nodupid, category_num, subcategory_num
   )
   local devNo = tonumber (luup.attr_get "Device_Num_Next")
   luup.attr_set ("Device_Num_Next", devNo + 1)
@@ -278,16 +274,18 @@ local function create_device (
     aeskey = aeskey,                    -- (string)   no idea
     reload = reload,                    -- (boolean)
     nodupid = nodupid,                  -- (boolean)  no idea
+    category_num = category_num,        -- (number)
+    subcategory_num = subcategory_num,  -- (number)
   }
   return devNo, dev
 end
 
 -- Module: luup.chdev
 --
--- Contains functions for a parent to synchronize its child devices. 
+-- Contains functions for a parent to synchronize its child devices.
 -- Whenever a device has multiple end-points, the devices are represented in a parent/child fashion where
--- the parent device is responsible for reporting what child devices it has and giving each one a unique id. 
--- The parent calls start, then enumerates each child device with append, and finally calls sync. 
+-- the parent device is responsible for reporting what child devices it has and giving each one a unique id.
+-- The parent calls start, then enumerates each child device with append, and finally calls sync.
 -- You will need to pass the same value for device to append and sync that you passed to start.
 
 
@@ -296,12 +294,12 @@ end
 -- parameters: device (string or number)
 -- returns: ptr (binary object)
 --
--- Tells Luup you will start enumerating the children of device. 
--- If device is a string it is interpreted as a udn [NOT IMPLEMENTED], 
--- if it's a number, as a device id. 
--- The return value is a binary object which you cannot do anything with in Lua, 
+-- Tells Luup you will start enumerating the children of device.
+-- If device is a string it is interpreted as a udn [NOT IMPLEMENTED],
+-- if it's a number, as a device id.
+-- The return value is a binary object which you cannot do anything with in Lua,
 -- but you do pass it to the append and sync functions.
-  
+
 local function start (device)
   -- build a table of device's current children, indexed by (alt)id
   -- NB: this is essential to avoid changing luup.devices whilst it might be being traversed
@@ -315,46 +313,46 @@ local function start (device)
 end
 
 -- function: append
--- parameters: 
---    device, ptr, altid, description, device_type, device_filename, 
---    implementation_filename, parameters, embedded, invisible[, room]   
---    Note extra parameter "room" cf. luup 
+-- parameters:
+--    device, ptr, altid, description, device_type, device_filename,
+--    implementation_filename, parameters, embedded, invisible[, room]
+--    Note extra parameter "room" cf. luup
 -- returns: nothing
 --
 -- Adds one child to device.
--- Pass in the ptr which you received from the luup.chdev.start call. 
--- Give each child a unique id so you can keep track of which is which. 
+-- Pass in the ptr which you received from the luup.chdev.start call.
+-- Give each child a unique id so you can keep track of which is which.
 -- You can optionally provide a description which the user sees in the user interface.
 -- device_type is the UPnP device type, such as urn:schemas-upnp-org:device:BinaryLight:1.
--- NOTE: On UI7, the device_type MUST be either the empty string, 
--- or the same as the one in the device file, otherwise the Luup engine will restart continuously. 
+-- NOTE: On UI7, the device_type MUST be either the empty string,
+-- or the same as the one in the device file, otherwise the Luup engine will restart continuously.
 
-local function append (device, ptr, altid, description, device_type, device_filename, 
-  implementation_filename, parameters, embedded, invisible, room) 
+local function append (device, ptr, altid, description, device_type, device_filename,
+  implementation_filename, parameters, embedded, invisible, room)
   _log (("[%s] %s"):format (altid or '?', description or ''), "luup.chdev.append")
-  if ptr.old[altid] then 
+  if ptr.old[altid] then
     ptr.old[altid] = nil        -- it existed already
   else
-    ptr.reload = true           -- we will need a reload 
+    ptr.reload = true           -- we will need a reload
     room = tonumber(room) or 0
     if embedded then room = luup.devices[device].room_num end
-    -- create_device (device_type, internal_id, description, upnp_file, upnp_impl, 
+    -- create_device (device_type, internal_id, description, upnp_file, upnp_impl,
     --                  ip, mac, hidden, invisible, parent, room, pluginnum, statevariables...)
-    local devNo, dev = create_device (device_type, altid, description, 
-            device_filename, implementation_filename, 
+    local devNo, dev = create_device (device_type, altid, description,
+            device_filename, implementation_filename,
             nil, nil, embedded, invisible, device, room, nil, parameters)
     ptr.new[devNo] = dev        -- save in the new list
   end
 end
-  
+
 -- function: sync
 -- parameters: device (string or number), ptr (binary object),
---    Note extra parameter 'no_reload' cf. luup 
+--    Note extra parameter 'no_reload' cf. luup
 -- returns: nothing  [CHANGED to return true if a reload WOULD have occurred and no_reload is set]
 --
--- Pass in the ptr which you received from the start function. 
--- Tells the Luup engine you have finished enumerating the child devices. 
--- 
+-- Pass in the ptr which you received from the start function.
+-- Tells the Luup engine you have finished enumerating the child devices.
+--
 local function sync (device, ptr, no_reload)
   local name = luup.devices[device].description or '?'
   _log (("[%d] %s, syncing children"): format (device, name), "luup.chdev.sync")
@@ -367,10 +365,10 @@ local function sync (device, ptr, no_reload)
   end
   -- now it's safe to link new ones into luup.devices
   for devNo, dev in pairs (ptr.new) do
-    luup.devices[devNo] = dev  
+    luup.devices[devNo] = dev
   end
   if ptr.reload and not no_reload then
-    luup.reload() 
+    luup.reload()
   end
   return ptr.reload
 end
@@ -380,10 +378,10 @@ end
 
 return {
   ABOUT = ABOUT,
-  
+
   create = create,
   create_device = create_device,
-  
+
   -- this is the actual child device module for luup
   chdev = {
     start   = start,
