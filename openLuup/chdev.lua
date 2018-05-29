@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.05.25",
+  VERSION       = "2018.05.29",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -47,6 +47,7 @@ local ABOUT = {
 -- 2018.04.05  move get/set status from devices to here (more a luup thing, than a device thing)
 -- 2018.05.14  ensure (sub)category numeric (thanks @rafale77)
 -- 2018.05.14  remove pcall from create() to propagate errors
+-- 2018.05.25  tidy attribute coercions
 
 
 local logs      = require "openLuup.logs"
@@ -190,7 +191,8 @@ local function create (x)
 -- TODO: consider protecting device attributes...
 --  setmetatable (dev.attributes, {__newindex = 
 --          function (_,x) error ("ERROR: attempt to create new device attribute "..x,2) end})
-  
+ 
+-- Note: that all the entries in dev.attributes already have the right type, so no need for coercions...
   local luup_device =     -- this is the information that appears in the luup.devices table
     {
       category_num        = a.category_num,
@@ -204,8 +206,8 @@ local function create (x)
       ip                  = a.ip,
       mac                 = a.mac,
       pass                = a.password or '',
-      room_num            = tonumber (a.room),
-      subcategory_num     = tonumber (a.subcategory_num),
+      room_num            = a.room,
+      subcategory_num     = a.subcategory_num,
       udn                 = a.local_udn,
       user                = a.username or '',    
     }
@@ -278,6 +280,8 @@ local function create_device (
   return devNo, dev
 end
 
+----------------------------------------
+--
 -- Module: luup.chdev
 --
 -- Contains functions for a parent to synchronize its child devices. 
@@ -370,6 +374,9 @@ local function sync (device, ptr, no_reload)
   end
   return ptr.reload
 end
+
+--
+----------------------------------------
 
 
 -- return the methods

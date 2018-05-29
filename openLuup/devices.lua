@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.05.28",
+  VERSION       = "2018.05.29",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -114,6 +114,7 @@ local metahistory = {}
         end
       end 
       local n = #history / 2
+      local p = 2 * hipoint - 1
       if n == 0 or t < history[1]   -- oldest point is at 2*hipoint+1 or 1
         then return nil 
         else return bisect (1, n) 
@@ -158,6 +159,10 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       srv       = serviceId,
       silent    = nil,                            -- set to true to mute logging
       watchers  = {},                             -- callback hooks
+      -- history
+      history   = nil,                            -- set to {} to enable history
+      hipoint   = nil,                            -- circular buffer pointer managed by variable_set()
+      hicache   = nil,                            -- local cache size, overriding global CacheSize
       -- methods
       set       = variable.set,
     }, 
@@ -176,7 +181,7 @@ function variable:set (value)
   if history and value ~= self.value then         -- only record CHANGES in value
     local v = tonumber(value)                     -- only numeric values
     if v then
-      local hipoint = (self.hipoint or 0) % CacheSize + 1
+      local hipoint = (self.hipoint or 0) % (self.hicache or CacheSize) + 1
       local n = hipoint + hipoint
       self.hipoint = hipoint
       history[n-1] = t
@@ -428,7 +433,6 @@ local function new (devNo)
     if type (attribute) ~= "table" then attribute = {[attribute] = value} end
     for name, value in pairs (attribute) do 
       if not attributes[name] then new_userdata_dataversion() end   -- structure has changed
---      attributes[name] = tostring(value)
       new_dataversion ()                              -- say value has changed
       attributes[name] = value
     end
@@ -501,4 +505,3 @@ return {
 
 
 ------
-

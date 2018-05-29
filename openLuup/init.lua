@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.05.28",
+  VERSION       = "2018.05.29",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -49,6 +49,7 @@ local ABOUT = {
 -- 2018.04.23  re-order module loading (to tidy startup log banners)
 -- 2018.04.25  change server module name back to http, and use opeLuup.HTTP... attributes
 -- 2018.05.25  add Data Historian configuration
+-- 2018.05.29  remove HTTP.WgetAuthorization option
 
 
 local logs  = require "openLuup.logs"
@@ -140,8 +141,8 @@ do -- set attributes, possibly decoding if required
       Directory = "backup/",
     },
     Databases = {
-      ["-- Influx = '172.16.42.129:8089'"] = [[-- EXAMPLE Influx UDP port]],
-      ["-- Graphite = '127.0.0.1:2003'"]   = [[-- EXAMPLE Graphite UDP port]],
+      ["-- Influx = '172.16.42.129:8089'"] = [[-- EXAMPLE Influx   UDP port]],
+      ["-- Graphite = '127.0.0.1:2003'"] = [[  -- EXAMPLE Graphite UDP port]],
     },
     Logfile = {
       Name      = "logs/LuaUPnP.log",
@@ -160,13 +161,12 @@ do -- set attributes, possibly decoding if required
     Historian = {
       CacheSize = 1000,                   -- in-memory cache size (per variable)
       ["-- Directory = 'history'"] = [[-- on-disc archive folder]],
-      NoArchive = "LastUpdate, LastValidComm",
+      NoArchive = "LastUpdate, LastValidComm, PollOk",
     },
     HTTP = {
       Backlog = 2000,                     -- used in socket.bind() for queue length
       ChunkedLength = 16000,              -- size of chunked transfers
       CloseIdleSocketAfter  = 90,         -- number of seconds idle after which to close socket
-      WgetAuthorization = "URL",          -- "URL" or else uses request header authorization
     },
     SMTP = {
       Backlog = 100,                      -- RFC 821 recommended minimum queue length

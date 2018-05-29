@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.05.25",
+  VERSION       = "2018.05.29",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -41,6 +41,7 @@ ABOUT = {
 -- 2018.04.19  add Servers UDP menu
 -- 2018.05.15  add Historian menu
 -- 2018.05.19  use openLuup ABOUT, not console
+-- 2018.05.28  add Files HistoryDB menu
 
 
 -- TODO: HTML pages with sorted tables?
@@ -58,6 +59,8 @@ local http      = require "openLuup.http"
 local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
+
+local isWhisper, whisper = pcall (require, "L_DataWhisper")   -- might not be installed
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -178,6 +181,7 @@ prefix = [[
         <div class="dropdown-content">
           <a class="left" href="/console?page=backups">Backups</a>
           <a class="left" href="/console?page=images">Images</a>
+          <a class="left" href="/console?page=database">History DB</a>
           <a class="left" href="/console?page=trash">Trash</a>
         </div>
       </div>
@@ -321,7 +325,21 @@ function run (wsapi_env)
     end
   end
   
+  -- map action function onto files
+  local function mapFiles (path, action)
+    local files = {}
+    for name in lfs.dir (path) do
+      local attr = lfs.attributes (path .. name) or {}
+      attr.path = path
+      attr.name = name
+      attr.size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))  -- round to kB
+      files[#files+1] = action (attr)
+    end
+    return files
+  end
+  
   -- returns specified file in a list of tables {date=x, name=y, size=z}
+  -- TODO: switch to using above mapFiles() function
   local function get_matching_files_from (folder, pattern)
     local files = {}
     for f in lfs.dir (folder) do
@@ -676,7 +694,7 @@ function run (wsapi_env)
       H[k] =  layout:format (k, v[4], number, name, v[2], v[3])
     end
     
-    print ("Data Historian, " .. os.date(date))
+    print ("Data Historian Cache Memory, " .. os.date(date))
     print ("\n  Total number of device variables:", N)
     print  "\n  Variables with History:"
     print (layout: format ('', "#points", "device ", "name", "service", "variable"))
@@ -684,11 +702,51 @@ function run (wsapi_env)
     print ("\n  Total number of history points:", T)
   end
   
+  
+  local function database ()
+    local folder = luup.attr_get "openLuup.Historian.Directory"
+    
+    print ("Historian Disk Database, " .. os.date(date))
+    
+    if not (folder and isWhisper) then
+      print "\n On-disk archiving not enabled"
+      return
+    end
+    
+    local files = mapFiles (folder, 
+      function (a)        -- file attributes including path, name, size,... (see lfs.attributes)
+        local shortName = a.name: match "^([^%.].+).wsp$"
+        if shortName then
+          local i = whisper.info (folder .. a.name)
+          a.shortName = shortName
+          a.archives = tostring(i)
+          return a
+        end
+      end)
+    
+    table.sort (files, function (a,b) return a.name < b.name end)
+    
+    local list = "   %5s %4s %5s     %s"
+    print ''
+    print (list:format ("size", "(kB)", "rate", "metric (dev.srv.var)"))
+    local N,T = 0,0
+    for _,f in ipairs (files) do 
+      N = N + 1
+      T = T + f.size
+      print (list:format (f.size, '', f.archives: match "^%w+", f.shortName)) 
+    end
+    T = T / 1000;
+    local total = "\n  Total database: %d files (%0.1f Mb)"
+    print (total: format (N, T))
+  end
+  
+  
   local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
   
   local pages = {
     about   = function () for a,b in pairs (ABOUTopenLuup) do print (a .. ' : ' .. tostring(b)) end end,
     backups = backups,
+    database = database,
     delays  = function () listit (dlist, "Delayed Callbacks") end,
     images  = images,
     jobs    = function () listit (jlist, "Scheduled Jobs") end,

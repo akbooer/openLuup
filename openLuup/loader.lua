@@ -605,36 +605,6 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
 
   return d, error_msg
 end
-------
-
--- TEST
-
---local x = "<a><b><c /><d /><e /></b><b><f /><g /><h /></b></a>"
---local y = decode(x).documentElement
-
---for z in  y:nextNode (function (x, p) return p == "/a/b" end) do 
---  print (z.nodeName, #z.childNodes)
---end
-
---print "---- xpath"
-
---local w = y:xpath "//b" 
---for _,z in ipairs(w) do
---  print (z.nodeName, #z.childNodes)
---end
-
---print "---- xpathIterator"
-
---for z in y:xpathIterator "//b/*" do
---  print (z.nodeName, #z.childNodes)
---end
-
-
---print "---- xpathIterator"
-
---for z in y:xpathIterator "//*/f" do
---  print (z.nodeName, #z.childNodes)
---end
 
 
 return {
