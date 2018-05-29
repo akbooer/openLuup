@@ -1,6 +1,10 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
+<<<<<<< HEAD
   VERSION       = "2018.05.24",
+=======
+  VERSION       = "2018.05.28",
+>>>>>>> pr/6
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -53,7 +57,7 @@ local ABOUT = {
 -- 2018.03.24   use luup.rooms.create metatable method
 -- 2018.04.05   do not create status as a device attribute when loading user_data
 -- 2018.04.23   update_plugin_versions additions for ALT... plugins and MySensors
--- 2018-05.11   Adding device category and subcategory
+-- 2018.05.25   restore openLuup variables on reload (for history)
 
 
 local json    = require "openLuup.json"
@@ -70,10 +74,10 @@ local _log, _debug = logs.register (ABOUT)
 -- Here a complete list of top-level (scalar) attributes taken from an actual Vera user_data2 request
 -- the commented out items are either vital tables, or useless parameters.
 
-local attributes = { 
+local attributes = {
 --  AltEventServer = "127.0.0.1",
 --  AutomationDevices = 0,
-  BuildVersion = "*1.7.0*", 
+  BuildVersion = "*1.7.0*",
   City_description = "Greenwich",
   Country_description = "UNITED KINGDOM",
 --  DataVersion = 563952001,
@@ -157,14 +161,14 @@ luup.log "startup code completed"
 --  static_data = {},
 --  sync_kit = "0000-00-00 00:00:00",
   timeFormat = "24hr",
-  timezone = "0",     -- apparently not used, and always "0", 
+  timezone = "0",     -- apparently not used, and always "0",
                       -- see: http://forum.micasaverde.com/index.php/topic,10276.msg70562.html#msg70562
 --  users = {},
 --  weatherSettings = {
 --    weatherCountry = "UNITED KINGDOM",
 --    weatherCity = "Oxford England",
 --    tempFormat = "C" },
---  zwave_heal = "1426331082",    
+--  zwave_heal = "1426331082",
 
 -- openLuup specials
 
@@ -182,8 +186,8 @@ luup.log "startup code completed"
 local default_plugins_version = "2016.11.15"  --<<<-- change this to force update of default_plugins
 
 local preinstalled = {
-  
-  openLuup = 
+
+  openLuup =
 
     {
       AllowMultiple   = "0",
@@ -213,7 +217,7 @@ local preinstalled = {
        },
     },
 
-  AltUI = 
+  AltUI =
 
     {
       AllowMultiple   = "0",
@@ -235,7 +239,7 @@ local preinstalled = {
 --          CategoryNum = "1"
         },
       },
-      Repository      = {     
+      Repository      = {
         type      = "GitHub",
         source    = "amg0/ALTUI",                   -- @amg0 repository
         pattern   = "ALTUI",                        -- pattern match string for required files
@@ -278,7 +282,7 @@ local preinstalled = {
       },
     },
 
-  VeraBridge = 
+  VeraBridge =
 
     {
       AllowMultiple   = "1",
@@ -341,7 +345,7 @@ local preinstalled = {
         pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
       },
     },
-  
+
   Graphite_CGI =
 
     {
@@ -368,7 +372,7 @@ local preinstalled = {
     {
       AllowMultiple   = "1",
       Title           = "MySensors",
-      Icon            = "https://www.mysensors.org/icon/MySensors.png", 
+      Icon            = "https://www.mysensors.org/icon/MySensors.png",
       Instructions    = "https://github.com/mysensors/Vera/tree/UI7",
       AutoUpdate      = "0",
       VersionMajor    = "not",
@@ -396,7 +400,7 @@ local preinstalled = {
     {
       AllowMultiple   = "1",
       Title           = "RaZberry (ALPHA)",
-      Icon            = "https://raw.githubusercontent.com/amg0/razberry-altui/master/iconRAZB.png", 
+      Icon            = "https://raw.githubusercontent.com/amg0/razberry-altui/master/iconRAZB.png",
       Instructions    = "https://github.com/amg0/razberry-altui",
       AutoUpdate      = "1",
       VersionMajor    = "not",
@@ -424,7 +428,7 @@ local preinstalled = {
     {
       AllowMultiple   = "1",
       Title           = "Z-Way",
-      Icon            = "https://raw.githubusercontent.com/akbooer/Z-Way/master/icons/Z-Wave.me.png", 
+      Icon            = "https://raw.githubusercontent.com/akbooer/Z-Way/master/icons/Z-Wave.me.png",
       Instructions    = "",
       AutoUpdate      = "0",
       VersionMajor    = "not",
@@ -491,9 +495,9 @@ end
 
 -- build update_plugin metadata from InstalledPlugins2 structure
 local function plugin_metadata (id, tag)
-  
+
   local IP = find_installed_data (id)    -- get the named InstalledPlugins2 metadata
-  if IP then 
+  if IP then
     local r = IP.Repository
     local major = r.type or "GitHub"
     tag = tag or "master"
@@ -515,7 +519,7 @@ end
 
 -- go through the devices to see if any advertise their versions
 local function update_plugin_versions (installed)
-  
+
   -- index by plugin id and device type
   local index_by_plug = plugin_index (installed)
   local index_by_type = {}
@@ -526,15 +530,15 @@ local function update_plugin_versions (installed)
     end
     if id then index_by_type[tostring(id)] = i end
   end
-  
+
   -- go through LOCAL devices looking for clues about their version numbers
-  for _, d in pairs (luup.devices or {}) do 
+  for _, d in pairs (luup.devices or {}) do
     local i = index_by_plug[d.attributes.plugin] or index_by_type[d.device_type]
     local a = (d.environment or {}).ABOUT
     local IP = installed[i]
-    
+
     if IP and d.device_num_parent == 0 then   -- LOCAL devices only!
-      
+
       if i and a then     -- plugins with ABOUT.VERSION
         local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
         if v3 then
@@ -545,7 +549,7 @@ local function update_plugin_versions (installed)
             IP.VersionMinor = table.concat ({tonumber(v2),tonumber(v3)}, '.') .. prerelease
           end
         end
-      
+
       else    -- it gets harder, so go through variables...               example syntax
         local known = {
             ["urn:upnp-org:serviceId:altui1"]         = "Version",           --v2.15
@@ -570,10 +574,10 @@ end
 --
 
 -- load user_data (persistence for attributes, rooms, devices and scenes)
-local function load_user_data (user_data_json)  
+local function load_user_data (user_data_json)
   _log "loading user_data json..."
   local user_data, msg = json.decode (user_data_json)
-  if msg then 
+  if msg then
     _log (msg)
   else
     -- ATTRIBUTES
@@ -584,40 +588,44 @@ local function load_user_data (user_data_json)
       -- note that attr_set also handles the "special" attributes which are mirrored in luup.XXX
       end
     end
-    
-    -- ROOMS    
+
+    -- ROOMS
     _log "loading rooms..."
     for _,x in pairs (user_data.rooms or {}) do
       luup.rooms.create (x.name, x.id)            -- 2018.03.24  use luup.rooms.create metatable method
-      _log (("room#%d '%s'"): format (x.id,x.name)) 
+      _log (("room#%d '%s'"): format (x.id,x.name))
     end
     _log "...room loading completed"
-    
-    -- DEVICES  
-    _log "loading devices..."    
+
+    -- DEVICES
+    _log "loading devices..."
     for _, d in ipairs (user_data.devices or {}) do
       if d.id == 2 then               -- device #2 is special (it's the openLuup plugin, and already exists)
         local ol = luup.devices[2]
         local room = tonumber (d.room) or 0
         ol:attr_set {room = room}     -- set the device attribute...
         ol.room_num = room            -- ... AND the device table (Luup is SO bad...)
+        -- 2018.05.25 restore openLuup variables
+        for _,v in ipairs ((d.states) or {}) do
+          ol: variable_set (v.service, v.variable, v.value)
+        end
         -- 2017.01.18 create openLuup HouseMode variable
-        ol:variable_set ("openLuup", "HouseMode", luup.attr_get "Mode")  
+        ol:variable_set ("openLuup", "HouseMode", luup.attr_get "Mode")
       else
         local dev = chdev.create {      -- the variation in naming within luup is appalling
-            devNo = d.id, 
-            device_type     = d.device_type, 
+            devNo = d.id,
+            device_type     = d.device_type,
             internal_id     = d.altid,
-            description     = d.name, 
-            upnp_file       = d.device_file, 
+            description     = d.name,
+            upnp_file       = d.device_file,
             upnp_impl       = d.impl_file or '',
             json_file       = d.device_json or '',
-            ip              = d.ip, 
-            mac             = d.mac, 
-            hidden          = nil, 
+            ip              = d.ip,
+            mac             = d.mac,
+            hidden          = nil,
             invisible       = d.invisible == "1",
             parent          = d.id_parent,
-            room            = tonumber (d.room), 
+            room            = tonumber (d.room),
             pluginnum       = d.plugin,
             statevariables  = d.states,      -- states : table {id, service, variable, value}
             disabled        = d.disabled,
@@ -636,10 +644,10 @@ local function load_user_data (user_data_json)
           end
         end
         luup.devices[d.id] = dev                          -- save it
-      end 
-    end 
-  
-    -- SCENES 
+      end
+    end
+
+    -- SCENES
     _log "loading scenes..."
     local Nscn = 0
     for _, scene in ipairs (user_data.scenes or {}) do
@@ -655,26 +663,26 @@ local function load_user_data (user_data_json)
       end
     end
     _log ("number of scenes = " .. Nscn)
-    
+
     for i,n in ipairs (luup.scenes) do _log (("scene#%d '%s'"):format (i,n.description)) end
     _log "...scene loading completed"
-  
+
     -- PLUGINS
     _log "loading installed plugin info..."
-    
+
     local installed = user_data.InstalledPlugins2 or {}
     local index = plugin_index (installed)
-    
-    -- check TargetVersion of openLuup to see if InstalledPlugins2 defaults are current   
+
+    -- check TargetVersion of openLuup to see if InstalledPlugins2 defaults are current
     local ol = installed[index.openLuup] or {}
     local refresh = ol.TargetVersion ~= default_plugins_version
-    
+
     -- copy any missing defaults (may have been deleted) to the new list
     for _, default_plugin in ipairs (default_plugins) do
       local existing = index[tostring(default_plugin.id)]
-      if not existing then 
+      if not existing then
         installed[#installed+1] = default_plugin          -- add any missing defaults
-      elseif refresh then 
+      elseif refresh then
       default_plugin.VersionMajor = installed[existing].VersionMajor  -- preserve version info
       default_plugin.VersionMinor = installed[existing].VersionMinor
       installed[existing] = default_plugin                -- out of date, so replace info anyway
@@ -702,35 +710,35 @@ local function devices_table (device_list)
   local devs = {}
   for d in pairs (device_list) do devs[#devs+1] = d end  -- 2017.04.19
   table.sort (devs)
-  for _,dnum in ipairs (devs) do 
-    local d = device_list[dnum] 
+  for _,dnum in ipairs (devs) do
+    local d = device_list[dnum]
     local states = {}
     for i,item in ipairs(d.variables) do
       states[i] = {
-        id = item.id, 
+        id = item.id,
         service = item.srv,
         variable = item.name,
         value = item.value or {},
       }
     end
-    local curls 
+    local curls
     if d.serviceList then         -- add the ControlURLs
       curls = {}
       for _,x in ipairs (d.serviceList) do
         serviceNo = serviceNo + 1
         curls["service_" .. serviceNo] = {
-          service = x.serviceId, 
-          serviceType = x.serviceType, 
+          service = x.serviceId,
+          serviceType = x.serviceType,
           ControlURL = "upnp/control/dev_" .. serviceNo,
           EventURL = "/upnp/event/dev_" .. serviceNo,
     }
       end
     end
-    
+
     local status = d:status_get() or -1      -- 2016.04.29
 --    if status == -1 then status = nil end     -- don't report 'normal' status ???
-    local tbl = {     
-      ControlURLs     = curls,                              
+    local tbl = {
+      ControlURLs     = curls,
       states          = states,
       status          = status,
     }
@@ -756,18 +764,18 @@ local function json_user_data (localLuup)   -- refactored thanks to @explorer
   data.InstalledPlugins2 = attributes.InstalledPlugins2 or default_plugins   -- 2016.05.15 and 2016.05.30
   -- rooms
   local rooms = data.rooms
-  for i, name in pairs (luup.rooms or {}) do 
+  for i, name in pairs (luup.rooms or {}) do
     rooms[#rooms+1] = {id = i, name = name}
   end
   -- scenes
   local scenes = data.scenes
   for _, s in pairs (luup.scenes or {}) do
     scenes[#scenes+1] = s: user_table ()
-  end    
+  end
   --
   return json.encode (data)   -- json text or nil, error message if any
 end
- 
+
 -- save ()
 local function save_user_data (localLuup, filename)   -- refactored thanks to @explorer
   local result, message
@@ -793,20 +801,19 @@ end
 
 return {
   ABOUT           = ABOUT,
-  
-  attributes      = attributes, 
+
+  attributes      = attributes,
   default_plugins = default_plugins,
   preinstalled    = preinstalled,
-  
-  -- methods  
-  
-  devices_table           = devices_table, 
+
+  -- methods
+
+  devices_table           = devices_table,
   plugin_metadata         = plugin_metadata,
-  find_installed_data     = find_installed_data, 
+  find_installed_data     = find_installed_data,
   update_plugin_versions  = update_plugin_versions,
-  
+
   json  = json_user_data,
   load  = load_user_data,
   save  = save_user_data,
 }
-

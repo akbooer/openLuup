@@ -1,10 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.05.15",
+  VERSION       = "2018.05.26",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -51,7 +52,8 @@ local ABOUT = {
 --             see: http://forum.micasaverde.com/index.php/topic,38471.0.html
 -- 2018.04.06  use scheduler.context_switch to wrap device code compilation (for sandboxing)
 -- 2018.04.22  parse_impl_xml added action field for /data_request?id=lua&DeviceNum=... 
--- 2018.07.10  SUBSTANTIAL REWRITE, to accomodate new XML DOM parser
+-- 2018.05.10  SUBSTANTIAL REWRITE, to accomodate new XML DOM parser
+-- 2018.05.26  add new line before action end - beware final comment lines!! Debug dump erroneous source code.
 
 
 ------------------
@@ -261,7 +263,7 @@ end
 -- with all the supplied action tags (run / job / timeout / incoming) and name and serviceId.
 local function build_action_tags (actions)
   local top  = " = function (lul_device, lul_settings, lul_job, lul_data) "
-  local tail = " end, "
+  local tail = "\n end, "     -- 2018.05.26  add new line before action end... beware final comment lines!!
   local tags = {"run", "job", "timeout", "incoming"}
   
   local action = {"_openLuup_ACTIONS_ = {"}
@@ -552,16 +554,23 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   -- for code in XML files, keep XML but start XML lines with comments "-- " to match the line number.
 
 --    local name = ("[%d] %s"): format (devNo, file or '?')
-    local name = i.files or file or '?'                  -- 2018.03.17
+    local name = non_blank (i.files) or file or '?'                  -- 2018.03.17
   --
   -----
 
     -- 2018.04.06  wrap compile in context_switch() ...
     do              -- ...to get correct device numbering for sandboxed functions
     
-      local err
-      err, code, error_msg = scheduler.context_switch (devNo,
+      local ok
+      ok, code, error_msg = scheduler.context_switch (devNo,
           compile_lua, i.source_code, name)  -- load, compile, instantiate    
+      if error_msg and ABOUT.DEBUG then
+        local f = io.open ("DUMP_" .. ((name: match "[^%.]+") or "XXX") .. ".lua", 'w')
+        if f then
+          f: write (i.source_code)
+          f: close ()
+        end
+      end
     end
     
     if code then 

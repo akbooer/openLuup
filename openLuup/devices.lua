@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.05.15",
+  VERSION       = "2018.05.28",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -39,6 +39,7 @@ local ABOUT = {
 -- see: http://forum.micasaverde.com/index.php/topic,16166.0.html
 -- and: http://blog.abodit.com/2013/02/variablewithhistory-making-persistence-invisible-making-history-visible/
 -- 2018.05.01  use millisecond resolution time for variable history (luup.variable_get truncates this)
+-- 2018.05.25  use circular buffer for history cache, add history meta-functions, history watcher
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -65,12 +66,80 @@ local device_list  = {}         -- internal list of devices
 
 local sys_watchers = {}         -- list of system-wide (ie. non-device-specific) watchers
 
+local history_watchers = {}     -- for data historian watchers
+
+local CacheSize = 1000          -- default value over-ridden by initalisation configuration
+
 -----
 --
--- VARIABLE object 
--- 
+-- VARIABLE object
+--
 -- Note that there is no "get" function, object variables can be read directly (but setting should use the method)
 --
+
+-- metahistory methods are shared between all variable instances
+-- and manage data retrieval from the in-memory history cache
+local metahistory = {}
+
+  -- get the latest time (with millisecond precision) and value
+  function metahistory: newest ()
+    local history = self.history
+    if history and #history > 0 then
+      local n = 2 * self.hipoint
+      return history[n-1], history[n]
+    end
+  end
+
+  -- get the oldest time (with millisecond precision) and value
+  function metahistory: oldest ()
+    local history = self.history
+    if history and #history > 0 then
+      local n = 2 * self.hipoint
+      return history[n+1] or history[1], history[n+2] or history[2]   -- cache may not yet be full
+    end
+  end
+
+  -- get the value at or before given time t
+  function metahistory: at (t)
+
+    -- return location of largest time element in history <= t using bisection, or nil if none
+    local function locate (history, hipoint, t)
+      local function bisect (a,b)
+        if a >= b then return a end
+        local c = math.ceil ((a+b)/2)
+--        if t < history[c+c-1]     -- TODO: unwrap circular buffer
+        if t < history[(2*(c-1+hipoint-1) % #history)+1]     -- unwrap circular buffer
+          then return bisect (a,c-1)
+          else return bisect (c,b)
+        end
+      end
+      local n = #history / 2
+      if n == 0 or t < history[1]   -- oldest point is at 2*hipoint+1 or 1
+        then return nil
+        else return bisect (1, n)
+      end
+    end
+
+    -- at()
+    local history = self.history
+    if history and #history > 0 then
+      local i = locate (history, self.hipoint, t)
+      if i then
+        local j = i + i
+        return history[j-1], history[j]
+      end
+    end
+  end
+
+  -- ipairs iterator
+  function metahistory: iter(x, i)
+    i = i + 1
+    local j = i + i
+    if j <= #x then
+      return i, x[j-1], x[j]
+    end
+  end
+
 
 local variable = {}             -- variable CLASS
 
@@ -79,7 +148,9 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
   local vars = device.variables or {}
   local varID = #vars                             -- 2018.01.31
   new_userdata_dataversion ()                     -- say structure has changed
-  vars[varID + 1] = {                             -- 2018.01.31
+  vars[varID + 1] =                               -- 2018.01.31
+  setmetatable (                                  -- 2018.05.25 add history methods
+    {
       -- variables
       dev       = devNo,
       id        = varID,                          -- unique ID
@@ -89,33 +160,37 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       watchers  = {},                             -- callback hooks
       -- methods
       set       = variable.set,
-    }
+    },
+      {__index = metahistory} )
   return vars[#vars]
 end
- 
- 
+
+
 function variable:set (value)
   local t = scheduler.timenow()                   -- time to millisecond resolution
   value = tostring(value or '')                   -- all device variables are strings
-  
+
   -- 2018.04.25 'VariableWithHistory'
-  -- note that retention policies are not implemented here, so the history just grows
-  local history = self.history 
+  -- history is implemented as a circular buffer, limited to CacheSize time/value pairs
+  local history = self.history
   if history and value ~= self.value then         -- only record CHANGES in value
-    local v = tonumber(value)                     -- only numeric values at the moment
+    local v = tonumber(value)                     -- only numeric values
     if v then
-      local n = #history
-      history[n+1] = t
-      history[n+2] = v
+      local hipoint = (self.hipoint or 0) % CacheSize + 1
+      local n = hipoint + hipoint
+      self.hipoint = hipoint
+      history[n-1] = t
+      history[n]   = v
+      scheduler.watch_callback {var = self, watchers = history_watchers} -- for write-thru disc cache
     end
   end
   --
-  
+
   local n = dataversion.value + 1                 -- say value has changed
   dataversion.value = n
-  
+
   self.old      = self.value or "EMPTY"
-  self.value    = value                           -- set new value 
+  self.value    = value                           -- set new value
   self.time     = t                               -- save time of change
   self.version  = n                               -- save version number
   return self
@@ -124,13 +199,13 @@ end
 
 -----
 --
--- SERVICE object 
+-- SERVICE object
 --
 -- Services contain variables and actions
 --
 
 local service = {}              -- service CLASS
-  
+
 function service.new (serviceId, devNo)        -- factory for new services
   local actions   = {}
   local variables = {}
@@ -146,7 +221,7 @@ function service.new (serviceId, devNo)        -- factory for new services
   local function variable_get (self, name)
     return variables[name]
   end
-  
+
   return {
     -- variables
     actions       = actions,
@@ -162,19 +237,19 @@ end
 -----
 --
 -- WATCH devices, services and variables
--- 
+--
 -- function: variable_watch
 -- parameters: device (number), function (function), service (string), variable (string or nil)
 -- returns: nothing
 -- Adds the function to the list(s) of watchers
--- If variable is nil, function will be called whenever any variable in the service is changed. 
+-- If variable is nil, function will be called whenever any variable in the service is changed.
 -- If device is nil see: http://forum.micasaverde.com/index.php/topic,34567.0.html
 -- thanks @vosmont for clarification of undocumented feature
 --
 
-local function variable_watch (dev, fct, serviceId, variable, name, silent)  
+local function variable_watch (dev, fct, serviceId, variable, name, silent)
   local callback = {
-    callback = fct, 
+    callback = fct,
     devNo = scheduler.current_device (),    -- devNo is current device context
     name = name,
     silent = silent,                            -- avoid logging some system callbacks (eg. scene watchers)
@@ -183,7 +258,7 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
     -- a specfic device
     local srv = dev.services[serviceId]
     if srv then
-      local var = srv.variables[variable] 
+      local var = srv.variables[variable]
       if var then                                 -- set the watch on the variable
         var.watchers[#var.watchers+1] = callback
       else                                        -- set the watch on the service
@@ -203,6 +278,11 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
       watch[#watch+1] = callback  -- set the watch on the variable or service
     else
       -- no service id
+      if variable == "history" then
+        callback.name = "data historian"
+        callback.silent = true
+        history_watchers[1] = callback    -- only allow one of these
+      end
     end
   end
 end
@@ -210,71 +290,71 @@ end
 
 -----
 --
--- DEVICE object 
+-- DEVICE object
 --
 --
--- Devices support services with variables.  
+-- Devices support services with variables.
 -- They also contain attributes and have a unique device_number.
 -- Callback handlers can also be set for variable changes and missing actions
 
 -- new device
-local function new (devNo)  
-  
+local function new (devNo)
+
   local attributes  = {}      -- device attributes
   local services    = {}      -- all service variables and actions here
   local version               -- set device version (used to flag changes)
   local missing_action        -- an action callback to catch missing actions
   local watchers    = {}      -- list of watchers for any service or variable
-  
+
   -- function delete_vars
-  -- parameter: device 
+  -- parameter: device
   -- deletes all variables in all services (but retains actions)
   local function delete_vars (dev)
     local v = dev.variables
     for i in ipairs(v) do v[i] = nil end    -- clear each element, don't replace whole table
-    
+
     for _,svc in pairs(dev.services) do
       local v = svc.variables
       for name in pairs (v) do    -- remove all the old service variables!
         v[name] = nil             -- clear each element, don't replace whole table
       end
     end
-    
+
     new_userdata_dataversion ()
   end
-  
+
   -- function: variable_set
   -- parameters: service (string), variable (string), value (string), watch (boolean)
   -- if watch is true, then invoke any watchers for this device/service/variable
-  -- returns: the variable object 
+  -- returns: the variable object
   local function variable_set (self, serviceId, name, value, watch)
     local srv = services[serviceId] or service.new(serviceId, devNo)     -- create serviceId if missing
     services[serviceId] = srv
     local var = srv:variable_set (name, value)                    -- this updates the variable's data version
-    version = dataversion.value                                   -- ...and now update the device version 
+    version = dataversion.value                                   -- ...and now update the device version
     if watch then
     -- note that this only _schedules_ the callbacks, they are not actually invoked _now_
       local dev = self
-      local sys = sys_watchers[serviceId] or {}  
+      local sys = sys_watchers[serviceId] or {}
       if sys["*"] then                -- flag as service value change to non-specific device watchers
-        scheduler.watch_callback {var = var, watchers = sys["*"]} 
-      end 
+        scheduler.watch_callback {var = var, watchers = sys["*"]}
+      end
       if sys[name] then               -- flag as variable value change to non-specific device watchers
-        scheduler.watch_callback {var = var, watchers = sys[name]} 
-      end 
+        scheduler.watch_callback {var = var, watchers = sys[name]}
+      end
       if #dev.watchers > 0 then           -- flag as device value change to watchers
-        scheduler.watch_callback {var = var, watchers = watchers} 
-      end 
+        scheduler.watch_callback {var = var, watchers = watchers}
+      end
       if #srv.watchers > 0 then       -- flag as service value change to watchers
-        scheduler.watch_callback {var = var, watchers = srv.watchers} 
-      end 
+        scheduler.watch_callback {var = var, watchers = srv.watchers}
+      end
       if #var.watchers > 0 then       -- flag as variable value change to watchers
-        scheduler.watch_callback {var = var, watchers = var.watchers} 
-      end 
+        scheduler.watch_callback {var = var, watchers = var.watchers}
+      end
     end
     return var
   end
- 
+
   -- function: variable_get
   -- parameters: service (string), variable (string)
   -- returns: the variable object
@@ -283,8 +363,8 @@ local function new (devNo)
     local srv = services[serviceId]
     if srv then var = srv:variable_get (name) end
     return var, srv
-  end 
-   
+  end
+
   -- function: action_set ()
   -- parameters: service (string) name (string), action_tags (table)
   -- returns: nothing
@@ -296,16 +376,16 @@ local function new (devNo)
       services[serviceId] = srv
       srv.actions[name] = action_tags
   end
-  
+
   -- function: call_action
   -- parameters: service (string), action (string), arguments (table), device (number)
   -- returns: error (number), error_msg (string), job (number), arguments (table)
   --
-  -- Invokes the service + action, passing in arguments (table of string->string pairs) to the device. 
-  -- If the invocation could not be made, only error will be returned with a value of -1. 
-  -- error is 0 if the action was successful. 
-  -- arguments is a table of string->string pairs with the return arguments from the action. 
-  -- If the action is handled asynchronously by a job, 
+  -- Invokes the service + action, passing in arguments (table of string->string pairs) to the device.
+  -- If the invocation could not be made, only error will be returned with a value of -1.
+  -- error is 0 if the action was successful.
+  -- arguments is a table of string->string pairs with the return arguments from the action.
+  -- If the action is handled asynchronously by a job,
   -- then the job number will be returned as a positive integer.
   --
   -- NOTE: that the target device may be different from the device which handles the action
@@ -314,20 +394,20 @@ local function new (devNo)
   local function call_action (self, serviceId, action, arguments, target_device)
     -- 'act' is an object with (possibly) run / job / timeout / incoming methods
     -- note that the loader has also added 'name' and 'serviceId' fields to the action object
-    
+
     local act, svc
     svc = services[serviceId]
     if svc then act = svc.actions [action] end
-    
+
     if not act and missing_action then              -- dynamically link to the supplied action handler
       act = missing_action (serviceId, action)      -- might still return nil action
     end
-    
-    if not act then 
-      if not svc then 
-        return 401, "Invalid Service",   0, {} 
+
+    if not act then
+      if not svc then
+        return 401, "Invalid Service",   0, {}
       else
-        return 501, "No implementation", 0, {} 
+        return 501, "No implementation", 0, {}
       end
     end
 
@@ -337,63 +417,63 @@ local function new (devNo)
     end
     return e,m,j,a
   end
- 
+
   -- function attr_set ()
   -- parameters: attribute (string), value(string) OR table of {name = value} pairs
   -- returns: nothing
   --
-  -- Sets the top level attribute(s) for the device to value(s). 
+  -- Sets the top level attribute(s) for the device to value(s).
   -- TODO: at the moment, attr_set does _not_ update the dataversion - is this right?
   local function attr_set (self, attribute, value)
     if type (attribute) ~= "table" then attribute = {[attribute] = value} end
-    for name, value in pairs (attribute) do 
+    for name, value in pairs (attribute) do
       if not attributes[name] then new_userdata_dataversion() end   -- structure has changed
 --      attributes[name] = tostring(value)
       new_dataversion ()                              -- say value has changed
       attributes[name] = value
     end
   end
-    
+
   -- function: attr_get
   -- parameters: attribute (string), device (string or number)
   -- returns: the value
   --
-  -- Gets the top level attribute for the device. 
+  -- Gets the top level attribute for the device.
   local function attr_get (self, attribute)
     return attributes[attribute]
   end
- 
+
   -- new () starts here
-  
+
   new_dataversion ()                                      -- say something's changed
   new_userdata_dataversion ()                             -- say it's structure, not just values
   version = dataversion.value                             -- set the device's version number
-   
+
   device_list[devNo] =  {
       -- data structures
-      
+
       attributes          = attributes,
       services            = services,
       watchers            = watchers,
       variables           = {},            -- 2016.04.15  complete list of device variables by ID
-      
+
       -- note that these methods should be called with device:function() syntax...
       call_action         = call_action,
       action_set          = action_set,
       action_callback     = function (self, f) missing_action = f or self end,
-      
+
       attr_get            = attr_get,
       attr_set            = attr_set,
-      
-      variable_set        = variable_set, 
+
+      variable_set        = variable_set,
       variable_get        = variable_get,
       version_get         = function () return version end,
-      
+
       delete_vars         = delete_vars,    -- 2018.01.31
     }
-    
+
   return device_list[devNo]
-  
+
 end
 
 
@@ -401,21 +481,23 @@ end
 
 return {
   ABOUT = ABOUT,
-  
+
   -- variables
   dataversion           = dataversion,
   device_list           = device_list,
   sys_watchers          = sys_watchers,         -- only for use by console routine
   userdata_dataversion  = userdata_dataversion,
-  
+
   -- methods
   new                       = new,
   variable_watch            = variable_watch,
   new_dataversion           = new_dataversion,
   new_userdata_dataversion  = new_userdata_dataversion,
+
+  set_cache_size  = function(s) CacheSize = s end,
+
 }
 
 
 
 ------
-

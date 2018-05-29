@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.05.14",
+  VERSION       = "2018.05.25",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -45,7 +45,8 @@ local ABOUT = {
 -- 2018.03.18  create default device variables if they have a defaultValue in the service definition
 -- 2018.04.03  add jobs table to device metadata (for status reporting to AltUI)
 -- 2018.04.05  move get/set status from devices to here (more a luup thing, than a device thing)
--- 2018.05.11  Added category and subcategory. Fixed type inconsistency.
+-- 2018.05.14  ensure (sub)category numeric (thanks @rafale77)
+-- 2018.05.14  remove pcall from create() to propagate errors
 
 
 local logs      = require "openLuup.logs"
@@ -104,21 +105,13 @@ local function create (x)
   local dev = devutil.new (x.devNo)   -- create the proto-device
   local services = dev.services
 
---  local ok, d, err = pcall (loader.assemble_device, x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
-  local ok, d, err = true, loader.assemble_device (x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
+  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
 
---  if not ok or not d then
---    local fmt = "ERROR [%d] %s / %s / %s : %s"
---    local msg = fmt: format (x.devNo, x.upnp_file or x.device_type or '',
---                                        x.upnp_impl or '', x.json_file or '', d or err or '?')
---    _log (msg, "luup.create_device")
---    return
---  end
   d = d or {}
-  if err then _log (err) end
   local fmt = "[%d] %s / %s / %s"
   local msg = fmt: format (x.devNo, x.upnp_file or d.device_type or '', d.impl_file or '', d.json_file or '')
   _log (msg, "luup.create_device")
+  if err then _log (err) end
 
   if d.action_list then
     -- create and set service actions (from implementation file)

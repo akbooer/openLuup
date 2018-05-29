@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.05.15",
+  VERSION       = "2018.05.28",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -48,10 +48,11 @@ local ABOUT = {
 -- 2018.04.04  add POP3 server
 -- 2018.04.23  re-order module loading (to tidy startup log banners)
 -- 2018.04.25  change server module name back to http, and use opeLuup.HTTP... attributes
--- 2018.05.11  add category and subcategory
+-- 2018.05.25  add Data Historian configuration
 
 
-local logs = require "openLuup.logs"
+local logs  = require "openLuup.logs"
+local lfs   = require "lfs"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -70,9 +71,9 @@ local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local compress      = require "openLuup.compression"
 local json          = require "openLuup.json"
+local historian     = require "openLuup.historian"
 
 local mime  = require "mime"
-local lfs   = require "lfs"
 
 -- what it says...
 local function compile_and_run (lua, name)
@@ -139,8 +140,8 @@ do -- set attributes, possibly decoding if required
       Directory = "backup/",
     },
     Databases = {
-      ["--1"] = "Influx = '172.16.42.129:8089',     -- EXAMPLE Influx UDP port",
-      ["--2"] = "Graphite = '127.0.0.1:2003',       -- EXAMPLE Graphite UDP port",
+      ["-- Influx = '172.16.42.129:8089'"] = [[-- EXAMPLE Influx UDP port]],
+      ["-- Graphite = '127.0.0.1:2003'"]   = [[-- EXAMPLE Graphite UDP port]],
     },
     Logfile = {
       Name      = "logs/LuaUPnP.log",
@@ -156,10 +157,15 @@ do -- set attributes, possibly decoding if required
       Checkpoint  = 60,                   -- checkpoint every sixty minutes
       Name        = "user_data.json",     -- not recommended to change
     },
+    Historian = {
+      CacheSize = 1000,                   -- in-memory cache size (per variable)
+      ["-- Directory = 'history'"] = [[-- on-disc archive folder]],
+      NoArchive = "LastUpdate, LastValidComm",
+    },
     HTTP = {
       Backlog = 2000,                     -- used in socket.bind() for queue length
       ChunkedLength = 16000,              -- size of chunked transfers
-      CloseIdleSocketAfter  = 90 ,        -- number of seconds idle after which to close socket
+      CloseIdleSocketAfter  = 90,         -- number of seconds idle after which to close socket
       WgetAuthorization = "URL",          -- "URL" or else uses request header authorization
     },
     SMTP = {
@@ -173,7 +179,7 @@ do -- set attributes, possibly decoding if required
       Port = 11011,
     },
     Scenes = {
-      ["--"] = "set Prolog/Epilog to global function names to run before/after ALL scenes",
+      ["-- set Prolog/Epilog to global function names"] = [[-- to run before/after ALL scenes]],
       Prolog = '',                        -- name of global function to call before any scene
       Epilog = '',                        -- ditto, after any scene
     },
@@ -203,7 +209,8 @@ do -- STARTUP
     require "openLuup.L_AltAppStore"                    -- manually load the plugin updater
     AltAppStore_init (2)                                -- give it a device to work with
     local meta = userdata.plugin_metadata (8246)        -- AltUI plugin number
-    update_plugin_run {metadata = json.encode (meta)}   -- <run> phase
+    local metadata = json.encode (meta)                 -- get the metadata
+    update_plugin_run {metadata = metadata}             -- <run> phase
     repeat until update_plugin_job () ~= 0              -- <job> phase
   end
 
@@ -258,7 +265,13 @@ do -- SERVERs and SCHEDULER
   if config.SMTP then smtp.start (config.SMTP) end
 
   if config.POP3 then pop3.start (config.POP3) end
+<<<<<<< HEAD
 
+=======
+
+  if config.Historian then historian.start (config.Historian) end
+
+>>>>>>> pr/6
   -- start the heartbeat
   timers.call_delay(openLuupPulse, 6 * 60, '', "first checkpoint")      -- it's alive! it's alive!!
 
