@@ -410,10 +410,9 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
     if u then
       local base = timenow()       -- 2017.07.14
       local increment = math.max (v * multiplier[u], 1)    -- 2017.07.14
-      -- dont_increment parameter added since target is called twice (by start_timer and timer.job). Rafale77 reverted. Blocks interval increment
+      -- dont_increment parameter added since target is called twice (by start_timer and timer.job).
       target = function (dont_increment)
---        if not dont_increment then base = base + increment end    -- 2017.07.12 
-        base + increment end                                        -- 2018.08.25
+        if not dont_increment then base = base + increment end    -- 2017.07.12 
         return base 
       end
       return start_timer ()
