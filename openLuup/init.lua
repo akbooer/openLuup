@@ -265,13 +265,9 @@ do -- SERVERs and SCHEDULER
   if config.SMTP then smtp.start (config.SMTP) end
 
   if config.POP3 then pop3.start (config.POP3) end
-<<<<<<< HEAD
-
-=======
 
   if config.Historian then historian.start (config.Historian) end
 
->>>>>>> pr/6
   -- start the heartbeat
   timers.call_delay(openLuupPulse, 6 * 60, '', "first checkpoint")      -- it's alive! it's alive!!
 
