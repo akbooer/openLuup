@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.05.29",
+  VERSION       = "2018.05.30",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -59,6 +59,7 @@ local http      = require "openLuup.http"
 local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
+local hist      = require "openLuup.historian"    -- for disk archive stats   
 
 local isWhisper, whisper = pcall (require, "L_DataWhisper")   -- might not be installed
 
@@ -686,7 +687,7 @@ function run (wsapi_env)
         end
       end)
     
-    local layout = "%7s %8s  %10s%-24s %-20s %s"
+    local layout = "%7s %8s  %10s%-28s %-20s %s"
     local T = 0
     for k,v in ipairs(H) do
       T = T + v[4]
@@ -697,7 +698,7 @@ function run (wsapi_env)
     print ("Data Historian Cache Memory, " .. os.date(date))
     print ("\n  Total number of device variables:", N)
     print  "\n  Variables with History:"
-    print (layout: format ('', "#points", "device ", "name", "service", "variable"))
+    print (layout: format ('', "#points", "device ", "name", "service", "variable \n"))
     print (table.concat (H,'\n'))
     print ("\n  Total number of history points:", T)
   end
@@ -706,38 +707,47 @@ function run (wsapi_env)
   local function database ()
     local folder = luup.attr_get "openLuup.Historian.Directory"
     
-    print ("Historian Disk Database, " .. os.date(date))
+    print ("Data Historian Disk Database, " .. os.date(date))
     
     if not (folder and isWhisper) then
-      print "\n On-disk archiving not enabled"
+      print "\n  On-disk archiving not enabled"
       return
     end
     
+    local tally = hist.tally        -- here's the historian's stats on file updates
     local files = mapFiles (folder, 
       function (a)        -- file attributes including path, name, size,... (see lfs.attributes)
         local shortName = a.name: match "^([^%.].+).wsp$"
         if shortName then
           local i = whisper.info (folder .. a.name)
           a.shortName = shortName
-          a.archives = tostring(i)
+          a.retentions = tostring(i.retentions) -- text representation of archive retentions
+          a.updates = tally[shortName] or ''
           return a
         end
       end)
     
     table.sort (files, function (a,b) return a.name < b.name end)
     
-    local list = "   %5s %4s %5s     %s"
+    local list = " %40s %8s %4s  %8s   %s"
     print ''
-    print (list:format ("size", "(kB)", "rate", "metric (dev.srv.var)"))
+    print (list:format ("archives", "size", "(kB)", "#updates", "metric (dev.srv.var) \n"))
     local N,T = 0,0
     for _,f in ipairs (files) do 
       N = N + 1
       T = T + f.size
-      print (list:format (f.size, '', f.archives: match "^%w+", f.shortName)) 
+      print (list:format (f.retentions, f.size, '', f.updates, f.shortName)) 
     end
+    
     T = T / 1000;
-    local total = "\n  Total database: %d files (%0.1f Mb)"
-    print (total: format (N, T))
+    local s = hist.stats
+    local cpu = s.cpu_seconds
+    local tot = s.total_updates
+    local speed = "CPU: %0.3f seconds (%0.0f µS/point)"
+    local updates = speed: format (cpu, cpu / tot * 1e6)
+    
+    print ''
+    print (list:format ("TOTALS:    database files: " .. N, T - T % 0.1, "(Mb)", tot, updates))
   end
   
   
