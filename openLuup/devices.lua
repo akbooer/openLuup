@@ -114,8 +114,8 @@ local metahistory = {}
         end
       end 
       local n = #history / 2
-      local p = 2 * hipoint - 1
-      if n == 0 or t < history[1]   -- oldest point is at 2*hipoint+1 or 1
+      local p = 2 * hipoint + 1
+      if n == 0 or t < (history[p] or history[1])   -- oldest point is at 2*hipoint+1 or 1
         then return nil 
         else return bisect (1, n) 
       end
@@ -141,6 +141,19 @@ local metahistory = {}
     end
   end
 
+  -- tostring()
+  local function metastring(self)
+     local t = {}
+     local hist, ptr = self.history or {}, self.hipoint or 0
+     for i = 2*ptr +1, #hist, 2 do
+       t[#t+1] = os.date ("%H:%M:%S   ", hist[i]) .. hist[i+1]
+     end
+     for i = 1, 2*ptr, 2 do
+       t[#t+1] = os.date ("%b %d, %H:%M:%S   ", hist[i]) .. hist[i+1]
+     end
+     return table.concat (t, '\n')
+  end
+  
 
 local variable = {}             -- variable CLASS
 
@@ -166,7 +179,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       -- methods
       set       = variable.set,
     }, 
-      {__index = metahistory} )
+      {__index = metahistory, __tostring = metastring} )
   return vars[#vars]
 end
  

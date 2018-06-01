@@ -1,6 +1,11 @@
+#!/usr/bin/env wsapi.cgi
+
+-- the above line allows this file to be treated as a WSAPI CGI with a run() entry point.
+-- ...however, it's also directly required by the openLuup initialisation!
+
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.05.31",
+  VERSION       = "2018.06.01",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -59,6 +64,7 @@ local NoSchema = {}         -- table of schema metrics which definitely don't ma
 local tally = {}
 local stats = {             -- interesting performance stats
     cpu_seconds = 0,
+    elapsed_sec = 0,
     total_updates = 0,
   }
 
@@ -118,19 +124,21 @@ local function write_thru (dev, svc, var, _, value)     -- 'old' value parameter
     if not schema then return end                   -- still no file, so bail out here
   end
   
-  local cpu   -- for performance stats
+  local wall, cpu   -- for performance stats
   
   do
+    wall = timers.timenow ()
     cpu = timers.cpu_clock ()
     -- use timestamp as time 'now' to avoid clock sync problem of writing at a future time
     local timestamp = os.time()  -- TODO: find way to insert actual variable change time
     whisper.update (filename, value, timestamp, timestamp)  
     cpu = timers.cpu_clock () - cpu
-    cpu = cpu - cpu % 0.000001        -- every microsecond counts!
+    wall = timers.timenow () - wall
   end
 
   -- update stats
   stats.cpu_seconds = stats.cpu_seconds + cpu
+  stats.elapsed_sec = stats.elapsed_sec + wall
   stats.total_updates = stats.total_updates + 1  
   tally[metric] = (tally[metric] or 0) + 1
 end
@@ -152,7 +160,7 @@ local function initDB ()
     Rules = {}
     _log (err or "Unknown error reading storage-schemas.json")
   else
-    local rulesMessage   = "#rules: %d"
+    local rulesMessage   = "#schema rules: %d"
     _log (rulesMessage: format (#Rules) ) 
   end
 
@@ -162,13 +170,32 @@ local function initDB ()
 end
 
 -- enable in-memory cache for all variables
--- TODO: add filter option to cacheVaraibles() ?
+-- TODO: add filter option to cacheVariables() ?
 local function cacheVariables ()
   for _,d in pairs (luup.devices) do
     for _,v in ipairs (d.variables) do
         v.history = v.history or {}   -- may be called more than once, so don't overwrite existing value
     end
   end
+end
+
+------
+--
+-- CGI entry point for Grafana
+--
+
+local function run ()  
+  local headers = {["Content-Type"] = "application/json"}
+  local status = 200
+  local return_content = "[]"   -- empty JSON array
+  
+  local function iterator ()     -- one-shot iterator, returns content, then nil
+    local x = return_content
+    return_content = nil 
+    return x
+  end
+
+  return status, headers, iterator
 end
 
 --
@@ -207,6 +234,10 @@ return {
   -- methods
   cacheVariables  = cacheVariables,
   start           = start,
+  
+  -- CGI entry point
+  run = run,
+  
 }
 
 -----

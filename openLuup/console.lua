@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.05.30",
+  VERSION       = "2018.06.01",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -60,6 +60,7 @@ local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
 local hist      = require "openLuup.historian"    -- for disk archive stats   
+local timers    = require "openLuup.timers"       -- for startup time
 
 local isWhisper, whisper = pcall (require, "L_DataWhisper")   -- might not be installed
 
@@ -143,6 +144,16 @@ prefix = [[
       </div>
 
       <div class="dropdown">
+        <button class="dropbtn">Files</button>
+        <div class="dropdown-content">
+          <a class="left" href="/console?page=backups">Backups</a>
+          <a class="left" href="/console?page=images">Images</a>
+          <a class="left" href="/console?page=database">History DB</a>
+          <a class="left" href="/console?page=trash">Trash</a>
+        </div>
+      </div>
+
+      <div class="dropdown">
         <button class="dropbtn">Scheduler</button>
         <div class="dropdown-content">
           <a class="left" href="/console?page=jobs">Jobs</a>
@@ -176,20 +187,11 @@ prefix = [[
           <a class="left" href="/console?page=log&version=startup">Startup Log</a>
         </div>
       </div>
-
-      <div class="dropdown">
-        <button class="dropbtn">Files</button>
-        <div class="dropdown-content">
-          <a class="left" href="/console?page=backups">Backups</a>
-          <a class="left" href="/console?page=images">Images</a>
-          <a class="left" href="/console?page=database">History DB</a>
-          <a class="left" href="/console?page=trash">Trash</a>
-        </div>
-      </div>
-    </div>
     
-    <div class="content">
-    <pre>
+  </div>
+
+  <div class="content">
+  <pre>
 ]],
 --     <div style="overflow:scroll; height:500px;">
 
@@ -665,6 +667,16 @@ function run (wsapi_env)
     print ''
   end
   
+  local function sort123 (a,b) 
+    if a[1] < b[1] then return true end
+    if a[1] == b[1] then
+      if a[2] < b[2] then return true end
+      if a[2] == b[2] then 
+        return a[3] < b[3] 
+      end
+    end
+  end
+
   local function historian ()
     local N = 0
     local H = {}
@@ -678,14 +690,7 @@ function run (wsapi_env)
       end
     end
     
-    table.sort (H,  -- sort by device numver, then service, then variable name
-      function(a,b) 
-        if a[1] < b[1] then return true end
-        if a[1] == b[1] then
-          if a[2] < b[2] then return true end
-          if a[2] == b[2] then return a[3] < b[3] end
-        end
-      end)
+    table.sort (H, sort123)  -- sort by device numver, then service, then variable name
     
     local layout = "%7s %8s  %10s%-28s %-20s %s"
     local T = 0
@@ -714,11 +719,26 @@ function run (wsapi_env)
       return
     end
     
-    local tally = hist.tally        -- here's the historian's stats on file updates
+    -- stats
+    local s = hist.stats
+    local tot, cpu, wall = s.total_updates, s.cpu_seconds, s.elapsed_sec
+    
+    local cpu_rate   = cpu / tot * 1e3
+    local wall_rate  = wall / tot * 1e3
+    local write_rate = 60 * tot / (timers.timenow() - timers.loadtime)
+    
+    print ''
+    local stats = "   Updates/min: %0.1f,  time/point: %0.1f ms (cpu: %0.1f ms)"
+    print (stats: format (write_rate, wall_rate, cpu_rate))
+    
+    local tally = hist.tally        -- here's the historian's stats on individual file updates
+    
     local files = mapFiles (folder, 
       function (a)        -- file attributes including path, name, size,... (see lfs.attributes)
         local shortName = a.name: match "^([^%.].+).wsp$"
         if shortName then
+         local d,s,v = shortName: match "(%d+)%.([%w_]+)%.(.+)"  -- dev.svc.var, for sorting
+          a[1] = tonumber(d);  a[2] = s; a[3] = v
           local i = whisper.info (folder .. a.name)
           a.shortName = shortName
           a.retentions = tostring(i.retentions) -- text representation of archive retentions
@@ -727,7 +747,7 @@ function run (wsapi_env)
         end
       end)
     
-    table.sort (files, function (a,b) return a.name < b.name end)
+    table.sort (files, sort123)
     
     local list = " %40s %8s %4s  %8s   %s"
     print ''
@@ -738,16 +758,10 @@ function run (wsapi_env)
       T = T + f.size
       print (list:format (f.retentions, f.size, '', f.updates, f.shortName)) 
     end
-    
     T = T / 1000;
-    local s = hist.stats
-    local cpu = s.cpu_seconds
-    local tot = s.total_updates
-    local speed = "CPU: %0.3f seconds (%0.0f µS/point)"
-    local updates = speed: format (cpu, cpu / tot * 1e6)
     
     print ''
-    print (list:format ("TOTALS:    database files: " .. N, T - T % 0.1, "(Mb)", tot, updates))
+    print (list:format ("TOTALS:    database files: " .. N, T - T % 0.1, "(Mb)", tot, ''))
   end
   
   

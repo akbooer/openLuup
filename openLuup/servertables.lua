@@ -18,6 +18,7 @@
 -- 2018.03.15  updated SMTP reply codes according to RFC 5321
 -- 2018.04.14  removed upnp/ from CGI directories and HAG module...
 --              ["upnp/control/hag"] = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
+-- 2018.06.01  added historian_cgi for Grafana
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -140,13 +141,16 @@ local cgi_prefix = {
     "metrics",      -- ditto
     "render",       -- ditto
     
+    "historian",    -- data historian graphite_api, does NOT require DataYours!
+    
     "ZWaveAPI",     -- Z-Wave.me Advanced API (requires Z-Way plugin)
     "ZAutomation",  -- Z-Wave.me Virtual Device API
   }
 
 -- CGI aliases: any matching full CGI path is redirected accordingly
 
-local graphite_cgi = "openLuup/graphite_cgi.lua"
+local graphite_cgi  = "openLuup/graphite_cgi.lua"
+local historian_cgi = "openLuup/historian.lua"
 
 local cgi_alias = setmetatable ({
     
@@ -160,6 +164,13 @@ local cgi_alias = setmetatable ({
     ["metrics/expand"]      = graphite_cgi,
     ["metrics/index.json"]  = graphite_cgi,
     ["render"]              = graphite_cgi,
+    
+    -- historian graphite_api support
+    ["historian/metrics"]             = historian_cgi,
+    ["historian/metrics/find"]        = historian_cgi,
+    ["historian/metrics/expand"]      = historian_cgi,
+    ["historian/metrics/index.json"]  = historian_cgi,
+    ["historian/render"]              = historian_cgi,
   },
   
   -- special handling of Zway requests (all directed to same handler)
