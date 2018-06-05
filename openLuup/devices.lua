@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.05.29",
+  VERSION       = "2018.06.04",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -40,6 +40,7 @@ local ABOUT = {
 -- and: http://blog.abodit.com/2013/02/variablewithhistory-making-persistence-invisible-making-history-visible/
 -- 2018.05.01  use millisecond resolution time for variable history (luup.variable_get truncates this)
 -- 2018.05.25  use circular buffer for history cache, add history meta-functions, history watcher
+-- 2018.06.01  add shortSid to variables, for historian
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -132,26 +133,57 @@ local metahistory = {}
     end
   end
 
-  -- ipairs iterator
-  function metahistory: iter(x, i)
-    i = i + 1
-    local j = i + i
-    if j <= #x then
-      return i, x[j-1], x[j]
+  -- fetch()  mimics the openLuup whisper.fetch() function, returning {v, t, ipairs}
+  --          use like this:  for i, v,t in fetched_data:ipairs() do ... end
+  -- v array also has .n attribute (in Whisper, there may have been intervening nil values)
+  function metahistory: fetch (from, to, v, t)
+    local now = os.time()
+    v, t = v or {}, t or {}     -- may use existing arrays (concatenate with older data)
+    local n = #t
+    local Told, Vold = self: oldest()
+    local hist, ptr = self.history or {}, self.hipoint or 0
+    
+    from = from or now - 24*60*60                     -- default to 24 hours ago 
+    to   = to or now                                  -- default to now
+    from = math.max (from, Told or 0)                 -- can't go before earliest
+    to   = math.min (to, now)                         -- can't go beyond now
+    
+    local function scan (a,b)
+      for i = a,b, 2 do
+        local T,V = hist[i], hist[i+1]
+        if T >= from then               -- TODO: could improve this linear search with bisection
+          if T > to then break end
+          n = n + 1
+          if n == 1 then
+            if T > from then            -- insert first point at start time...
+              t[n], v[n] = from, Vold   --    ... using previous value
+              n = 2
+            end
+          end
+          t[n], v[n] = T, V
+        end
+        Vold = V
+      end
     end
-  end
+    
+    scan (2*ptr +1, #hist)
+    scan (1, 2*ptr)
+    
+    if (n > 0) and (to > t[#t]) then                  -- insert final point and end time
+      t[#t+1], v[#v+1] = to, Vold
+    end
 
-  -- tostring()
-  local function metastring(self)
-     local t = {}
-     local hist, ptr = self.history or {}, self.hipoint or 0
-     for i = 2*ptr +1, #hist, 2 do
-       t[#t+1] = os.date ("%H:%M:%S   ", hist[i]) .. hist[i+1]
-     end
-     for i = 1, 2*ptr, 2 do
-       t[#t+1] = os.date ("%b %d, %H:%M:%S   ", hist[i]) .. hist[i+1]
-     end
-     return table.concat (t, '\n')
+    v.n = #t            -- there are no nil values in t, so #t works just fine for #variables
+    return {values = v, times = t, ipairs = 
+      function (tv) 
+        return 
+          function (self, i)
+            i = i + 1
+            local v,t = self.values[i], self.times[i]
+            if v then return i, v,t end
+          end, 
+        tv, 0
+      end}    
   end
   
 
@@ -170,6 +202,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       id        = varID,                          -- unique ID
       name      = name,                           -- name (unique within service)
       srv       = serviceId,
+      shortSid  = serviceId: match "[^:]+$" or serviceId,
       silent    = nil,                            -- set to true to mute logging
       watchers  = {},                             -- callback hooks
       -- history
@@ -179,7 +212,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       -- methods
       set       = variable.set,
     }, 
-      {__index = metahistory, __tostring = metastring} )
+      {__index = metahistory} )
   return vars[#vars]
 end
  

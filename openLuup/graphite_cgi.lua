@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2017.02.21",
+  VERSION       = "2018.06.05",
   DESCRIPTION   = "WSAPI CGI interface to Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2017 AKBooer",
@@ -26,17 +26,57 @@ ABOUT = {
 ]]
 }
 
+-- 2016.02.10  translated from Python original... see below
 -- 2016.10.10  check for blank Whisper or dataMine directories in storage_find
 -- 2016.10.20  add context parameter to treejson response (thanks @ronluna)
 -- 2016.10.24  ensure DataYours instance is the LOCAL one!!
 
+-- 2018.06.02  modifications to include openLuup's Data Historian
+-- 2018.06.03  use timer module utility functions
+-- 2018.06.05  round json render time to 1 second (no need for more in Grafana)
+
+
 -- CGI implementation of Graphite API
+
+--[[
+
+Graphite_API 
+
+  "Graphite-web, without the interface. Just the rendering HTTP API.
+   This is a minimalistic API server that replicates the behavior of Graphite-web."
+
+see:
+  https://github.com/brutasse/graphite-api
+  https://github.com/brutasse/graphite-api/blob/master/README.rst
+
+with great documentation at:
+  http://graphite-api.readthedocs.org/en/latest/
+  
+  "Graphite-API is an alternative to Graphite-web, without any built-in dashboard. 
+   Its role is solely to fetch metrics from a time-series database (whisper, cyanite, etc.)
+   and rendering graphs or JSON data out of these time series. 
+   
+   It is meant to be consumed by any of the numerous Graphite dashboard applications."
+   
+
+Originally written in Python, I've converted some parts of it into Lua with slight tweaks 
+to interface to the DataYours implementation of Carbon / Graphite.
+
+It provides sophisticated searches of the database and the opportunity to link to additional databases.
+I've written a finder specifically for the dataMine database, to replace the existing dmDB server.
+
+@akbooer,  February 2016
+
+--]]
+
 local url     = require "socket.url"
 local luup    = require "openLuup.luup"
 local json    = require "openLuup.json"
 
 local graphite_api  = require "L_DataGraphiteAPI"
 local finders       = require "L_DataFinders"
+local historian     = require "openLuup.historian"
+local timers        = require "openLuup.timers"
 --local datarender    = require "L_DataRender"
 
 local storage   -- this will be the master storage finder
@@ -51,32 +91,6 @@ local DATAMINE_DIR        -- location of DataMine database
 --
 -- TIME functions
 
-local function ISOdateTime (unixTime)       -- return ISO 8601 date/time: YYYY-MM-DDThh:mm:ss
-  return os.date ("%Y-%m-%dT%H:%M:%S", unixTime)
-end
-
-local function UNIXdateTime (time)          -- return Unix time value for ISO date/time extended-format...   
---  if string.find (time, "^%d+$") then return tonumber (time) end
-  local field   = {string.match (time, "^(%d%d%d%d)-?(%d?%d?)(-?)(%d?%d?)T?(%d?%d?):?(%d?%d?):?(%d?%d?)") }
-  if #field == 0 then return end
-  local name    = {"year", "month", "MDsep", "day", "hour", "min", "sec"}
-  local default = {0, 1, '-', 1, 12, 0, 0}
-  if #field[2] == 2 and field[3] == '' and #field[4] == 1 then  -- an ORDINAL date: year-daynumber
-    local base   = os.time {year = 2000, month = 1, day = 1}
-    local offset = ((field[2]..field[4]) -1) * 24 * 60 * 60
-    local fixed  = os.date ("*t", base + offset)
-    field[2] = fixed.month
-    field[4] = fixed.day
-  end
-  local datetime = {}
-  for i,j in ipairs (name) do
-    if not field[i] or field[i] == ''
-      then datetime[j] = default[i]
-      else datetime[j] = field[i]
-    end
-  end
-  return os.time (datetime)
-end
 
 --TODO: Graphite format times
 
@@ -90,7 +104,7 @@ local function relativeTime  (time, now)     -- Graphite Render URL syntax, rela
 end
 
 local function getTime (time)                        -- convert relative or ISO 8601 times as necessary
-  if time then return relativeTime (time) or UNIXdateTime(time) end
+  if time then return relativeTime (time) or timers.util.ISOdate2epoch (time) end
 end
 
 
@@ -355,11 +369,10 @@ local function jsonRender (_, p)
         data[#data+1] = '{'
         data[#data+1] = '  "target": "'.. node.path ..'",'
         data[#data+1] = '  "datapoints": ['
-        local n = tv.values.n or 0
-        local nocomma = {[n] = ''}
         for i, v,t in tv:ipairs() do
-          data[#data+1] = table.concat {'  [', v or 'null', ', ', t, ']', nocomma[i] or ','}
+          data[#data+1] = table.concat {'  [', v or 'null', ', ', math.floor(t), ']', ','}
         end
+        data[#data] = data[#data]: gsub(',$','')    -- 2018.06.05  remove final comma, if present
         data[#data+1] = '  ]'
         data[#data+1] = '}'
       end
@@ -527,10 +540,15 @@ end
 
 local function storage_find (ROOT, MINE)
     
+  -- 2018.06.02  Data Historian Whisper database
+  local history = luup.attr_get "openLuup.Historian.Directory"   
+  local wdir = {}    -- or {history} to include this database directly
+  wdir[#wdir+1] = ROOT
+  
   local config = {
     
     whisper = {
-      directories = {ROOT} 
+      directories = wdir,
     },
     
     datamine = {
@@ -541,18 +559,16 @@ local function storage_find (ROOT, MINE)
     
   }
   
-  local Wfinder, Dfinder
-  if ROOT ~= '' then Wfinder = finders.whisper.WhisperFinder (config) end
-  if MINE ~= '' then Dfinder = finders.datamine.DataMineFinder (config) end
-  return graphite_api.storage.Store {Wfinder, Dfinder}
+  local Finders = {}
+  Finders[#Finders + 1] = (ROOT ~= '') and finders.whisper.WhisperFinder   (config) or nil
+  Finders[#Finders + 1] = (MINE ~= '') and finders.datamine.DataMineFinder (config) or nil
+  Finders[#Finders + 1] = historian.finder (config)  -- use historian's own finder
+  
+  return graphite_api.storage.Store (Finders)
 end
 
 
 LOCAL_DATA_DIR, DATAMINE_DIR = find_whisper_database ()
-
-if not LOCAL_DATA_DIR then
- error "LOCAL_DATA_DIR not found" 
-end
 
 storage = storage_find (LOCAL_DATA_DIR, DATAMINE_DIR)
 

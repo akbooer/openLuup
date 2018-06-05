@@ -141,7 +141,7 @@ local cgi_prefix = {
     "metrics",      -- ditto
     "render",       -- ditto
     
-    "historian",    -- data historian graphite_api, does NOT require DataYours!
+    "history",      -- data historian graphite_api, does NOT require DataYours!
     
     "ZWaveAPI",     -- Z-Wave.me Advanced API (requires Z-Way plugin)
     "ZAutomation",  -- Z-Wave.me Virtual Device API
@@ -165,12 +165,12 @@ local cgi_alias = setmetatable ({
     ["metrics/index.json"]  = graphite_cgi,
     ["render"]              = graphite_cgi,
     
-    -- historian graphite_api support
-    ["historian/metrics"]             = historian_cgi,
-    ["historian/metrics/find"]        = historian_cgi,
-    ["historian/metrics/expand"]      = historian_cgi,
-    ["historian/metrics/index.json"]  = historian_cgi,
-    ["historian/render"]              = historian_cgi,
+    -- data historian graphite_api support
+    ["history/metrics"]             = historian_cgi,
+    ["history/metrics/find"]        = historian_cgi,
+    ["history/metrics/expand"]      = historian_cgi,
+    ["history/metrics/index.json"]  = historian_cgi,
+    ["history/render"]              = historian_cgi,
   },
   
   -- special handling of Zway requests (all directed to same handler)

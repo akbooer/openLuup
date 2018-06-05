@@ -1080,7 +1080,7 @@ local unknown_wsp = [[
 --
 
 local storage_schemas_json = [==[
-[ " DataHIstorian Whisper database:
+[ " DataHistorian Whisper database:
 
     Storage schema (archive lists) and Aggregation methods
 

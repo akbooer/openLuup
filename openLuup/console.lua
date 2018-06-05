@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.06.01",
+  VERSION       = "2018.06.05",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -679,31 +679,24 @@ function run (wsapi_env)
 
   local function historian ()
     local N = 0
-    local H = {}
     for _,d in pairs (luup.devices) do
-      for _,v in ipairs (d.variables) do
-        N = N + 1
-        local history = v.history
-        if history and #history > 0 then 
-          H[#H+1] = {v.dev, v.srv: match "[^:]+$", v.name, #history/2}
-        end
-      end
+      for _,v in ipairs (d.variables) do N = N + 1 end
     end
-    
-    table.sort (H, sort123)  -- sort by device numver, then service, then variable name
-    
-    local layout = "%7s %8s  %10s%-28s %-20s %s"
+     
+    local layout = "    %8s  %10s%-28s %-20s %s"
     local T = 0
-    for k,v in ipairs(H) do
-      T = T + v[4]
-      local _, number, name =  devname(v[1])
-      H[k] =  layout:format (k, v[4], number, name, v[2], v[3])
+    local H = {}
+    for v in hist.VariablesWithHistory() do
+      local h = #v.history / 2
+      T = T + h
+      local _, number, name = devname(v.dev)
+      H[#H+1] =  layout:format (h, number, name, v.srv: match "[^:]+$" or v.srv, v.name)
     end
     
     print ("Data Historian Cache Memory, " .. os.date(date))
     print ("\n  Total number of device variables:", N)
     print  "\n  Variables with History:"
-    print (layout: format ('', "#points", "device ", "name", "service", "variable \n"))
+    print (layout: format ("#points", "device ", "name", "service", "variable \n"))
     print (table.concat (H,'\n'))
     print ("\n  Total number of history points:", T)
   end
