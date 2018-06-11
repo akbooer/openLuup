@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.06.11",
+  VERSION       = "2018.06.11b",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -53,6 +53,7 @@ ABOUT = {
 -- 2018.04.15  fix number types in SendToTrash action
 -- 2018.05.02  add StartTime device variable, also on Control panel (thanks @rafale77)
 -- 2018.05.16  SendToTrash applied to the trash/ folder will DELETE selected files
+-- 2018.06.11  Added Vnumber (purely numeric six digit version number yymmdd) for @rigpapa
 
 
 local json        = require "openLuup.json"
@@ -646,10 +647,13 @@ function init (devNo)
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
+    local Vnumber = tonumber ((y%2000)..m..d)
     set ("Version", version)
+    set ("Vnumber", Vnumber)
     luup.log (version)
     local info = luup.attr_get "openLuup"
     info.Version = version      -- put it into openLuup table too.
+    info.Vnumber = Vnumber      -- ditto --
   end
   
   do -- synchronised heartbeat
