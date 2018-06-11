@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.06.05",
+  VERSION       = "2018.06.07",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -667,7 +667,8 @@ function run (wsapi_env)
     print ''
   end
   
-  local function sort123 (a,b) 
+  local function keysort (a,b) 
+    a, b = a.sortkey, b.sortkey
     if a[1] < b[1] then return true end
     if a[1] == b[1] then
       if a[2] < b[2] then return true end
@@ -679,23 +680,31 @@ function run (wsapi_env)
 
   local function historian ()
     local N = 0
+    local H = {}
     for _,d in pairs (luup.devices) do
-      for _,v in ipairs (d.variables) do N = N + 1 end
+      for _,v in ipairs (d.variables) do 
+        N = N + 1 
+        if v.history and #v.history > 0 then
+          H[#H+1] = {v = v, sortkey = {v.dev, v.shortSid, v.name}}
+        end
+      end
     end
      
     local layout = "    %8s  %10s%-28s %-20s %s"
     local T = 0
-    local H = {}
-    for v in hist.VariablesWithHistory() do
+    table.sort (H, keysort)
+    for i, x in ipairs(H) do
+      local v = x.v
       local h = #v.history / 2
       T = T + h
       local _, number, name = devname(v.dev)
-      H[#H+1] =  layout:format (h, number, name, v.srv: match "[^:]+$" or v.srv, v.name)
+      H[i] =  layout:format (h, number, name, v.srv: match "[^:]+$" or v.srv, v.name)
     end
     
     print ("Data Historian Cache Memory, " .. os.date(date))
-    print ("\n  Total number of device variables:", N)
-    print  "\n  Variables with History:"
+    print ("\n  Total number of device variables: " .. N)
+    print ("\n  Variables with History: " .. #H)
+    print ''
     print (layout: format ("#points", "device ", "name", "service", "variable \n"))
     print (table.concat (H,'\n'))
     print ("\n  Total number of history points:", T)
@@ -731,7 +740,7 @@ function run (wsapi_env)
         local shortName = a.name: match "^([^%.].+).wsp$"
         if shortName then
          local d,s,v = shortName: match "(%d+)%.([%w_]+)%.(.+)"  -- dev.svc.var, for sorting
-          a[1] = tonumber(d);  a[2] = s; a[3] = v
+          a.sortkey = {tonumber(d), s, v}
           local i = whisper.info (folder .. a.name)
           a.shortName = shortName
           a.retentions = tostring(i.retentions) -- text representation of archive retentions
@@ -740,7 +749,7 @@ function run (wsapi_env)
         end
       end)
     
-    table.sort (files, sort123)
+    table.sort (files, keysort)
     
     local list = " %40s %8s %4s  %8s   %s"
     print ''

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.05.29",
+  VERSION       = "2018.06.11",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -48,6 +48,7 @@ local ABOUT = {
 -- 2018.05.14  ensure (sub)category numeric (thanks @rafale77)
 -- 2018.05.14  remove pcall from create() to propagate errors
 -- 2018.05.25  tidy attribute coercions
+-- 2018.06.11  don't use impl_file if parent handles actions (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -106,7 +107,12 @@ local function create (x)
   local dev = devutil.new (x.devNo)   -- create the proto-device
   local services = dev.services
   
-  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
+  local X                             -- 2018.06.11  don't use impl_file if parent handles actions
+  local parent = tonumber (x.parent) or 0
+  local parent_device = luup.devices[parent] or {}
+  if parent_device.handle_children then X = 'X' end         -- use dummy device implementation file
+
+  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, X or x.upnp_impl, x.json_file)
 
   d = d or {}
   local fmt = "[%d] %s / %s / %s"
@@ -170,7 +176,7 @@ local function create (x)
     device_file     = x.upnp_file,
     device_json     = d.json_file,
     disabled        = tonumber (x.disabled) or 0,
-    id_parent       = tonumber (x.parent) or 0,
+    id_parent       = parent,
     impl_file       = d.impl_file,
     invisible       = x.invisible and "1" or "0",   -- convert true/false to "1"/"0"
     local_udn       = UUID,

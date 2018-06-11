@@ -4,13 +4,14 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2018.06.05",
+  VERSION       = "2018.06.11",
   DESCRIPTION   = "WSAPI CGI interface to Graphite-API",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "",
+  DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -34,6 +35,7 @@ ABOUT = {
 -- 2018.06.02  modifications to include openLuup's Data Historian
 -- 2018.06.03  use timer module utility functions
 -- 2018.06.05  round json render time to 1 second (no need for more in Grafana)
+-- 2018.06.10  return error if no target for /render
 
 
 -- CGI implementation of Graphite API
@@ -73,11 +75,12 @@ local url     = require "socket.url"
 local luup    = require "openLuup.luup"
 local json    = require "openLuup.json"
 
-local graphite_api  = require "L_DataGraphiteAPI"
-local finders       = require "L_DataFinders"
 local historian     = require "openLuup.historian"
 local timers        = require "openLuup.timers"
---local datarender    = require "L_DataRender"
+
+local isGraphite, graphite_api  = pcall (require, "L_DataGraphiteAPI")  -- only present if DataYours there
+local isFinders,  finders       = pcall (require, "L_DataFinders")
+
 
 local storage   -- this will be the master storage finder
                 -- federating Whisper and dataMine databases (and possibly others)
@@ -157,16 +160,6 @@ gives:
 
 [{"leaf": 0, "context": {}, "text": "echo_server", 
      "expandable": 1, "id": "stats.gauges.echo_server", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "logstash",
-     "expandable": 1, "id": "stats.gauges.logstash", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "server0",
-     "expandable": 1, "id": "stats.gauges.server0", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "server1", 
-     "expandable": 1, "id": "stats.gauges.server1", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "stats", 
-     "expandable": 1, "id": "stats.gauges.stats", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "statsd", 
-     "expandable": 1, "id": "stats.gauges.statsd", "allowChildren": 1},
  {"leaf": 0, "context": {}, "text": "vamsi", 
      "expandable": 1, "id": "stats.gauges.vamsi", "allowChildren": 1},
  {"leaf": 0, "context": {}, "text": "vamsi-server",
@@ -233,7 +226,7 @@ local function unknown (env)
   return "Not Implemented: " .. env.SCRIPT_NAME, 501
 end
 
--- format: The output format to use. Can be completer (default) [AKB: docs are WRONG!] or treejson.
+-- format: The output format to use. Can be completer or treejson [default]
   -- 2016.10.20 resolved doubt as to which IS the default!  Grafana needs treejson, it IS treejson
 
 local function treejson (i)
@@ -361,6 +354,9 @@ local function jsonRender (_, p)
   --    [6.0, 1311836012]
   --  ]
   --}]
+  
+  if ABOUT.DEBUG then _log ("RENDER: ", (json.encode(p))) end
+  
   local data = {'[',''}
   for _,target in ipairs (p.target) do
     for node in storage.find (target) do
@@ -384,9 +380,8 @@ local function jsonRender (_, p)
 end
 
 local function svgRender ()
-  -- this is just a dummy stub, until DataGraph is re-engineered.
-  -- The empty response is just sufficient for Grafana to recognise
-  -- that a graphite_api server is available, thereafter it uses its own rendering.
+  -- The empty response is just sufficient for Grafana to recognise that a 
+  -- graphite_api server is available, thereafter it uses its own rendering.
   return "[]", 200, {["Content-Type"] = "application/json"}
 end
 
@@ -395,17 +390,23 @@ end
 
 local function render (env, p)
 
+  local errors = {}           -- 2018.06.10 return error if no target for /render
+  local target = p.target
+  if not p.target then
+      errors['query'] = 'this parameter is required.'
+  end
+  if next (errors) then
+      return jsonify({errors = errors}, 400, nil, p.jsonp)
+  end
+
   local now = os.time()
   p["from"]  = getTime (p["from"])  or now - 24*60*60  -- default to 24 hours ago
   p["until"] = getTime (p["until"]) or now
   
   local format = p.format or "svg"
---  local reportStyle = {csv = csvRender, svg = datarender.svg, json = jsonRender}
   local reportStyle = {csv = csvRender, svg = svgRender, json = jsonRender}
   return (reportStyle[format] or svgRender) (env, p, storage)
 end
-
-
 
 
 -- dispatch table
@@ -540,15 +541,10 @@ end
 
 local function storage_find (ROOT, MINE)
     
-  -- 2018.06.02  Data Historian Whisper database
-  local history = luup.attr_get "openLuup.Historian.Directory"   
-  local wdir = {}    -- or {history} to include this database directly
-  wdir[#wdir+1] = ROOT
-  
   local config = {
     
     whisper = {
-      directories = wdir,
+      directories = {ROOT},
     },
     
     datamine = {
@@ -562,7 +558,7 @@ local function storage_find (ROOT, MINE)
   local Finders = {}
   Finders[#Finders + 1] = (ROOT ~= '') and finders.whisper.WhisperFinder   (config) or nil
   Finders[#Finders + 1] = (MINE ~= '') and finders.datamine.DataMineFinder (config) or nil
-  Finders[#Finders + 1] = historian.finder (config)  -- use historian's own finder
+  Finders[#Finders + 1] = historian.finder (config)  -- 2018.06.02  Data Historian's own finder
   
   return graphite_api.storage.Store (Finders)
 end

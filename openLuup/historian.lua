@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.06.05",
+  VERSION       = "2018.06.10",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -28,47 +28,29 @@ local json    = require "openLuup.json"                       -- for storage sch
 local devutil = require "openLuup.devices"
 local timers  = require "openLuup.timers"                     -- for performance statistics
 local vfs     = require "openLuup.virtualfilesystem"          -- for configuration files
+local whisper = require "openLuup.whisper"                    -- for the Whisper database
 
 local lfs     = require "lfs"                                 -- for mkdir(), and Graphite
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
 
-local isWhisper, whisper  = pcall (require, "L_DataWhisper")    -- might not be installed?
-
----------------------------------------------------
---
--- Graphite Data Finder dependencies
---
-
-local isGraphite, graphite_api  = pcall (require, "L_DataGraphiteAPI")    -- might not be installed?
-
-graphite_api = graphite_api or {}
-local node = graphite_api.node  or {}
-local BranchNode, LeafNode = node.BranchNode, node.LeafNode
-
-local utils = graphite_api.utils or {}
-local sorted = utils.sorted
-local expand_value_list = utils.expand_value_list
-
---local intervals = graphite_api.intervals or {}
---local Interval = intervals.Interval
---local IntervalSet = intervals.IntervalSet
 
 --[[
 
 Data Historian manipulates the in-memory variable history cache and the on-disc archive.  
 The industry-standard for a time-based metrics database, Whisper, is used (as in DataYours.)
-It also uses the Graphite API standard as an interface for Grafana plotting, implemented by 
-a WSAPI interface to the openLuup CGI servlet.
+It also uses the Graphite Finder standard as an interface to the WSAPI CGI graphite_cgi,
+which may then be accessed by dashboard applications or servers like Grafana.
  
 The code here handles all aspects of the in-memory cache and the on-disc archive with the exception of
 updating the variable cache which is done in the device module itself.
 
 Note that ONLY numeric variable values are supported by the historian.
 
-Pattern-matches for schemas, finders, and cacheVariables() ALL use the API paths and wildcards  
+Pattern-matches for schemas, finders, and cacheVariables() ALL use the API paths and wildcards described 
 here: http://graphite-api.readthedocs.io/en/latest/api.html#graphing-metrics
+
 --]]
     
 local Directory             -- location of history database
@@ -91,44 +73,83 @@ local stats = {             -- interesting performance stats
 -- Utility functions
 --
 
--- sort function for table.sort() of VWH info
-local function sort_dsv (a,b) 
-  return 
-    (a.dev <  b.dev) or
-    (a.dev == b.dev) and
-      ( (a.shortSid < b.shortSid) or
-        (a.shortSid == b.shortSid) and
-          a.name < b.name )
-  
---  if a[1] < b[1] then return true end
---  if a[1] == b[1] then
---    if a[2] < b[2] then return true end
---    if a[2] == b[2] then 
---      return a[3] < b[3] 
---    end
---  end
-end
 
--- ITERATOR, returning sorted array element-by-element of all VWH info
--- usage:  for v = VariableWithHistory () do ... end
-local function VariablesWithHistory ()
-  local VWH = {}
-  for _,d in pairs (luup.devices) do
-    for _,v in ipairs (d.variables) do
-      local history = v.history
-      if history and #history > 0 then 
-        VWH[#VWH+1] = v
+-- Find Query class factory with extended methods
+local function FindQuery (pattern)
+
+  -- iterator to expand a series list string "preamble{A,B,C}postamble{X,Y,Z}" 
+  -- into a list of individual series "preambleApostambleX", etc.
+  local function expansions (x)
+    local function option (x, z)
+      z = z or ''
+      local pre, braces, post = x: match "(.-)(%b{})(.*)"   
+      if braces then
+        for y in braces: gmatch "[^{},]+" do
+          option (post, table.concat {z, pre, y})
+        end
+      else
+        coroutine.yield (z..x)  
+      end
+    end
+    return coroutine.wrap (function () option (x.pattern) end)
+  end
+  
+  -- match a single part, returning the matching pattern
+  local function match_part (self, item)
+    for q in expansions(self) do
+    local pattern = table.concat {'^', q, '$'}    -- match ALL of query
+      if item: match (pattern) then
+        return q
       end
     end
   end
-  table.sort (VWH, sort_dsv)
-  local i = 0
-  return function () i = i + 1; return VWH[i] end
+  
+  local function match_all (self, item)
+    -- TBD
+  end
+  
+  -- convert into Lua search pattern, can't use ranges [a-z]
+  local function pattern_parts (p)
+    -- note that this may still contain options in braces which need expanding in individual parts
+    local part = {}
+    p: gsub("[^%.]+", function(c) part[#part+1] = c end);
+    -- have to do these substitutions separately for each part
+    for i, q in ipairs (part) do
+      q = q: gsub ("[%-]", "%%%1")        -- quote special character(s) ... just '-' ATM
+      q = q: gsub ("%*", "%.%1")          -- '*' -> '.*'
+      q = q: gsub ("%?", ".")             -- replace single character query '?' with dot '.'
+      part[i] = {pattern = q, expansions = expansions, matches = match_part}
+    end
+    return part
+  end
+  
+  local query = pattern_parts (pattern)
+  query.pattern = pattern
+  query.match = match_all    -- add whole match
+  return query
 end
 
--- findVariable()  find the variable with the given metric path  dev.shortSid.variable
+
+-- ITERATOR, walks through (unsorted) VWH variables
+-- usage:  for v in VariableWithHistory () do ... end
+local function VariablesWithHistory (pattern)
+  return coroutine.wrap (function () 
+    for _,d in pairs (luup.devices) do
+      for _,v in ipairs (d.variables) do
+        local history = v.history
+        if history and #history > 0 then 
+          -- TODO: match pattern
+          coroutine.yield (v) 
+        end
+      end
+    end
+  end)
+end
+
+
+-- findVariable()  find the variable with the given metric path  *...*.dev[name].shortSid.variable
 local function findVariable (metric)
-  local d,s,v = metric: match "(%d+)%.([%w_]+)%.(.+)"
+  local d,s,v = metric: match "(%d+)[^%.]*%.([%w_]+)%.(.+)$"  -- ignore non-numeric device name and full path
   d = luup.devices[tonumber (d)]
   if d then
     for _, x in ipairs (d.variables) do
@@ -136,6 +157,7 @@ local function findVariable (metric)
     end
   end
 end
+
 
 ---------------------------------------------------
 --
@@ -180,7 +202,8 @@ end
 --
 -- write_thru() disc cache - callback for all updates of variables with history
 --
-local function write_thru (dev, svc, var, _, value)     -- 'old' value parameter not used
+-- 2018.06.06 use extra timestamp parameter
+local function write_thru (dev, svc, var, _, value, timestamp)     -- 'old' value parameter not used
   local short_svc = (svc: match "[^:]+$") or "UnknownService"
   local metric = table.concat ({dev, short_svc, var}, '.')
   if NoSchema[metric] then return end                             -- not interested
@@ -201,12 +224,13 @@ local function write_thru (dev, svc, var, _, value)     -- 'old' value parameter
     wall = timers.timenow ()
     cpu = timers.cpu_clock ()
     -- use timestamp as time 'now' to avoid clock sync problem of writing at a future time
-    local timestamp = os.time()  -- TODO: find way to insert actual variable change time
     whisper.update (filename, value, timestamp, timestamp)  
     cpu = timers.cpu_clock () - cpu
     wall = timers.timenow () - wall
   end
-
+  
+  -- TODO: send to external DB also?  Graphite / InfluxDB
+  
   -- update stats
   stats.cpu_seconds = stats.cpu_seconds + cpu
   stats.elapsed_sec = stats.elapsed_sec + wall
@@ -242,7 +266,7 @@ end
 
 -- enable in-memory cache for all variables
 -- TODO: add filter option to cacheVariables() ?
-local function cacheVariables ()
+local function cacheVariables (pattern)
   for _,d in pairs (luup.devices) do
     for _,v in ipairs (d.variables) do
         v.history = v.history or {}   -- may be called more than once, so don't overwrite existing value
@@ -250,6 +274,65 @@ local function cacheVariables ()
   end
 end
 
+-- fetch() returns time/value data between the specified times.
+-- the data is fetched in Whisper fashion, using the best resolution containing the entire interval.
+-- Effectively, this means that if the data is in the cache, the it's taken from there,
+-- otherwise, it comes (at lower resolution) from the database (agnostic as to exactly which one... HOW?)
+local function fetch(var, startTime, endTime)
+  local now = timers.timenow()
+  startTime = startTime or now - 24*60*60                  -- default to 24 hours ago 
+  endTime   = endTime   or now                             -- default to now
+  
+  local V, T
+  local Ndisk, Ncache = 0,0
+  if var then
+    local metric_path = table.concat ({var.dev, var.shortSid, var.name}, '.')
+    local _, Tcache = var: oldest ()                        -- get the oldest cached time
+    if Directory and (startTime < Tcache) then              -- get older data from the disk archives
+      
+      -- get data from disk archives
+      local fs_path = table.concat {Directory, metric_path, ".wsp"}
+      local _, tv = pcall (whisper.fetch, fs_path, startTime, endTime)  -- catch file missing error
+      if tv then
+        -- reduce the data by removing nil values...
+        --   ... no need to return uniformly spaced data
+        local prev
+        V, T = {}, {}    -- start new non-uniform t and v arrays
+        
+        for _, v, t in tv:ipairs () do
+          Ndisk = Ndisk + 1
+          if v and v ~= prev then                   -- skip nil and replicated values
+            T[#T+1] = t
+            V[#V+1] = v
+            prev = v
+          end
+        end
+      end
+      
+      -- add final point, if necessary
+      local n = #T
+      if n > 0 and T[n] < endTime then
+        T[n+1] = endTime
+        V[n+1] = V[n]
+      end
+        
+    else
+    
+      -- get data from variable cache memory (already includes point at endTime)
+      V, T = var:fetch(startTime, endTime)
+      if V then Ncache = #V end
+    end
+     
+    if ABOUT.DEBUG then
+      local fetchline = "FETCH %s from: %s (%s) to: %s (%s), Ndisk: %s, Ncache: %s" 
+      _debug (fetchline: format (metric_path,
+        os.date("%H:%M:%S", startTime), startTime, os.date ("%H:%M:%S", endTime), endTime, Ndisk, Ncache))
+    end
+ 
+  end
+  
+  return V or {}, T or {}
+end
 
 ---------------------------------------------------
 --
@@ -259,12 +342,68 @@ end
 
 -- Finder utilities
 
+-- sorted version of the pairs iterator
+-- use like this:  for a,b in sorted (x, fct) do ... end
+-- optional second parameter is sort function cf. table.sort
+local function sorted (x, fct)
+  local y, i = {}, 0
+  for z in pairs(x) do y[#y+1] = z end
+  table.sort (y, fct) 
+  return function ()
+    i = i + 1
+    local z = y[i]
+    return z, x[z]  -- if z is nil, then x[z] is nil, and loop terminates
+  end
+end
+
+
+---------------------------------------------------
+--
+-- Nodes: either leaf or branch.  Leaf nodes have a reader.
+--
+
+local function Node (path, reader)
+  return {
+      path = path,
+      name = path: match "([^%.]+)%.?$" or '',
+      is_leaf = reader and true,
+      reader = reader,
+      fetch = (reader or {}).fetch   -- fetch (startTime, endTime)
+--      ["local"] = true,
+--      intervals = reader.get_intervals(),     -- not implemented
+  }
+end
+
 
 -- Reader is the class responsible for fetching the datapoints for the given path. 
 -- It is a simple class with 2 methods: fetch() and get_intervals():
 
-local function HistoryReader(fs_path, real_metric_path)
+local function HistoryReader(metric_path)
 
+  -- fetch() returns time/value data between the specified times.
+  -- also a v.n attribute and an ipairs iterator for Whisper compatilibilty in the Graphite API
+  -- NOTE: that the time structure does not have the same meaning as for Whisper, but ipairs works fine.
+  local function HRfetch (startTime, endTime)
+    local var = findVariable (metric_path)
+    local V, T
+    if var then 
+      V, T = fetch(var, startTime, endTime) 
+    end
+    V = V or {}
+    T = T or {}
+    V.n = #V                                    -- add the number of samples, as does Whisper
+    return {values = V, times = T, ipairs =     -- Whisper-like return structure (with iterator)
+      function (tv) 
+        return 
+          function (self, i)
+            i = i + 1
+            local v,t = self.values[i], self.times[i]
+            if v then return i, v,t end
+          end, 
+        tv, 0
+      end}    
+  end
+  
 ---- get_intervals() is a method that hints graphite-web about the time range available for this given metric in the database. 
 ---- It must return an IntervalSet of one or more Interval objects.
   local function get_intervals()
@@ -272,58 +411,10 @@ local function HistoryReader(fs_path, real_metric_path)
 --    return IntervalSet {start_end}    -- TODO: all of the archives separately?
   end
 
--- fetch() returns time/value data between the specified times.
--- the data is fetched in two parts:
---    1. disk archives, if start time is before that in the cache
---    2. memory cache 
-  local function fetch(startTime, endTime)
-    local now = timers.timenow()
-    startTime = startTime or now - 24*60*60                  -- default to 24 hours ago 
-    endTime   = endTime   or now                             -- default to now
-    local var = findVariable (real_metric_path)
-    
-    local fetchline = "FETCH %s from: %s (%s) to: %s (%s)" 
-    _debug (fetchline: format (real_metric_path,
-        os.date("%H:%M:%S", startTime), startTime, os.date ("%H:%M:%S", endTime), endTime))
-    
-    local V, T
-    local tv
-    local Ndisk, Ntrim = 0,0
-    if var and isWhisper then                 -- get some older data from the disk archives
-      local Tcache = var: oldest ()           -- get the oldest cached time
-      if startTime < Tcache then
-        tv = whisper.fetch (fs_path, startTime, Tcache)
-        -- reduce the data by removing nil values...
-        --   ... no need, now, to return uniformly spaced data
-        local prev
-        V, T = {}, {}    -- start new non-uniform t and v arrays
-        
-        for _, v, t in tv:ipairs () do
-          Ndisk = Ndisk + 1
-          if v and v ~= prev then                   -- skip nil and replicated values
-            T[#T+1] = t
-            V[#T] = v
-            prev = v
-          end
-        end
-        V[#T+1] = nil     -- truncate any remaining data in V
-        Ntrim = #T
-        V.n = Ntrim
-      end
-      startTime = Tcache    --
-    end
-  
-    local tv = var:fetch(startTime, endTime, V, T)   -- Whisper-like return structure (with iterator)
-    
-    local dataline = "... Ndisk: %s, Ntrim: %s, Ntotal: %s"
-    _debug (dataline: format (Ndisk or '?', Ntrim or '?', tv.values.n or '?'))
-    
-    return tv
-  end
 
-  -- reader()
+  -- HistoryReader()
   return {
-      fetch = fetch,
+      fetch = HRfetch,
       get_intervals = get_intervals,
     }
   
@@ -334,13 +425,15 @@ local function HistoryFinder()    -- no config parameter required for this finde
 
   -- the Historian implementation of the Whisper database is a single directory 
   -- with metric path names, prefixed by the directory, as the filenames, 
-  -- eg: device.shortServiceId.variable.wsp
-  -- TODO: a virtual parallel tree using: deviceName.shortServiceId.variable
-  local function buildTree ()
+  -- eg: device.shortServiceId.variable.wsp   ... 2.openLuup.Memory_Mb
+  -- TODO: a virtual parallel tree using: devNo_deviceName.shortServiceId.variable?
+  local function buildVWHtree ()
     local T = {}
     for v in VariablesWithHistory () do
         local d,s,n = v.dev, v.shortSid, v.name
-        d = tostring(d)
+--        d = tostring(d)
+        local name = luup.devices[d].description: match "%s*(.*)"
+        d = table.concat {d, ':', (name: gsub ('%W', '_'))}     -- devNo:deviceName.shortServiceId.variable
         local D = T[d] or {}
         local S = D[s] or {}
         S[n] = false          -- not a branch, but a leaf
@@ -350,60 +443,44 @@ local function HistoryFinder()    -- no config parameter required for this finde
     return T
   end
 
-
+  local function IntOrStr (x)
+    local i = x: match "^(%d+)"
+    return tonumber(i) or x
+  end
+  
   -- find_nodes() is the entry point when browsing the metrics tree.
   -- It is an iterator which yields leaf or branch nodes matching the query
-  -- query is a FindQuery object. 
-
-  --{
-  --  pattern = pattern
-  --  startTime = startTime
-  --  endTime = endTime
-  --  isExact = true     -- is_pattern(pattern)           -- no idea
-  --  interval = {startTime or 0, endTime or os.time()}   -- Interval() object
-  --  return self
-  --}
+  -- query is a FindQuery object = {pattern = pattern}
   local function find_nodes(query)
-    local clean_pattern = query.pattern: gsub ('\\', '')
-    local pattern_parts = {}
-    clean_pattern: gsub("[^%.]+", function(c) pattern_parts[#pattern_parts+1] = c end);
+    local pattern_parts = FindQuery (query.pattern)   -- upgrade query to one with real functionality!
 
-    local dir = buildTree() 
-    
-    -- construct and yield an appropriate Node object
-    local function yield_node_object (metric_path, branch)
-      local reader, absolute_path
-      local Node = branch and BranchNode or LeafNode
-      if not branch then
-        if Directory then absolute_path = table.concat {Directory, metric_path, ".wsp"} end
-        reader = HistoryReader(absolute_path, metric_path)
-      end
-      coroutine.yield (Node(metric_path, reader))
-    end
+    local dir = {   -- TODO: consider lazy evaluation to build tree only if referenced
+        history = buildVWHtree(),               -- add 'history' prefix to path
+        whisper = {},                           -- placeholder for general Whisper directory
+      }
     
     --  Recursively generates absolute paths whose components
     --  underneath current_dir match the corresponding pattern in patterns
     local function _find_paths (current_dir, patterns, i, metric_path_parts)
       local qi = patterns[i]
       if qi then
-        for qy in expand_value_list (qi) do     -- do value list substitutions {a,b, ...} 
-          qy = qy: gsub ("[%-]", "%%%1")        -- quote special characters
-          qy = qy: gsub ("%*", "%.%1")          -- '*' -> '.*' (converting regex to Lua pattern)
-          qy = qy: gsub ("%?", ".")             -- replace single character query '?' with dot '.'
-          qy = '^'.. qy ..'$'                   -- ensure pattern matches the whole string
-          for node, branch in sorted (current_dir) do
-            local ok = node: match (qy)
-            if ok then
-              metric_path_parts[i] = ok
-              if i < #patterns then
-                if branch then
-                  _find_paths (branch, patterns, i+1, metric_path_parts)
-                end
-              else
-                local metric_path = table.concat (metric_path_parts, '.')
-                -- Now construct and yield an appropriate Node object            
-                yield_node_object (metric_path, branch)
+        for node, branch in sorted (current_dir, function(a,b) return IntOrStr(a) < IntOrStr(b) end) do
+--        for node, branch in pairs (current_dir) do
+          local ok = qi: matches (node)
+          if ok then
+            metric_path_parts[i] = node
+            if i < #patterns then
+              if branch then
+                _find_paths (branch, patterns, i+1, metric_path_parts)
               end
+            else
+              local metric_path = table.concat (metric_path_parts, '.')
+              -- Now construct and yield an appropriate Node object            
+              local reader
+              if not branch then
+                reader = HistoryReader(metric_path)
+              end
+              coroutine.yield (Node(metric_path, reader))
             end
           end
         end
@@ -421,11 +498,6 @@ local function HistoryFinder()    -- no config parameter required for this finde
     end
   }
 end
-
----------------------------------------------------
---
--- CGI for Historian Graphite API
---
 
 
 ---------------------------------------------------
@@ -446,7 +518,7 @@ local function start (config)
   devutil.set_cache_size (CacheSize)
   cacheVariables ()                   -- turn on caching for existing variables
   
-  if Directory and isWhisper then     -- we're using the write-thru on-disk archive as well as in-memory cache
+  if Directory then     -- we're using the write-thru on-disk archive as well as in-memory cache
     _log ("...using on-disk archive: " .. Directory .. "...")
     initDB ()
   end
@@ -464,14 +536,13 @@ return {
 
   -- methods
   cacheVariables        = cacheVariables,
+  fetch                 = fetch,
   start                 = start,
   VariablesWithHistory  = VariablesWithHistory,   -- iterator
   
-  -- module
-  finder = HistoryFinder,     -- for graphite_cgi interface
-
-  -- CGI entry point
---  run = run,
+  -- Graphite modules
+  finder = HistoryFinder,
+  reader = HistoryReader,
   
 }
 

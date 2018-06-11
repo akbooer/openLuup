@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.06.04",
+  VERSION       = "2018.06.10",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -75,32 +75,34 @@ local CacheSize = 1000          -- default value over-ridden by initalisation co
 --
 -- VARIABLE object 
 -- 
--- Note that there is no "get" function, object variables can be read directly (but setting should use the method)
+-- Note that there is no "get" function (except for metahistory methods), 
+-- object variables can be read directly (but setting MUST use the method)
 --
 
 -- metahistory methods are shared between all variable instances
 -- and manage data retrieval from the in-memory history cache
+-- the order of returned data is VALUE, TIME to align with luup.variable_get() syntax
 local metahistory = {}
   
-  -- get the latest time (with millisecond precision) and value
+  -- get the latest value and time (with millisecond precision)
   function metahistory: newest ()
     local history = self.history
     if history and #history > 0 then
       local n = 2 * self.hipoint
-      return history[n-1], history[n]
+      return history[n], history[n-1]
     end
   end
   
-  -- get the oldest time (with millisecond precision) and value
+  -- get the oldest value time (with millisecond precision)
   function metahistory: oldest ()
     local history = self.history
     if history and #history > 0 then
       local n = 2 * self.hipoint
-      return history[n+1] or history[1], history[n+2] or history[2]   -- cache may not yet be full
+      return history[n+2] or history[2], history[n+1] or history[1]   -- cache may not yet be full
     end
   end
   
-  -- get the value at or before given time t
+  -- get the value at or before given time t, and actual time that value was set
   function metahistory: at (t)
   
     -- return location of largest time element in history <= t using bisection, or nil if none
@@ -108,8 +110,7 @@ local metahistory = {}
       local function bisect (a,b)
         if a >= b then return a end
         local c = math.ceil ((a+b)/2)
---        if t < history[c+c-1]     -- TODO: unwrap circular buffer
-        if t < history[(2*(c-1+hipoint-1) % #history)+1]     -- unwrap circular buffer
+        if t < history[(2*(c+hipoint-1) % #history)+1]     -- unwrap circular buffer
           then return bisect (a,c-1)
           else return bisect (c,b)
         end
@@ -124,23 +125,21 @@ local metahistory = {}
     
     -- at()
     local history = self.history
-    if history and #history > 0 then
+    if t and history and #history > 0 then
       local i = locate (history, self.hipoint, t)
       if i then
         local j = i + i
-        return history[j-1], history[j]
+        return history[j], history[j-1]   -- return value and ACTUAL sample time
       end
     end
   end
 
-  -- fetch()  mimics the openLuup whisper.fetch() function, returning {v, t, ipairs}
-  --          use like this:  for i, v,t in fetched_data:ipairs() do ... end
-  -- v array also has .n attribute (in Whisper, there may have been intervening nil values)
-  function metahistory: fetch (from, to, v, t)
+  -- fetch()  returns V and t arrays
+  function metahistory: fetch (from, to)
     local now = os.time()
-    v, t = v or {}, t or {}     -- may use existing arrays (concatenate with older data)
-    local n = #t
-    local Told, Vold = self: oldest()
+    local v, t = {}, {} 
+    local n = 0
+    local Vold, Told = self: oldest()
     local hist, ptr = self.history or {}, self.hipoint or 0
     
     from = from or now - 24*60*60                     -- default to 24 hours ago 
@@ -173,17 +172,7 @@ local metahistory = {}
       t[#t+1], v[#v+1] = to, Vold
     end
 
-    v.n = #t            -- there are no nil values in t, so #t works just fine for #variables
-    return {values = v, times = t, ipairs = 
-      function (tv) 
-        return 
-          function (self, i)
-            i = i + 1
-            local v,t = self.values[i], self.times[i]
-            if v then return i, v,t end
-          end, 
-        tv, 0
-      end}    
+    return v, t
   end
   
 
@@ -209,6 +198,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       history   = nil,                            -- set to {} to enable history
       hipoint   = nil,                            -- circular buffer pointer managed by variable_set()
       hicache   = nil,                            -- local cache size, overriding global CacheSize
+      archive   = nil,                            -- disk archive flag
       -- methods
       set       = variable.set,
     }, 
@@ -224,14 +214,18 @@ function variable:set (value)
   -- 2018.04.25 'VariableWithHistory'
   -- history is implemented as a circular buffer, limited to CacheSize time/value pairs
   local history = self.history 
-  if history and value ~= self.value then         -- only record CHANGES in value
+  if history then
     local v = tonumber(value)                     -- only numeric values
     if v then
-      local hipoint = (self.hipoint or 0) % (self.hicache or CacheSize) + 1
-      local n = hipoint + hipoint
-      self.hipoint = hipoint
-      history[n-1] = t
-      history[n]   = v
+      if value ~= self.value then                 -- only cache changes
+        local hipoint = (self.hipoint or 0) % (self.hicache or CacheSize) + 1
+        local n = hipoint + hipoint
+        self.hipoint = hipoint
+        history[n-1] = t
+        history[n]   = v
+      end
+      -- it's up to the watcher(s) to decide whether to record repeated values or only changes
+      -- (this should help to mitigate nil values in Whisper archives)
       scheduler.watch_callback {var = self, watchers = history_watchers} -- for write-thru disc cache
     end
   end

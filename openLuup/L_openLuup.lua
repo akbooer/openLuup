@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.06.05",
+  VERSION       = "2018.06.11",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -29,7 +29,7 @@ ABOUT = {
 --   * useful actions
 --   * plugin-specific configuration
 --   * SMTP mail handlers
---   * Data Storage Provider gateways>
+--   * Data Storage Provider gateways
 --   * Retention policy implementation for directories
 --   * etc., etc...
 --
