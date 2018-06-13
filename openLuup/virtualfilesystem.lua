@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.05.31",
+  VERSION       = "2018.06.12",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -1079,65 +1079,6 @@ local unknown_wsp = [[
 -- Data Historian Disk Archive - schemas and aggregations
 --
 
-local storage_schemas_json = [==[
-[ " DataHistorian Whisper database:
-
-    Storage schema (archive lists) and Aggregation methods
-
-    retentionDef = timePerPoint (resolution) and timeToStore (retention) specify lengths of time, for example:
-    units are: (s)econd, (m)inute, (h)our, (d)ay, (y)ear    (no months or weeks)
-      
-      60:1440      60 seconds per datapoint, 1440 datapoints = 1 day of retention
-      15m:8        15 minutes per datapoint, 8 datapoints = 2 hours of retention
-      1h:7d        1 hour per datapoint, 7 days of retention
-      12h:2y       12 hours per datapoint, 2 years of retention
-
-    An ArchiveList must:
-        1. Have at least one archive config. Example: (60, 86400)
-        2. No archive may be a duplicate of another.
-        3. Higher precision archives' precision must evenly divide all lower precision archives' precision.
-        4. Lower precision archives must cover larger time intervals than higher precision archives.
-        5. Each archive must have at least enough points to consolidate to the next archive
-
-    Aggregation types are: 'average', 'sum', 'last', 'max', 'min'
-    XFilesFactor is a float: 0.0 - 1.0
-
-    see: http://graphite.readthedocs.io/en/latest/whisper.html",
-  {
-    "archives": "1m:1d,10m:7d,1h:30d,3h:1y,1d:10y", 
-    "patterns": "SceneActivated, Status",
-  },{
-    "archives": "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y", 
-    "patterns": "Tripped",
-    "aggregation": "sum",
-  },{
-    "archives": "5m:7d,1h:30d,3h:1y,1d:10y", 
-    "patterns": "openLuup, DataYours, EventWatcher",
-  },{
-    "archives": "10m:7d,1h:30d,3h:1y,1d:10y", 
-    "aggregation": "average", 
-    "xFilesFactor": 0.0, 
-    "patterns": "CurrentLevel, CurrentTemperature"
-  },{
-    "archives": "20m:30d,3h:1y,1d:10y", 
-    "patterns": "EnergyMetering",
-  },{
-    "archives": "1h:90d,3h:1y,1d:10y", 
-    "patterns": "",
-  },{
-    "archives": "3h:1y,1d:10y", 
-    "patterns": "",
-  },{
-    "archives": "6h:1y,1d:10y", 
-    "patterns": "",
-  },{
-    "archives": "1d:10y", 
-    "aggregation": "last",
-    "patterns": "BatteryLevel",
-  },
-]
-]==]
-
 -----
 
 local manifest = {
@@ -1168,7 +1109,6 @@ local manifest = {
     ["openLuup_reload"]     = openLuup_reload,
     ["openLuup_reload.bat"] = openLuup_reload_bat,
 
-    ["storage-schemas.json"]      = storage_schemas_json,
     ["storage-schemas.conf"]      = storage_schemas_conf,
     ["storage-aggregation.conf"]  = storage_aggregation_conf,
     ["unknown.wsp"]               = unknown_wsp,

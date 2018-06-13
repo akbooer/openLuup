@@ -18,6 +18,7 @@
 -- 2018.03.15  updated SMTP reply codes according to RFC 5321
 -- 2018.04.14  removed upnp/ from CGI directories and HAG module...
 --              ["upnp/control/hag"] = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
+-- 2018.06.12  added Data Historian Disk Archive Whisper schemas and aggregations
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -140,8 +141,6 @@ local cgi_prefix = {
     "metrics",      -- ditto
     "render",       -- ditto
     
---    "history",      -- data historian graphite_api, does NOT require DataYours!
-    
     "ZWaveAPI",     -- Z-Wave.me Advanced API (requires Z-Way plugin)
     "ZAutomation",  -- Z-Wave.me Virtual Device API
   }
@@ -149,7 +148,6 @@ local cgi_prefix = {
 -- CGI aliases: any matching full CGI path is redirected accordingly
 
 local graphite_cgi  = "openLuup/graphite_cgi.lua"
---local historian_cgi = "openLuup/historian.lua"
 
 local cgi_alias = setmetatable ({
     
@@ -163,13 +161,6 @@ local cgi_alias = setmetatable ({
     ["metrics/expand"]      = graphite_cgi,
     ["metrics/index.json"]  = graphite_cgi,
     ["render"]              = graphite_cgi,
-    
-    -- data historian graphite_api support
---    ["history/metrics"]             = historian_cgi,
---    ["history/metrics/find"]        = historian_cgi,
---    ["history/metrics/expand"]      = historian_cgi,
---    ["history/metrics/index.json"]  = historian_cgi,
---    ["history/render"]              = historian_cgi,
   },
   
   -- special handling of Zway requests (all directed to same handler)
@@ -189,16 +180,78 @@ local dir_alias = {
     ["cmh/skins/default/img/icons/"] = "icons/" ,                 -- 2017.11.14 
   }
   
+-- Data Historian Disk Archive Whisper schemas and aggregations
+
+--[[
+
+    retentionDef = timePerPoint (resolution) and timeToStore (retention) specify lengths of time, for example:
+    units are: (s)econd, (m)inute, (h)our, (d)ay, (y)ear    (no months or weeks)
+      
+      60:1440      60 seconds per datapoint, 1440 datapoints = 1 day of retention
+      15m:8        15 minutes per datapoint, 8 datapoints = 2 hours of retention
+      1h:7d        1 hour per datapoint, 7 days of retention
+      12h:2y       12 hours per datapoint, 2 years of retention
+
+    An ArchiveList must:
+        1. Have at least one archive config. Example: (60, 86400)
+        2. No archive may be a duplicate of another.
+        3. Higher precision archives' precision must evenly divide all lower precision archives' precision.
+        4. Lower precision archives must cover larger time intervals than higher precision archives.
+        5. Each archive must have at least enough points to consolidate to the next archive
+
+    Aggregation types are: 'average', 'sum', 'last', 'max', 'min'
+    XFilesFactor is a float: 0.0 - 1.0
+
+    see: http://graphite.readthedocs.io/en/latest/whisper.html",
+
+--]]
+
+local storage_schemas = {
+    {
+      archives = "1m:1d,10m:7d,1h:30d,3h:1y,1d:10y", 
+      patterns = {"*.*.*{SceneActivated,Status}"},
+    },{
+      archives = "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y", 
+      patterns = {"*.*.Tripped"},
+      aggregation = "sum",
+    },{
+      archives = "5m:7d,1h:30d,3h:1y,1d:10y", 
+      patterns = {"*.*{openLuup,DataYours,EventWatcher}*.*"},
+    },{
+      archives = "10m:7d,1h:30d,3h:1y,1d:10y", 
+      aggregation = "average", 
+      xFilesFactor = 0.0, 
+      patterns = {"*.*.{CurrentLevel,CurrentTemperature}"},
+    },{
+      archives = "20m:30d,3h:1y,1d:10y", 
+      patterns = {"*.*EnergyMetering*.*"},
+    },{
+      archives = "1h:90d,3h:1y,1d:10y", 
+      patterns = {},
+    },{
+      archives = "3h:1y,1d:10y", 
+      patterns = {},
+    },{
+      archives = "6h:1y,1d:10y", 
+      patterns = {},
+    },{
+      archives = "1d:10y", 
+      aggregation = "last",
+      patterns = {"*.*.BatteryLevel"},
+    },
+  }
+
 --
 
 return {
-    myIP          = myIP (),
-    cgi_prefix    = cgi_prefix,
-    cgi_alias     = cgi_alias,
-    dir_alias     = dir_alias,
-    mimetypes     = mimetypes,
-    smtp_codes    = smtp_codes,     -- SMTP
-    status_codes  = status_codes,   -- HTTP
+    myIP            = myIP (),
+    cgi_prefix      = cgi_prefix,
+    cgi_alias       = cgi_alias,
+    dir_alias       = dir_alias,
+    mimetypes       = mimetypes,
+    smtp_codes      = smtp_codes,         -- SMTP
+    status_codes    = status_codes,       -- HTTP
+    storage_schemas = storage_schemas,    -- for historian
   }
   
 -----

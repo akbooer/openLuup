@@ -1,11 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.06.10",
+  VERSION       = "2018.06.13",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
-  DEBUG         = false,
+  DEBUG         = true,
   LICENSE       = [[
   Copyright 2013-18 AK Booer
 
@@ -24,13 +24,13 @@ local ABOUT = {
 }
 
 local logs    = require "openLuup.logs"
-local json    = require "openLuup.json"                       -- for storage schema rules
 local devutil = require "openLuup.devices"
-local timers  = require "openLuup.timers"                     -- for performance statistics
-local vfs     = require "openLuup.virtualfilesystem"          -- for configuration files
-local whisper = require "openLuup.whisper"                    -- for the Whisper database
+local timers  = require "openLuup.timers"             -- for performance statistics
+local tables  = require "openLuup.servertables"       -- for storage schema and aggregation rules
+local whisper = require "openLuup.whisper"            -- for the Whisper database
+local ioutil  = require "openLuup.io"                 -- for UDP (NOT the same as luup.io or Lua's io.)
 
-local lfs     = require "lfs"                                 -- for mkdir(), and Graphite
+local lfs     = require "lfs"                         -- for mkdir(), and Graphite
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
@@ -54,6 +54,10 @@ here: http://graphite-api.readthedocs.io/en/latest/api.html#graphing-metrics
 --]]
     
 local Directory             -- location of history database
+local DYdirectory           -- location of (optional) DataYours database (to include in Finder node tree)
+
+local Graphite_UDP          -- external Graphite UDP port to mirror hisotiran disk cache
+local InfluxDB_UDP          -- ditto InfluxDB
 
 local CacheSize             -- in-memory cache size
 
@@ -61,7 +65,7 @@ local Rules                 -- schema and aggregation rules
 
 local NoSchema = {}         -- table of schema metrics which definitely don't match schema rules
 
-local tally = {}
+local tally = {}            -- counter for each written metric
 local stats = {             -- interesting performance stats
     cpu_seconds = 0,
     elapsed_sec = 0,
@@ -104,8 +108,18 @@ local function FindQuery (pattern)
     end
   end
   
+  -- match the whole lot
   local function match_all (self, item)
-    -- TBD
+    local n = 0
+    local Nrules = #self
+    for part in item: gmatch "[^%.]+" do
+      n = n + 1
+      if n > Nrules then return end       -- ran out of rule parts!
+      local match = self[n]: matches (part)
+      if not match then return end
+    end
+    if n ~= Nrules then return end        -- ran out of item parts!
+    return true
   end
   
   -- convert into Lua search pattern, can't use ranges [a-z]
@@ -123,33 +137,43 @@ local function FindQuery (pattern)
     return part
   end
   
+  if not pattern then return end
   local query = pattern_parts (pattern)
   query.pattern = pattern
-  query.match = match_all    -- add whole match
+  query.matches = match_all    -- add whole match
   return query
 end
 
-
--- ITERATOR, walks through (unsorted) VWH variables
--- usage:  for v in VariableWithHistory () do ... end
-local function VariablesWithHistory (pattern)
-  return coroutine.wrap (function () 
-    for _,d in pairs (luup.devices) do
+-- maps all device variables, calling a user-defined function if pattern matches
+-- Note that this can be made into an iterator using coroutines (see VariablesWithHistory)
+local function mapVars (fct, pattern)
+  local query = FindQuery (pattern) or {}
+  for devNo,d in pairs (luup.devices) do
+    if not pattern or query[1]: matches (tostring(devNo)) then
       for _,v in ipairs (d.variables) do
-        local history = v.history
-        if history and #history > 0 then 
-          -- TODO: match pattern
-          coroutine.yield (v) 
+        if not pattern or (query[2]: matches (v.shortSid) and query[3]: matches (v.name)) then
+          fct (v) 
         end
       end
     end
-  end)
+  end  
 end
 
+-- ITERATOR, walks through (unsorted) VWH variables
+-- usage:  for v in VariablesWithHistory () do ... end
+-- or, eg: for v in VariablesWithHistory "*.*Sensor*.Current*" do ... end
+local function VariablesWithHistory (pattern)
+  local function isVWH (v)
+    local history = v.history
+    if history and #history > 0 then coroutine.yield (v) end
+  end
+  return coroutine.wrap (function ()  mapVars (isVWH, pattern) end)
+end
 
--- findVariable()  find the variable with the given metric path  *...*.dev[name].shortSid.variable
+-- findVariable()  find the variable with the given metric path ending with ...dev[name].shortSid.variable
 local function findVariable (metric)
-  local d,s,v = metric: match "(%d+)[^%.]*%.([%w_]+)%.(.+)$"  -- ignore non-numeric device name and full path
+  -- ignore non-numeric device name and full path
+  local d,s,v = metric: match "history%.(%d+)[^%.]*%.([%w_]+)%.(.+)$"
   d = luup.devices[tonumber (d)]
   if d then
     for _, x in ipairs (d.variables) do
@@ -170,13 +194,14 @@ end
 -- are read from JSON-format file: storage-schemas.json
 -- see: http://graphite.readthedocs.org/en/latest/config-carbon.html#storage-schemas-conf
 
-local function match_rule (item, rules)
-  -- return rule for which first rule.patterns element matches item
-  for _,rule in ipairs (rules) do
-    if type(rule) == "table" and rule.patterns and rule.archives then
-      for pattern in rule.patterns: gmatch "[^%s,]+" do 
-        if item: match (pattern) then 
-          return rule 
+local function match_rule (item, rule_set)
+  -- return rule (and matching pattern) for which first rule_set.patterns element matches item
+  for _,rule in ipairs (rule_set) do
+    if type(rule) == "table" and type(rule.patterns) == "table" and type(rule.archives) == "string" then
+      for _, pattern in ipairs (rule.patterns) do 
+        local query = FindQuery (pattern)         -- turn it into a sophisticated query object
+        if query: matches (item) then 
+          return rule, pattern 
         end
       end
     end
@@ -186,14 +211,14 @@ end
 
 -- create file with specified archives and aggregation
 local function create (metric, filename) 
-  local schema = match_rule (metric, Rules)
+  local schema, pattern = match_rule (metric, Rules)
   if schema then          -- apply the matching rule
     local xff = schema.xFilesFactor or 0
     local aggr = schema.aggregation or "average"
     whisper.create (filename, schema.archives, xff, aggr)  
     
-    local message = "created: %s, schema: %s, aggregation: %s, xff: %.0f"
-    _log (message: format (metric or '?', schema.archives, aggr, xff))
+    local message = "CREATE %s (%s) schema: %s, aggregation: %s, xff: %.0f"
+    _log (message: format (metric or '?', pattern, schema.archives, aggr, xff))
   end
   return schema
 end
@@ -203,12 +228,10 @@ end
 -- write_thru() disc cache - callback for all updates of variables with history
 --
 -- 2018.06.06 use extra timestamp parameter
-local function write_thru (dev, svc, var, _, value, timestamp)     -- 'old' value parameter not used
+local function write_thru (dev, svc, var, old, value, timestamp)
   local short_svc = (svc: match "[^:]+$") or "UnknownService"
   local metric = table.concat ({dev, short_svc, var}, '.')
   if NoSchema[metric] then return end                             -- not interested
-  
-  _debug (table.concat {"WRITE ", metric, " = ", value})
   
   local filename = table.concat {Directory, metric, ".wsp"}         -- add folder and extension 
   
@@ -218,8 +241,9 @@ local function write_thru (dev, svc, var, _, value, timestamp)     -- 'old' valu
     if not schema then return end                   -- still no file, so bail out here
   end
   
-  local wall, cpu   -- for performance stats
+  _debug (table.concat {"WRITE ", metric, " = ", value})
   
+  local wall, cpu   -- for performance stats
   do
     wall = timers.timenow ()
     cpu = timers.cpu_clock ()
@@ -228,62 +252,103 @@ local function write_thru (dev, svc, var, _, value, timestamp)     -- 'old' valu
     cpu = timers.cpu_clock () - cpu
     wall = timers.timenow () - wall
   end
-  
-  -- TODO: send to external DB also?  Graphite / InfluxDB
-  
+
   -- update stats
   stats.cpu_seconds = stats.cpu_seconds + cpu
   stats.elapsed_sec = stats.elapsed_sec + wall
   stats.total_updates = stats.total_updates + 1  
   tally[metric] = (tally[metric] or 0) + 1
+  
+  -- send to external DBs also:  Graphite / InfluxDB
+  
+  -- see: http://graphite.readthedocs.io/en/latest/feeding-carbon.html#the-plaintext-protocol
+  if Graphite_UDP then                    -- send all updates (even if same, to populate archives)
+    --TODO: send to Graphite
+    -- Graphite_UDP: send (...need to make correct metric name)
+  end
+
+  -- see: https://docs.influxdata.com/influxdb/v1.5/write_protocols/line_protocol_reference/
+  if InfluxDB_UDP and value ~= old then   -- only send changes
+    --TODO: send to InfluxDB
+    -- InfluxDB_UDP: send (...need to make correct metric name)
+--    local influx = "%s value=%s"
+--    _debug (json.encode {Influx_DSP = {p}})   -- TIME stamp?
+--    if InfluxSocket and p.measurement and p.new then 
+--      InfluxSocket: send (influx: format (p.measurement, p.new))
+--    end
+  end
+
 end
 
 
 local function initDB ()
-  local err
   lfs.mkdir (Directory)             -- ensure it exists
   
-  -- load the rule base
-  local json_rules
-  local rules_file = "storage-schemas.json"
-  local f = io.open (Directory .. rules_file) or vfs.open (rules_file)   -- either here or there
-  json_rules = f: read "*a"
-  f: close()
-  
-  Rules, err = json.decode (json_rules)     
-  if type(Rules) ~= "table" then
-    Rules = {}
-    _log (err or "Unknown error reading storage-schemas.json")
-  else
-    local rulesMessage = "#schema rules: %d"
-    _log (rulesMessage: format (#Rules) ) 
-  end
+  -- load the storage schema rule base  
+  Rules = tables.storage_schemas
+  local rulesMessage = "... #schema rule sets: %d ..."
+  _log (rulesMessage: format (#Rules) ) 
 
   -- start watching for history updates
   devutil.variable_watch (nil, write_thru, nil, "history")  -- (dev, callback, srv, var)
 
 end
 
--- enable in-memory cache for all variables
--- TODO: add filter option to cacheVariables() ?
+-- enable in-memory cache for some or all variables
+-- may be called more than once, so don't overwrite existing value
 local function cacheVariables (pattern)
-  for _,d in pairs (luup.devices) do
-    for _,v in ipairs (d.variables) do
-        v.history = v.history or {}   -- may be called more than once, so don't overwrite existing value
-    end
-  end
+  mapVars (function (v) v:enableCache() end, pattern)
 end
 
--- fetch() returns time/value data between the specified times.
--- the data is fetched in Whisper fashion, using the best resolution containing the entire interval.
--- Effectively, this means that if the data is in the cache, the it's taken from there,
--- otherwise, it comes (at lower resolution) from the database (agnostic as to exactly which one... HOW?)
-local function fetch(var, startTime, endTime)
+-- disable in-memory cache for some or all variables
+-- may be called more than once, so don't overwrite existing value
+local function nocacheVariables (pattern)
+  mapVars (function (v) v:disableCache() end, pattern)
+end
+
+-- Wfetch() returns data from a Whisper disk archive, ignoring missing files,
+-- and removing nils and replicated values, adding a final end point if required
+local function Wfetch (fs_path, startTime, endTime)
+  local V, T
+  local N = 0       -- original number of points retrieved from archive
+  local _, tv = pcall (whisper.fetch, fs_path, startTime, endTime)  -- catch file missing error
+  if tv then
+    -- reduce the data by removing nil values...
+    --   ... no need to return uniformly spaced data
+    local prev
+    V, T = {}, {}    -- start new non-uniform t and v arrays
+    N = tv.values.n
+    
+    for _, v, t in tv:ipairs () do
+      if v and v ~= prev then                   -- skip nil and replicated values
+        T[#T+1] = t
+        V[#V+1] = v
+        prev = v
+      end
+    end
+  end
+  
+  -- add final point, if necessary
+  local n = #T
+  if n > 0 and T[n] < endTime then
+    T[n+1] = endTime
+    V[n+1] = V[n]
+  end
+  
+  return V, T, N
+end
+
+-- Hfetch() returns time/value history data between the specified times, from cache or disk archives.
+-- Data is fetched in Whisper fashion, using the best resolution containing the entire interval.
+-- Effectively, this means that if the data is in the cache, then it's taken from there,
+-- otherwise, it comes (at lower resolution) from the local disk archives.
+local function Hfetch(var, startTime, endTime)
   local now = timers.timenow()
   startTime = startTime or now - 24*60*60                  -- default to 24 hours ago 
   endTime   = endTime   or now                             -- default to now
   
   local V, T
+  local N = 0
   local Ndisk, Ncache = 0,0
   if var then
     local metric_path = table.concat ({var.dev, var.shortSid, var.name}, '.')
@@ -292,30 +357,8 @@ local function fetch(var, startTime, endTime)
       
       -- get data from disk archives
       local fs_path = table.concat {Directory, metric_path, ".wsp"}
-      local _, tv = pcall (whisper.fetch, fs_path, startTime, endTime)  -- catch file missing error
-      if tv then
-        -- reduce the data by removing nil values...
-        --   ... no need to return uniformly spaced data
-        local prev
-        V, T = {}, {}    -- start new non-uniform t and v arrays
-        
-        for _, v, t in tv:ipairs () do
-          Ndisk = Ndisk + 1
-          if v and v ~= prev then                   -- skip nil and replicated values
-            T[#T+1] = t
-            V[#V+1] = v
-            prev = v
-          end
-        end
-      end
-      
-      -- add final point, if necessary
-      local n = #T
-      if n > 0 and T[n] < endTime then
-        T[n+1] = endTime
-        V[n+1] = V[n]
-      end
-        
+      V, T, N = Wfetch (fs_path, startTime, endTime)
+      Ndisk = #V
     else
     
       -- get data from variable cache memory (already includes point at endTime)
@@ -324,9 +367,9 @@ local function fetch(var, startTime, endTime)
     end
      
     if ABOUT.DEBUG then
-      local fetchline = "FETCH %s from: %s (%s) to: %s (%s), Ndisk: %s, Ncache: %s" 
+      local fetchline = "FETCH %s from: %s (%s) to: %s (%s), Ndisk: %s/%s, Ncache: %s" 
       _debug (fetchline: format (metric_path,
-        os.date("%H:%M:%S", startTime), startTime, os.date ("%H:%M:%S", endTime), endTime, Ndisk, Ncache))
+        os.date("%H:%M:%S", startTime), startTime, os.date ("%H:%M:%S", endTime), endTime, Ndisk, N, Ncache))
     end
  
   end
@@ -387,7 +430,7 @@ local function HistoryReader(metric_path)
     local var = findVariable (metric_path)
     local V, T
     if var then 
-      V, T = fetch(var, startTime, endTime) 
+      V, T = Hfetch(var, startTime, endTime) 
     end
     V = V or {}
     T = T or {}
@@ -411,22 +454,43 @@ local function HistoryReader(metric_path)
 --    return IntervalSet {start_end}    -- TODO: all of the archives separately?
   end
 
-
   -- HistoryReader()
   return {
       fetch = HRfetch,
       get_intervals = get_intervals,
     }
-  
+end
+
+
+local function WhisperReader(metric_path)
+ 
+  local function fetch (startTime, endTime)  -- TODO: use History-style reader, removing nil points, etc.
+    local fs_path = table.concat {DYdirectory, metric_path: match "%.(.*)", ".wsp"}  -- ignore tree root
+    local _, tv = pcall (whisper.fetch, fs_path, startTime, endTime)  -- catch file missing error
+    return tv
+  end
+
+---- get_intervals() is a method that hints graphite-web about the time range available for this given metric in the database. 
+---- It must return an IntervalSet of one or more Interval objects.
+  local function get_intervals()
+--    local start_end = whisperDB.__file_open(fs_path,'rb', earliest_latest)
+--    return IntervalSet {start_end}    -- TODO: all of the archives separately?
+  end
+
+  -- WhisperReader()
+  return {
+      fetch = fetch,
+      get_intervals = get_intervals,
+    }  
   end
 
 
-local function HistoryFinder()    -- no config parameter required for this finder
+local function HistoryFinder(config)
 
   -- the Historian implementation of the Whisper database is a single directory 
   -- with metric path names, prefixed by the directory, as the filenames, 
-  -- eg: device.shortServiceId.variable.wsp   ... 2.openLuup.Memory_Mb
-  -- TODO: a virtual parallel tree using: devNo_deviceName.shortServiceId.variable?
+  -- TODO: PK_AccessPoint ?
+  -- eg: [PK_AccessPoint.]device.shortServiceId.variable.wsp   ... 2.openLuup.Memory_Mb
   local function buildVWHtree ()
     local T = {}
     for v in VariablesWithHistory () do
@@ -443,10 +507,27 @@ local function HistoryFinder()    -- no config parameter required for this finde
     return T
   end
 
-  local function IntOrStr (x)
-    local i = x: match "^(%d+)"
-    return tonumber(i) or x
+  -- the DataYours (DY) implementation of the Whisper database is a single directory 
+  -- with fully expanded metric path names as the filenames, eg: system.device.service.variable.wsp
+  local function buildDYtree (root_dir)
+    local function buildTree (name, dir)
+      local a,b = name: match "^([^%.]+)%.(.*)$"      -- looking for a.b
+      if a then 
+        dir[a] = dir[a] or {}
+        buildTree (b, dir[a])     -- branch
+      else
+        dir[name] = false         -- not a branch, but a leaf
+      end
+    end
+    
+    local dir = {}
+    for a in lfs.dir (root_dir) do              -- scan the root directory and build tree of metrics
+      local name = a: match "^(.-)%.wsp$" 
+      if name then buildTree(name, dir) end
+    end
+    return dir
   end
+
   
   -- find_nodes() is the entry point when browsing the metrics tree.
   -- It is an iterator which yields leaf or branch nodes matching the query
@@ -455,8 +536,8 @@ local function HistoryFinder()    -- no config parameter required for this finde
     local pattern_parts = FindQuery (query.pattern)   -- upgrade query to one with real functionality!
 
     local dir = {   -- TODO: consider lazy evaluation to build tree only if referenced
-        history = buildVWHtree(),               -- add 'history' prefix to path
-        whisper = {},                           -- placeholder for general Whisper directory
+        history = buildVWHtree(),                                       -- add 'history' prefix to path
+        datayours = DYdirectory and buildDYtree(DYdirectory) or nil,    -- DataYours Whisper directory
       }
     
     --  Recursively generates absolute paths whose components
@@ -464,7 +545,7 @@ local function HistoryFinder()    -- no config parameter required for this finde
     local function _find_paths (current_dir, patterns, i, metric_path_parts)
       local qi = patterns[i]
       if qi then
-        for node, branch in sorted (current_dir, function(a,b) return IntOrStr(a) < IntOrStr(b) end) do
+        for node, branch in sorted (current_dir, function(a,b) return a < b end) do
 --        for node, branch in pairs (current_dir) do
           local ok = qi: matches (node)
           if ok then
@@ -478,7 +559,11 @@ local function HistoryFinder()    -- no config parameter required for this finde
               -- Now construct and yield an appropriate Node object            
               local reader
               if not branch then
-                reader = HistoryReader(metric_path)
+                if metric_path_parts[1] == "history" then
+                  reader = HistoryReader(metric_path)
+                else
+                  reader = WhisperReader(metric_path)   -- plain Whisper reader
+                end
               end
               coroutine.yield (Node(metric_path, reader))
             end
@@ -492,6 +577,9 @@ local function HistoryFinder()    -- no config parameter required for this finde
   end
 
   -- HistoryFinder()
+  
+  DYdirectory = (((config or {}).whisper or {}).directories or {}) [1]  -- pick out from finder configs 
+  
   return {
     find_nodes = function(query) 
       return coroutine.wrap (function () find_nodes (query) end)  -- a coroutine iterator
@@ -505,9 +593,16 @@ end
 -- called with configuration at system startup
 --  
 local function start (config)
+  CacheSize   = config.CacheSize
+  Directory   = config.Directory
   
-  CacheSize = config.CacheSize
-  Directory = config.Directory
+  local ip_port = "%d+%.%d+%.%d+%.%d+:%d+"
+  local Graphite = (config.Graphite_UDP or ''): match (ip_port)
+  local InfluxDB  = (config.InfluxDB_UDP or ''): match (ip_port)
+  
+  -- convert destination IPs to actual sockets
+  if Graphite then Graphite_UDP = ioutil.udp.open (Graphite) end 
+  if InfluxDB then InfluxDB_UDP = ioutil.udp.open (InfluxDB) end
   
   if not CacheSize or CacheSize < 0 then 
     _debug "Historian CacheSize not defined, so not starting"
@@ -516,13 +611,15 @@ local function start (config)
   
   _log "starting data historian..."
   devutil.set_cache_size (CacheSize)
-  cacheVariables ()                   -- turn on caching for existing variables
+  cacheVariables ()                   -- turn on caching for ALL existing variables
   
   if Directory then     -- we're using the write-thru on-disk archive as well as in-memory cache
     _log ("...using on-disk archive: " .. Directory .. "...")
     initDB ()
   end
   
+  if Graphite_UDP then _log ("...mirroring archives to Graphite at " .. Graphite .. " ...") end
+  if InfluxDB_UDP then _log ("...mirroring archives to InfluxDB at " .. InfluxDB .. " ...") end
   _log ("...using memory cache size (per-variable): " .. CacheSize)
 end
 
@@ -535,10 +632,12 @@ return {
   tally = tally,
 
   -- methods
-  cacheVariables        = cacheVariables,
-  fetch                 = fetch,
-  start                 = start,
+  cacheVariables        = cacheVariables,         -- turn caching on
+  nocacheVariables      = nocacheVariables,       -- turn it off
   VariablesWithHistory  = VariablesWithHistory,   -- iterator
+  
+  fetch                 = Hfetch,
+  start                 = start,
   
   -- Graphite modules
   finder = HistoryFinder,

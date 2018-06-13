@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.06.11b",
+  VERSION       = "2018.06.13",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -688,7 +688,7 @@ function init (devNo)
   
   do -- InfluxDB as Data Storage Provider 
     local dsp = "InfluxDB Data Storage Provider: "
-    local db = luup.attr_get "openLuup.Databases.Influx"
+    local db = luup.attr_get "openLuup.DataStorageProvider.Influx"
     if db then
       local err
       register_Data_Storage_Provider ()   -- 2018.03.01

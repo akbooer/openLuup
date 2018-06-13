@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.06.10",
+  VERSION       = "2018.06.12",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -83,6 +83,18 @@ local CacheSize = 1000          -- default value over-ridden by initalisation co
 -- and manage data retrieval from the in-memory history cache
 -- the order of returned data is VALUE, TIME to align with luup.variable_get() syntax
 local metahistory = {}
+  
+  -- enable cache (which might already be enabled)
+  function metahistory:enableCache ()
+    self.history = self.history or {}    -- here's the cache!
+  end
+  
+  -- disable cache (which might already be enabled)
+  function metahistory:disableCache ()
+    self.history = nil                  -- remove cache
+    self.hipoint = nil                  -- and the pointer
+    self.hicache = nil                  -- and local cache size
+  end
   
   -- get the latest value and time (with millisecond precision)
   function metahistory: newest ()
@@ -198,7 +210,6 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       history   = nil,                            -- set to {} to enable history
       hipoint   = nil,                            -- circular buffer pointer managed by variable_set()
       hicache   = nil,                            -- local cache size, overriding global CacheSize
-      archive   = nil,                            -- disk archive flag
       -- methods
       set       = variable.set,
     }, 
