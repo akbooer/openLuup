@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.06.11",
+  VERSION       = "2018.06.16",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -49,6 +49,7 @@ local ABOUT = {
 -- 2018.05.14  remove pcall from create() to propagate errors
 -- 2018.05.25  tidy attribute coercions
 -- 2018.06.11  don't use impl_file if parent handles actions (thanks @rigpapa)
+-- 2018.06.16  check for duplicate altids in chdev.append()  (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -317,7 +318,8 @@ local function start (device)
       old[dev.id] = devNo
     end
   end
-  return {old = old, new = {}, reload = false}      -- lists of existing and new child devices
+  -- 2018.06.16  add list of seen altids
+  return {old = old, new = {}, seen = {}, reload = false}      -- lists of existing and new child devices
 end
 
 -- function: append
@@ -338,6 +340,11 @@ end
 local function append (device, ptr, altid, description, device_type, device_filename, 
   implementation_filename, parameters, embedded, invisible, room) 
   _log (("[%s] %s"):format (altid or '?', description or ''), "luup.chdev.append")
+  
+  -- 2018.06.16  check for duplicate altids (thanks @rigpapa)
+  assert (not ptr.seen[altid], "duplicate altid in chdev.append()")  -- no return status, so raise error
+  ptr.seen[altid] = true
+ 
   if ptr.old[altid] then 
     ptr.old[altid] = nil        -- it existed already
   else

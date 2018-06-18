@@ -180,63 +180,39 @@ local dir_alias = {
     ["cmh/skins/default/img/icons/"] = "icons/" ,                 -- 2017.11.14 
   }
   
--- Data Historian Disk Archive Whisper schemas and aggregations
+-- Data Historian Disk Archive rules
+--
+-- pattern: matches deviceNo.shortServiceId.variable
+-- schema is the name of the storage-schema rule to use if pattern matches
+-- patterns are searched in order, and first match is used
 
---[[
-
-    retentionDef = timePerPoint (resolution) and timeToStore (retention) specify lengths of time, for example:
-    units are: (s)econd, (m)inute, (h)our, (d)ay, (y)ear    (no months or weeks)
-      
-      60:1440      60 seconds per datapoint, 1440 datapoints = 1 day of retention
-      15m:8        15 minutes per datapoint, 8 datapoints = 2 hours of retention
-      1h:7d        1 hour per datapoint, 7 days of retention
-      12h:2y       12 hours per datapoint, 2 years of retention
-
-    An ArchiveList must:
-        1. Have at least one archive config. Example: (60, 86400)
-        2. No archive may be a duplicate of another.
-        3. Higher precision archives' precision must evenly divide all lower precision archives' precision.
-        4. Lower precision archives must cover larger time intervals than higher precision archives.
-        5. Each archive must have at least enough points to consolidate to the next archive
-
-    Aggregation types are: 'average', 'sum', 'last', 'max', 'min'
-    XFilesFactor is a float: 0.0 - 1.0
-
-    see: http://graphite.readthedocs.io/en/latest/whisper.html",
-
---]]
-
-local storage_schemas = {
+local archive_rules = {
     {
-      archives = "1m:1d,10m:7d,1h:30d,3h:1y,1d:10y", 
-      patterns = {"*.*.*{SceneActivated,Status}"},
-    },{
-      archives = "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y", 
+      schema   = "every_1s", 
       patterns = {"*.*.Tripped"},
-      aggregation = "sum",
     },{
-      archives = "5m:7d,1h:30d,3h:1y,1d:10y", 
+      schema   = "every_1m", 
+      patterns = {"*.*.Status"},
+    },{
+      schema   = "every_5m", 
       patterns = {"*.*{openLuup,DataYours,EventWatcher}*.*"},
     },{
-      archives = "10m:7d,1h:30d,3h:1y,1d:10y", 
-      aggregation = "average", 
-      xFilesFactor = 0.0, 
+      schema   = "every_10m", 
       patterns = {"*.*.{CurrentLevel,CurrentTemperature}"},
     },{
-      archives = "20m:30d,3h:1y,1d:10y", 
-      patterns = {"*.*EnergyMetering*.*"},
+      schema   = "every_20m", 
+      patterns = {"*.*EnergyMetering*.{KWH,Watts}"},
     },{
-      archives = "1h:90d,3h:1y,1d:10y", 
+      schema   = "every_1h", 
       patterns = {},
     },{
-      archives = "3h:1y,1d:10y", 
+      schema   = "every_3h", 
       patterns = {},
     },{
-      archives = "6h:1y,1d:10y", 
+      schema   = "every_6h", 
       patterns = {},
     },{
-      archives = "1d:10y", 
-      aggregation = "last",
+      schema   = "every_1d", 
       patterns = {"*.*.BatteryLevel"},
     },
   }
@@ -251,7 +227,7 @@ return {
     mimetypes       = mimetypes,
     smtp_codes      = smtp_codes,         -- SMTP
     status_codes    = status_codes,       -- HTTP
-    storage_schemas = storage_schemas,    -- for historian
+    archive_rules   = archive_rules,      -- for historian
   }
   
 -----

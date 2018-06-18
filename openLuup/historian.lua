@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.06.13",
+  VERSION       = "2018.06.18",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -29,6 +29,7 @@ local timers  = require "openLuup.timers"             -- for performance statist
 local tables  = require "openLuup.servertables"       -- for storage schema and aggregation rules
 local whisper = require "openLuup.whisper"            -- for the Whisper database
 local ioutil  = require "openLuup.io"                 -- for UDP (NOT the same as luup.io or Lua's io.)
+local vfs     = require "openLuup.virtualfilesystem"  -- for default Graphite schema files
 
 local lfs     = require "lfs"                         -- for mkdir(), and Graphite
 
@@ -55,6 +56,8 @@ here: http://graphite-api.readthedocs.io/en/latest/api.html#graphing-metrics
     
 local Directory             -- location of history database
 local DYdirectory           -- location of (optional) DataYours database (to include in Finder node tree)
+
+local Hcarbon, DYcarbon     -- Carbon Cache (Whisper archives) for Historian and DataYours replacement
 
 local Graphite_UDP          -- external Graphite UDP port to mirror hisotiran disk cache
 local InfluxDB_UDP          -- ditto InfluxDB
@@ -144,6 +147,7 @@ local function FindQuery (pattern)
   return query
 end
 
+
 -- maps all device variables, calling a user-defined function if pattern matches
 -- Note that this can be made into an iterator using coroutines (see VariablesWithHistory)
 local function mapVars (fct, pattern)
@@ -185,49 +189,152 @@ end
 
 ---------------------------------------------------
 --
--- Carbon Cache look-alike (cf. DataCache)
--- WRITES data to the disk-based archives
+-- Carbon Cache look-alike (cf. DataYours / DataCache)
+-- see: http://graphite.readthedocs.io/en/latest/carbon-daemons.html#carbon-cache-py
 --
--- Storage Schemas and aggregation configuration rules
+-- WRITES data to the disk-based archives
+-- CREATES files using Storage Schemas and aggregation configuration rules
 -- 
 -- for whisper.create(path, archives, xFilesFactor, aggregationMethod)
--- are read from JSON-format file: storage-schemas.json
+-- are read from two Graphite-format .conf files: storage-schemas.conf and storage-aggregation.conf
+-- both STORED IN THE DATABASE DIRECTORY (because the files relate to storage capacity)
 -- see: http://graphite.readthedocs.org/en/latest/config-carbon.html#storage-schemas-conf
+-- and: http://graphite.readthedocs.org/en/latest/config-carbon.html#storage-aggregation-conf
 
-local function match_rule (item, rule_set)
-  -- return rule (and matching pattern) for which first rule_set.patterns element matches item
+local function CarbonCache (path)
+  
+  local filePresent = {}   -- index of known files
+  
+  -- the current set of rules
+  local schemas = {}              -- with retentions field
+  local aggregations = {}         -- with XFilesFactor and aggregationMethod     
+
+  local default_rule = {            -- default to once an hour for a week
+    schema      = {name = "[default]", retentions = "1h:7d"},
+    aggregation = {name = "[default]", xFilesFactor = 0.5, aggregationMethod = "average" },
+   }
+
+  -- for whisper.create(path, archives, xFilesFactor, aggregationMethod)
+  -- are read from JSON-format file: storage-schemas.json
+  -- see: http://graphite.readthedocs.org/en/latest/config-carbon.html#storage-schemas-conf
+
+  local function read_conf_file (filename)
+    -- if file not found on path..filename, then try virtualfilestorage
+    -- generic Graphite .conf file has parameters a=b separated by name field [name]
+    -- returns ordered list of named items with parameters and values { {name=name, parameter=value, ...}, ...}
+    -- if name = "pattern" then regular expression escape "\" is converted to Lua pattern escape "%"  
+    local rules
+    local function comment (l) return l: match"^%s*%#" end
+    local function section (l) 
+      local n = l: match "^%s*%[([^%]]+)%]" 
+      if n then 
+        local new = {name = n}
+        rules[#rules+1] = new           -- add new rule with this name...
+        rules[n] = new end              -- ...and index it by name
+      return n
+    end
+    local function parameter (l)
+      local k,v = l: match "^%s*([^=%s]+)%s*=%s*(%S+)"    -- syntax:  param = value
+      if k == "pattern" then v = v: gsub ("\\","%%") end  -- both their own escapes!
+      local r = #rules
+      if v and r > 0 then rules[r][k] = tonumber(v) or v end
+    end    
+    local f = io.open (path .. filename) or vfs.open (filename)
+    if f then
+      
+      rules = {match = function (self, item)  -- returns rule for which first rule.pattern matches item
+          for _,rule in ipairs (self) do
+            if rule.pattern and item: match (rule.pattern) then return rule end
+          end
+        end}
+      
+      for l in f:lines() do
+        local _ = comment(l) or section(l) or parameter(l);
+      end
+      f: close ()
+    end
+    return rules
+  end
+
+  local function load_rule_base ()
+    schemas      = read_conf_file "storage-schemas.conf"
+    aggregations = read_conf_file "storage-aggregation.conf"      
+  end
+  
+  local function create (filename) 
+    if not whisper.info (filename) then   -- it's not there
+      load_rule_base ()      -- do this every create to make sure we have the latest
+      -- apply the matching rules
+      local schema = schemas: match (path)      or default_rule.schema
+      local aggr   = aggregations: match (path) or default_rule.aggregation
+      whisper.create (filename, schema.retentions, aggr.xFilesFactor, aggr.aggregationMethod)  
+    end
+    filePresent[filename] = true
+  end
+
+  local function update (metric, value, timestamp)
+    local filename = table.concat {path, metric:gsub(':', '^'), ".wsp"}   -- change ':' to '^'
+    if not filePresent[filename] then create (filename) end 
+    -- use  timestamp as time 'now' to avoid clock sync problem of writing at a future time
+    whisper.update (filename, value, timestamp, timestamp)  
+  end
+
+  -- CarbonCache ()
+  load_rule_base ()   -- intial load of storage schemas and aggregation rules
+  
+  return {
+    aggregations = aggregations,
+    schemas = schemas,
+    update = update,
+  }
+  
+end
+-----------------------------------
+--
+-- Data Historian file writing
+--
+-- Rules for which metrics to archive on disk define the name of a Carbon schema rule which should be used
+-- in file creation, not the schema and aggregation themselves.
+
+local function match_historian_rules (item, rule_set)
+  -- return schema name (and matching pattern) for which first rule_set.patterns element matches item
   for _,rule in ipairs (rule_set) do
-    if type(rule) == "table" and type(rule.patterns) == "table" and type(rule.archives) == "string" then
-      for _, pattern in ipairs (rule.patterns) do 
+    if type(rule) == "table" and type(rule.patterns) == "table" and type(rule.schema) == "string" then
+      for _, pattern in ipairs (rule.patterns) do
         local query = FindQuery (pattern)         -- turn it into a sophisticated query object
         if query: matches (item) then 
-          return rule, pattern 
+          return rule.schema, pattern 
         end
       end
     end
   end
 end
 
-
--- create file with specified archives and aggregation
-local function create (metric, filename) 
-  local schema, pattern = match_rule (metric, Rules)
-  if schema then          -- apply the matching rule
-    local xff = schema.xFilesFactor or 0
-    local aggr = schema.aggregation or "average"
-    whisper.create (filename, schema.archives, xff, aggr)  
-    
-    local message = "CREATE %s (%s) schema: %s, aggregation: %s, xff: %.0f"
-    _log (message: format (metric or '?', pattern, schema.archives, aggr, xff))
+-- create historian file with specified archives and aggregation...
+-- ... so that it's always there to be written (and won't be created with the wrong archives)
+local function create_historian_file (metric, filename) 
+  local schema
+  local rule, pattern = match_historian_rules (metric, Rules)
+  if rule then          -- find the matching rule name
+    print (metric, "matching rule:", rule)
+    local schema = Hcarbon.schemas[rule]    -- find the named schema rule
+    if schema then
+      local archives = schema.retentions
+      local aggregate = Hcarbon.aggregations: match (metric)       -- use actual metric name here
+      local xff = aggregate.xFilesFactor or 0
+      local aggr = aggregate.aggregationMethod or "average"
+      whisper.create (filename, archives, xff, aggr)  
+      
+      local message = "CREATE %s %s(%s) archives: %s, aggregation: %s, xff: %.0f"
+      _log (message: format (metric or '?', rule, pattern, archives, aggr, xff))
+    end
   end
   return schema
 end
 
-----
---
 -- write_thru() disc cache - callback for all updates of variables with history
---
--- 2018.06.06 use extra timestamp parameter
+-- this has to be VERY fast, so disk archives are local, and mirroring to remote databases uses UDP
+-- 2018.06.06 use extra [openLuup-only] timestamp parameter
 local function write_thru (dev, svc, var, old, value, timestamp)
   local short_svc = (svc: match "[^:]+$") or "UnknownService"
   local metric = table.concat ({dev, short_svc, var}, '.')
@@ -236,7 +343,7 @@ local function write_thru (dev, svc, var, old, value, timestamp)
   local filename = table.concat {Directory, metric, ".wsp"}         -- add folder and extension 
   
   if not whisper.info (filename) then               -- it's not there, we need to create it
-    local schema = create (metric, filename) 
+    local schema = create_historian_file (metric, filename) 
     NoSchema[metric] = not schema 
     if not schema then return end                   -- still no file, so bail out here
   end
@@ -283,9 +390,10 @@ end
 
 local function initDB ()
   lfs.mkdir (Directory)             -- ensure it exists
+  Hcarbon = CarbonCache (Directory) 
   
   -- load the storage schema rule base  
-  Rules = tables.storage_schemas
+  Rules = tables.archive_rules
   local rulesMessage = "... #schema rule sets: %d ..."
   _log (rulesMessage: format (#Rules) ) 
 
@@ -353,17 +461,19 @@ local function Hfetch(var, startTime, endTime)
   if var then
     local metric_path = table.concat ({var.dev, var.shortSid, var.name}, '.')
     local _, Tcache = var: oldest ()                        -- get the oldest cached time
-    if Directory and (startTime < Tcache) then              -- get older data from the disk archives
+    if Tcache and (startTime >= Tcache) then
       
-      -- get data from disk archives
-      local fs_path = table.concat {Directory, metric_path, ".wsp"}
-      V, T, N = Wfetch (fs_path, startTime, endTime)
-      Ndisk = #V
-    else
-    
       -- get data from variable cache memory (already includes point at endTime)
       V, T = var:fetch(startTime, endTime)
       if V then Ncache = #V end
+      
+    elseif Directory then
+    
+      -- get data from disk archives
+      local fs_path = table.concat {Directory, metric_path, ".wsp"}
+      V, T, N = Wfetch (fs_path, startTime, endTime)
+      if V then Ndisk = #V end
+      N = N or 0
     end
      
     if ABOUT.DEBUG then
@@ -482,7 +592,7 @@ local function WhisperReader(metric_path)
       fetch = fetch,
       get_intervals = get_intervals,
     }  
-  end
+end
 
 
 local function HistoryFinder(config)
@@ -493,17 +603,28 @@ local function HistoryFinder(config)
   -- eg: [PK_AccessPoint.]device.shortServiceId.variable.wsp   ... 2.openLuup.Memory_Mb
   local function buildVWHtree ()
     local T = {}
-    for v in VariablesWithHistory () do
-        local d,s,n = v.dev, v.shortSid, v.name
---        d = tostring(d)
-        local name = luup.devices[d].description: match "%s*(.*)"
-        d = table.concat {d, ':', (name: gsub ('%W', '_'))}     -- devNo:deviceName.shortServiceId.variable
-        local D = T[d] or {}
-        local S = D[s] or {}
-        S[n] = false          -- not a branch, but a leaf
-        D[s] = S
-        T[d] = D
+    local function buildTree (d,s,n)
+      local name = luup.devices[d].description: match "%s*(.*)"
+      d = table.concat {d, ':', (name: gsub ('%W', '_'))}     -- devNo:deviceName.shortServiceId.variable
+      local D = T[d] or {}
+      local S = D[s] or {}
+      S[n] = false          -- not a branch, but a leaf
+      D[s] = S
+      T[d] = D
     end
+    -- search the variable cache
+    for v in VariablesWithHistory () do
+      buildTree (v.dev, v.shortSid, v.name)
+    end
+    -- search the on-disk archives
+    if Directory then
+      for a in lfs.dir (Directory) do              -- scan the directory and build tree of metrics
+        local d,s,n = a: match "^([^%.]+)%.([^%.]+)%.([^%.]+)%.wsp$"   -- dev.svc.var
+        d = tonumber (d)
+        if luup.devices[d] then buildTree(d,s,n) end
+      end
+    end
+    
     return T
   end
 
@@ -579,6 +700,8 @@ local function HistoryFinder(config)
   -- HistoryFinder()
   
   DYdirectory = (((config or {}).whisper or {}).directories or {}) [1]  -- pick out from finder configs 
+  
+  if DYdirectory then DYcarbon = CarbonCache (DYdirectory) end
   
   return {
     find_nodes = function(query) 

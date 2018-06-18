@@ -96,7 +96,7 @@ local metahistory = {}
     self.hicache = nil                  -- and local cache size
   end
   
-  -- get the latest value and time (with millisecond precision)
+  -- get the latest value,time pair (with millisecond precision)
   function metahistory: newest ()
     local history = self.history
     if history and #history > 0 then
@@ -105,7 +105,7 @@ local metahistory = {}
     end
   end
   
-  -- get the oldest value time (with millisecond precision)
+  -- get the oldest value,time pair (with millisecond precision)
   function metahistory: oldest ()
     local history = self.history
     if history and #history > 0 then

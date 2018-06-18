@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.06.07",
+  VERSION       = "2018.06.17",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -56,6 +56,7 @@ local ABOUT = {
 -- 2018.04.30  'silent' variable attribute to mute logging
 -- 2018.05.01  use new_userdata_dataversion () when changing room structure
 -- 2018.06.06  add non-standard additional parameter 'time' to luup.variable_get()
+-- 2018.06.17  special Tripped processing for security devices in luup.variable_set ()
 
 
 local logs          = require "openLuup.logs"
@@ -293,14 +294,35 @@ local function variable_set (service, name, value, device, startup)
   service = tostring (service)
   name = tostring(name)
   value = tostring (value)
+  
+  local function set (name, value)
   local var = dev:variable_set (service, name, value, not startup) 
-  if var and not var.silent then            -- 2018.04.30  'silent' attribute to mute logging
-    local old = var.old  or "MISSING"
-    local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
-    local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
-    _log (msg, "luup.variable_set")
-    _log_altui_variable (var)              -- log for altUI to see
-  end 
+    if var and not var.silent then            -- 2018.04.30  'silent' attribute to mute logging
+      local old = var.old  or "MISSING"
+      local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
+      local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
+      _log (msg, "luup.variable_set")
+      _log_altui_variable (var)              -- log for altUI to see
+    end 
+  end
+  set (name, value)
+  
+  -- 2018.06.17  special Tripped processing for security devices, has to be synchronous with variable change
+  
+  local bridgeblock = 10000         -- hardcoded VeraBridge blocksize (sorry, but easy and quick)
+  local security  = "urn:micasaverde-com:serviceId:SecuritySensor1"
+  if (name ~= "Tripped") or (service ~= security) or (dev >= bridgeblock) then return end   -- not interested 
+  
+  local Armed = dev:variable_get (service, "Armed")  
+  local isArmed = Armed == '1'
+  set ("LastTrip", os.time())   -- TODO: check trip time updated when '0' as well as '1'
+  
+  if value == '1' then
+    if isArmed then set ("ArmedTripped", '1') end
+  else
+    local ArmedTripped = dev:variable_get (service, "ArmedTripped")
+    if ArmedTripped ~= '0' then set ("ArmedTripped", '0') end
+  end
 end
 
 -- function: variable_get
