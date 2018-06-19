@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.06.18",
+  VERSION       = "2018.06.19",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -1010,7 +1010,7 @@ local storage_schemas_conf = [[
 
 #  2016.01.24  @akbooer
 #  basic patterns for AltUI Data Storage Provider
-# names are DURATION of single archive
+#  names are DURATION of single archive
 
 [for_1d]
 pattern = \.d$
@@ -1038,7 +1038,7 @@ retentions = 1d:10y
 
 #  2017.02.14  @akbooer
 #  EXTENDED (10 year) patterns for AltUI Data Storage Provider
-# names are SAMPLE RATES, with multiple archives aggregated at various rates for 10 years
+#  names are SAMPLE RATES, with multiple archives aggregated at various rates for 10 years
 
 [every_1s]        # used for security sensors, etc.
 pattern = \.1s$

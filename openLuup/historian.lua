@@ -1,11 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.06.18",
+  VERSION       = "2018.06.19",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
-  DEBUG         = true,
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-18 AK Booer
 
@@ -420,13 +420,12 @@ local function Wfetch (fs_path, startTime, endTime)
   local V, T
   local N = 0       -- original number of points retrieved from archive
   local _, tv = pcall (whisper.fetch, fs_path, startTime, endTime)  -- catch file missing error
-  if tv then
+  if type(tv) == "table" and tv.values then
     -- reduce the data by removing nil values...
     --   ... no need to return uniformly spaced data
     local prev
     V, T = {}, {}    -- start new non-uniform t and v arrays
     N = tv.values.n
-    
     for _, v, t in tv:ipairs () do
       if v and v ~= prev then                   -- skip nil and replicated values
         T[#T+1] = t
@@ -434,15 +433,15 @@ local function Wfetch (fs_path, startTime, endTime)
         prev = v
       end
     end
-  end
   
-  -- add final point, if necessary
-  local n = #T
-  if n > 0 and T[n] < endTime then
-    T[n+1] = endTime
-    V[n+1] = V[n]
+    -- add final point, if necessary
+    local n = #T
+    if n > 0 and T[n] < endTime then
+      T[n+1] = endTime
+      V[n+1] = V[n]
+    end
   end
-  
+
   return V, T, N
 end
 
