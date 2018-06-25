@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.06.12",
+  VERSION       = "2018.06.25",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -41,6 +41,8 @@ local ABOUT = {
 -- 2018.05.01  use millisecond resolution time for variable history (luup.variable_get truncates this)
 -- 2018.05.25  use circular buffer for history cache, add history meta-functions, history watcher
 -- 2018.06.01  add shortSid to variables, for historian
+-- 2018.06.22  make history cache default for all variables
+-- 2018.06.25  add shortSid to service object
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -207,8 +209,8 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       silent    = nil,                            -- set to true to mute logging
       watchers  = {},                             -- callback hooks
       -- history
-      history   = nil,                            -- set to {} to enable history
-      hipoint   = nil,                            -- circular buffer pointer managed by variable_set()
+      history   = {},                             -- set to nil to disable history
+      hipoint   = 0,                              -- circular buffer pointer managed by variable_set()
       hicache   = nil,                            -- local cache size, overriding global CacheSize
       -- methods
       set       = variable.set,
@@ -236,7 +238,7 @@ function variable:set (value)
         history[n]   = v
       end
       -- it's up to the watcher(s) to decide whether to record repeated values or only changes
-      -- (this should help to mitigate nil values in Whisper archives)
+      -- (this should help to mitigate nil values in Whisper historian archives)
       scheduler.watch_callback {var = self, watchers = history_watchers} -- for write-thru disc cache
     end
   end
@@ -279,6 +281,8 @@ function service.new (serviceId, devNo)        -- factory for new services
   end
   
   return {
+    -- constants
+    shortSid      = serviceId: match "[^:]+$" or serviceId,
     -- variables
     actions       = actions,
     variables     = variables,

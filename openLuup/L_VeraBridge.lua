@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.06.04",
+  VERSION       = "2018.06.22",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -427,7 +427,8 @@ local function GetUserData ()
     luup.log "Vera info received!"
     local t = "users"
     if Vera.devices then
-      local new_room_name = "MiOS-" .. (Vera.PK_AccessPoint: gsub ("%c",''))  -- stray control chars removed!!
+      PK_AccessPoint = Vera.PK_AccessPoint: gsub ("%c",'')      -- stray control chars removed!!
+      local new_room_name = "MiOS-" .. PK_AccessPoint 
       userdata.attributes [t] = userdata.attributes [t] or Vera[t]
       luup.log (new_room_name)
       luup.rooms.create (new_room_name)     -- 2018.03.24  use luup.rooms.create metatable method
@@ -449,7 +450,6 @@ local function GetUserData ()
         end
       end
   
-      PK_AccessPoint = Vera.PK_AccessPoint
       luup.log ("PK_AccessPoint = " .. PK_AccessPoint)
       
       version = Vera.BuildVersion

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.06.19",
+  VERSION       = "2018.06.24",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -36,7 +36,6 @@ local lfs     = require "lfs"                         -- for mkdir(), and Graphi
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
 
-
 --[[
 
 Data Historian manipulates the in-memory variable history cache and the on-disc archive.  
@@ -49,13 +48,24 @@ updating the variable cache which is done in the device module itself.
 
 Note that ONLY numeric variable values are supported by the historian.
 
-Pattern-matches for schemas, finders, and cacheVariables() ALL use the API paths and wildcards described 
-here: http://graphite-api.readthedocs.io/en/latest/api.html#graphing-metrics
 
+There are three major parts:
+
+ CarbonCache    - an implementation of the Graphite Carbon Cache which write data to disk
+ HistoryFinder  - called by the Graphite API (in openLuup, implemented as a CGI) to find metrics
+ HistoryReader  - called by the Graphite API to return metric values (from both cache and disk archives)
+ 
+TODO: Additionally, CarbonCache is able to write non-historian Whisper files, replacing DataYours)
+ 
 --]]
     
+
+local BRIDGEBLOCK = 10000   -- hardcoded VeraBridge blocksize (sorry, but easy and quick)
+local Bridges               -- VeraBridge info for nodeNames and device offsets
+
 local Directory             -- location of history database
 local DYdirectory           -- location of (optional) DataYours database (to include in Finder node tree)
+local DYtree = "DataYours"  -- root name of the DataYours tree for Finder
 
 local Hcarbon, DYcarbon     -- Carbon Cache (Whisper archives) for Historian and DataYours replacement
 
@@ -152,40 +162,125 @@ end
 -- Note that this can be made into an iterator using coroutines (see VariablesWithHistory)
 local function mapVars (fct, pattern)
   local query = FindQuery (pattern) or {}
-  for devNo,d in pairs (luup.devices) do
-    if not pattern or query[1]: matches (tostring(devNo)) then
-      for _,v in ipairs (d.variables) do
-        if not pattern or (query[2]: matches (v.shortSid) and query[3]: matches (v.name)) then
-          fct (v) 
+  
+  if not pattern then     -- fast-track through device variables
+    for _,d in pairs (luup.devices) do
+      for _,v in ipairs (d.variables) do fct (v) end
+    end  
+  
+  else                    -- go through device, service, variable, matching pattern
+    for devNo,d in pairs (luup.devices) do
+      if query[1]: matches (tostring(devNo)) then
+        for _,s in pairs (d.services) do
+          if query[2]: matches (s.shortSid) then
+            for name,v in pairs (s.variables) do
+              if query[3]: matches (name) then fct (v) end
+            end
+          end
         end
       end
-    end
-  end  
+    end  
+  end
 end
 
 -- ITERATOR, walks through (unsorted) VWH variables
 -- usage:  for v in VariablesWithHistory () do ... end
 -- or, eg: for v in VariablesWithHistory "*.*Sensor*.Current*" do ... end
-local function VariablesWithHistory (pattern)
+-- filters by a threshold on the number of points - default is 1 (or more)
+local function VariablesWithHistory (pattern, length)
+  length = 2*length or 2      -- recall that each point takes TWO history items, t and v
   local function isVWH (v)
     local history = v.history
-    if history and #history > 0 then coroutine.yield (v) end
+    if history and #history >= length then coroutine.yield (v) end
   end
   return coroutine.wrap (function ()  mapVars (isVWH, pattern) end)
 end
 
--- findVariable()  find the variable with the given metric path ending with ...dev[name].shortSid.variable
-local function findVariable (metric)
-  -- ignore non-numeric device name and full path
-  local d,s,v = metric: match "history%.(%d+)[^%.]*%.([%w_]+)%.(.+)$"
-  d = luup.devices[tonumber (d)]
-  if d then
-    for _, x in ipairs (d.variables) do
-      if x.shortSid == s and x.name == v then return x end
+
+
+-- get vital information from installed VeraBridge devices
+-- indexed by (integer) bridge#, and  .by_pk[], .by_name[]
+local function get_bridge_info ()
+  local bridgeSID = "urn:akbooer-com:serviceId:VeraBridge1"
+  local bridge = {[0] = {nodeName = "openLuup", PK = '0', offset = 0}}   -- preload with openLuup info
+
+  for i,d in pairs(luup.devices) do
+    if d.device_type == "VeraBridge" then
+      local name = d.description: gsub ("%W",'')      -- remove non-alphanumerics
+      local PK = luup.variable_get (bridgeSID, "PK_AccessPoint", i)
+      local offset = luup.variable_get (bridgeSID, "Offset", i)
+      offset = tonumber (offset)
+      local index = math.floor (offset / BRIDGEBLOCK)   -- should be a round number anyway
+      bridge[index] = {nodeName = name, PK = PK, offset = offset}
+    end
+  end
+  
+  local by_pk, by_name = {}, {}  -- indexes
+  for _,b in pairs (bridge) do    
+    by_pk[b.PK] = b
+    by_name[b.nodeName] = b
+  end
+  
+  bridge.by_pk = by_pk          -- add indexes to bridge table
+  bridge.by_name = by_name
+  return bridge
+end
+
+---------------------------------
+---
+--- Metrics, handling of various format conversions
+--
+--[[
+
+Different APIs have different formats/requirements:
+
+ - luup.variable_...(),   serviceId, name, deviceNo is used to access variable history, as usual.
+ - disk cache filenames,  node.localDevNo.shortSid.variable.wsp  
+ - finder metrics,        nodeName.localDevNo:shortDevName.shortSid.variable
+ 
+where:
+
+  node,         0 for openLuup otherwise PK_AccessPoint or remote Vera  
+  nodeName,     the name of the associated VeraBridge, or "openLuup"
+  shortSid,     final apha-numeric part of the full serviceId
+  shortDevName, device name with all non-alphanumerics removed
+  
+This way, even if the order of the bridges is changed in openLuup, the files are the same.  If you have to swap out a Vera, then its PK_AccessCode will change and you'll have to rename files to continue using them, but the finder metrics names will not change (unless you rename the associated VeraBridge.)
+
+Pattern-matches for schemas, finders, and cacheVariables() ALL use the API paths and wildcards described 
+here: http://graphite-api.readthedocs.io/en/latest/api.html#graphing-metrics
+
+--]]
+
+local Metrics = {}
+
+-- find the variable with the given metric path: nodeName.dev[name].shortSid.variable
+function Metrics.finder2var (metric)
+  -- ignore non-numeric device name
+  local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([%w_]+)%.(.+)$"
+  local b = Bridges.by_name[n]
+  if b then 
+    local dev = luup.devices[d + b.offset]      -- add bridge offset to convert to openLuup device number
+    if dev then
+      for _, x in ipairs (dev.variables) do
+        if x.shortSid == s and x.name == v then return x end
+      end
     end
   end
 end
 
+-- find the file path and filename give openLuup device number, shortSid and variable name
+function Metrics.dsv2filepath (dev,shortSid,var)
+  local devNo = dev % BRIDGEBLOCK   -- local device number, possibly on remote Vera 
+  local bridge = math.floor (dev / BRIDGEBLOCK)
+  -- Bridges[bridge] = {nodeName = name, PK = PK, offset = offset}
+  local b = Bridges[bridge]
+  if b then
+    local filename = table.concat ({b.PK, devNo, shortSid, var}, '.')
+    local path = table.concat {Directory, filename, ".wsp"}
+    return path, filename
+  end
+end
 
 ---------------------------------------------------
 --
@@ -316,7 +411,7 @@ local function create_historian_file (metric, filename)
   local schema
   local rule, pattern = match_historian_rules (metric, Rules)
   if rule then          -- find the matching rule name
-    print (metric, "matching rule:", rule)
+    _debug (metric .. " matching rule: " .. rule)
     local schema = Hcarbon.schemas[rule]    -- find the named schema rule
     if schema then
       local archives = schema.retentions
@@ -334,28 +429,27 @@ end
 
 -- write_thru() disc cache - callback for all updates of variables with history
 -- this has to be VERY fast, so disk archives are local, and mirroring to remote databases uses UDP
--- 2018.06.06 use extra [openLuup-only] timestamp parameter
+-- 2018.06.06 use extra [openLuup-only] timestamp parameter for actual variable time change
 local function write_thru (dev, svc, var, old, value, timestamp)
   local short_svc = (svc: match "[^:]+$") or "UnknownService"
-  local metric = table.concat ({dev, short_svc, var}, '.')
-  if NoSchema[metric] then return end                             -- not interested
+  local short_metric = table.concat ({dev, short_svc, var}, '.')
+  if NoSchema[short_metric] then return end                             -- not interested
   
-  local filename = table.concat {Directory, metric, ".wsp"}         -- add folder and extension 
-  
-  if not whisper.info (filename) then               -- it's not there, we need to create it
-    local schema = create_historian_file (metric, filename) 
-    NoSchema[metric] = not schema 
+  local path, filename = Metrics.dsv2filepath (dev, short_svc, var)
+  if not whisper.info (path) then               -- it's not there, we need to create it
+    local schema = create_historian_file (short_metric, path) 
+    NoSchema[short_metric] = not schema 
     if not schema then return end                   -- still no file, so bail out here
   end
   
-  _debug (table.concat {"WRITE ", metric, " = ", value})
+  _debug (table.concat {"WRITE ", path, " = ", value})
   
   local wall, cpu   -- for performance stats
   do
     wall = timers.timenow ()
     cpu = timers.cpu_clock ()
     -- use timestamp as time 'now' to avoid clock sync problem of writing at a future time
-    whisper.update (filename, value, timestamp, timestamp)  
+    whisper.update (path, value, timestamp, timestamp)  
     cpu = timers.cpu_clock () - cpu
     wall = timers.timenow () - wall
   end
@@ -364,7 +458,7 @@ local function write_thru (dev, svc, var, old, value, timestamp)
   stats.cpu_seconds = stats.cpu_seconds + cpu
   stats.elapsed_sec = stats.elapsed_sec + wall
   stats.total_updates = stats.total_updates + 1  
-  tally[metric] = (tally[metric] or 0) + 1
+  tally[filename] = (tally[filename] or 0) + 1
   
   -- send to external DBs also:  Graphite / InfluxDB
   
@@ -384,21 +478,6 @@ local function write_thru (dev, svc, var, old, value, timestamp)
 --      InfluxSocket: send (influx: format (p.measurement, p.new))
 --    end
   end
-
-end
-
-
-local function initDB ()
-  lfs.mkdir (Directory)             -- ensure it exists
-  Hcarbon = CarbonCache (Directory) 
-  
-  -- load the storage schema rule base  
-  Rules = tables.archive_rules
-  local rulesMessage = "... #schema rule sets: %d ..."
-  _log (rulesMessage: format (#Rules) ) 
-
-  -- start watching for history updates
-  devutil.variable_watch (nil, write_thru, nil, "history")  -- (dev, callback, srv, var)
 
 end
 
@@ -449,6 +528,7 @@ end
 -- Data is fetched in Whisper fashion, using the best resolution containing the entire interval.
 -- Effectively, this means that if the data is in the cache, then it's taken from there,
 -- otherwise, it comes (at lower resolution) from the local disk archives.
+-- it's used by luup.variable_get() when called with fourth (non-standard) time parameter
 local function Hfetch(var, startTime, endTime)
   local now = timers.timenow()
   startTime = startTime or now - 24*60*60                  -- default to 24 hours ago 
@@ -458,7 +538,6 @@ local function Hfetch(var, startTime, endTime)
   local N = 0
   local Ndisk, Ncache = 0,0
   if var then
-    local metric_path = table.concat ({var.dev, var.shortSid, var.name}, '.')
     local _, Tcache = var: oldest ()                        -- get the oldest cached time
     if Tcache and (startTime >= Tcache) then
       
@@ -469,13 +548,14 @@ local function Hfetch(var, startTime, endTime)
     elseif Directory then
     
       -- get data from disk archives
-      local fs_path = table.concat {Directory, metric_path, ".wsp"}
+      local fs_path = Metrics.dsv2filepath (var.dev, var.shortSid, var.name)
       V, T, N = Wfetch (fs_path, startTime, endTime)
       if V then Ndisk = #V end
       N = N or 0
     end
      
     if ABOUT.DEBUG then
+      local metric_path = table.concat ({var.dev, var.shortSid, var.name}, '.')
       local fetchline = "FETCH %s from: %s (%s) to: %s (%s), Ndisk: %s/%s, Ncache: %s" 
       _debug (fetchline: format (metric_path,
         os.date("%H:%M:%S", startTime), startTime, os.date ("%H:%M:%S", endTime), endTime, Ndisk, N, Ncache))
@@ -535,8 +615,8 @@ local function HistoryReader(metric_path)
   -- fetch() returns time/value data between the specified times.
   -- also a v.n attribute and an ipairs iterator for Whisper compatilibilty in the Graphite API
   -- NOTE: that the time structure does not have the same meaning as for Whisper, but ipairs works fine.
-  local function HRfetch (startTime, endTime)
-    local var = findVariable (metric_path)
+  local function fetch (startTime, endTime)
+    local var = Metrics.finder2var (metric_path)
     local V, T
     if var then 
       V, T = Hfetch(var, startTime, endTime) 
@@ -564,8 +644,9 @@ local function HistoryReader(metric_path)
   end
 
   -- HistoryReader()
+  _debug ("READER " .. metric_path)
   return {
-      fetch = HRfetch,
+      fetch = fetch,
       get_intervals = get_intervals,
     }
 end
@@ -597,30 +678,43 @@ end
 local function HistoryFinder(config)
 
   -- the Historian implementation of the Whisper database is a single directory 
-  -- with metric path names, prefixed by the directory, as the filenames, 
-  -- TODO: PK_AccessPoint ?
-  -- eg: [PK_AccessPoint.]device.shortServiceId.variable.wsp   ... 2.openLuup.Memory_Mb
+  -- with metric path names, prefixed by the PK_AccessPoint, as the filenames, 
+  -- eg: PK_AccessPoint.device.shortServiceId.variable.wsp   ... 0.2.openLuup.Memory_Mb
   local function buildVWHtree ()
     local T = {}
-    local function buildTree (d,s,n)
-      local name = luup.devices[d].description: match "%s*(.*)"
-      d = table.concat {d, ':', (name: gsub ('%W', '_'))}     -- devNo:deviceName.shortServiceId.variable
-      local D = T[d] or {}
-      local S = D[s] or {}
-      S[n] = false          -- not a branch, but a leaf
-      D[s] = S
-      T[d] = D
+    
+    local function buildTree (n,d,s,v)
+      local dev = luup.devices[d]
+      if dev then
+        local devname = dev.description: gsub ("%W", '')    -- remove non-alphanumerics
+--        d = table.concat {d % BRIDGEBLOCK, ':', devname}    -- shortDevNo:shortDevName
+        d = table.concat {d % BRIDGEBLOCK, '_', devname}    -- shortDevNo_shortDevName
+        local N = T[n] or {}
+        local D = N[d] or {}
+        local S = D[s] or {}
+        S[v] = false          -- not a branch, but a leaf
+        D[s] = S
+        N[d] = D
+        T[n] = N
+      end
     end
+    
     -- search the variable cache
-    for v in VariablesWithHistory () do
-      buildTree (v.dev, v.shortSid, v.name)
+    for v in VariablesWithHistory (nil, 1) do
+      local b = Bridges[math.floor (v.dev / BRIDGEBLOCK)]
+      if b then
+        buildTree (b.nodeName, v.dev, v.shortSid, v.name)
+      end
     end
-    -- search the on-disk archives
+    
+    -- search the on-disk archives for files matching: pk.dev:name.shortSid.var.wsp
     if Directory then
       for a in lfs.dir (Directory) do              -- scan the directory and build tree of metrics
-        local d,s,n = a: match "^([^%.]+)%.([^%.]+)%.([^%.]+)%.wsp$"   -- dev.svc.var
-        d = tonumber (d)
-        if luup.devices[d] then buildTree(d,s,n) end
+        local pk,d,s,v = a: match "^([^%.]+)%.([^%.]+)%.([^%.]+)%.([^%.]+)%.wsp$"   -- node.dev.svc.var
+        local b = Bridges.by_pk[pk]        -- eg. {nodeName = "openLuup", PK = '0', offset = 0}
+        if b then
+          buildTree (b.nodeName,b.offset+d,s,v)
+        end
       end
     end
     
@@ -655,17 +749,15 @@ local function HistoryFinder(config)
   local function find_nodes(query)
     local pattern_parts = FindQuery (query.pattern)   -- upgrade query to one with real functionality!
 
-    local dir = {   -- TODO: consider lazy evaluation to build tree only if referenced
-        history = buildVWHtree(),                                       -- add 'history' prefix to path
-        datayours = DYdirectory and buildDYtree(DYdirectory) or nil,    -- DataYours Whisper directory
-      }
+    local dir = buildVWHtree()
+    dir[DYtree] = DYdirectory and buildDYtree(DYdirectory) or nil    -- add DataYours Whisper directory
     
     --  Recursively generates absolute paths whose components
     --  underneath current_dir match the corresponding pattern in patterns
     local function _find_paths (current_dir, patterns, i, metric_path_parts)
       local qi = patterns[i]
       if qi then
-        for node, branch in sorted (current_dir, function(a,b) return a < b end) do
+        for node, branch in sorted (current_dir) do
 --        for node, branch in pairs (current_dir) do
           local ok = qi: matches (node)
           if ok then
@@ -679,10 +771,10 @@ local function HistoryFinder(config)
               -- Now construct and yield an appropriate Node object            
               local reader
               if not branch then
-                if metric_path_parts[1] == "history" then
-                  reader = HistoryReader(metric_path)
-                else
+                if metric_path_parts[1] == DYtree then
                   reader = WhisperReader(metric_path)   -- plain Whisper reader
+                else
+                  reader = HistoryReader(metric_path)
                 end
               end
               coroutine.yield (Node(metric_path, reader))
@@ -696,9 +788,9 @@ local function HistoryFinder(config)
 
   end
 
-  -- HistoryFinder()
+  -- HistoryFinder(),  called with Graphite API configuration
   
-  DYdirectory = (((config or {}).whisper or {}).directories or {}) [1]  -- pick out from finder configs 
+  DYdirectory = ((config or {}).historian or {}).DataYours   -- explicit override of DY finder
   
   if DYdirectory then DYcarbon = CarbonCache (DYdirectory) end
   
@@ -710,13 +802,16 @@ local function HistoryFinder(config)
 end
 
 
+
+
 ---------------------------------------------------
 --
--- called with configuration at system startup
+-- start() called with openLuup.Historian configuration at system startup
 --  
 local function start (config)
   CacheSize   = config.CacheSize
   Directory   = config.Directory
+  Bridges     = get_bridge_info ()
   
   local ip_port = "%d+%.%d+%.%d+%.%d+:%d+"
   local Graphite = (config.Graphite_UDP or ''): match (ip_port)
@@ -733,15 +828,24 @@ local function start (config)
   
   _log "starting data historian..."
   devutil.set_cache_size (CacheSize)
-  cacheVariables ()                   -- turn on caching for ALL existing variables
+--  cacheVariables ()                   -- turn on caching for ALL existing variables
   
   if Directory then     -- we're using the write-thru on-disk archive as well as in-memory cache
-    _log ("...using on-disk archive: " .. Directory .. "...")
-    initDB ()
+    _log ("using on-disk archive: " .. Directory)
+    lfs.mkdir (Directory)             -- ensure it exists
+    Hcarbon = CarbonCache (Directory) 
+    
+    -- load the disk storage rule base  
+    Rules = tables.archive_rules
+    local rulesMessage = "disk archive storage rule sets: %d ..."
+    _log (rulesMessage: format (#Rules) ) 
+
+    -- start watching for history updates
+    devutil.variable_watch (nil, write_thru, nil, "history")  -- (dev, callback, srv, var)
   end
   
-  if Graphite_UDP then _log ("...mirroring archives to Graphite at " .. Graphite .. " ...") end
-  if InfluxDB_UDP then _log ("...mirroring archives to InfluxDB at " .. InfluxDB .. " ...") end
+  if Graphite_UDP then _log ("mirroring archives to Graphite at " .. Graphite) end
+  if InfluxDB_UDP then _log ("mirroring archives to InfluxDB at " .. InfluxDB) end
   _log ("...using memory cache size (per-variable): " .. CacheSize)
 end
 

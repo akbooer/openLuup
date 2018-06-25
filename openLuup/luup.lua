@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.06.17",
+  VERSION       = "2018.06.23",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -56,7 +56,8 @@ local ABOUT = {
 -- 2018.04.30  'silent' variable attribute to mute logging
 -- 2018.05.01  use new_userdata_dataversion () when changing room structure
 -- 2018.06.06  add non-standard additional parameter 'time' to luup.variable_get()
--- 2018.06.17  special Tripped processing for security devices in luup.variable_set ()
+-- 2018.06.21  special Tripped processing for security devices in luup.variable_set ()
+-- 2018.06.23  Added luup.openLuup flag (==true) to indicate not a Vera (for plugin developers)
 
 
 local logs          = require "openLuup.logs"
@@ -80,6 +81,10 @@ local ioutil        = require "openLuup.io"
 local _log, _debug = logs.register (ABOUT)
 
 local _log_altui_variable  = logs.altui_variable
+
+-----
+
+local BRIDGEBLOCK = 10000         -- hardcoded VeraBridge blocksize (sorry, but easy and quick)
 
 -----
 
@@ -309,9 +314,8 @@ local function variable_set (service, name, value, device, startup)
   
   -- 2018.06.17  special Tripped processing for security devices, has to be synchronous with variable change
   
-  local bridgeblock = 10000         -- hardcoded VeraBridge blocksize (sorry, but easy and quick)
   local security  = "urn:micasaverde-com:serviceId:SecuritySensor1"
-  if (name ~= "Tripped") or (service ~= security) or (dev >= bridgeblock) then return end   -- not interested 
+  if (name ~= "Tripped") or (service ~= security) or (device >= BRIDGEBLOCK) then return end   -- not interested 
   
   local Armed = dev:variable_get (service, "Armed")  
   local isArmed = Armed == '1'
@@ -780,8 +784,9 @@ parameters:
 return: nothing 
 --]]
 
-local function device_message (device_id, status, message, timeout, source)
-  
+--TODO: local function device_message (device_id, status, message, timeout, source)
+local function device_message (...)
+  _debug "device_message not yet implemented"
 end
 
 --------------
@@ -965,6 +970,8 @@ local version_branch, version_major, version_minor = tonumber(a), tonumber(b), t
 return {
   
     -- constants: really not expected to be changed dynamically
+    
+    openLuup = true,    -- 2018.06.23  ...to indicate not a Vera (for plugin developers)
     
     hw_key              = "--hardware key--",
     event_server        = '',   

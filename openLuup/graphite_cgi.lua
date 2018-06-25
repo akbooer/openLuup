@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2018.06.12",
+  VERSION       = "2018.06.23",
   DESCRIPTION   = "WSAPI CGI interface to Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -37,6 +37,7 @@ ABOUT = {
 -- 2018.06.05  round json render time to 1 second (no need for more in Grafana)
 -- 2018.06.10  return error if no target for /render
 -- 2018.06.12  remove dependency on DataGraphiteAPI
+-- 2018.06.23  add Historian.DataYours parameter to override DataYours finder
 
 
 -- CGI implementation of Graphite API
@@ -330,6 +331,8 @@ local function jsonRender (_, p)
   
   if ABOUT.DEBUG then _log ("RENDER: ", (json.encode(p))) end
   
+  -- the data structure is not very complex, and it's far more efficient to generate this directly
+  -- than first building a Lua table and then converting it to JSON.  So that's what this does.
   local data = {'[',''}
   for _,target in ipairs (p.target) do
     for node in storage.find (target) do
@@ -531,6 +534,9 @@ end
     end
   end
 
+  -- get historian config
+  local history = luup.attr_get "openLuup.Historian" or {}
+
   -- create a configuration for the various finders  
   local config = {
     whisper = {
@@ -541,13 +547,18 @@ end
       maxpoints = 2000,
       vera = "Vera-00000000",
     },
+    historian = history,
   }
   
   local Finders = {historian.finder (config) }     -- 2018.06.02  Data Historian's own finder
 
-  if isFinders then   -- if DataMine is installed, then add its finders
-    Finders[#Finders + 1] = (LOCAL_DATA_DIR ~= '') and finders.whisper.WhisperFinder   (config) or nil
-    Finders[#Finders + 1] = (DATAMINE_DIR   ~= '') and finders.datamine.DataMineFinder (config) or nil
+  if isFinders then   -- if DataYours is installed, then add its finders if not already handled
+    if not history.DataYours and (LOCAL_DATA_DIR ~= '') then
+      Finders[#Finders + 1] = finders.whisper.WhisperFinder (config)
+    end
+    if (DATAMINE_DIR ~= '') then
+      Finders[#Finders + 1] = finders.datamine.DataMineFinder (config)
+    end
   end
   
   storage = Store (Finders)    --  instead of DataYours graphite_api.storage.Store()

@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.06.07",
+  VERSION       = "2018.06.23",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -667,15 +667,18 @@ function run (wsapi_env)
     print ''
   end
   
+  -- compares corresponding elements of array
   local function keysort (a,b) 
     a, b = a.sortkey, b.sortkey
-    if a[1] < b[1] then return true end
-    if a[1] == b[1] then
-      if a[2] < b[2] then return true end
-      if a[2] == b[2] then 
-        return a[3] < b[3] 
-      end
+    local function lt (i)
+      local x,y = a[i], b[i]
+      if not  y then return false end
+      if not  x then return true  end
+      if x <  y then return true  end
+      if x == y then return lt (i+1) end
+      return false
     end
+    return lt(1)
   end
 
   local function historian ()
@@ -684,7 +687,7 @@ function run (wsapi_env)
     for _,d in pairs (luup.devices) do
       for _,v in ipairs (d.variables) do 
         N = N + 1 
-        if v.history and #v.history > 0 then
+        if v.history and #v.history > 2 then
           H[#H+1] = {v = v, sortkey = {v.dev, v.shortSid, v.name}}
         end
       end
@@ -730,21 +733,21 @@ function run (wsapi_env)
     local write_rate = 60 * tot / (timers.timenow() - timers.loadtime)
     
     print ''
-    local stats = "   Updates/min: %0.1f,  time/point: %0.1f ms (cpu: %0.1f ms)"
-    print (stats: format (write_rate, wall_rate, cpu_rate))
+    local stats = "   updates/min: %0.1f,  time/point: %0.1f ms (cpu: %0.1f ms),  directory: %s"
+    print (stats: format (write_rate, wall_rate, cpu_rate, folder))
     
     local tally = hist.tally        -- here's the historian's stats on individual file updates
     
     local files = mapFiles (folder, 
       function (a)        -- file attributes including path, name, size,... (see lfs.attributes)
-        local shortName = a.name: match "^([^%.].+).wsp$"
-        if shortName then
-         local d,s,v = shortName: match "(%d+)%.([%w_]+)%.(.+)"  -- dev.svc.var, for sorting
-          a.sortkey = {tonumber(d), s, v}
+        local filename = a.name: match "^(.+).wsp$"
+        if filename then
+         local n,d,s,v = filename: match "(%d+)%.(%d+)%.([%w_]+)%.(.+)"  -- dev.svc.var, for sorting
+          a.sortkey = {tonumber(n), tonumber(d), s, v}
           local i = whisper.info (folder .. a.name)
-          a.shortName = shortName
+          a.shortName = filename
           a.retentions = tostring(i.retentions) -- text representation of archive retentions
-          a.updates = tally[shortName] or ''
+          a.updates = tally[filename] or ''
           return a
         end
       end)
@@ -753,7 +756,7 @@ function run (wsapi_env)
     
     local list = " %40s %8s %4s  %8s   %s"
     print ''
-    print (list:format ("archives", "size", "(kB)", "#updates", "metric (dev.srv.var) \n"))
+    print (list:format ("archives", "size", "(kB)", "#updates", "filename (node.dev.srv.var) \n"))
     local N,T = 0,0
     for _,f in ipairs (files) do 
       N = N + 1
