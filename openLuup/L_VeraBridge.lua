@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.04.17",
+  VERSION       = "2018.06.22",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -84,6 +84,8 @@ ABOUT = {
 -- 2018.03.24   use luup.rooms.create metatable method
 -- 2018.04.17   add specific attributes (onDashboard) to bridged devices 
 --              thanks @rafale77, see: http://forum.micasaverde.com/index.php/topic,79879.0.html
+-- 2018.05.15   add SetHouseMode (for remote machine) to set of visible actions (for use in scenes)
+-- 2018.06.04   Expose OFFSET and remote PK_AccessPoint as device variables
 
 
 local devNo                      -- our device number
@@ -102,6 +104,7 @@ local local_room_index           -- bi-directional index of our rooms
 local remote_room_index          -- bi-directional of remote rooms
 
 local BuildVersion                -- ...of remote machine
+local PK_AccessPoint              -- ... ditto
 
 local SID = {
   altui    = "urn:upnp-org:serviceId:altui1"  ,         -- Variables = 'DisplayLine1' and 'DisplayLine2'
@@ -109,8 +112,6 @@ local SID = {
   hag      = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
 }
 
---local Mirrored          -- mirrors is a set of device IDs for 'reverse bridging', not to be cloned
---local MirrorHash        -- reverse lookup: local hash to remote device ID
 local HouseModeMirror   -- flag with one of the following options
 local HouseModeTime = 0 -- last time we checked
 
@@ -321,17 +322,6 @@ local function is_to_be_cloned (dev)
           and (Included[d] or (not ZWaveOnly) or (ZWaveOnly and zwave) )
 end
 
---[[
--- original
-local function is_to_be_cloned (dev)
-  local d = tonumber (dev.id)
-  local p = tonumber (dev.id_parent)
-  local zwave = p == 1
-  return  not (Excluded[d] or Mirrored[d])
-          and (Included[d] or (not ZWaveOnly) or (ZWaveOnly and zwave) )
-end
---]]
-
 -- create the child devices managed by the bridge
 local function create_children (devices, room_0)
   local N = 0
@@ -431,13 +421,14 @@ local function GetUserData ()
   local Ndev, Nscn = 0, 0
   local url = "/data_request?id=user_data2&output_format=json&ns=1"   -- 2018.01.29  ignore static_data content
   local status, j = remote_request (url)
-  local version
+  local version, PK_AccessPoint
   if status == 0 then Vera = json.decode (j) end
   if Vera then 
     luup.log "Vera info received!"
     local t = "users"
     if Vera.devices then
-      local new_room_name = "MiOS-" .. (Vera.PK_AccessPoint: gsub ("%c",''))  -- stray control chars removed!!
+      PK_AccessPoint = Vera.PK_AccessPoint: gsub ("%c",'')      -- stray control chars removed!!
+      local new_room_name = "MiOS-" .. PK_AccessPoint 
       userdata.attributes [t] = userdata.attributes [t] or Vera[t]
       luup.log (new_room_name)
       luup.rooms.create (new_room_name)     -- 2018.03.24  use luup.rooms.create metatable method
@@ -459,11 +450,14 @@ local function GetUserData ()
         end
       end
   
+      luup.log ("PK_AccessPoint = " .. PK_AccessPoint)
+      
       version = Vera.BuildVersion
       luup.log ("BuildVersion = " .. version)
       
       Ndev = #Vera.devices
       luup.log ("number of remote devices = " .. Ndev)
+      
       local roomNo = local_room_index[new_room_name] or 0
       Ndev = create_children (Vera.devices, roomNo)
       Nscn = create_scenes (Vera.scenes, roomNo)
@@ -473,7 +467,7 @@ local function GetUserData ()
       end
     end
   end
-  return Ndev, Nscn, version
+  return Ndev, Nscn, version, PK_AccessPoint
 end
 
 -- MONITOR variables
@@ -579,80 +573,6 @@ local function wget (request)
     luup.log ("failed requests status: " .. (result or '?'))
   end
 end
-
---
--- MIRRORS
---
-
--- openLuup.mirrors syntax is:
--- <VeraIP>
--- <VeraDeviceId> = <openLuupDeviceId>.<serviceId>.<variableName>
--- ...
---[==[
-
-luup.attr_set ("openLuup.mirrors", [[
-192.168.99.99
-82 = 15.urn:upnp-org:serviceId:TemperatureSensor1.CurrentTemperature 
-83 = 16.urn:micasaverse-com:serviceId:HumiditySensor1.CurrentLevel
-85 = 17.urn:cd-jackson-com:serviceId:SystemMonitor.memoryAvailable
-85 = 17.urn:cd-jackson-com:serviceId:SystemMonitor.systemLuupRestartTime
-]])
-
---]==]
-
--- set up variable watches for mirrored devices, 
--- returning set of devices to ignore in cloning
--- and hash table for variable watch
---local function set_of_mirrored_devices ()
---  local Minfo = luup.attr_get "openLuup.mirrors"      -- this attribute set at startup
---  local mirrored = {}
---  local hashes = {}                     -- hash table of all mirrored variables
---  local our_ip = false                  -- set to true when we're parsing our own data
---  luup.log "reading mirror info..."
---  for line in (Minfo or ''): gmatch "%C+" do
---    local ip_info = line:match "^%s*(%d+%.%d+%.%d+%.%d+)"      -- IP address format
---    if ip_info then 
---      our_ip = ip_info == ip
---    elseif our_ip then
---      local rem, lcl, srv, var  = line:match "^%s*(%d+)%s*=%s*(%d+)%.(%S+)%.(%S+)"
---      if var then
---        -- set up device watch
---        rem = tonumber (rem)
---        lcl = tonumber (lcl)
---        luup.log (("mirror: rem=%s, lcl=%d.%s.%s"): format (rem, lcl, srv, var))
---        local m = mirrored[rem] or {}                       -- flag remote device as a mirror, so don't clone locally
---        local hash = table.concat ({lcl, srv, var}, '.')    -- build hash key
---        hashes[hash] = rem
---        m[#m+1] = {lcl=lcl, srv=srv, var=var, hash=hash}    -- add to list of watched vars for this device
---        mirrored[rem] = m 
---      end
---    end
---  end
---  return mirrored, hashes
---end
-
--- Mirror watch callbacks
-
---function VeraBridge_Mirror_Callback (dev, srv, var, _, new)
---  local hash = table.concat ({dev, srv, var}, '.')
---  local request = "http://%s:3480/data_request?id=variableset&DeviceNum=%d&serviceId=%s&Variable=%s&Value=%s"
---  local rem = MirrorHash[hash]
---  if rem then   --  send to remote device
---    luup.inet.wget (request: format(ip, rem, srv, var, url.escape(new)))
---  end
---end
-
----- set up callbacks and initialise remote device variables
---local function watch_mirror_variables (mirrored)
---  for rem, mirror in pairs (mirrored) do
---    for _, v in ipairs (mirror) do
---      luup.variable_watch ("VeraBridge_Mirror_Callback", v.srv, v.var, v.lcl)   -- start watching 
---      local val = luup.variable_get (v.srv, v.var, v.lcl)
---      VeraBridge_Mirror_Callback (rem, v.srv, v.var, nil, val or '')  -- use the callback to set the values
---    end
---  end
---  return
---end
 
 --
 -- Bridge ACTION handler(s)
@@ -775,6 +695,14 @@ function GetVeraScenes()
   end
 end
 
+
+function SetHouseMode (p)         -- 2018.05.15
+  if tonumber (p.Mode) then
+    local request = "/data_request?id=action&serviceId=%s&DeviceNum=0&action=SetHouseMode&Mode=%s"
+    local url = request: format(SID.hag, p.Mode)
+    remote_request (url)
+  end
+end
 --
 -- GENERIC ACTION HANDLER
 --
@@ -904,6 +832,7 @@ function init (lul_device)
   luup.log (ip)
   
   OFFSET = findOffset ()
+  setVar ("Offset", OFFSET)                     -- 2018.06.04  Expose OFFSET as device variable
   luup.log ("device clone numbering starts at " .. OFFSET)
 
   -- User configuration parameters: @explorer and @logread options
@@ -941,7 +870,7 @@ function init (lul_device)
   luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
   
   local Ndev, Nscn
-  Ndev, Nscn, BuildVersion = GetUserData ()
+  Ndev, Nscn, BuildVersion, PK_AccessPoint = GetUserData ()
   
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
@@ -950,6 +879,8 @@ function init (lul_device)
     luup.log (version)
   end
   
+  setVar ("PK_AccessPoint", PK_AccessPoint)     -- 2018.06.04   Expose PK_AccessPoint as device variable
+
   setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
   setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
   

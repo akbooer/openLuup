@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.05.02",
+  VERSION       = "2018.06.26",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -29,7 +29,7 @@ ABOUT = {
 --   * useful actions
 --   * plugin-specific configuration
 --   * SMTP mail handlers
---   * Data Storage Provider gateways>
+--   * Data Storage Provider gateways
 --   * Retention policy implementation for directories
 --   * etc., etc...
 --
@@ -52,6 +52,8 @@ ABOUT = {
 -- 2018.04.08  use POP3 module to save email to mailbox. Add events mailbox folder
 -- 2018.04.15  fix number types in SendToTrash action
 -- 2018.05.02  add StartTime device variable, also on Control panel (thanks @rafale77)
+-- 2018.05.16  SendToTrash applied to the trash/ folder will DELETE selected files
+-- 2018.06.11  Added Vnumber (purely numeric six digit version number yymmdd) for @rigpapa
 
 
 local json        = require "openLuup.json"
@@ -469,7 +471,7 @@ function SendToTrash (p)
   end
   
   -- try to protect ourself from any damage!
-  local locked = {"openLuup", "cgi", "cgi-bin", "cmh", "files", "icons", "trash", "whisper", "www"}
+  local locked = {"openLuup", "cgi", "cgi-bin", "cmh", "files", "history", "icons", "whisper", "www"}
   local prohibited = {}
   for _, dir in ipairs(locked) do prohibited[dir] = dir end   -- turn list into indexed table
   
@@ -485,6 +487,7 @@ function SendToTrash (p)
     local maxfiles = tonumber (p.MaxFiles)
     local policy = {[folder] = {types = p.FileTypes, days = days, maxfiles = maxfiles}}
     local process = trash
+    if folder == "trash" then process = os.remove end   -- actually DELETE files if policy applied to trash/
     implement_retention_policies (policy, process)
     luup.log "...finished applying file retention policy"
   end
@@ -644,10 +647,13 @@ function init (devNo)
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
+    local Vnumber = tonumber ((y%2000)..m..d)
     set ("Version", version)
+    set ("Vnumber", Vnumber)
     luup.log (version)
     local info = luup.attr_get "openLuup"
     info.Version = version      -- put it into openLuup table too.
+    info.Vnumber = Vnumber      -- ditto --
   end
   
   do -- synchronised heartbeat
@@ -682,7 +688,7 @@ function init (devNo)
   
   do -- InfluxDB as Data Storage Provider 
     local dsp = "InfluxDB Data Storage Provider: "
-    local db = luup.attr_get "openLuup.Databases.Influx"
+    local db = luup.attr_get "openLuup.DataStorageProvider.Influx"
     if db then
       local err
       register_Data_Storage_Provider ()   -- 2018.03.01
@@ -690,7 +696,8 @@ function init (devNo)
       if InfluxSocket then 
         _log (dsp .. tostring(InfluxSocket))
       else
-        _log (dsp .. (err or '')) end
+        _log (dsp .. (err or '')) 
+      end
     end
   end
   

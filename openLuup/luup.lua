@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.05.01",
+  VERSION       = "2018.06.23",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -55,6 +55,9 @@ local ABOUT = {
 -- 2018.04.18  optional protocol prefix in register_handler request
 -- 2018.04.30  'silent' variable attribute to mute logging
 -- 2018.05.01  use new_userdata_dataversion () when changing room structure
+-- 2018.06.06  add non-standard additional parameter 'time' to luup.variable_get()
+-- 2018.06.21  special Tripped processing for security devices in luup.variable_set ()
+-- 2018.06.23  Added luup.openLuup flag (==true) to indicate not a Vera (for plugin developers)
 
 
 local logs          = require "openLuup.logs"
@@ -65,8 +68,9 @@ local devutil       = require "openLuup.devices"
 local Device_0      = require "openLuup.gateway"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
-local loader        = require "openLuup.loader"   -- simply to access shared environment
-local smtp          = require "openLuup.smtp"     -- for register_handler to work with email
+local loader        = require "openLuup.loader"     -- simply to access shared environment
+local smtp          = require "openLuup.smtp"       -- for register_handler to work with email
+local historian     = require "openLuup.historian"  -- for luup.variable_get() to work with historian
 
 -- luup sub-modules
 local chdev         = require "openLuup.chdev"
@@ -77,6 +81,10 @@ local ioutil        = require "openLuup.io"
 local _log, _debug = logs.register (ABOUT)
 
 local _log_altui_variable  = logs.altui_variable
+
+-----
+
+local BRIDGEBLOCK = 10000         -- hardcoded VeraBridge blocksize (sorry, but easy and quick)
 
 -----
 
@@ -291,20 +299,45 @@ local function variable_set (service, name, value, device, startup)
   service = tostring (service)
   name = tostring(name)
   value = tostring (value)
+  
+  local function set (name, value)
   local var = dev:variable_set (service, name, value, not startup) 
-  if var and not var.silent then            -- 2018.04.30  'silent' attribute to mute logging
-    local old = var.old  or "MISSING"
-    local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
-    local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
-    _log (msg, "luup.variable_set")
-    _log_altui_variable (var)              -- log for altUI to see
-  end 
+    if var and not var.silent then            -- 2018.04.30  'silent' attribute to mute logging
+      local old = var.old  or "MISSING"
+      local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
+      local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
+      _log (msg, "luup.variable_set")
+      _log_altui_variable (var)              -- log for altUI to see
+    end 
+  end
+  set (name, value)
+  
+  -- 2018.06.17  special Tripped processing for security devices, has to be synchronous with variable change
+  
+  local security  = "urn:micasaverde-com:serviceId:SecuritySensor1"
+  if (name ~= "Tripped") or (service ~= security) or (device >= BRIDGEBLOCK) then return end   -- not interested 
+  
+  local Armed = dev:variable_get (service, "Armed")  
+  local isArmed = Armed == '1'
+  set ("LastTrip", os.time())   -- TODO: check trip time updated when '0' as well as '1'
+  
+  if value == '1' then
+    if isArmed then set ("ArmedTripped", '1') end
+  else
+    local ArmedTripped = dev:variable_get (service, "ArmedTripped")
+    if ArmedTripped ~= '0' then set ("ArmedTripped", '0') end
+  end
 end
 
 -- function: variable_get
 -- parameters: service (string), variable (string), device (string or number)
 -- returns: value (string) and Unix time stamp (number) of when the variable last changed
-local function variable_get (service, name, device)
+-- 2018.06.06  add non-standard additional parameter 'time'
+-- uses data history to recover single value at previous scalar time
+-- or range of values for {start, finish} time value
+-- may return nill for scalar case, if no history available
+-- will always return tables for range request (but they may be empty)
+local function variable_get (service, name, device, time)
   device = device or scheduler.current_device()           -- undocumented luup feature!
   local dev = devices[device]
   if not dev then 
@@ -312,9 +345,19 @@ local function variable_get (service, name, device)
     return
   end
   local var = dev:variable_get (service, name) or {}
-  local tim = var.time 
-  if tim then tim = math.floor(tim) end                   -- ensure time is an integer
-  return var.value, tim
+  if not time then 
+    local tim = var.time 
+    if tim then tim = math.floor(tim) end                   -- ensure time is an integer
+    return var.value, tim
+  else
+    local timeType = type(time)
+    if timeType == "number" then
+--      return var: at (time)   -- TODO: scalar time parameter
+    elseif timeType == "table" then
+      local values, times = historian.fetch (var, time[1], time[2])
+      return values or {}, times or {}
+    end
+  end
 end
 
 
@@ -714,6 +757,38 @@ local function variable_watch (...)
   _log (msg, "luup.variable_watch")
 end
 
+--[[
+-- TODO: function: device_message
+
+Available in releases after Feb 2017
+
+This adds a system message that is attached to a device and appears in the UI under the device.
+
+parameters:
+
+    device_id (number) : This is the device id number
+    status (int) : This is the status of message, and corresponds to the job status, and generally determines what color the message appears:
+        -1 : No job: black message
+        0 : Job waiting to start: blue message
+        1 : Job in progress: blue message
+        2 : Job error: red message
+        3 : Job aborted: red message
+        4 : Job done: green message
+        5 : Job waiting for callback: blue message
+        6 : Job requeue: blue message
+        7 : Job in progress with pending data: black message 
+    message (string) : This is the text that appears in the message.
+    timeout (int) : This is the number of seconds to display the message. Pass 0 to display it indefinitely
+    source (string) : This is the source module of the message. It can be anything, and is generally informational. It is recommended to use the name of the luup plugin. 
+
+return: nothing 
+--]]
+
+--TODO: local function device_message (device_id, status, message, timeout, source)
+local function device_message (...)
+  _debug "device_message not yet implemented"
+end
+
 --------------
 --
 --  INTERNET related API
@@ -896,6 +971,8 @@ return {
   
     -- constants: really not expected to be changed dynamically
     
+    openLuup = true,    -- 2018.06.23  ...to indicate not a Vera (for plugin developers)
+    
     hw_key              = "--hardware key--",
     event_server        = '',   
     event_server_backup = '',   
@@ -924,7 +1001,8 @@ return {
     chdev               = chdev_module,
     create_device       = create_device,    
     device_supports_service = device_supports_service,    
-    devices_by_service  = devices_by_service,   
+    devices_by_service  = devices_by_service, 
+    device_message      = device_message,
     inet                = inet,
     io                  = ioutil.luupio,
     ip_set              = ip_set,

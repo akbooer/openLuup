@@ -1,10 +1,11 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.05.01",
+  VERSION       = "2018.05.26",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -51,7 +52,8 @@ local ABOUT = {
 --             see: http://forum.micasaverde.com/index.php/topic,38471.0.html
 -- 2018.04.06  use scheduler.context_switch to wrap device code compilation (for sandboxing)
 -- 2018.04.22  parse_impl_xml added action field for /data_request?id=lua&DeviceNum=... 
--- 2018.04.25  incorporate XML module (too short, now, to justify separate file)
+-- 2018.05.10  SUBSTANTIAL REWRITE, to accomodate new XML DOM parser
+-- 2018.05.26  add new line before action end - beware final comment lines!! Debug dump erroneous source code.
 
 
 ------------------
@@ -96,132 +98,9 @@ local shared_environment  = new_environment "openLuup_startup_and_scenes"
 
 local json = require "openLuup.json"
 local vfs  = require "openLuup.virtualfilesystem"
-
 local scheduler = require "openLuup.scheduler"  -- for context_switch()
+local xml = require "openLuup.xml"
 
-------------------
---
--- XML module
---
-
--- general xml reader: this is just good enough to read device and implementation .xml files
--- doesn't cope with XML attributes or empty elements: <tag />
---
--- TODO: proper XML parser rather than nasty hack?
---
-
--- 2015.11.03  cope with comments (thanks @vosmont and @a-lurker)
--- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
-
--- 2016.02.22  skip XML attributes but still parse element
--- 2016.02.23  remove reader and caching, rename encode/decode 
--- 2016.02.24  escape special characters in encode and decode
--- 2016.04.14  @explorer expanded tags to alpha-numerics and underscores
--- 2016.04.15  fix attribute skipping (got lost in previous edit)
--- 2016.05.10  allow ':' as part of tag name
-
--- 2017.03.31  make escape() and unescape() global
-
--- 2018.04.22  remove spaces at each end of comments (part of issue highlighted by @a-lurker)
--- see: http://forum.micasaverde.com/index.php/topic,53871.msg379551.html#msg379551
--- and: http://forum.micasaverde.com/index.php/topic,53871.msg379790.html#msg379790
--- 2018.04.23  ignore empty tags (remaining part of above issue?)
--- 2018.04.24  remove extract() function completely (final part of above issue?? thanks again, @a-lurker)
--- 2018.04.25  incorporate XML module into loader (too short, now to justify separate file)
--- 2018.05.01  restructure decode(), only export encode(), save XML tag attributes (but don't process)
-
-
-local escape do
-  local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
-  escape = function (x) return (x: gsub ([=[[<>"'&]]=], fwd)) end
-end
-
-
-local unescape do
-  local rev = {lt = '<', gt = '>', quot = '"', apos = "'", amp = '&'}
-  unescape = function (x) return (x: gsub ("&(%w+);", rev)) end
-end
-
--- decode() 
--- empty tags are unnamed empty tables, <foo></foo>  -->  {}
--- non-xml tag contents are strings, <foo>&lt;not xml&gt;</foo>	 -->  {foo = "<not xml>"}
-local function decode (info)
-  local xml = {}
-  -- must start with a letter or underscore, can contain letters, digits, hyphens, underscores, and period
-  local tag_pair = "%s*<([%a_][%w:_%-%.]*)(.-)>(.-)</%1>%s*"
-  
-  if info then info = info: gsub ("%s*<!%-%-.-%-%->%s*", '') end  -- remove <!-- This is a comment -->
-  
-  local result = info
-  for a,attr,b in (info or ''): gmatch (tag_pair) do -- find opening and closing tags
-    result = xml                      -- OK, this has at least one valid XML open/close tag pair
-    if #b > 0 then                    -- ignore empty tags
-      local x = decode (b)            -- get the value of the contents
-      xml[a] = xml[a] or {}           -- if this tag doesn't exist, start a list of values
-      xml[a][#xml[a]+1] = x           -- add new value to the list (might be table, or just text)
-    end 
-  end 
-  
-  if type (result) == "table" then
-    for a,b in pairs (result) do                  -- go through the contents
-      if #b == 1 then result[a] = b[1] end        -- collapse one-element lists to simple items
-    end
-  else                                -- if no tagged structures, then return the unescaped info string
-    if result then result = unescape (result) end
-  end
-  return result
-end
-
--- encode(), input argument should be a table, optional wrapper gives name tag to whole structure
-local function encode (Lua, wrapper)
-  local xml = {}        -- or perhaps    {'<?xml version="1.0"?>\n'}
-  local function p(x)
-    if type (x) ~= "table" then x = {x} end
-    for _, y in ipairs (x) do xml[#xml+1] = y end
-  end
-  
-  local function value (x, name, depth)
-    local function spc ()  p ((' '):rep (2*depth)) end
-    local function atag () spc() ; p {'<', name,'>'} end
-    local function ztag () p {'</',name:match "^[^%s]+",'>\n'} end
-    local function str (x) atag() ; p(escape (tostring(x): gsub("%s+", ' '))) ; ztag() end
-    local function err (x) error ("xml: unsupported data type "..type (x)) end
-    local function tbl (x)
-      local y
-      if #x == 0 then y = {x} else y = x end
-      for i, z in ipairs (y) do
-        i = {}
-        for a in pairs (z) do i[#i+1] = a end
-        table.sort (i, function (a,b) return tostring(a) < tostring (b) end)
-        if name then atag() ; p '\n' end
-        for _,a in ipairs (i) do value(z[a], a, depth+1) end
-        if name then spc() ; ztag() end
-      end
-    end
-    
-    depth = depth or 0
-    local dispatch = {table = tbl, string = str, number = str}
-    return (dispatch [type(x)] or err) (x)
-  end
-  
-  -- encode(), wrapper parameter allows outer level of tags (with attributes)
-  local ok, msg = pcall (value, Lua, wrapper) 
-  if ok then ok = table.concat (xml) end
-  return ok, msg
-end
-
-
-local xml = {
-   
-    escape = escape,
-    unescape = unescape,
-    
-    decode  = decode, 
-    encode  = encode,
-  }
-
-
-------------------
 
 local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
 
@@ -314,62 +193,79 @@ end
 local cached_read = memoize (raw_read, file_cache)    -- 2016.02.23
 
 local function xml_read (filename)
+  filename = filename or "(missing filename)"
   local raw_xml = cached_read (filename) 
-  return xml.decode(raw_xml), raw_xml   -- 2016.03.19   return raw_xml for order-sensitive processing
+  if not raw_xml then
+    return nil, "ERROR: unable to read XML file " .. filename
+  end
+  local x = xml.decode(raw_xml)
+  if not x.documentElement then     -- invalid or missing XML
+    return nil, "ERROR: invalid XML file: " .. filename
+  end
+  return x, raw_xml   -- 2016.03.19   return raw_xml for order-sensitive processing
 end
+
+-- DEVICES
 
 -- parse device file, or empty table if error
 local function parse_device_xml (device_xml)
-  local x
-  if type(device_xml) == "table" and device_xml.root then -- 2016.02.22, added 'root' nesting
-    x = device_xml.root.device    -- find relevant part
-  end
+  
+  local root = xml.documentElement (device_xml, "root") -- , "urn:schemas-upnp-org:device-1-0")
+  local device = root: xpath "//device" [1]
+  if not device then error ("device file syntax error", 1) end
+    
   local d = {}
-  for a,b in pairs (x or {}) do
-    d[a] = b              -- retain original capitalisation...
-    d[a:lower()] = b      -- ... and fold to lower case
+--  for x in device:xpathIterator "//*/text()" do  -- same as ipairs below
+  for _,x in ipairs (device.childNodes) do
+    d[x.nodeName:lower()] = x.nodeValue            -- force lower case versions
   end
-  -- save service list
-  local service_list
-  local URLs = d.serviceList
-  if URLs and URLs.service then
-    URLs = URLs.service
-    if #URLs == 0 then URLs = {URLs} end      -- make it a one-element list
-    service_list = URLs
+  
+  local impl = device: xpath "//implementationList/implementationFile" [1]
+  local impl_file = (impl or {}).nodeValue
+  
+  local service_list = {}
+  for svc in device: xpathIterator "//serviceList/service" do
+    local service = {}
+    for _,x in ipairs (svc.childNodes) do service[x.nodeName] = x.nodeValue end
+    service_list[#service_list+1] = service
   end
+  
   return {
     -- notice the name inconsistencies in some of these entries,
     -- that's why we re-write the whole thing, rather than just pass the read device object
     -- NOTE: every parameter in the file of interest MUST be declared here or will not be visible
-    category_num    = d.category_num,
-    device_type     = d.deviceType, 
-    impl_file       = (d.implementationList or {}).implementationFile, 
-    json_file       = d.staticJson, 
-    friendly_name   = d.friendlyName,
-    handle_children = d.handleChildren, 
+    category_num    = tonumber (d.category_num),
+    device_type     = d.devicetype, 
+    impl_file       = impl_file, 
+    json_file       = d.staticjson, 
+    friendly_name   = d.friendlyname,
+    handle_children = d.handlechildren, 
     local_udn       = d.local_udn,
     manufacturer    = d.manufacturer,
-    modelName       = d.modelName,
+    modelName       = d.modelname,
     protocol        = d.protocol,
     service_list    = service_list,
-    subcategory_num = d.subcategory_num,
+    subcategory_num = tonumber (d.subcategory_num),
   }
 end 
 
 -- read and parse device file, if present
 local function read_device (upnp_file)
-  local info = {}
-  if upnp_file then info =  parse_device_xml (xml_read (upnp_file)) end
-  return info
+  local info
+  local x, errmsg = xml_read (upnp_file)
+  if x then info = parse_device_xml (x) end
+  return info, errmsg
 end
+
+-- IMPLEMENTATIONS
 
 -- utility function: given an action structure from an implementation file, build a compilable object
 -- with all the supplied action tags (run / job / timeout / incoming) and name and serviceId.
 local function build_action_tags (actions)
   local top  = " = function (lul_device, lul_settings, lul_job, lul_data) "
-  local tail = " end, "
+  local tail = "\n end, "     -- 2018.05.26  add new line before action end... beware final comment lines!!
   local tags = {"run", "job", "timeout", "incoming"}
-  if #actions == 0 then actions = {actions} end   -- make it a one-element list
+  
   local action = {"_openLuup_ACTIONS_ = {"}
   for _, a in ipairs (actions) do
     if a.name and a.serviceId then
@@ -391,104 +287,148 @@ end
 local function build_incoming (lua)
   return table.concat ({
       "function _openLuup_INCOMING_ (lul_device, lul_data)",
-      lua,
+      lua or '',
       "end"}, '\n')
 end
 
+
 -- read implementation file, if present, and build actions, files, and code.
 local function parse_impl_xml (impl_xml, raw_xml)
-  local i, actions, incoming
-  if type (impl_xml) == "table" then i = impl_xml.implementation end    -- find relevant part
-  i = i or {}                                                           -- ensure there's something there 
+  
+  local implementation = xml.documentElement (impl_xml, "implementation") -- apparently, no namespace
+  
+  local i = {}
+  -- get the basic text elements
+  for _, x in ipairs (implementation.childNodes) do
+    local name, value = x.nodeName, x.nodeValue
+    i[name:lower()] = value      -- force lower case version, value may be nil
+  end
+  
+  -- build general <incoming> tag (not job specific ones)
+  local incoming_lua = implementation: xpath "//incoming/lua" [1]
+  local lua = (incoming_lua or {}).nodeValue
+  local incoming = build_incoming (lua)
+  
+  
+  local settings_protocol = implementation: xpath "//settings/protocol" [1]
+  local protocol = (settings_protocol or {}).nodeValue
+  
   -- build actions into an array called "_openLuup_ACTIONS_" 
   -- which will be subsequently compiled and linked into the device's services
-  if i.actionList and i.actionList.action then
-    actions = build_action_tags (i.actionList.action)
+  local action_list = {}
+  for act in implementation: xpathIterator "//actionList/action" do
+    local action = {}
+    for _,x in ipairs (act.childNodes) do action[x.nodeName] = x.nodeValue end
+    action_list[#action_list+1] = action
   end
-  -- build general <incoming> tag (not job specific ones)
-  if i.incoming and i.incoming.lua then
-    incoming = build_incoming (i.incoming.lua)
-  end
+  local actions = build_action_tags (action_list)
+  
   -- 2016.03.19  determine the order of <files> and <functions> tags
   raw_xml = raw_xml or ''
   local file_pos = raw_xml:find "<files>" or 0
   local func_pos = raw_xml:find "<functions>" or 0
   local files_first = file_pos < func_pos   
   
-  -----
+  ----------
   --
   -- 2018.03.17 from @explorer: ZeroBrane debugging support:
-  -- determine the number of line breaks in the XML before functions start and insert them in front of the functions
-  -- to help debugger’s current position when going through the code from I_device.xml
-  if i.functions then
-    local _, line_count = string.gsub( raw_xml:sub(0, func_pos), "\n", "")
-    i.functions = string.rep("\n", line_count) .. i.functions
-  end
+  -- determine the number of line breaks in the XML before functions start and insert them in front
+  -- of the functions to help debugger’s current position when going through the code from I_device.xml
+  local functions = i.functions or ''
+  local _, line_count = string.gsub( raw_xml:sub(0, func_pos), "\n", "")
+  functions = string.rep("\n", line_count) .. functions
   --
-  -----
+  ----------
   
   -- load 
   local loadList = {}   
-  if not files_first then loadList[#loadList+1] = i.functions end   -- append any xml file functions
-  if i.files then 
-    for fname in (i.files or ''):gmatch "[%w%_%-%.%/%\\]+" do
-      loadList[#loadList+1] = raw_read (fname)          -- 2016.02.23 not much point in caching .lua files
-    end
-  end   
-  if files_first then loadList[#loadList+1] = i.functions end   -- append any xml file functions
+  local files = i.files or ''
+  if not files_first then loadList[#loadList+1] = functions end   -- append any xml file functions
+  for fname in files:gmatch "[%w%_%-%.%/%\\]+" do
+    loadList[#loadList+1] = raw_read (fname)          -- 2016.02.23 not much point in caching .lua files
+  end
+  
+  if files_first then loadList[#loadList+1] = functions end     -- append any xml file functions
   loadList[#loadList+1] = actions                               -- append the actions for jobs
   loadList[#loadList+1] = incoming                              -- append the incoming data handler
   local source_code = table.concat (loadList, '\n')             -- concatenate the code
 
   return {
-    handle_children = i.handleChildren,                 -- 2018.03.13
-    protocol    = i.settings and i.settings.protocol,   -- may be defined here, but more normally in device file
+    handle_children = i.handlechildren,     -- 2018.03.13
+    protocol    = protocol,                 -- may be defined here, but more normally in device file
     source_code = source_code,
     startup     = i.startup,
-    files       = i.files,                              -- 2018.03.17  ZeroBrane debugging support
-    actions     = actions,                              -- 2018.04.22  added for /data_request?id=lua
+    files       = files,                    -- 2018.03.17  ZeroBrane debugging support
+    actions     = actions,                  -- 2018.04.22  added for /data_request?id=lua
   }
 end
 
 -- read and parse implementation file, if present
 local function read_impl (impl_file)
-  local info = {}
+  if impl_file == 'X' then return {}, '' end  -- special no-op name used by VeraBridge
+
+  local info
   -- 2016.03.19  NOTE: that xml_read returns TWO parameters: a table structure AND the raw xml text
-  if impl_file and impl_file ~= 'X' then info =  parse_impl_xml (xml_read (impl_file)) end
-  return info
+  local x, raw = xml_read (impl_file)   -- raw contains error message if x is nil
+  if x then 
+    info = parse_impl_xml (x, raw) 
+  end
+  return info, raw
 end
+
+-- SERVICES
 
 -- parse service files
 local function parse_service_xml (service_xml)
   
-  -- 2018.04.24 replace 'extract' code in xml module
-  local actions, variables = {}, {}
-  local scpd = service_xml.scpd   
-  if scpd then
-    actions = (scpd.actionList or {}).action or actions
-    variables = (scpd.serviceStateTable or {}).stateVariable or variables
-  end
+  local scpd = xml.documentElement (service_xml, "scpd") -- , "urn:schemas-upnp-org:service-1-0")
   
-  -- now build the return argument list  {returnName = RelatedStateVariable, ...}
-  -- indexed by action name
-  local returns = {}
-  for _,a in ipairs (actions) do
-    local argument = (a.argumentList or {}).argument    -- 2018.04.24  replace 'extract'
-    local list = {}
-    if type (argument) == "table" then  -- 2016.05.21  fix for invalid argument list in parse_service_xml
-      for _,k in ipairs (argument) do
-        if k.direction: match "out" and k.name and k.relatedStateVariable then
-          list [k.name] = k.relatedStateVariable
+  local variables = {}
+  local short_codes = {}          -- lookup table of short_codes (for use by sdata request)
+  for var in scpd: xpathIterator "//serviceStateTable/stateVariable" do
+    local variable = {}
+    for _,x in ipairs (var.childNodes) do variable[x.nodeName] = x.nodeValue end
+    if variable.name then
+      variables[#variables+1] = variable
+      short_codes[variable.name] = variable.shortCode
+    end
+  end
+ 
+  -- all the service actions
+  local actions = {}
+  
+  for act in scpd: xpathIterator "//actionList/action" do
+    local action = {}
+    for _,x in ipairs (act.childNodes) do action[x.nodeName] = x.nodeValue end
+    if action.name then
+      local argumentList = {}      
+      for arg in act: xpathIterator "//argumentList/argument" do
+        local a = {}
+        for _,x in ipairs (arg.childNodes) do a[x.nodeName] = x.nodeValue end
+        if a.name then
+          argumentList[#argumentList+1] = a
         end
       end
+      action.argumentList = argumentList
+      actions[#actions+1] = action
     end
-    returns[a.name] = list
   end
-  -- now build lookup table of short_codes (for use by sdata request)
-  local short_codes = {}
-  for _,v in ipairs (variables) do
-    short_codes[v.name] = v.shortCode
+
+  -- return arguments {actionName = {returnName = RelatedStateVariable, ...}, ... }
+  local returns = {}
+
+  for _,action in ipairs (actions) do
+    local returnsList
+    for _,a in ipairs (action.argumentList) do
+      local related = a.relatedStateVariable
+      if related and (a.direction or ''): match "out" then
+        returnsList = returnsList or {}
+        returnsList [a.name] = related
+      end
+    end
+    returns[action.name] = returnsList
   end
+  
 
   return {
     actions     = actions,
@@ -502,9 +442,10 @@ end
 -- openLuup only needs the service files to determine the return arguments for actions
 -- the 'relatedStateVariable' tells what data to return for 'out' arguments
 local function read_service (service_file)
-  local info = {}
-  if service_file then info =  parse_service_xml (xml_read (service_file)) end
-  return info
+  local info
+  local x, errmsg = xml_read (service_file)
+  if x then info = parse_service_xml (x) end
+  return info, errmsg
 end
 
 
@@ -531,7 +472,6 @@ local function compile_lua (source_code, name, old)
   local env
   if a then
     env = old or new_environment (name)  -- use existing environment if supplied
---    env.luup = luup                      -- add the global luup table
     env.luup = shallow_copy (luup)       -- add a COPY of the global luup table
     -- ... so that luup.device can be unique for each environment
     setfenv (a, env)                     -- Lua 5.1 specific function environment handling
@@ -553,8 +493,13 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
     return x and x: match "%S+"
   end
 
-  -- read device file, if present  
-  local d = read_device (upnp_file)                
+  -- read device file, if present 
+  local d = {}
+  if non_blank (upnp_file) then
+    local derr
+    d, derr = read_device (upnp_file)   
+    if not d then return d, derr end
+  end
   d.device_type = non_blank (d.device_type) or device_type      --  file overrides parameter
   -- read service files, if referenced, and save service_data
   if d.service_list then
@@ -589,7 +534,9 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   d.impl_file = file                                  -- update file actually used
   local i = {}
   if file then 
-    i = read_impl (file) 
+    local ierr
+    i, ierr = read_impl (file) 
+    if not i then return i, ierr end
   end
 
   -- load and compile the amalgamated code from <files>, <functions>, <actions>, and <startup> tags
@@ -607,16 +554,23 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   -- for code in XML files, keep XML but start XML lines with comments "-- " to match the line number.
 
 --    local name = ("[%d] %s"): format (devNo, file or '?')
-    local name = i.files or file or '?'                  -- 2018.03.17
+    local name = non_blank (i.files) or file or '?'                  -- 2018.03.17
   --
   -----
 
     -- 2018.04.06  wrap compile in context_switch() ...
     do              -- ...to get correct device numbering for sandboxed functions
     
-      local err
-      err, code, error_msg = scheduler.context_switch (devNo,
+      local ok
+      ok, code, error_msg = scheduler.context_switch (devNo,
           compile_lua, i.source_code, name)  -- load, compile, instantiate    
+      if error_msg and ABOUT.DEBUG then
+        local f = io.open ("DUMP_" .. ((name: match "[^%.]+") or "XXX") .. ".lua", 'w')
+        if f then
+          f: write (i.source_code)
+          f: close ()
+        end
+      end
     end
     
     if code then 
@@ -656,7 +610,7 @@ end
 return {
   ABOUT = ABOUT,
 
-  TEST = {xml = xml}, -- the only user of xml.decode() is this loader module
+  TEST = {},
   
   -- tables
   service_data        = service_data,
@@ -676,6 +630,7 @@ return {
   read_json           = read_json,
   
   -- module
-  xml = {encode = xml.encode},        -- decode () is not used externally
+  xml = xml,
   
 }
+

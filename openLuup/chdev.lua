@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.04.05",
+  VERSION       = "2018.06.16",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -45,6 +45,11 @@ local ABOUT = {
 -- 2018.03.18  create default device variables if they have a defaultValue in the service definition
 -- 2018.04.03  add jobs table to device metadata (for status reporting to AltUI)
 -- 2018.04.05  move get/set status from devices to here (more a luup thing, than a device thing)
+-- 2018.05.14  ensure (sub)category numeric (thanks @rafale77)
+-- 2018.05.14  remove pcall from create() to propagate errors
+-- 2018.05.25  tidy attribute coercions
+-- 2018.06.11  don't use impl_file if parent handles actions (thanks @rigpapa)
+-- 2018.06.16  check for duplicate altids in chdev.append()  (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -103,19 +108,18 @@ local function create (x)
   local dev = devutil.new (x.devNo)   -- create the proto-device
   local services = dev.services
   
-  local ok, d, err = pcall (loader.assemble_device, x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
+  local X                             -- 2018.06.11  don't use impl_file if parent handles actions
+  local parent = tonumber (x.parent) or 0
+  local parent_device = luup.devices[parent] or {}
+  if parent_device.handle_children then X = 'X' end         -- use dummy device implementation file
 
-  if not ok then
-    local fmt = "ERROR [%d] %s / %s / %s : %s"
-    local msg = fmt: format (x.devNo, x.upnp_file or x.device_type or '', 
-                                        x.upnp_impl or '', x.json_file or '', d or '?')
-    _log (msg, "luup.create_device")
-    return
-  end
-  if err then _log (err) end
+  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, X or x.upnp_impl, x.json_file)
+
+  d = d or {}
   local fmt = "[%d] %s / %s / %s"
   local msg = fmt: format (x.devNo, x.upnp_file or d.device_type or '', d.impl_file or '', d.json_file or '')
   _log (msg, "luup.create_device")
+  if err then _log (err) end
   
   if d.action_list then
     -- create and set service actions (from implementation file)
@@ -168,12 +172,12 @@ local function create (x)
   dev:attr_set {
     id              = x.devNo,                                          -- device id
     altid           = x.internal_id and tostring(x.internal_id) or '',  -- altid (called id in luup.devices, confusing, yes?)
-    category_num    = x.category_num or d.category_num,     -- 2017.05.10
+    category_num    = tonumber (x.category_num or d.category_num) or 0,     -- 2017.05.10, 2018-05-12
     device_type     = d.device_type or '',
     device_file     = x.upnp_file,
     device_json     = d.json_file,
     disabled        = tonumber (x.disabled) or 0,
-    id_parent       = tonumber (x.parent) or 0,
+    id_parent       = parent,
     impl_file       = d.impl_file,
     invisible       = x.invisible and "1" or "0",   -- convert true/false to "1"/"0"
     local_udn       = UUID,
@@ -194,7 +198,8 @@ local function create (x)
 -- TODO: consider protecting device attributes...
 --  setmetatable (dev.attributes, {__newindex = 
 --          function (_,x) error ("ERROR: attempt to create new device attribute "..x,2) end})
-  
+ 
+-- Note: that all the entries in dev.attributes already have the right type, so no need for coercions...
   local luup_device =     -- this is the information that appears in the luup.devices table
     {
       category_num        = a.category_num,
@@ -208,8 +213,8 @@ local function create (x)
       ip                  = a.ip,
       mac                 = a.mac,
       pass                = a.password or '',
-      room_num            = tonumber (a.room),
-      subcategory_num     = tonumber (a.subcategory_num),
+      room_num            = a.room,
+      subcategory_num     = a.subcategory_num,
       udn                 = a.local_udn,
       user                = a.username or '',    
     }
@@ -282,6 +287,8 @@ local function create_device (
   return devNo, dev
 end
 
+----------------------------------------
+--
 -- Module: luup.chdev
 --
 -- Contains functions for a parent to synchronize its child devices. 
@@ -311,7 +318,8 @@ local function start (device)
       old[dev.id] = devNo
     end
   end
-  return {old = old, new = {}, reload = false}      -- lists of existing and new child devices
+  -- 2018.06.16  add list of seen altids
+  return {old = old, new = {}, seen = {}, reload = false}      -- lists of existing and new child devices
 end
 
 -- function: append
@@ -332,6 +340,11 @@ end
 local function append (device, ptr, altid, description, device_type, device_filename, 
   implementation_filename, parameters, embedded, invisible, room) 
   _log (("[%s] %s"):format (altid or '?', description or ''), "luup.chdev.append")
+  
+  -- 2018.06.16  check for duplicate altids (thanks @rigpapa)
+  assert (not ptr.seen[altid], "duplicate altid in chdev.append()")  -- no return status, so raise error
+  ptr.seen[altid] = true
+ 
   if ptr.old[altid] then 
     ptr.old[altid] = nil        -- it existed already
   else
@@ -374,6 +387,9 @@ local function sync (device, ptr, no_reload)
   end
   return ptr.reload
 end
+
+--
+----------------------------------------
 
 
 -- return the methods

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2018.04.16",
+  VERSION       = "2018.05.16",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -52,6 +52,7 @@ local ABOUT = {
 -- 2018.01.30   cancel timer jobs on scene delete, round next scene run time, etc..
 -- 2018.02.19   add log messages for scene cancellation by global and local Lua code
 -- 2018.04.16   remove scene watcher callback, now redundant with scene finalizers
+-- 2018.05.16   correct next run time (thanks to @rafale77 for diagnosis and suggestions)
 
 
 local logs      = require "openLuup.logs"
@@ -154,6 +155,10 @@ local function create (scene_json)
   
   local function scene_runner (t, next_time)              -- called by timer, trigger, or manual run
     local lul_trigger, lul_timer
+    if t and next_time then           -- 2018.05.16  update the next scheduled time...
+      t.next_run = next_time          -- ...regardless of whether or not it runs this time (thanks @rafale77)
+      devutil.new_userdata_dataversion ()         -- increment version, so that display updates
+    end
     if not runs_in_current_mode (scene) then 
       _log (scene.name .. " does not run in current House Mode")
       return 
@@ -205,7 +210,7 @@ local function create (scene_json)
     local runner = "command"
     if t then
       t.last_run = scene.last_run             -- timer or trigger specific run time
-      t.next_run = next_time                  -- only non-nil for timers
+--      t.next_run = next_time                  -- only non-nil for timers
       runner = (t.name ~= '' and t.name) or '?'
     end
     
@@ -258,7 +263,6 @@ local function create (scene_json)
   end
 
   -- delete any actions which refer to non-existent devices
-  -- also, add listeners to the device AND service to watch for changes
   -- also, remove any triggers related to unknown devices
   -- also, add warning message trigger to any scene with triggers  -- 2017.08.08
   local function verify ()
@@ -268,11 +272,7 @@ local function create (scene_json)
       for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
         local a = actions[i]
         local dev = luup.devices[tonumber(a.device)]
-        if dev then
---          local silent = true     -- don't log watch callbacks
---          local name = "_scene" .. scene.id
---          devutil.variable_watch (dev, scene_watcher, a.service, nil, name, silent) -- NB: ALL variables in service
-        else
+        if not dev then
           table.remove (actions,i)
         end
       end      

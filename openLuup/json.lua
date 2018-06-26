@@ -33,7 +33,7 @@ local ABOUT = {
   local default   = 
     {
       huge = "8.88e888",          -- representation for JSON infinity (looks like infinity symbols on their side)
-      max_array_length = 1000,    -- not a coding restriction, per se, just a sanity check against, eg {[1e6] = 1}
+      max_array_length = 2000,    -- not a coding restriction, per se, just a sanity check against, eg {[1e6] = 1}
                                   -- since arrays are enumerated from starting index 1 with every intervening 'nil' 
     }
     

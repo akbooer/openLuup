@@ -4,13 +4,14 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2017.02.21",
+  VERSION       = "2018.06.23",
   DESCRIPTION   = "WSAPI CGI interface to Graphite-API",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "",
+  DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -26,57 +27,71 @@ ABOUT = {
 ]]
 }
 
+-- 2016.02.10  translated from Python original... see below
 -- 2016.10.10  check for blank Whisper or dataMine directories in storage_find
 -- 2016.10.20  add context parameter to treejson response (thanks @ronluna)
 -- 2016.10.24  ensure DataYours instance is the LOCAL one!!
 
--- CGI implementation of Graphite API
-local url     = require "socket.url"
-local luup    = require "openLuup.luup"
-local json    = require "openLuup.json"
+-- 2018.06.02  modifications to include openLuup's Data Historian
+-- 2018.06.03  use timer module utility functions
+-- 2018.06.05  round json render time to 1 second (no need for more in Grafana)
+-- 2018.06.10  return error if no target for /render
+-- 2018.06.12  remove dependency on DataGraphiteAPI
+-- 2018.06.23  add Historian.DataYours parameter to override DataYours finder
 
-local graphite_api  = require "L_DataGraphiteAPI"
-local finders       = require "L_DataFinders"
---local datarender    = require "L_DataRender"
+
+-- CGI implementation of Graphite API
+
+--[[
+
+Graphite_API 
+
+  "Graphite-web, without the interface. Just the rendering HTTP API.
+   This is a minimalistic API server that replicates the behavior of Graphite-web."
+
+see:
+  https://github.com/brutasse/graphite-api
+  https://github.com/brutasse/graphite-api/blob/master/README.rst
+
+with great documentation at:
+  http://graphite-api.readthedocs.org/en/latest/
+  
+  "Graphite-API is an alternative to Graphite-web, without any built-in dashboard. 
+   Its role is solely to fetch metrics from a time-series database (whisper, cyanite, etc.)
+   and rendering graphs or JSON data out of these time series. 
+   
+   It is meant to be consumed by any of the numerous Graphite dashboard applications."
+   
+
+Originally written in Python, I've converted some parts of it into Lua with slight tweaks 
+to interface to the DataYours implementation of Carbon / Graphite.
+
+It provides sophisticated searches of the database and the opportunity to link to additional databases.
+I've written a finder specifically for the dataMine database, to replace the existing dmDB server.
+
+@akbooer,  February 2016
+
+--]]
+
+local url       = require "socket.url"
+local luup      = require "openLuup.luup"
+local json      = require "openLuup.json"
+
+local historian = require "openLuup.historian"
+local timers    = require "openLuup.timers"
+
+local isFinders, finders = pcall (require, "L_DataFinders")  -- only present if DataYours there
+
 
 local storage   -- this will be the master storage finder
                 -- federating Whisper and dataMine databases (and possibly others)
 
 local _log      -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
-local LOCAL_DATA_DIR      -- location of Whisper database
-local DATAMINE_DIR        -- location of DataMine database
-
 
 --
 -- TIME functions
 
-local function ISOdateTime (unixTime)       -- return ISO 8601 date/time: YYYY-MM-DDThh:mm:ss
-  return os.date ("%Y-%m-%dT%H:%M:%S", unixTime)
-end
-
-local function UNIXdateTime (time)          -- return Unix time value for ISO date/time extended-format...   
---  if string.find (time, "^%d+$") then return tonumber (time) end
-  local field   = {string.match (time, "^(%d%d%d%d)-?(%d?%d?)(-?)(%d?%d?)T?(%d?%d?):?(%d?%d?):?(%d?%d?)") }
-  if #field == 0 then return end
-  local name    = {"year", "month", "MDsep", "day", "hour", "min", "sec"}
-  local default = {0, 1, '-', 1, 12, 0, 0}
-  if #field[2] == 2 and field[3] == '' and #field[4] == 1 then  -- an ORDINAL date: year-daynumber
-    local base   = os.time {year = 2000, month = 1, day = 1}
-    local offset = ((field[2]..field[4]) -1) * 24 * 60 * 60
-    local fixed  = os.date ("*t", base + offset)
-    field[2] = fixed.month
-    field[4] = fixed.day
-  end
-  local datetime = {}
-  for i,j in ipairs (name) do
-    if not field[i] or field[i] == ''
-      then datetime[j] = default[i]
-      else datetime[j] = field[i]
-    end
-  end
-  return os.time (datetime)
-end
 
 --TODO: Graphite format times
 
@@ -90,7 +105,7 @@ local function relativeTime  (time, now)     -- Graphite Render URL syntax, rela
 end
 
 local function getTime (time)                        -- convert relative or ISO 8601 times as necessary
-  if time then return relativeTime (time) or UNIXdateTime(time) end
+  if time then return relativeTime (time) or timers.util.ISOdate2epoch (time) end
 end
 
 
@@ -114,114 +129,26 @@ end
 
 
 -----------------------------------
+--
+-- The Metrics API
+--
+-- These API endpoints are useful for finding and listing metrics available in the system.
+--
+
+-- format: The output format to use. Can be completer or treejson [default]
 
 --[[
-The Metrics API
+/metrics/find/?format=treejson&query=stats.gauges.*
 
-These API endpoints are useful for finding and listing metrics available in the system.
-/metrics/find
-
-Finds metrics under a given path. Other alias: /metrics.
-
-Example:
-
-GET /metrics/find?query=collectd.*
-
-{"metrics": [{
-    "is_leaf": 0,
-    "name": "db01",
-    "path": "collectd.db01."
-}, {
-    "is_leaf": 1,
-    "name": "foo",
-    "path": "collectd.foo"
-}]}
-
-GET /metrics/find/?format=treejson&query=stats.gauges.*
-
-gives:
-
-[{"leaf": 0, "context": {}, "text": "echo_server", 
-     "expandable": 1, "id": "stats.gauges.echo_server", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "logstash",
-     "expandable": 1, "id": "stats.gauges.logstash", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "server0",
-     "expandable": 1, "id": "stats.gauges.server0", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "server1", 
-     "expandable": 1, "id": "stats.gauges.server1", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "stats", 
-     "expandable": 1, "id": "stats.gauges.stats", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "statsd", 
-     "expandable": 1, "id": "stats.gauges.statsd", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "vamsi", 
-     "expandable": 1, "id": "stats.gauges.vamsi", "allowChildren": 1},
- {"leaf": 0, "context": {}, "text": "vamsi-server",
-     "expandable": 1, "id": "stats.gauges.vamsi-server", "allowChildren": 1}
-]
-
-GET /metrics/find/?query=*
-[{"text": "DEV", "expandable": 1, "leaf": 0, "id": "DEV", "allowChildren": 1},yadda...
-
-
-Parameters:
-
-query (mandatory)
-    The query to search for.
-format
-    The output format to use. Can be completer (default) [AKB: docs are WRONG!] or treejson.
-wildcards (0 or 1)
-    Whether to add a wildcard result at the end or no. Default: 0.
-from
-    Epoch timestamp from which to consider metrics.
-until
-    Epoch timestamp until which to consider metrics.
-jsonp (optional)
-    Wraps the response in a JSONP callback.
-
-/metrics/expand
-
-Expands the given query with matching paths.
-
-Parameters:
-
-query (mandatory)
-    The metrics query. Can be specified multiple times.
-groupByExpr (0 or 1)
-    Whether to return a flat list of results or group them by query. Default: 0.
-leavesOnly (0 or 1)
-    Whether to only return leaves or both branches and leaves. Default: 0
-jsonp (optional)
-    Wraps the response in a JSONP callback.
-
-/metrics/index.json
-
-Walks the metrics tree and returns every metric found as a sorted JSON array.
-
-Parameters:
-
-jsonp (optional)
-    Wraps the response in a jsonp callback.
-
-Example:
-
-GET /metrics/index.json
-
-[
-    "collectd.host1.load.longterm",
-    "collectd.host1.load.midterm",
-    "collectd.host1.load.shortterm"
-]
-
+    [{"leaf": 0, "context": {}, "text": "echo_server", 
+         "expandable": 1, "id": "stats.gauges.echo_server", "allowChildren": 1},
+     {"leaf": 0, "context": {}, "text": "vamsi", 
+         "expandable": 1, "id": "stats.gauges.vamsi", "allowChildren": 1},
+     {"leaf": 0, "context": {}, "text": "vamsi-server",
+         "expandable": 1, "id": "stats.gauges.vamsi-server", "allowChildren": 1}
+    ]
 
 --]]
-
-local function unknown (env)
-  return "Not Implemented: " .. env.SCRIPT_NAME, 501
-end
-
--- format: The output format to use. Can be completer (default) [AKB: docs are WRONG!] or treejson.
-  -- 2016.10.20 resolved doubt as to which IS the default!  Grafana needs treejson, it IS treejson
-
 local function treejson (i)
   return {
     allowChildren = i.is_leaf and 0 or 1,
@@ -233,6 +160,20 @@ local function treejson (i)
     }
 end
 
+--[[
+/metrics/find?format=treejson&query=collectd.*
+
+    {"metrics": [{
+        "is_leaf": 0,
+        "name": "db01",
+        "path": "collectd.db01."
+    }, {
+        "is_leaf": 1,
+        "name": "foo",
+        "path": "collectd.foo"
+    }]}
+
+--]]
 local function completer (i)
   return {
     is_leaf = i.is_leaf and 1 or 0,
@@ -241,6 +182,20 @@ local function completer (i)
     }
 end
 
+--[[
+/metrics/find/?query=*    - Finds metrics under a given path.
+/metrics?query=*          - Other alias.
+
+Parameters:
+
+  query (mandatory)     - The query to search for.
+  format                - The output format. Can be completer or treejson (default).
+  wildcards (0 or 1)    - Whether to add a wildcard result at the end or no. Default: 0.
+  from                  - Epoch timestamp from which to consider metrics.
+  until                 - Epoch timestamp until which to consider metrics.
+  jsonp (optional)      - Wraps the response in a JSONP callback.
+
+--]]
 local function metrics_find (_, p)
   local metrics, errors = {}, {}
 
@@ -262,6 +217,17 @@ local function metrics_find (_, p)
   return jsonify (metrics, 200,  nil, p.jsonp)
 end
 
+--[[
+/metrics/expand   - Expands the given query with matching paths.
+
+Parameters:
+
+  query (mandatory)     - The metrics query. Can be specified multiple times.
+  groupByExpr (0 or 1)  - Whether to return a flat list of results or group them by query. Default: 0.
+  leavesOnly (0 or 1)   - Whether to only return leaves or both branches and leaves. Default: 0
+  jsonp (optional)      -Wraps the response in a JSONP callback.
+
+--]]
 local function metrics_expand (_, p)
   local metrics, errors = {}, {}
   local leavesAndBranches = not (p.leavesOnly == "1")
@@ -282,7 +248,22 @@ local function metrics_expand (_, p)
 
 end
 
-local function metrics_index (_, p)
+--[[
+/metrics/index.json   - Walks the metrics tree and returns every metric found as a sorted JSON array.
+
+Parameters:
+  jsonp (optional)      - Wraps the response in a jsonp callback.
+
+Example:
+  GET /metrics/index.json
+
+    [
+        "collectd.host1.load.longterm",
+        "collectd.host1.load.midterm",
+        "collectd.host1.load.shortterm"
+    ]
+--]]
+local function metrics_index_json (_, p)
   local index = {}
   local search = '*'
   repeat
@@ -347,6 +328,11 @@ local function jsonRender (_, p)
   --    [6.0, 1311836012]
   --  ]
   --}]
+  
+  if ABOUT.DEBUG then _log ("RENDER: ", (json.encode(p))) end
+  
+  -- the data structure is not very complex, and it's far more efficient to generate this directly
+  -- than first building a Lua table and then converting it to JSON.  So that's what this does.
   local data = {'[',''}
   for _,target in ipairs (p.target) do
     for node in storage.find (target) do
@@ -355,11 +341,10 @@ local function jsonRender (_, p)
         data[#data+1] = '{'
         data[#data+1] = '  "target": "'.. node.path ..'",'
         data[#data+1] = '  "datapoints": ['
-        local n = tv.values.n or 0
-        local nocomma = {[n] = ''}
-        for i, v,t in tv:ipairs() do
-          data[#data+1] = table.concat {'  [', v or 'null', ', ', t, ']', nocomma[i] or ','}
+        for _, v,t in tv:ipairs() do
+          data[#data+1] = table.concat {'  [', v or 'null', ', ', math.floor(t), ']', ','}
         end
+        data[#data] = data[#data]: gsub(',$','')    -- 2018.06.05  remove final comma, if present
         data[#data+1] = '  ]'
         data[#data+1] = '}'
       end
@@ -371,9 +356,8 @@ local function jsonRender (_, p)
 end
 
 local function svgRender ()
-  -- this is just a dummy stub, until DataGraph is re-engineered.
-  -- The empty response is just sufficient for Grafana to recognise
-  -- that a graphite_api server is available, thereafter it uses its own rendering.
+  -- The empty response is just sufficient for Grafana to recognise that a 
+  -- graphite_api server is available, thereafter it uses its own rendering.
   return "[]", 200, {["Content-Type"] = "application/json"}
 end
 
@@ -382,17 +366,22 @@ end
 
 local function render (env, p)
 
+  local errors = {}           -- 2018.06.10 return error if no target for /render
+  if not p.target then
+      errors['query'] = 'this parameter is required.'
+  end
+  if next (errors) then
+      return jsonify({errors = errors}, 400, nil, p.jsonp)
+  end
+
   local now = os.time()
   p["from"]  = getTime (p["from"])  or now - 24*60*60  -- default to 24 hours ago
   p["until"] = getTime (p["until"]) or now
   
   local format = p.format or "svg"
---  local reportStyle = {csv = csvRender, svg = datarender.svg, json = jsonRender}
   local reportStyle = {csv = csvRender, svg = svgRender, json = jsonRender}
   return (reportStyle[format] or svgRender) (env, p, storage)
 end
-
-
 
 
 -- dispatch table
@@ -402,7 +391,7 @@ local dispatch = {
   ["/metrics"]             = metrics_find,
   ["/metrics/find"]        = metrics_find,
   ["/metrics/expand"]      = metrics_expand,
-  ["/metrics/index.json"]  = metrics_index,
+  ["/metrics/index.json"]  = metrics_index_json,
   ["/render"]              = render,
 }
 
@@ -476,6 +465,10 @@ end
 --
 
 function run (wsapi_env)
+
+  local function unknown (env)
+    return "Not Implemented: " .. env.SCRIPT_NAME, 501
+  end
   
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
   
@@ -502,17 +495,36 @@ end
 
 
 -----------------------------------
-
+--
 -- STARTUP
+--
+
+  -- Store()
+  -- low-functionality version of Graphite API Store module
+  -- assumes no identical paths from any of the finders (they all have their own branches) 
+  local function Store (finders)
+    local function find (pattern)
+      for _,finder in ipairs (finders) do
+        for node in finder.find_nodes {pattern = pattern} do    -- minimal FindQuery structure
+          coroutine.yield (node)
+        end
+      end
+    end
+    -- Store()
+    return {find =     -- find is an iterator which yields nodes
+        function(x) 
+          return coroutine.wrap (function() find(x) end)
+        end
+      }
+  end
 
 
--- find LOCAL_DATA_DIR and DATAMINE_DIR in the DataYours device
-local function find_whisper_database ()
+  -- find LOCAL_DATA_DIR and DATAMINE_DIR in the DataYours device
+  local LOCAL_DATA_DIR, DATAMINE_DIR
   local dy = {
     type = "urn:akbooer-com:device:DataYours:1",
     sid  = "urn:akbooer-com:serviceId:DataYours1",
   }
-  local LOCAL_DATA_DIR, DATAMINE_DIR
   for i,d in pairs (luup.devices) do
     if d.device_type == dy.type 
     and d.device_num_parent == 0 then  -- 2016.10.24
@@ -521,39 +533,34 @@ local function find_whisper_database ()
       break
     end
   end
-  return LOCAL_DATA_DIR, DATAMINE_DIR
-end
 
+  -- get historian config
+  local history = luup.attr_get "openLuup.Historian" or {}
 
-local function storage_find (ROOT, MINE)
-    
+  -- create a configuration for the various finders  
   local config = {
-    
     whisper = {
-      directories = {ROOT} 
+      directories = {LOCAL_DATA_DIR},
     },
-    
     datamine = {
-      directories = {MINE} ,
+      directories = {DATAMINE_DIR} ,
       maxpoints = 2000,
       vera = "Vera-00000000",
     },
-    
+    historian = history,
   }
   
-  local Wfinder, Dfinder
-  if ROOT ~= '' then Wfinder = finders.whisper.WhisperFinder (config) end
-  if MINE ~= '' then Dfinder = finders.datamine.DataMineFinder (config) end
-  return graphite_api.storage.Store {Wfinder, Dfinder}
-end
+  local Finders = {historian.finder (config) }     -- 2018.06.02  Data Historian's own finder
 
-
-LOCAL_DATA_DIR, DATAMINE_DIR = find_whisper_database ()
-
-if not LOCAL_DATA_DIR then
- error "LOCAL_DATA_DIR not found" 
-end
-
-storage = storage_find (LOCAL_DATA_DIR, DATAMINE_DIR)
+  if isFinders then   -- if DataYours is installed, then add its finders if not already handled
+    if not history.DataYours and (LOCAL_DATA_DIR ~= '') then
+      Finders[#Finders + 1] = finders.whisper.WhisperFinder (config)
+    end
+    if (DATAMINE_DIR ~= '') then
+      Finders[#Finders + 1] = finders.datamine.DataMineFinder (config)
+    end
+  end
+  
+  storage = Store (Finders)    --  instead of DataYours graphite_api.storage.Store()
 
 -----

@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.04.25",
+  VERSION       = "2018.06.23",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -39,6 +39,9 @@ ABOUT = {
 -- 2018.04.14  add Images menu
 -- 2018.04.15  add Trash menu
 -- 2018.04.19  add Servers UDP menu
+-- 2018.05.15  add Historian menu
+-- 2018.05.19  use openLuup ABOUT, not console
+-- 2018.05.28  add Files HistoryDB menu
 
 
 -- TODO: HTML pages with sorted tables?
@@ -56,6 +59,10 @@ local http      = require "openLuup.http"
 local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
+local hist      = require "openLuup.historian"    -- for disk archive stats   
+local timers    = require "openLuup.timers"       -- for startup time
+
+local isWhisper, whisper = pcall (require, "L_DataWhisper")   -- might not be installed
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -132,6 +139,17 @@ prefix = [[
         <div class="dropdown-content">
           <a class="left" href="/console?page=about">About</a>
           <a class="left" href="/console?page=parameters">Parameters</a>
+          <a class="left" href="/console?page=historian">Historian</a>
+        </div>
+      </div>
+
+      <div class="dropdown">
+        <button class="dropbtn">Files</button>
+        <div class="dropdown-content">
+          <a class="left" href="/console?page=backups">Backups</a>
+          <a class="left" href="/console?page=images">Images</a>
+          <a class="left" href="/console?page=database">History DB</a>
+          <a class="left" href="/console?page=trash">Trash</a>
         </div>
       </div>
 
@@ -169,19 +187,11 @@ prefix = [[
           <a class="left" href="/console?page=log&version=startup">Startup Log</a>
         </div>
       </div>
-
-      <div class="dropdown">
-        <button class="dropbtn">Files</button>
-        <div class="dropdown-content">
-          <a class="left" href="/console?page=backups">Backups</a>
-          <a class="left" href="/console?page=images">Images</a>
-          <a class="left" href="/console?page=trash">Trash</a>
-        </div>
-      </div>
-    </div>
     
-    <div class="content">
-    <pre>
+  </div>
+
+  <div class="content">
+  <pre>
 ]],
 --     <div style="overflow:scroll; height:500px;">
 
@@ -318,7 +328,21 @@ function run (wsapi_env)
     end
   end
   
+  -- map action function onto files
+  local function mapFiles (path, action)
+    local files = {}
+    for name in lfs.dir (path) do
+      local attr = lfs.attributes (path .. name) or {}
+      attr.path = path
+      attr.name = name
+      attr.size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))  -- round to kB
+      files[#files+1] = action (attr)
+    end
+    return files
+  end
+  
   -- returns specified file in a list of tables {date=x, name=y, size=z}
+  -- TODO: switch to using above mapFiles() function
   local function get_matching_files_from (folder, pattern)
     local files = {}
     for f in lfs.dir (folder) do
@@ -400,7 +424,9 @@ function run (wsapi_env)
   local function devname (d)
     d = tonumber(d) or 0
     local name = (luup.devices[d] or {}).description or 'system'
-    return table.concat {'[', d, '] ', name: match "^%s*(.+)"}
+    name = name: match "^%s*(.+)"
+    local number = table.concat {'[', d, '] '}
+    return number .. name, number, name
   end
 
   local function printConnections (iprequests)
@@ -641,9 +667,115 @@ function run (wsapi_env)
     print ''
   end
   
+  -- compares corresponding elements of array
+  local function keysort (a,b) 
+    a, b = a.sortkey, b.sortkey
+    local function lt (i)
+      local x,y = a[i], b[i]
+      if not  y then return false end
+      if not  x then return true  end
+      if x <  y then return true  end
+      if x == y then return lt (i+1) end
+      return false
+    end
+    return lt(1)
+  end
+
+  local function historian ()
+    local N = 0
+    local H = {}
+    for _,d in pairs (luup.devices) do
+      for _,v in ipairs (d.variables) do 
+        N = N + 1 
+        if v.history and #v.history > 2 then
+          H[#H+1] = {v = v, sortkey = {v.dev, v.shortSid, v.name}}
+        end
+      end
+    end
+     
+    local layout = "    %8s  %10s%-28s %-20s %s"
+    local T = 0
+    table.sort (H, keysort)
+    for i, x in ipairs(H) do
+      local v = x.v
+      local h = #v.history / 2
+      T = T + h
+      local _, number, name = devname(v.dev)
+      H[i] =  layout:format (h, number, name, v.srv: match "[^:]+$" or v.srv, v.name)
+    end
+    
+    print ("Data Historian Cache Memory, " .. os.date(date))
+    print ("\n  Total number of device variables: " .. N)
+    print ("\n  Variables with History: " .. #H)
+    print ''
+    print (layout: format ("#points", "device ", "name", "service", "variable \n"))
+    print (table.concat (H,'\n'))
+    print ("\n  Total number of history points:", T)
+  end
+  
+  
+  local function database ()
+    local folder = luup.attr_get "openLuup.Historian.Directory"
+    
+    print ("Data Historian Disk Database, " .. os.date(date))
+    
+    if not (folder and isWhisper) then
+      print "\n  On-disk archiving not enabled"
+      return
+    end
+    
+    -- stats
+    local s = hist.stats
+    local tot, cpu, wall = s.total_updates, s.cpu_seconds, s.elapsed_sec
+    
+    local cpu_rate   = cpu / tot * 1e3
+    local wall_rate  = wall / tot * 1e3
+    local write_rate = 60 * tot / (timers.timenow() - timers.loadtime)
+    
+    print ''
+    local stats = "   updates/min: %0.1f,  time/point: %0.1f ms (cpu: %0.1f ms),  directory: %s"
+    print (stats: format (write_rate, wall_rate, cpu_rate, folder))
+    
+    local tally = hist.tally        -- here's the historian's stats on individual file updates
+    
+    local files = mapFiles (folder, 
+      function (a)        -- file attributes including path, name, size,... (see lfs.attributes)
+        local filename = a.name: match "^(.+).wsp$"
+        if filename then
+         local n,d,s,v = filename: match "(%d+)%.(%d+)%.([%w_]+)%.(.+)"  -- dev.svc.var, for sorting
+          a.sortkey = {tonumber(n), tonumber(d), s, v}
+          local i = whisper.info (folder .. a.name)
+          a.shortName = filename
+          a.retentions = tostring(i.retentions) -- text representation of archive retentions
+          a.updates = tally[filename] or ''
+          return a
+        end
+      end)
+    
+    table.sort (files, keysort)
+    
+    local list = " %40s %8s %4s  %8s   %s"
+    print ''
+    print (list:format ("archives", "size", "(kB)", "#updates", "filename (node.dev.srv.var) \n"))
+    local N,T = 0,0
+    for _,f in ipairs (files) do 
+      N = N + 1
+      T = T + f.size
+      print (list:format (f.retentions, f.size, '', f.updates, f.shortName)) 
+    end
+    T = T / 1000;
+    
+    print ''
+    print (list:format ("TOTALS:    database files: " .. N, T - T % 0.1, "(Mb)", tot, ''))
+  end
+  
+  
+  local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
+  
   local pages = {
-    about   = function () for a,b in pairs (ABOUT) do print (a .. ' : ' .. b) end end,
+    about   = function () for a,b in pairs (ABOUTopenLuup) do print (a .. ' : ' .. tostring(b)) end end,
     backups = backups,
+    database = database,
     delays  = function () listit (dlist, "Delayed Callbacks") end,
     images  = images,
     jobs    = function () listit (jlist, "Scheduled Jobs") end,
@@ -657,6 +789,8 @@ function run (wsapi_env)
     sandbox = sandbox,
     trash   = trash,
     udp     = udplist,
+    
+    historian   = historian,
     
     uncompress      = uncompress,
     uncompressform  = uncompressform,

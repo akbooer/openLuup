@@ -134,6 +134,7 @@ local function parse_parameters (query)
   local p = {}
   for n,v in query: gmatch "([%w_]+)=([^&]*)" do          -- parameters separated by unescaped "&"
     if v ~= '' then p[n] = url.unescape(v) end            -- now can unescape parameter values
+    -- TODO: should non-blank parameters also be added from URL line?
   end
   return p
 end

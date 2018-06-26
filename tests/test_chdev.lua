@@ -3,19 +3,19 @@ local t = require "tests.luaunit"
 
 -- openLuup.chdev TESTS
 
-local luup = {}   -- luup is not really there.
+luup = luup or {}   -- luup is not really there.
 
 --
 -- DEVICE CREATE
 --
-local d = require "openLuup.chdev"
+local chdev = require "openLuup.chdev"
 
 TestChdevDevice = {}     -- low-level device tests
 
 function TestChdevDevice:setUp ()
   local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
   self.devType = devType
-  self.d0 = d.create {
+  self.d0 = chdev.create {
     devNo = 0, 
     device_type = devType, 
     statevariables =
@@ -68,12 +68,15 @@ function TestChdevDevice:test_create ()
 end
 
 function TestChdevDevice:test_create_with_file ()
-  local x = d.create {
+  local x = chdev.create {
       devNo = 42, 
       description = "Test", 
-      upnp_file = "D_Test.xml",
-    }
+      upnp_file = "D_VeraBridge.xml",   -- this file is preloaded in the vfs cache
+    };
   t.assertIsTable (x)
+  t.assertEquals (x.description, "Test")
+  t.assertEquals (x.category_num, 1)
+  t.assertEquals (x.device_type, "VeraBridge")
 end
 
 function TestChdevDevice:test_created_get ()    -- see if the ones defined initially are there
@@ -93,7 +96,7 @@ TestChdevAttributes = {}
 function TestChdevAttributes:setUp ()
   local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
   self.devType = devType
-  self.d0 = d.create {
+  self.d0 = chdev.create {
       devNo = 0, 
       device_type = devType
     }
@@ -141,7 +144,7 @@ TestChdevVariables = {}
 function TestChdevVariables:setUp ()
   local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
   self.devType = devType
-  self.d0 = d.create {
+  self.d0 = chdev.create {
       devNo = 0, 
       device_type = devType
     }
@@ -181,7 +184,7 @@ TestChdevOtherMethods = {}
 function TestChdevOtherMethods:setUp ()
   local devType = "urn:schemas-micasaverde-com:device:HomeAutomationGateway:1"
   self.devType = devType
-  self.d0 = d.create {
+  self.d0 = chdev.create {
       devNo = 0, 
       device_type = devType
     }

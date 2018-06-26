@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.05.01",
+  VERSION       = "2018.06.25",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -39,6 +39,10 @@ local ABOUT = {
 -- see: http://forum.micasaverde.com/index.php/topic,16166.0.html
 -- and: http://blog.abodit.com/2013/02/variablewithhistory-making-persistence-invisible-making-history-visible/
 -- 2018.05.01  use millisecond resolution time for variable history (luup.variable_get truncates this)
+-- 2018.05.25  use circular buffer for history cache, add history meta-functions, history watcher
+-- 2018.06.01  add shortSid to variables, for historian
+-- 2018.06.22  make history cache default for all variables
+-- 2018.06.25  add shortSid to service object
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -65,12 +69,126 @@ local device_list  = {}         -- internal list of devices
 
 local sys_watchers = {}         -- list of system-wide (ie. non-device-specific) watchers
 
+local history_watchers = {}     -- for data historian watchers
+
+local CacheSize = 1000          -- default value over-ridden by initalisation configuration
+
 -----
 --
 -- VARIABLE object 
 -- 
--- Note that there is no "get" function, object variables can be read directly (but setting should use the method)
+-- Note that there is no "get" function (except for metahistory methods), 
+-- object variables can be read directly (but setting MUST use the method)
 --
+
+-- metahistory methods are shared between all variable instances
+-- and manage data retrieval from the in-memory history cache
+-- the order of returned data is VALUE, TIME to align with luup.variable_get() syntax
+local metahistory = {}
+  
+  -- enable cache (which might already be enabled)
+  function metahistory:enableCache ()
+    self.history = self.history or {}    -- here's the cache!
+  end
+  
+  -- disable cache (which might already be enabled)
+  function metahistory:disableCache ()
+    self.history = nil                  -- remove cache
+    self.hipoint = nil                  -- and the pointer
+    self.hicache = nil                  -- and local cache size
+  end
+  
+  -- get the latest value,time pair (with millisecond precision)
+  function metahistory: newest ()
+    local history = self.history
+    if history and #history > 0 then
+      local n = 2 * self.hipoint
+      return history[n], history[n-1]
+    end
+  end
+  
+  -- get the oldest value,time pair (with millisecond precision)
+  function metahistory: oldest ()
+    local history = self.history
+    if history and #history > 0 then
+      local n = 2 * self.hipoint
+      return history[n+2] or history[2], history[n+1] or history[1]   -- cache may not yet be full
+    end
+  end
+  
+  -- get the value at or before given time t, and actual time that value was set
+  function metahistory: at (t)
+  
+    -- return location of largest time element in history <= t using bisection, or nil if none
+    local function locate (history, hipoint, t)
+      local function bisect (a,b)
+        if a >= b then return a end
+        local c = math.ceil ((a+b)/2)
+        if t < history[(2*(c+hipoint-1) % #history)+1]     -- unwrap circular buffer
+          then return bisect (a,c-1)
+          else return bisect (c,b)
+        end
+      end 
+      local n = #history / 2
+      local p = 2 * hipoint + 1
+      if n == 0 or t < (history[p] or history[1])   -- oldest point is at 2*hipoint+1 or 1
+        then return nil 
+        else return bisect (1, n) 
+      end
+    end
+    
+    -- at()
+    local history = self.history
+    if t and history and #history > 0 then
+      local i = locate (history, self.hipoint, t)
+      if i then
+        local j = i + i
+        return history[j], history[j-1]   -- return value and ACTUAL sample time
+      end
+    end
+  end
+
+  -- fetch()  returns V and t arrays
+  function metahistory: fetch (from, to)
+    local now = os.time()
+    local v, t = {}, {} 
+    local n = 0
+    local Vold, Told = self: oldest()
+    local hist, ptr = self.history or {}, self.hipoint or 0
+    
+    from = from or now - 24*60*60                     -- default to 24 hours ago 
+    to   = to or now                                  -- default to now
+    from = math.max (from, Told or 0)                 -- can't go before earliest
+    to   = math.min (to, now)                         -- can't go beyond now
+    
+    local function scan (a,b)
+      for i = a,b, 2 do
+        local T,V = hist[i], hist[i+1]
+        if T >= from then               -- TODO: could improve this linear search with bisection
+          if T > to then break end
+          n = n + 1
+          if n == 1 then
+            if T > from then            -- insert first point at start time...
+              t[n], v[n] = from, Vold   --    ... using previous value
+              n = 2
+            end
+          end
+          t[n], v[n] = T, V
+        end
+        Vold = V
+      end
+    end
+    
+    scan (2*ptr +1, #hist)
+    scan (1, 2*ptr)
+    
+    if (n > 0) and (to > t[#t]) then                  -- insert final point and end time
+      t[#t+1], v[#v+1] = to, Vold
+    end
+
+    return v, t
+  end
+  
 
 local variable = {}             -- variable CLASS
 
@@ -79,36 +197,53 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
   local vars = device.variables or {}
   local varID = #vars                             -- 2018.01.31
   new_userdata_dataversion ()                     -- say structure has changed
-  vars[varID + 1] = {                             -- 2018.01.31
+  vars[varID + 1] =                               -- 2018.01.31
+  setmetatable (                                  -- 2018.05.25 add history methods 
+    {
       -- variables
       dev       = devNo,
       id        = varID,                          -- unique ID
       name      = name,                           -- name (unique within service)
       srv       = serviceId,
+      shortSid  = serviceId: match "[^:]+$" or serviceId,
       silent    = nil,                            -- set to true to mute logging
       watchers  = {},                             -- callback hooks
+      -- history
+      history   = {},                             -- set to nil to disable history
+      hipoint   = 0,                              -- circular buffer pointer managed by variable_set()
+      hicache   = nil,                            -- local cache size, overriding global CacheSize
       -- methods
       set       = variable.set,
-    }
+    }, 
+      {__index = metahistory} )
   return vars[#vars]
 end
-  
+ 
+ 
 function variable:set (value)
   local t = scheduler.timenow()                   -- time to millisecond resolution
   value = tostring(value or '')                   -- all device variables are strings
-  --
+  
   -- 2018.04.25 'VariableWithHistory'
-  -- note that retention policies are not implemented here, so the history just grows
+  -- history is implemented as a circular buffer, limited to CacheSize time/value pairs
   local history = self.history 
-  if history and value ~= self.value then         -- only record CHANGES in value
-    local v = tonumber(value)                     -- only numeric values at the moment
+  if history then
+    local v = tonumber(value)                     -- only numeric values
     if v then
-      local n = #history
-      history[n+1] = t
-      history[n+2] = v
+      if value ~= self.value then                 -- only cache changes
+        local hipoint = (self.hipoint or 0) % (self.hicache or CacheSize) + 1
+        local n = hipoint + hipoint
+        self.hipoint = hipoint
+        history[n-1] = t
+        history[n]   = v
+      end
+      -- it's up to the watcher(s) to decide whether to record repeated values or only changes
+      -- (this should help to mitigate nil values in Whisper historian archives)
+      scheduler.watch_callback {var = self, watchers = history_watchers} -- for write-thru disc cache
     end
   end
   --
+  
   local n = dataversion.value + 1                 -- say value has changed
   dataversion.value = n
   
@@ -146,6 +281,8 @@ function service.new (serviceId, devNo)        -- factory for new services
   end
   
   return {
+    -- constants
+    shortSid      = serviceId: match "[^:]+$" or serviceId,
     -- variables
     actions       = actions,
     variables     = variables,
@@ -201,6 +338,11 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
       watch[#watch+1] = callback  -- set the watch on the variable or service
     else
       -- no service id
+      if variable == "history" then
+        callback.name = "data historian"
+        callback.silent = true
+        history_watchers[1] = callback    -- only allow one of these
+      end
     end
   end
 end
@@ -223,19 +365,6 @@ local function new (devNo)
   local version               -- set device version (used to flag changes)
   local missing_action        -- an action callback to catch missing actions
   local watchers    = {}      -- list of watchers for any service or variable
---  local status      = -1      -- device status
-  
---  local function status_get (self)            -- 2016.04.29
---    return status
---  end
-  
---  local function status_set (self, value)     -- 2016.04.29
---    if status ~= value then
-----      new_dataversion ()
---      new_userdata_dataversion ()
---      status = value
---    end
---  end
   
   -- function delete_vars
   -- parameter: device 
@@ -359,7 +488,6 @@ local function new (devNo)
     if type (attribute) ~= "table" then attribute = {[attribute] = value} end
     for name, value in pairs (attribute) do 
       if not attributes[name] then new_userdata_dataversion() end   -- structure has changed
---      attributes[name] = tostring(value)
       new_dataversion ()                              -- say value has changed
       attributes[name] = value
     end
@@ -396,9 +524,6 @@ local function new (devNo)
       attr_get            = attr_get,
       attr_set            = attr_set,
       
---      status_get          = status_get,
---      status_set          = status_set,
-      
       variable_set        = variable_set, 
       variable_get        = variable_get,
       version_get         = function () return version end,
@@ -427,9 +552,11 @@ return {
   variable_watch            = variable_watch,
   new_dataversion           = new_dataversion,
   new_userdata_dataversion  = new_userdata_dataversion,
+  
+  set_cache_size  = function(s) CacheSize = s end,
+  
 }
 
 
 
 ------
-

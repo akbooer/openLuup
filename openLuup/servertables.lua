@@ -16,6 +16,10 @@
 -- 2018.03.06  added SMTP status codes
 -- 2018.03.09  added myIP, moved from openLuup.server
 -- 2018.03.15  updated SMTP reply codes according to RFC 5321
+-- 2018.04.14  removed upnp/ from CGI directories and HAG module...
+--              ["upnp/control/hag"] = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
+-- 2018.06.12  added Data Historian Disk Archive Whisper schemas and aggregations
+
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
 
@@ -137,21 +141,18 @@ local cgi_prefix = {
     "metrics",      -- ditto
     "render",       -- ditto
     
-    "upnp",         -- for Luup HAG requests --- DEPRECATED, Feb 2018 ---
-    
     "ZWaveAPI",     -- Z-Wave.me Advanced API (requires Z-Way plugin)
     "ZAutomation",  -- Z-Wave.me Virtual Device API
   }
 
 -- CGI aliases: any matching full CGI path is redirected accordingly
 
-local graphite_cgi = "openLuup/graphite_cgi.lua"
+local graphite_cgi  = "openLuup/graphite_cgi.lua"
 
 local cgi_alias = setmetatable ({
     
     ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
     ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
---    ["upnp/control/hag"]          = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
     ["console"]                   = "openLuup/console.lua",
     
     -- graphite_api support
@@ -179,16 +180,64 @@ local dir_alias = {
     ["cmh/skins/default/img/icons/"] = "icons/" ,                 -- 2017.11.14 
   }
   
+-- Data Historian Disk Archive rules
+--
+-- pattern: matches deviceNo.shortServiceId.variable
+-- schema is the name of the storage-schema rule to use if pattern matches
+-- patterns are searched in order, and first match is used
+
+local archive_rules = {
+    {
+      schema   = "every_1s", 
+      patterns = {"*.*.Tripped"},
+    },{
+      schema   = "every_1m", 
+      patterns = {"*.*.Status"},
+    },{
+      schema   = "every_5m", 
+      patterns = {"*.*{openLuup,DataYours,EventWatcher}*.*"},
+    },{
+      schema   = "every_10m", 
+      patterns = {"*.*.{CurrentLevel,CurrentTemperature}"}, -- temperature, humidity, generic sensors
+    },{
+      schema   = "every_20m", 
+      patterns = {"*.*EnergyMetering*.{KWH,Watts}"},
+    },{
+      schema   = "every_1h", 
+      patterns = {},
+    },{
+      schema   = "every_3h", 
+      patterns = {},
+    },{
+      schema   = "every_6h", 
+      patterns = {},
+    },{
+      schema   = "every_1d", 
+      patterns = {"*.*.BatteryLevel"},
+    },
+  }
+
+-- cache rules to disable some historian variable caching
+
+local cache_rules = {
+  nocache = {
+      dates_and_times = "*.*.{*Date*,Last*,Poll*,Configured,CommFailure}",
+      zwave_devices = "*.ZWaveDevice1.*",
+    },
+  }
+
 --
 
 return {
-    myIP          = myIP (),
-    cgi_prefix    = cgi_prefix,
-    cgi_alias     = cgi_alias,
-    dir_alias     = dir_alias,
-    mimetypes     = mimetypes,
-    smtp_codes    = smtp_codes,     -- SMTP
-    status_codes  = status_codes,   -- HTTP
+    myIP            = myIP (),
+    cgi_prefix      = cgi_prefix,
+    cgi_alias       = cgi_alias,
+    dir_alias       = dir_alias,
+    mimetypes       = mimetypes,
+    smtp_codes      = smtp_codes,         -- SMTP
+    status_codes    = status_codes,       -- HTTP
+    archive_rules   = archive_rules,      -- for historian
+    cache_rules     = cache_rules,        -- ditto
   }
   
 -----

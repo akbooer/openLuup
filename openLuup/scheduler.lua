@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.04.26",
+  VERSION       = "2018.06.06",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -48,6 +48,7 @@ local ABOUT = {
 -- 2018.04.10  add get_socket_list to methods and timenow/name to the list elements
 -- 2018.04.22  fix missing device 0 description in meta.__index:sandbox ()
 -- 2018.04.25  update sandbox function (I believe that this one actually works properly)
+-- 2018.06.06  add extra time parameter to variable_watch callbacks (for historian)
 
 
 local logs      = require "openLuup.logs"
@@ -544,8 +545,8 @@ local function luup_callbacks ()
           _log (("%s.%s.%s %s"): format(var.dev, var.srv, var.name, tostring (watcher.callback)), 
                   "luup.watch_callback") 
         end
-        local ok, msg = context_switch ( 
-          watcher.devNo, watcher.callback, var.dev, var.srv, var.name, var.old, var.value) 
+        local ok, msg = context_switch (watcher.devNo, watcher.callback, 
+          var.dev, var.srv, var.name, var.old, var.value, var.time)   -- 2018.06.06 add extra time parameter 
         if not ok then
           _log (("%s.%s.%s ERROR %s %s"): format(var.dev or '?', var.srv, var.name, 
                                               msg or '?', tostring (watcher.callback))) 
