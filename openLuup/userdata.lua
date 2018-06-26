@@ -56,6 +56,7 @@ local ABOUT = {
 -- 2018.05.25   restore openLuup variables on reload (for history)
 -- 2018.05.29   fix several possibly numeric attributes
 -- 2018.05.29   added device (sub)category (thanks @rafale77)
+-- 2018.06.26   remove DataYour from default plugins list
 
 
 local json    = require "openLuup.json"
@@ -458,7 +459,7 @@ local default_plugins = {
     preinstalled.VeraBridge,
     preinstalled.ZWay,
     preinstalled.MySensors,
-    preinstalled.DataYours,
+--    preinstalled.DataYours,
 --    preinstalled.Graphite_CGI,
   }
 

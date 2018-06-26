@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.06.24",
+  VERSION       = "2018.06.26",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -196,6 +196,17 @@ local function VariablesWithHistory (pattern, length)
   return coroutine.wrap (function ()  mapVars (isVWH, pattern) end)
 end
 
+-- enable in-memory cache for some or all variables
+-- may be called more than once, so don't overwrite existing value
+local function cacheVariables (pattern)
+  mapVars (function (v) v:enableCache() end, pattern)
+end
+
+-- disable in-memory cache for some or all variables
+-- may be called more than once, so don't overwrite existing value
+local function nocacheVariables (pattern)
+  mapVars (function (v) v:disableCache() end, pattern)
+end
 
 
 -- get vital information from installed VeraBridge devices
@@ -479,18 +490,6 @@ local function write_thru (dev, svc, var, old, value, timestamp)
 --    end
   end
 
-end
-
--- enable in-memory cache for some or all variables
--- may be called more than once, so don't overwrite existing value
-local function cacheVariables (pattern)
-  mapVars (function (v) v:enableCache() end, pattern)
-end
-
--- disable in-memory cache for some or all variables
--- may be called more than once, so don't overwrite existing value
-local function nocacheVariables (pattern)
-  mapVars (function (v) v:disableCache() end, pattern)
 end
 
 -- Wfetch() returns data from a Whisper disk archive, ignoring missing files,
@@ -802,6 +801,19 @@ local function HistoryFinder(config)
 end
 
 
+------------
+-- 
+-- new variables are, by default, cached.
+-- this function periodically sweeps the variables to disable any unwanted ones which may have been created.
+--
+function TidyCache ()
+  _log "tidying cache..."
+  for _,pattern in pairs (tables.cache_rules.nocache) do
+    nocacheVariables (pattern)
+  end
+  luup.call_delay ("TidyCache", 600)
+  _log "...done"
+end
 
 
 ---------------------------------------------------
@@ -826,9 +838,8 @@ local function start (config)
     return 
   end
   
-  _log "starting data historian..."
+  _log "starting data historian"
   devutil.set_cache_size (CacheSize)
---  cacheVariables ()                   -- turn on caching for ALL existing variables
   
   if Directory then     -- we're using the write-thru on-disk archive as well as in-memory cache
     _log ("using on-disk archive: " .. Directory)
@@ -837,7 +848,7 @@ local function start (config)
     
     -- load the disk storage rule base  
     Rules = tables.archive_rules
-    local rulesMessage = "disk archive storage rule sets: %d ..."
+    local rulesMessage = "disk archive storage rule sets: %d"
     _log (rulesMessage: format (#Rules) ) 
 
     -- start watching for history updates
@@ -846,7 +857,9 @@ local function start (config)
   
   if Graphite_UDP then _log ("mirroring archives to Graphite at " .. Graphite) end
   if InfluxDB_UDP then _log ("mirroring archives to InfluxDB at " .. InfluxDB) end
-  _log ("...using memory cache size (per-variable): " .. CacheSize)
+  
+  luup.call_delay ("TidyCache", 30) -- disable caching for unwanted variables (after pause for startup)
+  _log ("using memory cache size (per-variable): " .. CacheSize)
 end
 
 return {

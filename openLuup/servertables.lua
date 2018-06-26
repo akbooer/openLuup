@@ -198,7 +198,7 @@ local archive_rules = {
       patterns = {"*.*{openLuup,DataYours,EventWatcher}*.*"},
     },{
       schema   = "every_10m", 
-      patterns = {"*.*.{CurrentLevel,CurrentTemperature}"},
+      patterns = {"*.*.{CurrentLevel,CurrentTemperature}"}, -- temperature, humidity, generic sensors
     },{
       schema   = "every_20m", 
       patterns = {"*.*EnergyMetering*.{KWH,Watts}"},
@@ -217,6 +217,15 @@ local archive_rules = {
     },
   }
 
+-- cache rules to disable some historian variable caching
+
+local cache_rules = {
+  nocache = {
+      dates_and_times = "*.*.{*Date*,Last*,Poll*,Configured,CommFailure}",
+      zwave_devices = "*.ZWaveDevice1.*",
+    },
+  }
+
 --
 
 return {
@@ -228,6 +237,7 @@ return {
     smtp_codes      = smtp_codes,         -- SMTP
     status_codes    = status_codes,       -- HTTP
     archive_rules   = archive_rules,      -- for historian
+    cache_rules     = cache_rules,        -- ditto
   }
   
 -----
