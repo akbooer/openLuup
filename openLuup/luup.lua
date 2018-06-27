@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.06.23",
+  VERSION       = "2018.06.27",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -58,6 +58,7 @@ local ABOUT = {
 -- 2018.06.06  add non-standard additional parameter 'time' to luup.variable_get()
 -- 2018.06.21  special Tripped processing for security devices in luup.variable_set ()
 -- 2018.06.23  Added luup.openLuup flag (==true) to indicate not a Vera (for plugin developers)
+-- 2018.06.27  coerce old variable value to string (should be anyway, but wasn't somehow)
 
 
 local logs          = require "openLuup.logs"
@@ -303,7 +304,7 @@ local function variable_set (service, name, value, device, startup)
   local function set (name, value)
   local var = dev:variable_set (service, name, value, not startup) 
     if var and not var.silent then            -- 2018.04.30  'silent' attribute to mute logging
-      local old = var.old  or "MISSING"
+      local old = tostring(var.old or "MISSING")   -- 2018.06.27  (should be string anyway, but somehow wasn't)
       local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
       local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
       _log (msg, "luup.variable_set")
