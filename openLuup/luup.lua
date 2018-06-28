@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.06.27",
+  VERSION       = "2018.06.28",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -58,7 +58,6 @@ local ABOUT = {
 -- 2018.06.06  add non-standard additional parameter 'time' to luup.variable_get()
 -- 2018.06.21  special Tripped processing for security devices in luup.variable_set ()
 -- 2018.06.23  Added luup.openLuup flag (==true) to indicate not a Vera (for plugin developers)
--- 2018.06.27  coerce old variable value to string (should be anyway, but wasn't somehow)
 
 
 local logs          = require "openLuup.logs"
@@ -304,7 +303,7 @@ local function variable_set (service, name, value, device, startup)
   local function set (name, value)
   local var = dev:variable_set (service, name, value, not startup) 
     if var and not var.silent then            -- 2018.04.30  'silent' attribute to mute logging
-      local old = tostring(var.old or "MISSING")   -- 2018.06.27  (should be string anyway, but somehow wasn't)
+      local old = var.old or "MISSING"
       local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
       local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
       _log (msg, "luup.variable_set")
@@ -320,7 +319,7 @@ local function variable_set (service, name, value, device, startup)
   
   local Armed = dev:variable_get (service, "Armed")  
   local isArmed = Armed == '1'
-  set ("LastTrip", os.time())   -- TODO: check trip time updated when '0' as well as '1'
+  set ("LastTrip", tostring(os.time()))
   
   if value == '1' then
     if isArmed then set ("ArmedTripped", '1') end
@@ -353,9 +352,9 @@ local function variable_get (service, name, device, time)
   else
     local timeType = type(time)
     if timeType == "number" then
---      return var: at (time)   -- TODO: scalar time parameter
+      return var: at (time)                                         -- only works in-cache
     elseif timeType == "table" then
-      local values, times = historian.fetch (var, time[1], time[2])
+      local values, times = historian.fetch (var, time[1], time[2]) -- pulls values from cache or disk archives
       return values or {}, times or {}
     end
   end

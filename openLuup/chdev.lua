@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.06.16",
+  VERSION       = "2018.06.27",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -116,8 +116,8 @@ local function create (x)
   local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, X or x.upnp_impl, x.json_file)
 
   d = d or {}
-  local fmt = "[%d] %s / %s / %s"
-  local msg = fmt: format (x.devNo, x.upnp_file or d.device_type or '', d.impl_file or '', d.json_file or '')
+  local fmt = "[%d] %s / %s / %s   (%s)"
+  local msg = fmt: format (x.devNo, x.upnp_file or '', d.impl_file or '', d.json_file or '', d.device_type or '')
   _log (msg, "luup.create_device")
   if err then _log (err) end
   

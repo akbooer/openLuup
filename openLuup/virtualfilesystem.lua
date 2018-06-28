@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.06.19",
+  VERSION       = "2018.06.28",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -970,6 +970,34 @@ local I_openLuupCamera1_xml = [[
 </implementation>
 ]]
 
+local I_openLuupSecurity1_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <functions>
+    function startup (...)
+    end
+  </functions>
+  <actionList>
+    
+    <action>
+  		<serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
+      <name>SetArmed</name>
+      <run>
+        local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
+        luup.variable_set (sid, "Armed", lul_settings.newArmedValue or 0, lul_device)
+      </run>
+    </action>
+  
+  </actionList>
+  <startup>startup</startup>
+</implementation>
+]]
+
+local I_Dummy_xml = [[
+<?xml version="1.0"?>
+  <implementation />
+]]
+
 -----
 --
 -- DataYours schema and aggregation definitions for AltUI DataStorage Provider
@@ -1136,7 +1164,9 @@ local manifest = {
     ["I_ZWay.xml"]  = I_ZWay_xml,
     ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
     
-    ["I_openLuupCamera1.xml"] = I_openLuupCamera1_xml,
+    ["I_openLuupCamera1.xml"]   = I_openLuupCamera1_xml,
+    ["I_openLuupSecurity1.xml"] = I_openLuupSecurity1_xml,
+    ["I_Dummy.xml"]             = I_Dummy_xml,
     
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,
