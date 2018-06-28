@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.06.26",
+  VERSION       = "2018.06.27",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -221,8 +221,10 @@ local function get_bridge_info ()
       local PK = luup.variable_get (bridgeSID, "PK_AccessPoint", i)
       local offset = luup.variable_get (bridgeSID, "Offset", i)
       offset = tonumber (offset)
-      local index = math.floor (offset / BRIDGEBLOCK)   -- should be a round number anyway
-      bridge[index] = {nodeName = name, PK = PK, offset = offset}
+      if offset then
+        local index = math.floor (offset / BRIDGEBLOCK)   -- should be a round number anyway
+        bridge[index] = {nodeName = name, PK = PK, offset = offset}
+      end
     end
   end
   
