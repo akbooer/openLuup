@@ -903,14 +903,10 @@ local I_openLuupCamera1_xml = [[
       local last = get "LastTrip"
       if (tonumber (last) + timeout) &lt;= (now + 1) then  -- NOTE the XML escape!
         set ("Tripped", '0')
---        set ("ArmedTripped", '0')
---        set ("LastTrip", now)
       end
     end
     local function openLuupCamera (ip, mail)      -- email callback
       set ("Tripped", '1')
---      set ("LastTrip", os.time())
---      if get "Armed" == '1' then set ("ArmedTripped", '1') end
       timers.call_delay (clear, timeout, '', "camera motion reset")
     end
     function startup (devNo)

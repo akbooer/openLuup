@@ -317,9 +317,9 @@ local function variable_set (service, name, value, device, startup)
   local security  = "urn:micasaverde-com:serviceId:SecuritySensor1"
   if (name ~= "Tripped") or (service ~= security) or (device >= BRIDGEBLOCK) then return end   -- not interested 
   
-  local Armed = dev:variable_get (service, "Armed")  
-  local isArmed = Armed == '1'
   set ("LastTrip", tostring(os.time()))
+  local Armed = dev:variable_get (service, "Armed") or {}
+  local isArmed = Armed.value == '1'
   
   if value == '1' then
     if isArmed then set ("ArmedTripped", '1') end

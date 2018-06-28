@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2018.05.17",
+  VERSION       = "2018.06.28",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2018",
@@ -47,6 +47,7 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 -- 2018.05.15   use trash/ not /tmp/ with openLuup, to avoid permissions issue with /tmp (apparently)
 -- 2018.05.17   allow .svg as well as .png icon files
 -- 2018.06.11   report total size downloaded in kB (not bytes!)
+-- 2018.06.28   correct non-alphanumeric handling in download directory 
 
 
 local https     = require "ssl.https"
@@ -234,7 +235,7 @@ function GitHub (archive)     -- global for access by other modules
     
     for _, d in ipairs (subdirectories) do
       local Fcontents = "https://api.github.com/repos/%s/contents"
-      local dir = d: match "%S+"    -- 2016.11.23  non-spaces
+      local dir = d: match "%S*"    -- 2018.06.28  non-alphanumerics
       local request = table.concat {Fcontents: format (archive),dir , "?ref=", v} -- 2018.06.11 use dir not d
       resp, errmsg = git_request (request)
       if resp then
