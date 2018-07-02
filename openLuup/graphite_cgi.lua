@@ -583,41 +583,72 @@ end
 
 -- plotting options - just a subset of the full Graphite Webapp set
 -- see: http://graphite.readthedocs.org/en/latest/render_api.html
--- lineMode: slope [default], staircase, connected
---   slope     - line mode draws a line from each point to the next. Periods will Null values will not be drawn
---   staircase - draws a flat line for the duration of a time period and then a vertical line up or down to the next value
---   connected - Like a slope line, but values are always connected with a slope line, regardless of intervening Nulls
 --
--- drawNullAs: (a small deviation from the Graphite Web App syntax)
---   null:    keep them null
---   zero:    make the zero
---   hold:    hold on to previous value
+-- hideLegend:  [false] If set to true, the legend is not drawn. If set to false, the legend is drawn. 
+-- areaMode:    none, all, [not done: first, stacked]
+-- vtitle:      y-axis title
+-- yMin/yMax:   y-axis upper limit
+-- graphType:   line is default, but options includee: BarChart, ColumnChart, ... (not PieChart)
+-- drawNullAs:  (a small deviation from the Graphite Web App syntax)
+--   null:      keep them null
+--   zero:      make them zero
+--   hold:      hold on to previous value
 --
---  hideLegend: [false]
---   If set to true, the legend is not drawn. If set to false, the legend is drawn. 
---
--- areaMode: none, all, [not done: first, stacked]
--- 
--- vtitle: y-axis title
--- 
--- yMin/yMax: y-axis upper limit
--- 
--- graphType: line is default, but otherwise specify any Chart type: BarChart, ColumnChart, ... (not PieChart)
 
--- return values for "mode" and "zero" plotting modes based on archive or input options
+--[[
 
+TODO: aliases...
+
+
+alias(seriesList, newName)
+
+    Takes one metric or a wildcard seriesList and a string in quotes. 
+    Prints the string instead of the metric name in the legend.
+
+    &target=alias(Sales.widgets.largeBlue,"Large Blue Widgets")
+
+aliasByMetric(seriesList)
+
+    Takes a seriesList and applies an alias derived from the base metric name.
+
+    &target=aliasByMetric(carbon.agents.graphite.creates)
+
+aliasByNode(seriesList, *nodes)
+
+    Takes a seriesList and applies an alias derived from one or more “node” portion/s of the target name. 
+    Node indices are 0 indexed.
+
+    &target=aliasByNode(ganglia.*.cpu.load5,1)
+
+aliasSub(seriesList, search, replace)
+
+    Runs series names through a regex search/replace.
+
+    &target=aliasSub(ip.*TCP*,"^.*TCP(\d+)","\1")
+
+--]]
 
 local function svgRender (_, p)
-  -- The empty response is just sufficient for Grafana to recognise that a 
+  -- An empty response is just sufficient for Grafana to recognise that a 
   -- graphite_api server is available, thereafter it uses its own rendering.
   --  return "[]", 200, {["Content-Type"] = "application/json"}
   -- note: this svg format does not include Graphite's embedded metadata object
-  local mode, nulls, zero, hold, stair, slope, connect
+  
   local data = gviz.DataTable ()
   data.addColumn('datetime', 'Time');
   local m, n = 0, 0
   local t1, t2 = p["from"], p["until"]
 
+  -- modes, etc...
+  local mode, nulls, zero, hold, stair, slope, connect
+  mode, nulls = "staircase", "hold"
+  stair   = (mode == "staircase")
+  slope   = (mode == "slope")
+  connect = (mode == "connected")
+  hold    = (nulls == "hold")
+  zero    = (nulls == "zero") and 0
+  _debug (table.concat {"drawing mode: ", mode, ", draw nulls as: ", nulls})
+  
   -- fetch the data
   local row = {}   -- rows indexed by time
   for _,target in ipairs (p.target) do
@@ -625,15 +656,7 @@ local function svgRender (_, p)
       if node.is_leaf then
         n = n + 1
         if n == 1 then     -- do first-time setup
-          mode, nulls = "staircase", "hold"
-          stair   = (mode == "staircase")
-          slope   = (mode == "slope")
-          connect = (mode == "connected")
-          hold    = (nulls == "hold")
-          zero    = (nulls == "zero") and 0
-          _debug (table.concat {"drawing mode: ", mode, ", draw nulls as: ", nulls})
         end
---        data.addColumn('number', node.nodeName);
         data.addColumn('number', node.path);
         local tv = node.fetch (t1, t2)  
         
@@ -648,15 +671,13 @@ local function svgRender (_, p)
     end
   end
   
-  -- sort the time axes
-  
+  -- sort the time axes  
   local index = {}
   for t in pairs(row) do index[#index+1] = t end    -- list all the time values
   table.sort(index)                                 -- sort them
   m = #index
   
-  -- construct the data rows for plotting
-  
+  -- construct the data rows for plotting  
   local previous
   for _,t in ipairs(index) do
     if stair and previous then
@@ -669,8 +690,7 @@ local function svgRender (_, p)
     previous = row[t]
   end
   
-  -- add the options
-  
+  -- add the options  
   local legend = "none"
   if not p.hideLegend then legend = 'bottom' end
   local title = p.title

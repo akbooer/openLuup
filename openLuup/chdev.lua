@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.06.27",
+  VERSION       = "2018.07.02",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -50,6 +50,7 @@ local ABOUT = {
 -- 2018.05.25  tidy attribute coercions
 -- 2018.06.11  don't use impl_file if parent handles actions (thanks @rigpapa)
 -- 2018.06.16  check for duplicate altids in chdev.append()  (thanks @rigpapa)
+-- 2018.07.02  fix room number/string type problem in create()
 
 
 local logs      = require "openLuup.logs"
@@ -186,7 +187,7 @@ local function create (x)
     name            = device_name, 
     plugin          = tostring(x.pluginnum or ''),
     password        = x.password,
-    room            = tostring(tonumber (x.room or 0)),   -- why it's a string, I have no idea
+    room            = tostring(tonumber (x.room) or 0),   -- why it's a string, I have no idea 2018.07.02
     subcategory_num = tonumber (x.subcategory_num or d.subcategory_num) or 0,     -- 2017.05.10
     time_created    = os.time(), 
     username        = x.username,
@@ -213,7 +214,7 @@ local function create (x)
       ip                  = a.ip,
       mac                 = a.mac,
       pass                = a.password or '',
-      room_num            = a.room,
+      room_num            = tonumber(a.room),         -- 2018.07.02
       subcategory_num     = a.subcategory_num,
       udn                 = a.local_udn,
       user                = a.username or '',    

@@ -188,7 +188,7 @@ end
 -- or, eg: for v in VariablesWithHistory "*.*Sensor*.Current*" do ... end
 -- filters by a threshold on the number of points - default is 1 (or more)
 local function VariablesWithHistory (pattern, length)
-  length = 2*length or 2      -- recall that each point takes TWO history items, t and v
+  length = 2*(length or 1)      -- recall that each point takes TWO history items, t and v
   local function isVWH (v)
     local history = v.history
     if history and #history >= length then coroutine.yield (v) end
@@ -208,6 +208,22 @@ local function nocacheVariables (pattern)
   mapVars (function (v) v:disableCache() end, pattern)
 end
 
+-- add a new archive rule to existing or new schema
+-- archiveRule ("every_10m", "*.*.*{Max,Min}*")
+-- note that, unless run at startup, this may not be effective (see No_Schema)
+local function archiveRule(schema, newrule)
+  for _, rule in ipairs (Rules) do
+    if rule.schema == schema then
+      rule.patterns[#rule.patterns+1] = newrule
+      return
+    end
+  end
+  -- must be a new schema
+  Rules[#Rules+1] = {
+    schema = schema,
+    patterns = {newrule},
+  }  
+end
 
 -- get vital information from installed VeraBridge devices
 -- indexed by (integer) bridge#, and  .by_pk[], .by_name[]
@@ -221,7 +237,7 @@ local function get_bridge_info ()
       local PK = luup.variable_get (bridgeSID, "PK_AccessPoint", i)
       local offset = luup.variable_get (bridgeSID, "Offset", i)
       offset = tonumber (offset)
-      if offset then
+      if offset and PK then
         local index = math.floor (offset / BRIDGEBLOCK)   -- should be a round number anyway
         bridge[index] = {nodeName = name, PK = PK, offset = offset}
       end
@@ -847,6 +863,8 @@ local function start (config)
     _log ("using on-disk archive: " .. Directory)
     lfs.mkdir (Directory)             -- ensure it exists
     Hcarbon = CarbonCache (Directory) 
+    local cacheMessage = "Graphite schema/aggregation rule sets: %d/%d"
+    _log (cacheMessage: format (#Hcarbon.schemas, #Hcarbon.aggregations) ) 
     
     -- load the disk storage rule base  
     Rules = tables.archive_rules
@@ -873,6 +891,7 @@ return {
   tally = tally,
 
   -- methods
+  archiveRule           = archiveRule,            -- add a new archive rule to existing schema
   cacheVariables        = cacheVariables,         -- turn caching on
   nocacheVariables      = nocacheVariables,       -- turn it off
   VariablesWithHistory  = VariablesWithHistory,   -- iterator

@@ -198,10 +198,13 @@ local archive_rules = {
       patterns = {"*.*{openLuup,DataYours,EventWatcher}*.*"},
     },{
       schema   = "every_10m", 
-      patterns = {"*.*.{CurrentLevel,CurrentTemperature}"}, -- temperature, humidity, generic sensors
+      patterns = {
+        "*.*.{CurrentLevel,CurrentTemperature}", -- temperature, humidity, generic sensors
+        "*.*.*{[Mm]ax,[Mm]in}*", -- max/min values (which also need an aggregation rule)
+      },
     },{
       schema   = "every_20m", 
-      patterns = {"*.*EnergyMetering*.{KWH,Watts}"},
+      patterns = {"*.*EnergyMetering*.{KWH,Watts,kWh24}"},
     },{
       schema   = "every_1h", 
       patterns = {},
@@ -217,7 +220,7 @@ local archive_rules = {
     },
   }
 
--- cache rules to disable some historian variable caching
+-- cache rules to disable some historian in-memory variable caching
 
 local cache_rules = {
   nocache = {

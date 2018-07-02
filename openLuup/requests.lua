@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.04.25",
+  VERSION       = "2018.07.02",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -166,7 +166,7 @@ local function device (_,p)
         idx[room] = i
       end
       dev.room_num = tonumber(p.room) or idx[p.room] or 0
-      dev.attributes.room = dev.room_num
+      dev.attributes.room = tostring(dev.room_num)        -- 2018.07.02
     end
   end
   local function delete ()

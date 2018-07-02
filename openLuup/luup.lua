@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.06.28",
+  VERSION       = "2018.07.02",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -58,6 +58,7 @@ local ABOUT = {
 -- 2018.06.06  add non-standard additional parameter 'time' to luup.variable_get()
 -- 2018.06.21  special Tripped processing for security devices in luup.variable_set ()
 -- 2018.06.23  Added luup.openLuup flag (==true) to indicate not a Vera (for plugin developers)
+-- 2018.07.02  luup.rooms... ensure room number IS a number!
 
 
 local logs          = require "openLuup.logs"
@@ -130,7 +131,7 @@ setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatab
     create = function (name, force_number) 
       local number
       if force_number then
-        number = force_number
+        number = tonumber (force_number)    -- 2018.07.02  ensure room number IS a number!
       else                -- check that room name does not already exist
         local index = {}
         for i,room_name in pairs (rooms) do index[room_name] = i end
@@ -146,6 +147,7 @@ setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatab
     end,
 
     rename = function (number, name) 
+      number = tonumber (number)            -- 2018.07.02
       if number and rooms[number] then
         rooms[number] = name or '?'
         _log (("renaming room [%d] %s"): format (number, name or '?'))
@@ -153,12 +155,16 @@ setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatab
     end,
 
     delete = function (number) 
+      number = tonumber (number)            -- 2018.07.02
       if number and rooms[number] then 
         rooms[number] = nil
          _log (("deleting room [%d]"): format (number))
        -- check devices for reference to deleted room no.
         for _, d in pairs (devices) do
-          if d.room_num == number then d.room_num = 0 end
+          if d.room_num == number then 
+            d.room_num = 0 
+            d.attributes.room = "0"        -- 2018.07.02
+          end
         end
         -- check scenes for reference to deleted room no.
         for _, s in pairs (scenes) do

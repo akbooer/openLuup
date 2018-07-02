@@ -864,6 +864,7 @@ local I_ZWay_xml = [[
 local I_ZWay2_xml = [[
 <?xml version="1.0"?>
 <implementation>
+  <handleChildren>1</handleChildren>
   <functions>
     local M = require "L_ZWay2"
     ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
@@ -1117,6 +1118,18 @@ local storage_aggregation_conf = [[
 #  aggregationMethod: function to apply to data points for aggregation
 #
 #  2014.02.22  @akbooer
+
+#
+[maxima]
+pattern = [Mm]ax
+xFilesFactor = 0
+aggregationMethod = maximum
+
+#
+[minima]
+pattern = [Mm]in
+xFilesFactor = 0
+aggregationMethod = minimum
 
 #
 [otherwise]
