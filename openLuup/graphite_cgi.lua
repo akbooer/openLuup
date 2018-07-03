@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2018.06.27",
+  VERSION       = "2018.07.03",
   DESCRIPTION   = "WSAPI CGI interface to Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -39,6 +39,7 @@ ABOUT = {
 -- 2018.06.12  remove dependency on DataGraphiteAPI
 -- 2018.06.23  add Historian.DataYours parameter to override DataYours finder
 -- 2018.06.26  add Google Charts module for SVG rendering
+-- 2018.07.03  add alias(), aliasByMetric(), aliasByNode() to /render?target=... syntax
 
 
 -- CGI implementation of Graphite API
@@ -517,84 +518,6 @@ The target parameter specifies a path identifying one or several metrics, option
 
 -- rendering functions for non-graphics formats
 
-local function csvRender (_, p)
-  -- this is the csv format that the Graphite Render URL API uses:
-  --
-  -- entries,2011-07-28 01:53:28,1.0
-  -- ...
-  -- entries,2011-07-28 01:53:30,3.0
-  --
-  local data = {}
-  for _,target in ipairs (p.target) do
-    for node in storage.find (target) do 
-      if node.is_leaf then
-        local tv = node.fetch (p["from"], p["until"])  
-        for i, v,t in tv:ipairs() do
-          data[i] = ("%s,%s,%s"): format (node.path, os.date("%Y-%m-%d %H:%M:%S",t), tostring(v) )
-        end
-      end
-    end
-  end
-  return table.concat (data, '\n'), 200, {["Content-Type"] = "text/plain"}
-end
-
-
-local function jsonRender (_, p)
-  -- this is the json format that the Graphite Render URL API uses
-  --[{
-  --  "target": "entries",
-  --  "datapoints": [
-  --    [1.0, 1311836008],
-  --    ...
-  --    [6.0, 1311836012]
-  --  ]
-  --}]
-  
-  if ABOUT.DEBUG then _log ("RENDER: ", (json.encode(p))) end
-  
-  -- the data structure is not very complex, and it's far more efficient to generate this directly
-  -- than first building a Lua table and then converting it to JSON.  So that's what this does.
-  local data = {'[',''}
-  for _,target in ipairs (p.target) do
-    for node in storage.find (target) do
-      if node.is_leaf then
-        local tv = node.fetch (p["from"], p["until"])  
-        data[#data+1] = '{'
-        data[#data+1] = '  "target": "'.. node.path ..'",'
-        data[#data+1] = '  "datapoints": ['
-        for _, v,t in tv:ipairs() do
-          data[#data+1] = table.concat {'  [', v or 'null', ', ', math.floor(t), ']', ','}
-        end
-        data[#data] = data[#data]: gsub(',$','')    -- 2018.06.05  remove final comma, if present
-        data[#data+1] = '  ]'
-        data[#data+1] = '}'
-      end
-      data[#data+1] = ','
-    end
-  end
-  data[#data] = ']'   -- overwrite final comma
-  return table.concat (data, '\n'), 200, {["Content-Type"] = "application/json"}
-end
-
-
------------------------------------
---
---  SVG render using Google Charts
-
--- plotting options - just a subset of the full Graphite Webapp set
--- see: http://graphite.readthedocs.org/en/latest/render_api.html
---
--- hideLegend:  [false] If set to true, the legend is not drawn. If set to false, the legend is drawn. 
--- areaMode:    none, all, [not done: first, stacked]
--- vtitle:      y-axis title
--- yMin/yMax:   y-axis upper limit
--- graphType:   line is default, but options includee: BarChart, ColumnChart, ... (not PieChart)
--- drawNullAs:  (a small deviation from the Graphite Web App syntax)
---   null:      keep them null
---   zero:      make them zero
---   hold:      hold on to previous value
---
-
 --[[
 
 TODO: aliases...
@@ -628,6 +551,124 @@ aliasSub(seriesList, search, replace)
 
 --]]
 
+
+local function target (p)
+
+  local function noalias (t) return t end
+  
+  local function alias (t, args) return ((args[1] or t): gsub ('"','')) end -- remove surrounding quotes
+
+  local function aliasByMetric (t)
+    return t: match "%.([^%.]+)$"
+  end
+
+  local function aliasByNode (t, args)
+    local parts = {}
+    local alias = {}
+    t: gsub ("[^%.]+", function (x) parts[#parts+1] = x end)
+    for i, part in ipairs (args) do alias[i] = parts[part+1] or '?'end
+    return table.concat (alias, '.')
+  end
+
+  local aliasType = {alias = alias, aliasByMetric = aliasByMetric, aliasByNode = aliasByNode}
+  
+  -- separate possible function call from actual target spec
+  local function parse (targetSpec)
+    local fct,arg = targetSpec: match "(%w+)(%b())"
+    local args = {}
+    if fct then 
+      arg: gsub ("[^%(%),]+", function (x) args[#args+1] = x end) -- pull out the arguments
+      targetSpec = table.remove (args,1)   -- replace t with actual target spec
+    end
+    local function nameof(x) return (aliasType[fct] or noalias) (x, args) end
+    return targetSpec, nameof
+  end
+    
+  local function nextTarget ()
+    for _,targetSpec in ipairs (p.target) do
+      local target, nameof = parse (targetSpec)
+      for node in storage.find (target) do 
+        if node.is_leaf then
+          local tv = node.fetch (p["from"], p["until"])
+          coroutine.yield (nameof(node.path), tv)
+        end
+      end
+    end
+  end
+  
+  return {next = function () return coroutine.wrap (nextTarget) end}
+
+end
+
+
+local function csvRender (_, p)
+  -- this is the csv format that the Graphite Render URL API uses:
+  --
+  -- entries,2011-07-28 01:53:28,1.0
+  -- ...
+  -- entries,2011-07-28 01:53:30,3.0
+  --
+  local data = {}
+  for name, tv in target (p).next() do
+    for _, v,t in tv:ipairs() do
+      data[#data+1] = ("%s,%s,%s"): format (name, os.date("%Y-%m-%d %H:%M:%S",t), tostring(v) )
+    end
+  end
+  return table.concat (data, '\n'), 200, {["Content-Type"] = "text/plain"}
+end
+
+
+local function jsonRender (_, p)
+  -- this is the json format that the Graphite Render URL API uses
+  --[{
+  --  "target": "entries",
+  --  "datapoints": [
+  --    [1.0, 1311836008],
+  --    ...
+  --    [6.0, 1311836012]
+  --  ]
+  --}]
+  
+  if ABOUT.DEBUG then _log ("RENDER: ", (json.encode(p))) end
+  
+  -- the data structure is not very complex, and it's far more efficient to generate this directly
+  -- than first building a Lua table and then converting it to JSON.  So that's what this does.
+  local data = {'[',''}
+  for name, tv in target (p).next() do
+    data[#data+1] = '{'
+    data[#data+1] = '  "target": "'.. name ..'",'
+    data[#data+1] = '  "datapoints": ['
+    for _, v,t in tv:ipairs() do
+      data[#data+1] = table.concat {'  [', v or 'null', ', ', math.floor(t), ']', ','}
+    end
+    data[#data] = data[#data]: gsub(',$','')    -- 2018.06.05  remove final comma, if present
+    data[#data+1] = '  ]'
+    data[#data+1] = '}'
+    data[#data+1] = ','
+  end
+  data[#data] = ']'   -- overwrite final comma
+  return table.concat (data, '\n'), 200, {["Content-Type"] = "application/json"}
+end
+
+
+-----------------------------------
+--
+--  SVG render using Google Charts
+
+-- plotting options - just a subset of the full Graphite Webapp set
+-- see: http://graphite.readthedocs.org/en/latest/render_api.html
+--
+-- hideLegend:  [false] If set to true, the legend is not drawn. If set to false, the legend is drawn. 
+-- areaMode:    none, all, [not done: first, stacked]
+-- vtitle:      y-axis title
+-- yMin/yMax:   y-axis upper limit
+-- graphType:   line is default, but options includee: BarChart, ColumnChart, ... (not PieChart)
+-- drawNullAs:  (a small deviation from the Graphite Web App syntax)
+--   null:      keep them null
+--   zero:      make them zero
+--   hold:      hold on to previous value
+--
+
 local function svgRender (_, p)
   -- An empty response is just sufficient for Grafana to recognise that a 
   -- graphite_api server is available, thereafter it uses its own rendering.
@@ -637,7 +678,6 @@ local function svgRender (_, p)
   local data = gviz.DataTable ()
   data.addColumn('datetime', 'Time');
   local m, n = 0, 0
-  local t1, t2 = p["from"], p["until"]
 
   -- modes, etc...
   local mode, nulls, zero, hold, stair, slope, connect
@@ -651,23 +691,18 @@ local function svgRender (_, p)
   
   -- fetch the data
   local row = {}   -- rows indexed by time
-  for _,target in ipairs (p.target) do
-    for node in storage.find (target) do 
-      if node.is_leaf then
-        n = n + 1
-        if n == 1 then     -- do first-time setup
-        end
-        data.addColumn('number', node.path);
-        local tv = node.fetch (t1, t2)  
-        
-        local current, previous
-        for _, v,t in tv:ipairs() do
-          row[t] = row[t] or {t}                        -- create the row if it doesn't exist
-          current = v or (hold and previous) or zero    -- special treatment for nil
-          row[t][n+1] = current                         -- fill in the column
-          previous = current
-        end
-      end
+  for name, tv in target (p).next() do
+    n = n + 1
+    if n == 1 then     
+      -- do first-time setup
+    end
+    data.addColumn('number', name);        
+    local current, previous
+    for _, v,t in tv:ipairs() do
+      row[t] = row[t] or {t}                        -- create the row if it doesn't exist
+      current = v or (hold and previous) or zero    -- special treatment for nil
+      row[t][n+1] = current                         -- fill in the column
+      previous = current
     end
   end
   
