@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.07.02",
+  VERSION       = "2018.07.07",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -71,8 +71,7 @@ local scenes        = require "openLuup.scenes"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local loader        = require "openLuup.loader"       -- for static_data, service_data, and loadtime
-
-local xml = loader.xml    -- 2018.04.25  for xml.encode()
+local xml           = require "openLuup.xml"          -- for xml.encode()
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
@@ -187,6 +186,7 @@ local function device (_,p)
   local function noop () end
 
   if dev then
+    _debug ("device action: " .. (p.action or '?'))
     local valid = {rename = rename, delete = delete};
     (valid[p.action or ''] or noop) ()
     devutil.new_userdata_dataversion ()     -- say something major has changed
@@ -235,7 +235,7 @@ local function invoke (_, p)
     for s, srv in spairs (dev.services) do
       S[#S+1] = Service: format (s)
       local implemented_actions = srv.actions
-      for a,act in spairs ((loader.service_data[s] or {}).actions or {}) do
+      for _,act in spairs ((loader.service_data[s] or {}).actions or {}) do
         local name = act.name
         local star = implemented_actions[name] and '*' or ''
         S[#S+1] = Action: format (p.DeviceNum, s, name, star, name)
@@ -345,7 +345,7 @@ end
 local function status_devices_table (device_list, data_version)
   local info 
   local dv = data_version or 0
-  local dev_dv
+--  local dev_dv
   for i,d in pairs (device_list) do 
 --    dev_dv = d:version_get() or 0
     if d:version_get() > dv then
@@ -353,7 +353,7 @@ local function status_devices_table (device_list, data_version)
       local states = {}
       for serviceId, srv in pairs(d.services) do
         for name,item in pairs(srv.variables) do
-          local ver = item.version
+--          local ver = item.version
 --          if item.version > dv then
           do
             states[#states+1] = {
@@ -394,6 +394,20 @@ local function status_scenes_table ()
   return info
 end
 
+-- TODO: job messages
+
+--[[
+"startup": {
+"tasks": [
+{
+"id": 0,
+"status": 2,
+"type": "GET_LANG(system_error,System error)",
+"comments": "Device: 149. Fail to load implementation file D_InsecurityCamera1.xml"
+}
+]
+}, 
+--]]
 local function status_startup_table ()
   local tasks = {}
   local startup = {tasks = tasks}
@@ -920,32 +934,32 @@ end
 --  TODO: add &id=lua&DeviceNum=xxx request
 local function lua ()    -- 2018.04.22 
   local lines = {}
-  local function print (x) lines[#lines+1] = x end
+  local function pr (x) lines[#lines+1] = x end
   
-  print "--Devices with UPNP implementations:"
+  pr "--Devices with UPNP implementations:"
 
   -- implementation files
   local ignore = {['']=1,X=1}
-  for i,d in pairs (luup.devices) do
+  for i in pairs (luup.devices) do
       local impl = luup.attr_get ("impl_file", i)
-      if impl and not ignore [impl] then print ("-lu_lua&DeviceNum=" ..i) end
+      if impl and not ignore [impl] then pr ("-lu_lua&DeviceNum=" ..i) end
   end
 
-  print "\n\n--GLOBAL LUA CODE:"
+  pr "\n\n--GLOBAL LUA CODE:"
 
   -- scenes
   for i,s in pairs (luup.scenes) do
       local lua = s:user_table().lua
       if #lua > 0 then
-          print ("function scene_" .. i .. "()")
-          print (lua)
-          print "end"
+          pr ("function scene_" .. i .. "()")
+          pr (lua)
+          pr "end"
       end
   end
   -- startup code
   local glc = luup.attr_get "StartupCode"
 
-  print(glc)
+  pr(glc)
   return table.concat (lines, '\n')
 end
 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.06.28",
+  VERSION       = "2018.07.04",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -629,7 +629,7 @@ local I_VeraBridge_impl = [[
   		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
   		<name>GetVeraFiles</name>
   		<job>
-  			GetVeraFiles ()
+  			GetVeraFiles (lul_settings)
   			return 4,0
   		</job>
     </action>
@@ -665,7 +665,15 @@ local S_VeraBridge_svc = [[
     <minor>0</minor>
   </specVersion>
   <actionList>
-    <action> <name>GetVeraFiles</name> </action>
+    <action>
+      <name>GetVeraFiles</name> 
+      <argumentList>
+        <argument>
+          <name>Files</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
     <action> <name>GetVeraScenes</name> </action>
     <action>
       <name>SetHouseMode</name>

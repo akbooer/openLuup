@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2018.07.03",
+  VERSION       = "2018.07.05",
   DESCRIPTION   = "WSAPI CGI interface to Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -577,8 +577,11 @@ local function target (p)
     local fct,arg = targetSpec: match "(%w+)(%b())"
     local args = {}
     if fct then 
-      arg: gsub ("[^%(%),]+", function (x) args[#args+1] = x end) -- pull out the arguments
+      -- Bad news:  some arguments contain commas, eg. {a,b}
+      local arg2 = arg: gsub("%b{}", function (x) return (x: gsub(',','|')) end)  -- replace {a,b} with {a|b}
+      arg2: gsub ("[^%(%),]+", function (x) args[#args+1] = x end) -- pull out the arguments
       targetSpec = table.remove (args,1)   -- replace t with actual target spec
+      targetSpec = targetSpec: gsub ('|',',')   -- reinstate commas
     end
     local function nameof(x) return (aliasType[fct] or noalias) (x, args) end
     return targetSpec, nameof
@@ -951,7 +954,7 @@ end
     if not history.DataYours and (LOCAL_DATA_DIR ~= '') then
       Finders[#Finders + 1] = finders.whisper.WhisperFinder (config)
     end
-    if (DATAMINE_DIR ~= '') then
+    if not history.DataMine and (DATAMINE_DIR ~= '') then
       Finders[#Finders + 1] = finders.datamine.DataMineFinder (config)
     end
   end

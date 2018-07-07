@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.07.02",
+  VERSION       = "2018.07.07",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -59,6 +59,7 @@ local ABOUT = {
 -- 2018.06.21  special Tripped processing for security devices in luup.variable_set ()
 -- 2018.06.23  Added luup.openLuup flag (==true) to indicate not a Vera (for plugin developers)
 -- 2018.07.02  luup.rooms... ensure room number IS a number!
+-- 2018.07.07  coerce vaule to string in variable_set truncate()  (thanks @rigpapa
 
 
 local logs          = require "openLuup.logs"
@@ -292,7 +293,7 @@ end
 local function variable_set (service, name, value, device, startup)
     -- shorten long variable strings, removing control characters, ...just for logging!
     local function truncate (text)
-      text = (text or ''): gsub ("%c", ' ')
+      text = tostring(text or ''): gsub ("%c", ' ')     -- 2018.07.07  thanks @rigpapa
       if #text > 120 then text = text: sub (1,115) .. "..." end    -- truncate long variable values
       return text
     end

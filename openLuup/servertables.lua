@@ -199,8 +199,8 @@ local archive_rules = {
     },{
       schema   = "every_10m", 
       patterns = {
-        "*.*.{CurrentLevel,CurrentTemperature}", -- temperature, humidity, generic sensors
-        "*.*.*{[Mm]ax,[Mm]in}*", -- max/min values (which also use an aggregation rule)
+        "*.*.{CurrentLevel,CurrentTemperature,CurrentPressure}",  -- temperature, humidity, generic sensors, ...
+        "*.*.{Max,Min}Temp",            -- max/min values (which also use an aggregation rule)
       },
     },{
       schema   = "every_20m", 

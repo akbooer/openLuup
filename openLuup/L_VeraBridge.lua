@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.06.22",
+  VERSION       = "2018.07.04",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -86,6 +86,8 @@ ABOUT = {
 --              thanks @rafale77, see: http://forum.micasaverde.com/index.php/topic,79879.0.html
 -- 2018.05.15   add SetHouseMode (for remote machine) to set of visible actions (for use in scenes)
 -- 2018.06.04   Expose OFFSET and remote PK_AccessPoint as device variables
+-- 2018.07.04   Add .svg file type to remote directory listing in GetVeraFiles()
+--              add Files parameter to GetFiles action request
 
 
 local devNo                      -- our device number
@@ -580,17 +582,18 @@ end
 
 -- copy all device files and icons from remote vera
 -- (previously performed by the openLuup_getfiles utility)
-function GetVeraFiles ()
+function GetVeraFiles (params)
   
   local code = [[
 
   local lfs = require "lfs"
   local f = io.open ("/www/directory.txt", 'w')
   for fname in lfs.dir ("%s") do
-    if fname:match "lzo$" or fname: match "png$" then
+    if fname:match "%s" and (fname:match "lzo$" or fname: match "png$" or fname: match "svg$") then
       f:write (fname)
       f:write '\n'
     end
+  f:write '\n'
   end
   f:close ()
 
@@ -598,27 +601,27 @@ function GetVeraFiles ()
 
 -- TODO: New Vera security measures will disable, by default, RunLua
 -- could bypass this by defining and running a scene with Lua code attached
-  local function get_directory (path)
+  local function get_directory (path, filename)
     local template = "/data_request?id=action" ..
                       "&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1" ..
                       "&action=RunLua&Code="
-    local request = template .. url.escape (code: format(path))
+    local request = template .. url.escape (code: format(path, filename))
 
     local status, info = remote_request (request)
-    if status ~= 0 then luup.log ("error creating remote directory listing: " .. status) return end
+    if status ~= 0 then luup.log ("ERROR creating remote directory listing: " .. status) return '' end
 
     status, info = luup.inet.wget ("http://" .. ip .. "/directory.txt")
-    if status ~= 0 then luup.log ("error reading remote directory listing: " .. status) return end
+    if status ~= 0 then luup.log ("ERROR reading remote directory listing: " .. status) return '' end
     
-    return info
+    return info or ''
   end
 
 -- TODO: does this work with new port_3480 access?
-  local function get_files_from (path, dest, url_prefix)
+  local function get_files_from (path, filename, dest, url_prefix)
     dest = dest or '.'
     url_prefix = url_prefix or "/port_3480/"
     luup.log ("getting files from " .. path)
-    local info = get_directory (path)
+    local info = get_directory (path, filename)
     for x in info: gmatch "%C+" do
       local fname = x:gsub ("%.lzo",'')   -- remove unwanted extension for compressed files
       local status, content = luup.inet.wget ("http://" .. ip .. url_prefix .. fname)
@@ -629,15 +632,17 @@ function GetVeraFiles ()
         f:write (content)
         f:close ()
       else
-        luup.log ("error: " .. fname)
+        luup.log ("ERROR: " .. fname)
       end
     end
   end
 
   -- device, service, lua, json, files...
   lfs.mkdir "files"
-  get_files_from ("/etc/cmh-ludl/", "files", "/port_3480/")
-  get_files_from ("/etc/cmh-lu/", "files", "/port_3480/")
+  local pattern = params.Files or '*'   -- 2018.07.04
+  pattern = pattern: gsub ('*', ".*")   -- convert wildcard to Lua search pattern
+  get_files_from ("/etc/cmh-ludl/", pattern, "files", "/port_3480/")
+  get_files_from ("/etc/cmh-lu/", pattern, "files", "/port_3480/")
   luup.log "...end of device files"
   
   -- icons
@@ -653,9 +658,9 @@ function GetVeraFiles ()
  
   if major then  
     if major > 5 then     -- UI7
-      get_files_from (icon_directories[7], "icons", "/cmh/skins/default/img/devices/device_states/")
+      get_files_from (icon_directories[7], pattern, "icons", "/cmh/skins/default/img/devices/device_states/")
     else                  -- UI5
-      get_files_from (icon_directories[5], "icons", "/cmh/skins/default/icons/")
+      get_files_from (icon_directories[5], pattern, "icons", "/cmh/skins/default/icons/")
     end
     luup.log "...end of icon files"  
   end

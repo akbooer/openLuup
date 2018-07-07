@@ -160,7 +160,7 @@ do -- set attributes, possibly decoding if required
       Name        = "user_data.json",     -- not recommended to change
     },
     Historian = {
-      CacheSize = 1000,                   -- in-memory cache size (per variable)
+      CacheSize = 1024,                   -- in-memory cache size (per variable) (allows 7 days of 10 min)
       ["-- Directory   = 'history/'"] = [[-- on-disc archive folder]],
       Graphite_UDP  = '',
       InfluxDB_UDP  = '',
@@ -181,7 +181,7 @@ do -- set attributes, possibly decoding if required
       Port = 11011,
     },
     Scenes = {
-      ["-- set Prolog/Epilog to global function names"] = [[-- to run before/after ALL scenes]],
+      ["-- set Prolog/Epilog to global function names "] = [[ to run before/after ALL scenes]],
       Prolog = '',                        -- name of global function to call before any scene
       Epilog = '',                        -- ditto, after any scene
     },
