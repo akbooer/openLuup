@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.06.23",
+  VERSION       = "2018.07.08",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -42,6 +42,7 @@ ABOUT = {
 -- 2018.05.15  add Historian menu
 -- 2018.05.19  use openLuup ABOUT, not console
 -- 2018.05.28  add Files HistoryDB menu
+-- 2018.07.08  hyperlink database files to render graphics
 
 
 -- TODO: HTML pages with sorted tables?
@@ -688,7 +689,8 @@ function run (wsapi_env)
       for _,v in ipairs (d.variables) do 
         N = N + 1 
         if v.history and #v.history > 2 then
-          H[#H+1] = {v = v, sortkey = {v.dev, v.shortSid, v.name}}
+          local finderName = hist.metrics.var2finder (v)
+          H[#H+1] = {v = v, finderName = finderName, sortkey = {v.dev, v.shortSid, v.name}}
         end
       end
     end
@@ -696,12 +698,22 @@ function run (wsapi_env)
     local layout = "    %8s  %10s%-28s %-20s %s"
     local T = 0
     table.sort (H, keysort)
+    
+    local link = [[<a href="/render?target=%s&from=%ss">%s</a>]]
+    local now = os.time()
     for i, x in ipairs(H) do
       local v = x.v
+      local vname = v.name
+      if x.finderName then 
+        local _,start = v:oldest()      -- get earliest entry in the cache (if any)
+        if start then
+          vname = link: format (x.finderName, math.floor (start) - now, vname)
+        end
+      end
       local h = #v.history / 2
       T = T + h
-      local _, number, name = devname(v.dev)
-      H[i] =  layout:format (h, number, name, v.srv: match "[^:]+$" or v.srv, v.name)
+      local _, number, dname = devname(v.dev)
+      H[i] =  layout:format (h, number, dname, v.srv: match "[^:]+$" or v.srv, vname)
     end
     
     print ("Data Historian Cache Memory, " .. os.date(date))
@@ -742,31 +754,46 @@ function run (wsapi_env)
       function (a)        -- file attributes including path, name, size,... (see lfs.attributes)
         local filename = a.name: match "^(.+).wsp$"
         if filename then
-         local n,d,s,v = filename: match "(%d+)%.(%d+)%.([%w_]+)%.(.+)"  -- dev.svc.var, for sorting
-          a.sortkey = {tonumber(n), tonumber(d), s, v}
+         local pk,d,s,v = filename: match "(%d+)%.(%d+)%.([%w_]+)%.(.+)"  -- pk.dev.svc.var, for sorting
+          a.sortkey = {tonumber(pk), tonumber(d), s, v}
           local i = whisper.info (folder .. a.name)
           a.shortName = filename
           a.retentions = tostring(i.retentions) -- text representation of archive retentions
           a.updates = tally[filename] or ''
+          a.finderName = hist.metrics.pkdsv2finder (pk,d,s,v)
+          local links = {}
+          if a.finderName then 
+            local link = [[<a href="/render?target=%s&from=-%s">%s</a>]]
+            for arch in a.retentions: gmatch "[^,]+" do
+              local _, duration = arch: match "([^:]+):(.+)"      -- rate:duration
+              links[#links+1] = link: format (a.finderName, duration, arch)
+            end
+            a.links = table.concat (links, ',')
+          end
           return a
         end
       end)
     
     table.sort (files, keysort)
     
-    local list = " %40s %8s %4s  %8s   %s"
+    local list = "%s %40s %8s %4s  %8s   %s"
     print ''
-    print (list:format ("archives", "size", "(kB)", "#updates", "filename (node.dev.srv.var) \n"))
+    print (list:format ('', "archives", "size", "(kB)", "#updates", "filename (node.dev.srv.var) \n"))
     local N,T = 0,0
     for _,f in ipairs (files) do 
       N = N + 1
       T = T + f.size
-      print (list:format (f.retentions, f.size, '', f.updates, f.shortName)) 
+      -- have to space manually, since archive links contain HTML (not visible)
+      local tab = ''    
+      local spc = ' '
+      if f.links then tab = spc: rep(40 - #f.retentions) end
+      --
+      print (list:format (tab, f.links or f.retentions, f.size, '', f.updates, f.shortName)) 
     end
-    T = T / 1000;
     
     print ''
-    print (list:format ("TOTALS:    database files: " .. N, T - T % 0.1, "(Mb)", tot, ''))
+    T = T / 1000;
+    print (list:format ('',"TOTALS:    database files: " .. N, T - T % 0.1, "(Mb)", tot, ''))
   end
   
   

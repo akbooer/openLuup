@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.06.27",
+  VERSION       = "2018.07.08",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -21,6 +21,7 @@ local ABOUT = {
   See the License for the specific language governing permissions and
   limitations under the License.
 ]]
+
 }
 
 local logs    = require "openLuup.logs"
@@ -283,7 +284,7 @@ here: http://graphite-api.readthedocs.io/en/latest/api.html#graphing-metrics
 
 local Metrics = {}
 
--- find the variable with the given metric path: nodeName.dev[name].shortSid.variable
+-- find the variable with the given metric path: nodeName.dev[_name].shortSid.variable
 function Metrics.finder2var (metric)
   -- ignore non-numeric device name
   local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([%w_]+)%.(.+)$"
@@ -309,6 +310,34 @@ function Metrics.dsv2filepath (dev,shortSid,var)
     local path = table.concat {Directory, filename, ".wsp"}
     return path, filename
   end
+end
+
+-- bsv2finder (b, d, shortSid, var)
+local function bdsv2finder (b, d, shortSid, var)
+  if b then
+    -- Bridges[bridge] = {nodeName = name, PK = PK, offset = offset}
+    d = d + b.offset              -- add bridge offset to convert to openLuup device number
+    local dev = luup.devices[d]
+    if dev then
+      local n = b.nodeName
+      local devname = dev.description: gsub ("%W", '')    -- remove non-alphanumerics
+      d = table.concat {d % BRIDGEBLOCK, '_', devname}    -- shortDevNo_shortDevName
+      return table.concat ({n, d, shortSid, var}, '.')
+    end
+  end
+end
+
+-- find the metrics finder name given all the components of the filename
+function Metrics.pkdsv2finder (pk, d, shortSid, var)
+  local b = Bridges.by_pk [pk]
+  return bdsv2finder (b, d,shortSid,var)
+end
+
+-- find the metrics finder name from the variable
+function Metrics.var2finder (v)
+  local bridge = math.floor (v.dev / BRIDGEBLOCK)
+  local b = Bridges[bridge]
+  return bdsv2finder (b, v.dev % BRIDGEBLOCK, v.shortSid, v.name)
 end
 
 ---------------------------------------------------
@@ -704,7 +733,6 @@ local function HistoryFinder(config)
       local dev = luup.devices[d]
       if dev then
         local devname = dev.description: gsub ("%W", '')    -- remove non-alphanumerics
---        d = table.concat {d % BRIDGEBLOCK, ':', devname}    -- shortDevNo:shortDevName
         d = table.concat {d % BRIDGEBLOCK, '_', devname}    -- shortDevNo_shortDevName
         local N = T[n] or {}
         local D = N[d] or {}
@@ -900,8 +928,9 @@ return {
   start                 = start,
   
   -- Graphite modules
-  finder = HistoryFinder,
-  reader = HistoryReader,
+  finder  = HistoryFinder,
+  reader  = HistoryReader,
+  metrics = Metrics,          -- for name translations: .finder2var(), .dsv2filepath(), .dsv2nodename()
   
 }
 

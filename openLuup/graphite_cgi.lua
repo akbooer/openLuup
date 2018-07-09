@@ -4,8 +4,8 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2018.07.05",
-  DESCRIPTION   = "WSAPI CGI interface to Graphite-API",
+  VERSION       = "2018.07.08",
+  DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "",
@@ -124,11 +124,12 @@ local function Gviz ()
   ----------
   --
   -- This Lua package is an API to a subset of the google.visualization javascript library.
-  -- see: https://google-developers.appspot.com/chart/interactive/docs/index
-  -- 
+  -- see:  https://google-developers.appspot.com/chart/interactive/docs/index
+  -- also: https://developers.google.com/chart/interactive/docs/gallery/controls
 
   -- 2016.07.01   Google Charts API changes broke old code!
-
+  -- 2018.07.08   clone array elements in addRow()
+  
   local version = "2016.07.01  @akbooer"
 
   local key
@@ -146,6 +147,11 @@ local function Gviz ()
     sep = sep or quote
     x = tostring(x)
     return table.concat {sep, x: gsub (old, new), sep} 
+  end
+  local function clone (x)
+    local y = {}
+    for k,v in pairs (x) do y[k] = v end
+    return y
   end
 
   -- toJScr() convert Lua data structures to JavaScript
@@ -171,7 +177,7 @@ local function Gviz ()
 
     local function getNumberOfColumns () return #cols end
     local function getNumberOfRows () return #rows end
-    local function addRow (row) rows[#rows+1] = row end -- should clone?
+    local function addRow (row) rows[#rows+1] = clone(row) end -- should clone?  2018.07.08... yes!!
     local function addRows (rows) for _,row in ipairs (rows) do addRow (row) end; end
     local function addColumn (tableOrType, label, id) 
       local info = {}
@@ -383,7 +389,7 @@ local function treejson (i)
 end
 
 --[[
-/metrics/find?format=treejson&query=collectd.*
+/metrics/find?format=completer&query=collectd.*
 
     {"metrics": [{
         "is_leaf": 0,
@@ -663,49 +669,37 @@ end
 --
 -- hideLegend:  [false] If set to true, the legend is not drawn. If set to false, the legend is drawn. 
 -- areaMode:    none, all, [not done: first, stacked]
+-- title:       plot title
+-- height/width plot size
 -- vtitle:      y-axis title
--- yMin/yMax:   y-axis upper limit
--- graphType:   line is default, but options includee: BarChart, ColumnChart, ... (not PieChart)
--- drawNullAs:  (a small deviation from the Graphite Web App syntax)
---   null:      keep them null
---   zero:      make them zero
---   hold:      hold on to previous value
---
+-- yMin/yMax:   y-axis lower/upper limit
+-- bgcolor:     background colour
+-- areaAlpha:   opacity of area fill
+-- &colorList=green,yellow,orange,red,purple,#DECAFF
 
 local function svgRender (_, p)
+  --  return "[]", 200, {["Content-Type"] = "application/json"}
   -- An empty response is just sufficient for Grafana to recognise that a 
   -- graphite_api server is available, thereafter it uses its own rendering.
-  --  return "[]", 200, {["Content-Type"] = "application/json"}
+  -- but using Google Charts, we can do better: a simple staircase, ignoring nulls.
   -- note: this svg format does not include Graphite's embedded metadata object
   
   local data = gviz.DataTable ()
   data.addColumn('datetime', 'Time');
   local m, n = 0, 0
-
-  -- modes, etc...
-  local mode, nulls, zero, hold, stair, slope, connect
-  mode, nulls = "staircase", "hold"
-  stair   = (mode == "staircase")
-  slope   = (mode == "slope")
-  connect = (mode == "connected")
-  hold    = (nulls == "hold")
-  zero    = (nulls == "zero") and 0
-  _debug (table.concat {"drawing mode: ", mode, ", draw nulls as: ", nulls})
   
   -- fetch the data
   local row = {}   -- rows indexed by time
+  local title = {}
   for name, tv in target (p).next() do
+    title[#title+1] = name
     n = n + 1
-    if n == 1 then     
-      -- do first-time setup
-    end
+    local col = n + 1
     data.addColumn('number', name);        
-    local current, previous
     for _, v,t in tv:ipairs() do
+      t = math.floor(t)                             -- nearest second will do
       row[t] = row[t] or {t}                        -- create the row if it doesn't exist
-      current = v or (hold and previous) or zero    -- special treatment for nil
-      row[t][n+1] = current                         -- fill in the column
-      previous = current
+      row[t][col] = v                               -- fill in the column
     end
   end
   
@@ -716,29 +710,35 @@ local function svgRender (_, p)
   m = #index
   
   -- construct the data rows for plotting  
-  local previous
+  local col = n+1
+  local value = {}
+  local staircase = true
   for _,t in ipairs(index) do
-    if stair and previous then
-      local extra = {}
-      for a,b in pairs (previous) do extra[a] = b end   -- duplicate previous
-      extra[1] = t                                      -- change the time
-      data.addRow (extra)
-    end
-    data.addRow (row[t])
-    previous = row[t]
+--    if staircase then
+      value[1] = t                                   -- change the time
+      data.addRow (value)
+--    end
+    local v = row[t]
+    for i = 1,col do value[i] = v[i] or value[i] end  -- fill in missing values
+    data.addRow (value)
   end
   
   -- add the options  
   local legend = "none"
-  if not p.hideLegend then legend = 'bottom' end
-  local title = p.title
+  local areaOpacity
+  if p.areaMode == "all" then areaOpacity = p.areaAlpha or 0.3 end
+  if p.hideLegend == "false" then legend = 'bottom' end
+  title = p.title or table.concat (title, ', ')
   local opt = {
     title = title, 
     height = p.height or 500, 
     width = p.width, 
     legend = legend, 
-    interpolateNulls = connect, 
-    backgroundColor = p.bgcolor
+--    interpolateNulls = "true", 
+    areaOpacity = areaOpacity,
+    backgroundColor = p.bgcolor,
+-- HTML color string, for example: colors:['red','#004411']
+--    explorer = {},    -- add interactivity!
   }  
 
   local clip, vtitle

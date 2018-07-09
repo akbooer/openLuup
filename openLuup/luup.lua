@@ -239,6 +239,40 @@ startup": {
 },
 
 --]]
+
+--[[ also seen this:
+
+
+Another example: (from status request)
+
+{
+"id": 239,
+"states": [
+{
+"id": 121,
+"service": "urn:micasaverde-com:serviceId:HaDevice1",
+"variable": "Configured",
+"value": "-3"
+}
+],
+"Jobs": [
+{
+"id": "1574",
+"name": "job#1574 :conf_jh#57 dev:239 (0x1148a88) P:39 S:3",
+"icon": "CONFIG",
+"comments": "Unable to get any information on node",
+"status": "3"
+}
+],
+"tooltip": {
+"display": 1,
+"tag2": "Unable to get any information on node"
+},
+"status": 2
+}
+
+--]]
+
 -- function: task
 -- parameters: message (string), status (number), description (string), handle (number)
 -- return: handle (number)
