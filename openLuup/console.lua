@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.07.08",
+  VERSION       = "2018.07.10",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -343,17 +343,13 @@ function run (wsapi_env)
   end
   
   -- returns specified file in a list of tables {date=x, name=y, size=z}
-  -- TODO: switch to using above mapFiles() function
   local function get_matching_files_from (folder, pattern)
-    local files = {}
-    for f in lfs.dir (folder) do
-      local date = f: match (pattern)
-      if date then
-        local attr = lfs.attributes (folder .. f) or {}
-        local size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))
-        files[#files+1] = {date = date, name = f, size = size}
-      end
-    end
+    local files = mapFiles (folder, 
+      function (attr)
+        local name = attr.name
+        local date = name: match (pattern)
+        if date then return {date = date, name = name, size = attr.size} end
+      end)
     table.sort (files, function (a,b) return a.date > b.date end)       -- sort newest to oldest
     return files
   end
@@ -699,29 +695,29 @@ function run (wsapi_env)
     local T = 0
     table.sort (H, keysort)
     
-    local link = [[<a href="/render?target=%s&from=%ss">%s</a>]]
-    local now = os.time()
+    print ("Data Historian Cache Memory, " .. os.date(date))
+    print ("\n  Total number of device variables: " .. N)
+    print ("\n  Variables with History: " .. #H)
+    print ''
+    print (layout: format ("#points", "device ", "name", "service", "variable \n"))
+    
+    local link = [[<a href="/render?target=%s&from=%s">%s</a>]]
     for i, x in ipairs(H) do
       local v = x.v
       local vname = v.name
       if x.finderName then 
         local _,start = v:oldest()      -- get earliest entry in the cache (if any)
         if start then
-          vname = link: format (x.finderName, math.floor (start) - now, vname)
+          local from = timers.util.epoch2ISOdate (start + 1)    -- ensure we're AFTER the start... 
+          vname = link: format (x.finderName, from, vname)      -- ...and use fixed time format
         end
       end
       local h = #v.history / 2
       T = T + h
       local _, number, dname = devname(v.dev)
-      H[i] =  layout:format (h, number, dname, v.srv: match "[^:]+$" or v.srv, vname)
+      print (layout:format (h, number, dname, v.srv: match "[^:]+$" or v.srv, vname))
+      if i % 5 == 0 then print '' end     -- cosmetic line spacing
     end
-    
-    print ("Data Historian Cache Memory, " .. os.date(date))
-    print ("\n  Total number of device variables: " .. N)
-    print ("\n  Variables with History: " .. #H)
-    print ''
-    print (layout: format ("#points", "device ", "name", "service", "variable \n"))
-    print (table.concat (H,'\n'))
     print ("\n  Total number of history points:", T)
   end
   
@@ -763,10 +759,10 @@ function run (wsapi_env)
           a.finderName = hist.metrics.pkdsv2finder (pk,d,s,v)
           local links = {}
           if a.finderName then 
-            local link = [[<a href="/render?target=%s&from=-%s">%s</a>]]
+            local link = [[<a href="/render?target=%s&from=-%s">%s</a>]]      -- use relative time format
             for arch in a.retentions: gmatch "[^,]+" do
-              local _, duration = arch: match "([^:]+):(.+)"      -- rate:duration
-              links[#links+1] = link: format (a.finderName, duration, arch)
+              local _, duration = arch: match "([^:]+):(.+)"                  -- rate:duration
+              links[#links+1] = link: format (a.finderName, duration, arch) 
             end
             a.links = table.concat (links, ',')
           end
@@ -780,15 +776,16 @@ function run (wsapi_env)
     print ''
     print (list:format ('', "archives", "size", "(kB)", "#updates", "filename (node.dev.srv.var) \n"))
     local N,T = 0,0
-    for _,f in ipairs (files) do 
+    for i,f in ipairs (files) do 
       N = N + 1
       T = T + f.size
-      -- have to space manually, since archive links contain HTML (not visible)
+      -- have to tab space manually, since archive links contain HTML (not visible)
       local tab = ''    
       local spc = ' '
       if f.links then tab = spc: rep(40 - #f.retentions) end
       --
       print (list:format (tab, f.links or f.retentions, f.size, '', f.updates, f.shortName)) 
+      if i % 5 == 0 then print '' end     -- cosmetic line spacing
     end
     
     print ''
