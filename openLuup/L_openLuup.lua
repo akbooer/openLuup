@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.07.10",
+  VERSION       = "2018.07.15",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -183,6 +183,30 @@ end
 
 --------------------------------------------------
 --
+-- AltUI install configuration
+--
+-- would not normally expect to need anything here, but recently (May 2018), clean installs of 
+-- openLuup are failing with a nil pointer in AltUI: 
+--
+--   ERROR: [string "L_ALTUI.lua"]:2306: attempt to index local 'tbl' (a nil value)
+-- 
+-- This is due to an uninitialised device variable
+-- which should contain a valid (possibly empty) JSON table.  Thanks @jswim788.
+-- see: http://forum.micasaverde.com/index.php/topic,83034.msg387377.html#msg387377
+--
+--[[
+      "id":7,
+      "service":"urn:upnp-org:serviceId:altui1",
+      "value":"{}",
+      "variable":"PluginConfig"
+--]]
+local function configure_AltUI ()
+  
+end
+
+
+--------------------------------------------------
+--
 -- DataYours install configuration
 --
 -- set up parameters and a Whisper data directory
@@ -253,7 +277,8 @@ end
 
 local configure = {   -- This is a dispatch list of plug ids which need special configuration
   ["8211"] = configure_DataYours,
-  -- more to go here (AltUI??)
+  ["8246"] = configure_AltUI,
+  -- more go here
 }
 
 --
@@ -527,7 +552,7 @@ local function displayHouseMode (Mode)
     Mode = luup.variable_get (SID.openLuup, "HouseMode", ole)
   end
   Mode = tonumber(Mode)
-  display (nil, modeLine: format(modeName[Mode]))
+  display (nil, modeLine: format(modeName[Mode] or ''))
 end
 
 function openLuup_watcher (_, _, var, _, Mode)    -- 2018.02.20

@@ -199,8 +199,8 @@ local archive_rules = {
     },{
       schema   = "every_10m", 
       patterns = {
-        "*.*.{CurrentLevel,CurrentTemperature,CurrentPressure}",  -- temperature, humidity, generic sensors, ...
-        "*.*.{Max,Min}Temp",            -- max/min values (which also use an aggregation rule)
+        "*.*.Current*",                 -- temperature, humidity, generic sensors, setpoint...
+--        "*.*.{Max,Min}Temp",            -- max/min values (which also use an aggregation rule)
       },
     },{
       schema   = "every_20m", 
@@ -224,7 +224,7 @@ local archive_rules = {
 
 local cache_rules = {
   nocache = {
-      dates_and_times = "*.*.{*Date*,Last*,Poll*,Configured,CommFailure}",
+      dates_and_times = "*.*.{*Date*,*Last*,Poll*,Configured,CommFailure}",
       zwave_devices = "*.ZWaveDevice1.*",
     },
   }

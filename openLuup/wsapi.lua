@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2017.01.12",
+  VERSION       = "2018.07.14",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2017 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -43,6 +43,8 @@ local ABOUT = {
 -- 2016.10.17  use CGI aliases from external servertables module
 
 -- 2017.01.12  remove leading colon from REMOTE_PORT metavariable value
+-- 2018.07.14  improve error handling when calling CGI
+
 
 --[[
 
@@ -76,6 +78,7 @@ The connectors are careful to treat errors gracefully: if they occur before send
 local loader  = require "openLuup.loader"       -- to create new environment in which to execute CGI script 
 local logs    = require "openLuup.logs"         -- used for wsapi_env.error:write()
 local tables  = require "openLuup.servertables" -- used for CGI aliases
+local url     = require "socket.url"            -- for request library utilities
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
@@ -273,14 +276,333 @@ local function cgi (request)
   -- guaranteed to be something executable here, even it it's a dummy with error message
   -- three return values: the HTTP status code, a table with headers, and the output iterator.
   
-  return cache[script] (wsapi_env)
+  -- catch any error during CGI execution
+  -- it's essential to return from here with SOME kind of HTML page,
+  -- so the usual error catch-all in the scheduler context switching is not sufficient.
+  -- Errors during response iteration are caught by the HTTP servlet. 
+
+  local ok, status, responseHeaders, iterator = pcall (cache[script], wsapi_env)
+  
+  if not ok then
+    local message = status
+    _log ("ERROR: " .. message)
+    status = 500    -- Internal server error
+    responseHeaders = { ["Content-Type"] = "text/plain" }
+    iterator = function ()
+      local line = message
+      message = nil
+      return line
+    end
+  end
+
+  return status, responseHeaders, iterator
 end
+
+
+------------------------------------------------------
+--
+-- The original WSAPI has a number of additional libraries
+-- see: https://keplerproject.github.io/wsapi/libraries.html
+-- here, just the request library is included.
+-- use in a CGI file like this:
+--    local wsapi = require "openLuup.wsapi" 
+--    local req = wsapi.request.new(wsapi_env)
+
+------------------------------------------------------
+
+-- substitute utility library methods with alternatives
+local util = {
+  url_decode  = url.unescape,
+  url_encode  = url.escape,
+}
+
+----------
+--
+-- request library, this is the verbatim keplerproject code 
+-- see: https://github.com/keplerproject/wsapi/blob/master/src/wsapi/request.lua
+--
+--[[
+
+Copyright © 2007-2014 Kepler Project.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+--]]
+
+local function _M_request ()
+  
+--  local util = require"wsapi.util"
+
+  local _M = {}
+
+  local function split_filename(path)
+    local name_patt = "[/\\]?([^/\\]+)$"
+    return (string.match(path, name_patt))
+  end
+
+  local function insert_field (tab, name, value, overwrite)
+    if overwrite or not tab[name] then
+      tab[name] = value
+    else
+      local t = type (tab[name])
+      if t == "table" then
+        table.insert (tab[name], value)
+      else
+        tab[name] = { tab[name], value }
+      end
+    end
+  end
+
+  local function parse_qs(qs, tab, overwrite)
+    tab = tab or {}
+    if type(qs) == "string" then
+      local url_decode = util.url_decode
+      for key, val in string.gmatch(qs, "([^&=]+)=([^&=]*)&?") do
+        insert_field(tab, url_decode(key), url_decode(val), overwrite)
+      end
+    elseif qs then
+      error("WSAPI Request error: invalid query string")
+    end
+    return tab
+  end
+
+  local function get_boundary(content_type)
+    local boundary = string.match(content_type, "boundary%=(.-)$")
+    return "--" .. tostring(boundary)
+  end
+
+  local function break_headers(header_data)
+    local headers = {}
+    for type, val in string.gmatch(header_data, '([^%c%s:]+):%s+([^\n]+)') do
+      type = string.lower(type)
+      headers[type] = val
+    end
+    return headers
+  end
+
+  local function read_field_headers(input, pos)
+    local EOH = "\r\n\r\n"
+    local s, e = string.find(input, EOH, pos, true)
+    if s then
+      return break_headers(string.sub(input, pos, s-1)), e+1
+    else return nil, pos end
+  end
+
+  local function get_field_names(headers)
+    local disp_header = headers["content-disposition"] or ""
+    local attrs = {}
+    for attr, val in string.gmatch(disp_header, ';%s*([^%s=]+)="(.-)"') do
+      attrs[attr] = val
+    end
+    return attrs.name, attrs.filename and split_filename(attrs.filename)
+  end
+
+  local function read_field_contents(input, boundary, pos)
+    local boundaryline = "\r\n" .. boundary
+    local s, e = string.find(input, boundaryline, pos, true)
+    if s then
+      return string.sub(input, pos, s-1), s-pos, e+1
+    else return nil, 0, pos end
+  end
+
+  local function file_value(file_contents, file_name, file_size, headers)
+    local value = { contents = file_contents, name = file_name,
+      size = file_size }
+    for h, v in pairs(headers) do
+      if h ~= "content-disposition" then
+        value[h] = v
+      end
+    end
+    return value
+  end
+
+  local function fields(input, boundary)
+    local state, _ = { }
+    _, state.pos = string.find(input, boundary, 1, true)
+    state.pos = state.pos + 1
+    return function (state, _)
+       local headers, name, file_name, value, size
+       headers, state.pos = read_field_headers(input, state.pos)
+       if headers then
+         name, file_name = get_field_names(headers)
+         if file_name then
+           value, size, state.pos = read_field_contents(input, boundary,
+              state.pos)
+           value = file_value(value, file_name, size, headers)
+         else
+           value, size, state.pos = read_field_contents(input, boundary,
+              state.pos)
+         end
+       end
+       return name, value
+     end, state
+  end
+
+  local function parse_multipart_data(input, input_type, tab, overwrite)
+    tab = tab or {}
+    local boundary = get_boundary(input_type)
+    for name, value in fields(input, boundary) do
+      insert_field(tab, name, value, overwrite)
+    end
+    return tab
+  end
+
+  local function parse_post_data(wsapi_env, tab, overwrite)
+    tab = tab or {}
+    local input_type = wsapi_env.CONTENT_TYPE
+    if string.find(input_type, "x-www-form-urlencoded", 1, true) then
+      local length = tonumber(wsapi_env.CONTENT_LENGTH) or 0
+      parse_qs(wsapi_env.input:read(length) or "", tab, overwrite)
+    elseif string.find(input_type, "multipart/form-data", 1, true) then
+      local length = tonumber(wsapi_env.CONTENT_LENGTH) or 0
+      if length > 0 then
+         parse_multipart_data(wsapi_env.input:read(length) or "", input_type, tab, overwrite)
+      end
+    else
+      local length = tonumber(wsapi_env.CONTENT_LENGTH) or 0
+      tab.post_data = wsapi_env.input:read(length) or ""
+    end
+    return tab
+  end
+
+  _M.methods = {}
+
+  local methods = _M.methods
+
+  function methods.__index(tab, name)
+    local func
+    if methods[name] then
+      func = methods[name]
+    else
+      local route_name = name:match("link_([%w_]+)")
+      if route_name then
+        func = function (self, query, ...)
+           return tab:route_link(route_name, query, ...)
+         end
+      end
+    end
+    tab[name] = func
+    return func
+  end
+
+  function methods:qs_encode(query, url)
+    local parts = {}
+    for k, v in pairs(query or {}) do
+      parts[#parts+1] = k .. "=" .. util.url_encode(v)
+    end
+    if #parts > 0 then
+      return (url and (url .. "?") or "") .. table.concat(parts, "&")
+    else
+      return (url and url or "")
+    end
+  end
+
+  function methods:route_link(route, query, ...)
+    local builder = self.mk_app["link_" .. route]
+    if builder then
+      local uri = builder(self.mk_app, self.env, ...)
+      local qs = self:qs_encode(query)
+      return uri .. (qs ~= "" and ("?"..qs) or "")
+    else
+      error("there is no route named " .. route)
+    end
+  end
+
+  function methods:link(url, query)
+    local prefix = (self.mk_app and self.mk_app.prefix) or self.script_name
+--    local uri = prefix .. url
+    local qs = self:qs_encode(query)
+    return prefix .. url .. (qs ~= "" and ("?"..qs) or "")
+  end
+
+  function methods:absolute_link(url, query)
+    local qs = self:qs_encode(query)
+    return url .. (qs ~= "" and ("?"..qs) or "")
+  end
+
+  function methods:static_link(url)
+    local prefix = (self.mk_app and self.mk_app.prefix) or self.script_name
+    local is_script = prefix:match("(%.%w+)$")
+    if not is_script then return self:link(url) end
+    local vpath = prefix:match("(.*)/") or ""
+    return vpath .. url
+  end
+
+  function methods:empty(s)
+    return not s or string.match(s, "^%s*$")
+  end
+
+  function methods:empty_param(param)
+    return self:empty(self.params[param])
+  end
+
+  function _M.new(wsapi_env, options)
+    options = options or {}
+    local req = {
+      GET          = {},
+      POST         = {},
+      method       = wsapi_env.REQUEST_METHOD,
+      path_info    = wsapi_env.PATH_INFO,
+      query_string = wsapi_env.QUERY_STRING,
+      script_name  = wsapi_env.SCRIPT_NAME,
+      env          = wsapi_env,
+      mk_app       = options.mk_app,
+      doc_root     = wsapi_env.DOCUMENT_ROOT,
+      app_path     = wsapi_env.APP_PATH
+    }
+    parse_qs(wsapi_env.QUERY_STRING, req.GET, options.overwrite)
+    if options.delay_post then
+      req.parse_post = function (self)
+        parse_post_data(wsapi_env, self.POST, options.overwrite)
+        self.parse_post = function () return nil, "postdata already parsed" end
+        return self.POST
+      end
+    else
+      parse_post_data(wsapi_env, req.POST, options.overwrite)
+      req.parse_post = function () return nil, "postdata already parsed" end
+    end
+    req.params = {}
+    setmetatable(req.params, { __index = function (tab, name)
+      local var = req.GET[name] or req.POST[name]
+      rawset(tab, name, var)
+      return var
+    end})
+    req.cookies = {}
+    local cookies = string.gsub(";" .. (wsapi_env.HTTP_COOKIE or "") .. ";",
+              "%s*;%s*", ";")
+    setmetatable(req.cookies, { __index = function (tab, name)
+      name = name
+      local pattern = ";" .. name ..
+        "=(.-);"
+      local cookie = string.match(cookies, pattern)
+      cookie = util.url_decode(cookie)
+      rawset(tab, name, cookie)
+      return cookie
+    end})
+    return setmetatable(req, methods)
+  end
+
+  return _M
+
+end
+
+
+----------
 
 return {
     ABOUT = ABOUT,
     TEST  = {build = build},        -- access to 'build' for testing
      
     cgi   = cgi,                    -- called by the server to process a CGI request
+    
+    -- modules
+    
+    request   = _M_request (),
+    
   }
   
 -----

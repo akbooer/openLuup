@@ -57,7 +57,10 @@ There are three major parts:
  HistoryReader  - called by the Graphite API to return metric values (from both cache and disk archives)
  
 TODO: Additionally, CarbonCache is able to write non-historian Whisper files, replacing DataYours)
- 
+
+TODO: consider recording some internal metrics
+see: https://github.com/graphite-project/carbon/blob/master/lib/carbon/instrumentation.py
+
 --]]
     
 
@@ -313,6 +316,7 @@ function Metrics.dsv2filepath (dev,shortSid,var)
 end
 
 -- bsv2finder (b, d, shortSid, var)
+-- ALSO returns openLuup device number  and full device name
 local function bdsv2finder (b, d, shortSid, var)
   if b then
     -- Bridges[bridge] = {nodeName = name, PK = PK, offset = offset}
@@ -320,9 +324,9 @@ local function bdsv2finder (b, d, shortSid, var)
     local dev = luup.devices[d]
     if dev then
       local n = b.nodeName
-      local devname = dev.description: gsub ("%W", '')    -- remove non-alphanumerics
-      d = table.concat {d % BRIDGEBLOCK, '_', devname}    -- shortDevNo_shortDevName
-      return table.concat ({n, d, shortSid, var}, '.')
+      local devname = dev.description: gsub ("%W", '')            -- remove non-alphanumerics
+      local d2 = table.concat {d % BRIDGEBLOCK, '_', devname}     -- shortDevNo_shortDevName
+      return table.concat ({n, d2, shortSid, var}, '.'), d, dev.description
     end
   end
 end

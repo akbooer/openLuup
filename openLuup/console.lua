@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.07.10",
+  VERSION       = "2018.07.15",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -42,7 +42,9 @@ ABOUT = {
 -- 2018.05.15  add Historian menu
 -- 2018.05.19  use openLuup ABOUT, not console
 -- 2018.05.28  add Files HistoryDB menu
--- 2018.07.08  hyperlink database files to render graphics
+-- 2018.07.08  add hyperlink database files to render graphics
+-- 2018.07.12  add typerlink backup files to uncompress and retrieve
+-- 2018.07.15  colour code non-200 status numbers
 
 
 -- TODO: HTML pages with sorted tables?
@@ -363,60 +365,17 @@ function run (wsapi_env)
     local list = "%-12s %4s   %s"
     print (list:format ("yyyy-mm-dd", "(kB)", "filename"))
     for _,f in ipairs (files) do 
-      print (list:format (f.date, f.size, f.name)) 
+      local hyperlink = [[<a href="cgi-bin/cmh/backup.sh?retrieve=%s" download="%s">%s</a>]]
+      local name = hyperlink:format (f.name, f.name: gsub (".lzap$",".json"), f.name)
+      print (list:format (f.date, f.size, name)) 
     end
   end
   
-  local function uncompressform ()
-    print [[
- <form action="/console">
-    <input type="hidden" name="page" value="uncompress">
-    <input type="file" name="unlzap" accept=".lzap" formmethod="get">
-    <label for="file">Choose a file</label>
-    <input type="Submit" value="Uncompress" class="dropbtn"><br>
- </form>     
-    ]]
-  end
-  
-  local function uncompress (p)
-    for a,b in pairs(p) do
-      print (a .. " : " .. tostring(b))
-    end
---    local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
---    local code = compress.lzap.decode (code, codec)   -- uncompress the file
--- TODO:  UNCOMPRESS... following code lifted from backup module compression
---[[
-    local f
-    f, msg = io.open (fname, 'wb')
-    if f then 
-      local codec = compress.codec (nil, "LZAP")  -- full binary codec with header text
-      small = compress.lzap.encode (ok, codec)
-      f: write (small)
-      f: close ()
-      ok = #ok / 1000    -- convert to file sizes
-      small = #small / 1000
-    else
-      ok = false
-    end
-  end
-  
-  local headers = {["Content-Type"] = "text/plain"}
-  local status, return_content
-  if ok then 
-    msg = ("%0.0f kb compressed to %0.0f kb (%0.1f:1)") : format (ok, small, ok/small)
-    local body = html: format (msg, fname, fname)
-    headers["Content-Type"] = "text/html"
-    status, return_content = 200, body
-  else
-    status, return_content = 500, "backup failed: " .. msg
-  end
-  _log (msg)
-
---]]
-
-  end
-
   local function number (n) return ("%7d  "): format (n) end
+  local function status_number (n)
+    if n == 200 then return number(n) end
+    return ('<font color="red">%7d</font>'): format (n) 
+  end
   
   local function devname (d)
     d = tonumber(d) or 0
@@ -453,7 +412,7 @@ function run (wsapi_env)
         local count = call.count
         local status = call.status
         if count and count > 0 then
-          printout (name, number(count), number(status))
+          printout (name, number(count), status_number(status))
         end
       end
     end
@@ -691,7 +650,8 @@ function run (wsapi_env)
       end
     end
      
-    local layout = "    %8s  %10s%-28s %-20s %s"
+--    local layout = "    %8s  %10s%-28s %-20s %s"
+    local layout = "    %8s  %8s %-20s %s"
     local T = 0
     table.sort (H, keysort)
     
@@ -699,10 +659,12 @@ function run (wsapi_env)
     print ("\n  Total number of device variables: " .. N)
     print ("\n  Variables with History: " .. #H)
     print ''
-    print (layout: format ("#points", "device ", "name", "service", "variable \n"))
+--    print (layout: format ("#points", "device ", "name", "service", "variable \n"))
+    print (layout: format ("#points", "device ", "service", "variable"))
     
     local link = [[<a href="/render?target=%s&from=%s">%s</a>]]
-    for i, x in ipairs(H) do
+    local prev  -- previous device (for line spacing)
+    for _, x in ipairs(H) do
       local v = x.v
       local vname = v.name
       if x.finderName then 
@@ -714,9 +676,15 @@ function run (wsapi_env)
       end
       local h = #v.history / 2
       T = T + h
-      local _, number, dname = devname(v.dev)
-      print (layout:format (h, number, dname, v.srv: match "[^:]+$" or v.srv, vname))
-      if i % 5 == 0 then print '' end     -- cosmetic line spacing
+--      local _, number, dname = devname(v.dev)
+      local dname = devname(v.dev)
+      if dname ~= prev then 
+        local devname = "\n%14s<em>%s</em>"
+        print(devname: format ('', dname)) 
+      end
+      prev = dname
+--      print (layout:format (h, number, dname, v.srv: match "[^:]+$" or v.srv, vname))
+      print (layout:format (h, '', v.srv: match "[^:]+$" or v.srv, vname))
     end
     print ("\n  Total number of history points:", T)
   end
@@ -756,7 +724,10 @@ function run (wsapi_env)
           a.shortName = filename
           a.retentions = tostring(i.retentions) -- text representation of archive retentions
           a.updates = tally[filename] or ''
-          a.finderName = hist.metrics.pkdsv2finder (pk,d,s,v)
+          local finderName, devnum, description = hist.metrics.pkdsv2finder (pk,d,s,v)
+          a.finderName = finderName
+          a.devnum = devnum or ''
+          a.description = description or "-- unknown --"
           local links = {}
           if a.finderName then 
             local link = [[<a href="/render?target=%s&from=-%s">%s</a>]]      -- use relative time format
@@ -772,11 +743,13 @@ function run (wsapi_env)
     
     table.sort (files, keysort)
     
-    local list = "%s %40s %8s %4s  %8s   %s"
+    local list = "%s %40s %10s  %8s   %s"
     print ''
-    print (list:format ('', "archives", "size", "(kB)", "#updates", "filename (node.dev.srv.var) \n"))
+--    print (list:format ('', "archives", "size", "(kB)", "#updates", "filename (node.dev.srv.var) \n"))
+    print (list:format ('', "archives", "(kB)", "#updates", "filename (node.dev.srv.var)"))
+    local prev
     local N,T = 0,0
-    for i,f in ipairs (files) do 
+    for _,f in ipairs (files) do 
       N = N + 1
       T = T + f.size
       -- have to tab space manually, since archive links contain HTML (not visible)
@@ -784,13 +757,21 @@ function run (wsapi_env)
       local spc = ' '
       if f.links then tab = spc: rep(40 - #f.retentions) end
       --
-      print (list:format (tab, f.links or f.retentions, f.size, '', f.updates, f.shortName)) 
-      if i % 5 == 0 then print '' end     -- cosmetic line spacing
+      local devnum = f.devnum     -- openLuup device number (if present)
+      if devnum ~= prev then 
+        local devname = "\n <em>%40s</em>"
+--        local devname = "\n%s<em>%s</em>"
+--        print(devname: format (spc: rep(52), f.description: match "%s*(.*)"))
+        print(devname: format (f.description))
+      end
+      prev = devnum
+      print (list:format (tab, f.links or f.retentions, f.size, f.updates, f.shortName)) 
+--      if i % 5 == 0 then print '' end     -- cosmetic line spacing
     end
     
-    print ''
+    print '\n'
     T = T / 1000;
-    print (list:format ('',"TOTALS:    database files: " .. N, T - T % 0.1, "(Mb)", tot, ''))
+    print (list:format ('',"TOTALS: " .. N .. " database files, ", (T - T % 0.1) .. " (Mb)", tot, ''))
   end
   
   
@@ -815,9 +796,6 @@ function run (wsapi_env)
     udp     = udplist,
     
     historian   = historian,
-    
-    uncompress      = uncompress,
-    uncompressform  = uncompressform,
     
     parameters = function ()
       local info = luup.attr_get "openLuup"

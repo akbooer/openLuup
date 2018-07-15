@@ -51,6 +51,7 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2018.02.15   For file requests, also look in ./www/ (a better place for web pages)
 -- 2018.02.19   apply directory path aliases from server tables (rather than hard-coded)
 -- 2018.03.22   add invocation count to data_request calls, export http_handler, use logs.register()
+-- 2018.07.15   use raw_read() in file handler, for consistency in path search order
 
 
 local logs      = require "openLuup.logs"
@@ -60,6 +61,7 @@ local json      = require "openLuup.json"               -- for unit testing only
 local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for CGI processing
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local vfs       = require "openLuup.virtualfilesystem"  -- on possible file path
+local loader    = require "openLuup.loader"             -- for raw_read()
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
@@ -216,19 +218,12 @@ local function file_request (request)
   
   local content_type = mime_file_type (path)
   local content_length
-  local response
   local status = 500
   
-  local f = io.open(path,'rb')                      -- 2016.03.05  'b' for Windows, thanks @vosmont
-    or io.open ("../cmh-lu/" .. path, 'rb')         -- 2016.02.24  also look in /etc/cmh-lu/
-    or io.open ("files/" .. path, 'rb')             -- 2016.06.09  also look in files/
-    or io.open ("www/" .. path, 'rb')               -- 2018.02.15  also look in www/
-    or io.open ("openLuup/" .. path, 'rb')          -- 2016.05.25  also look in openLuup/ (for plugins page)
-    or vfs.open (path, 'rb')                        -- 2016.06.01  also look in virtualfilesystem
+  -- 2018.07.15  use raw_read() for consistency in path search order
+  local response = loader.raw_read (path) or vfs.read (path)  -- 2016.06.01  also look in virtualfilesystem
   
-  if f then 
-    response = (f: read "*a") or ''                   -- should perhaps chunk long files
-    f: close ()
+  if response then 
     status = 200
     
     -- @explorer:  2016.04.14, Workaround for SONOS not liking chunked MP3 and some headers.       
