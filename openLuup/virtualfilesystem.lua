@@ -1020,6 +1020,10 @@ local I_openLuupSecuritySensor1_xml = [[
         set ("Armed", lul_settings.newArmedValue)
 	  </run>
 	  </action>
+  </actionList>
+  <startup>startup</startup>
+</implementation>
+]]
 
 local I_openLuupSecurity1_xml = [[
 <?xml version="1.0"?>
