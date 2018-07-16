@@ -3,10 +3,10 @@ local ABOUT = {
   VERSION       = "2016.10.17",
   DESCRIPTION   = "JSON encode/decode with unicode escapes to UTF-8 encoding and pretty-printing",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2016 AKBooer",
+  COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2016 AK Booer
+  Copyright 2013-2018 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -29,11 +29,12 @@ local ABOUT = {
 -- 2015.11.29   improve formatting of nested objects, cache encoded strings
 -- 2016.06.19   encode "/" as "/" not "\/" in strings
 -- 2016.10.18   add json.null
+-- 2018.06.26   extend max_array_length to 3000
 
   local default   = 
     {
       huge = "8.88e888",          -- representation for JSON infinity (looks like infinity symbols on their side)
-      max_array_length = 1000,    -- not a coding restriction, per se, just a sanity check against, eg {[1e6] = 1}
+      max_array_length = 3000,    -- not a coding restriction, per se, just a sanity check against, eg {[1e6] = 1}
                                   -- since arrays are enumerated from starting index 1 with every intervening 'nil' 
     }
     

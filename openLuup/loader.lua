@@ -54,7 +54,7 @@ local ABOUT = {
 -- 2018.04.22  parse_impl_xml added action field for /data_request?id=lua&DeviceNum=... 
 -- 2018.05.10  SUBSTANTIAL REWRITE, to accomodate new XML DOM parser
 -- 2018.05.26  add new line before action end - beware final comment lines!! Debug dump erroneous source code.
-
+-- 2018.07.15  change search path order in raw_read()
 
 ------------------
 --
@@ -178,16 +178,19 @@ local function memoize (fct, cache)
 end
 
 
+-- 2018.07.15  changed search path order to look first in openLuup/ (for system files, esp. VeraBridge)
 local function raw_read (filename)
-  local f = io.open (filename) 
+  local f = io.open("openLuup/" .. filename, 'rb')        -- 2016.06.18  look in openLuup/ (for AltAppStore)
+    or io.open (filename, 'rb') 
     or io.open ("../cmh-lu/" .. filename)             -- look in 'cmh-lu/' directory
     or io.open ("files/" .. filename, 'rb')           -- 2016.06.09  also look in files/
-    or io.open ("openLuup/" .. filename, 'rb')        -- 2016.06.18  also look in openLuup/ (for AltAppStore)
+    or io.open ("www/" .. filename, 'rb')                 -- 2018.02.15  also look in www/
   if f then 
     local data = f: read "*a"
     f: close () 
     return data
   end
+  return nil, "raw_read: error opening: " .. (filename or '?')
 end
 
 local cached_read = memoize (raw_read, file_cache)    -- 2016.02.23
@@ -605,36 +608,6 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
 
   return d, error_msg
 end
-------
-
--- TEST
-
---local x = "<a><b><c /><d /><e /></b><b><f /><g /><h /></b></a>"
---local y = decode(x).documentElement
-
---for z in  y:nextNode (function (x, p) return p == "/a/b" end) do 
---  print (z.nodeName, #z.childNodes)
---end
-
---print "---- xpath"
-
---local w = y:xpath "//b" 
---for _,z in ipairs(w) do
---  print (z.nodeName, #z.childNodes)
---end
-
---print "---- xpathIterator"
-
---for z in y:xpathIterator "//b/*" do
---  print (z.nodeName, #z.childNodes)
---end
-
-
---print "---- xpathIterator"
-
---for z in y:xpathIterator "//*/f" do
---  print (z.nodeName, #z.childNodes)
---end
 
 
 return {
@@ -654,6 +627,7 @@ return {
   parse_service_xml   = parse_service_xml,
   parse_device_xml    = parse_device_xml,
   parse_impl_xml      = parse_impl_xml,
+  raw_read            = raw_read,         -- so that other modules have same search path
   read_service        = read_service,
   read_device         = read_device,
   read_impl           = read_impl,

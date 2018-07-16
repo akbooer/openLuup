@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.05.28",
+  VERSION       = "2018.07.15",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -29,7 +29,7 @@ ABOUT = {
 --   * useful actions
 --   * plugin-specific configuration
 --   * SMTP mail handlers
---   * Data Storage Provider gateways>
+--   * Data Storage Provider gateways
 --   * Retention policy implementation for directories
 --   * etc., etc...
 --
@@ -53,6 +53,7 @@ ABOUT = {
 -- 2018.04.15  fix number types in SendToTrash action
 -- 2018.05.02  add StartTime device variable, also on Control panel (thanks @rafale77)
 -- 2018.05.16  SendToTrash applied to the trash/ folder will DELETE selected files
+-- 2018.06.11  Added Vnumber (purely numeric six digit version number yymmdd) for @rigpapa
 
 
 local json        = require "openLuup.json"
@@ -182,6 +183,30 @@ end
 
 --------------------------------------------------
 --
+-- AltUI install configuration
+--
+-- would not normally expect to need anything here, but recently (May 2018), clean installs of 
+-- openLuup are failing with a nil pointer in AltUI: 
+--
+--   ERROR: [string "L_ALTUI.lua"]:2306: attempt to index local 'tbl' (a nil value)
+-- 
+-- This is due to an uninitialised device variable
+-- which should contain a valid (possibly empty) JSON table.  Thanks @jswim788.
+-- see: http://forum.micasaverde.com/index.php/topic,83034.msg387377.html#msg387377
+--
+--[[
+      "id":7,
+      "service":"urn:upnp-org:serviceId:altui1",
+      "value":"{}",
+      "variable":"PluginConfig"
+--]]
+local function configure_AltUI ()
+  
+end
+
+
+--------------------------------------------------
+--
 -- DataYours install configuration
 --
 -- set up parameters and a Whisper data directory
@@ -252,7 +277,8 @@ end
 
 local configure = {   -- This is a dispatch list of plug ids which need special configuration
   ["8211"] = configure_DataYours,
-  -- more to go here (AltUI??)
+  ["8246"] = configure_AltUI,
+  -- more go here
 }
 
 --
@@ -526,7 +552,7 @@ local function displayHouseMode (Mode)
     Mode = luup.variable_get (SID.openLuup, "HouseMode", ole)
   end
   Mode = tonumber(Mode)
-  display (nil, modeLine: format(modeName[Mode]))
+  display (nil, modeLine: format(modeName[Mode] or ''))
 end
 
 function openLuup_watcher (_, _, var, _, Mode)    -- 2018.02.20
@@ -646,10 +672,13 @@ function init (devNo)
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
+    local Vnumber = tonumber ((y%2000)..m..d)
     set ("Version", version)
+    set ("Vnumber", Vnumber)
     luup.log (version)
     local info = luup.attr_get "openLuup"
     info.Version = version      -- put it into openLuup table too.
+    info.Vnumber = Vnumber      -- ditto --
   end
   
   do -- synchronised heartbeat
@@ -684,7 +713,7 @@ function init (devNo)
   
   do -- InfluxDB as Data Storage Provider 
     local dsp = "InfluxDB Data Storage Provider: "
-    local db = luup.attr_get "openLuup.Databases.Influx"
+    local db = luup.attr_get "openLuup.DataStorageProvider.Influx"
     if db then
       local err
       register_Data_Storage_Provider ()   -- 2018.03.01

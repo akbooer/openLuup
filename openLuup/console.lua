@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.05.25",
+  VERSION       = "2018.07.15",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -41,6 +41,10 @@ ABOUT = {
 -- 2018.04.19  add Servers UDP menu
 -- 2018.05.15  add Historian menu
 -- 2018.05.19  use openLuup ABOUT, not console
+-- 2018.05.28  add Files HistoryDB menu
+-- 2018.07.08  add hyperlink database files to render graphics
+-- 2018.07.12  add typerlink backup files to uncompress and retrieve
+-- 2018.07.15  colour code non-200 status numbers
 
 
 -- TODO: HTML pages with sorted tables?
@@ -58,6 +62,10 @@ local http      = require "openLuup.http"
 local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
+local hist      = require "openLuup.historian"    -- for disk archive stats   
+local timers    = require "openLuup.timers"       -- for startup time
+
+local isWhisper, whisper = pcall (require, "L_DataWhisper")   -- might not be installed
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -139,6 +147,16 @@ prefix = [[
       </div>
 
       <div class="dropdown">
+        <button class="dropbtn">Files</button>
+        <div class="dropdown-content">
+          <a class="left" href="/console?page=backups">Backups</a>
+          <a class="left" href="/console?page=images">Images</a>
+          <a class="left" href="/console?page=database">History DB</a>
+          <a class="left" href="/console?page=trash">Trash</a>
+        </div>
+      </div>
+
+      <div class="dropdown">
         <button class="dropbtn">Scheduler</button>
         <div class="dropdown-content">
           <a class="left" href="/console?page=jobs">Jobs</a>
@@ -172,19 +190,11 @@ prefix = [[
           <a class="left" href="/console?page=log&version=startup">Startup Log</a>
         </div>
       </div>
-
-      <div class="dropdown">
-        <button class="dropbtn">Files</button>
-        <div class="dropdown-content">
-          <a class="left" href="/console?page=backups">Backups</a>
-          <a class="left" href="/console?page=images">Images</a>
-          <a class="left" href="/console?page=trash">Trash</a>
-        </div>
-      </div>
-    </div>
     
-    <div class="content">
-    <pre>
+  </div>
+
+  <div class="content">
+  <pre>
 ]],
 --     <div style="overflow:scroll; height:500px;">
 
@@ -321,17 +331,27 @@ function run (wsapi_env)
     end
   end
   
+  -- map action function onto files
+  local function mapFiles (path, action)
+    local files = {}
+    for name in lfs.dir (path) do
+      local attr = lfs.attributes (path .. name) or {}
+      attr.path = path
+      attr.name = name
+      attr.size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))  -- round to kB
+      files[#files+1] = action (attr)
+    end
+    return files
+  end
+  
   -- returns specified file in a list of tables {date=x, name=y, size=z}
   local function get_matching_files_from (folder, pattern)
-    local files = {}
-    for f in lfs.dir (folder) do
-      local date = f: match (pattern)
-      if date then
-        local attr = lfs.attributes (folder .. f) or {}
-        local size = tostring (math.floor (((attr.size or 0) + 500) / 1e3))
-        files[#files+1] = {date = date, name = f, size = size}
-      end
-    end
+    local files = mapFiles (folder, 
+      function (attr)
+        local name = attr.name
+        local date = name: match (pattern)
+        if date then return {date = date, name = name, size = attr.size} end
+      end)
     table.sort (files, function (a,b) return a.date > b.date end)       -- sort newest to oldest
     return files
   end
@@ -345,60 +365,17 @@ function run (wsapi_env)
     local list = "%-12s %4s   %s"
     print (list:format ("yyyy-mm-dd", "(kB)", "filename"))
     for _,f in ipairs (files) do 
-      print (list:format (f.date, f.size, f.name)) 
+      local hyperlink = [[<a href="cgi-bin/cmh/backup.sh?retrieve=%s" download="%s">%s</a>]]
+      local name = hyperlink:format (f.name, f.name: gsub (".lzap$",".json"), f.name)
+      print (list:format (f.date, f.size, name)) 
     end
   end
   
-  local function uncompressform ()
-    print [[
- <form action="/console">
-    <input type="hidden" name="page" value="uncompress">
-    <input type="file" name="unlzap" accept=".lzap" formmethod="get">
-    <label for="file">Choose a file</label>
-    <input type="Submit" value="Uncompress" class="dropbtn"><br>
- </form>     
-    ]]
-  end
-  
-  local function uncompress (p)
-    for a,b in pairs(p) do
-      print (a .. " : " .. tostring(b))
-    end
---    local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
---    local code = compress.lzap.decode (code, codec)   -- uncompress the file
--- TODO:  UNCOMPRESS... following code lifted from backup module compression
---[[
-    local f
-    f, msg = io.open (fname, 'wb')
-    if f then 
-      local codec = compress.codec (nil, "LZAP")  -- full binary codec with header text
-      small = compress.lzap.encode (ok, codec)
-      f: write (small)
-      f: close ()
-      ok = #ok / 1000    -- convert to file sizes
-      small = #small / 1000
-    else
-      ok = false
-    end
-  end
-  
-  local headers = {["Content-Type"] = "text/plain"}
-  local status, return_content
-  if ok then 
-    msg = ("%0.0f kb compressed to %0.0f kb (%0.1f:1)") : format (ok, small, ok/small)
-    local body = html: format (msg, fname, fname)
-    headers["Content-Type"] = "text/html"
-    status, return_content = 200, body
-  else
-    status, return_content = 500, "backup failed: " .. msg
-  end
-  _log (msg)
-
---]]
-
-  end
-
   local function number (n) return ("%7d  "): format (n) end
+  local function status_number (n)
+    if n == 200 then return number(n) end
+    return ('<font color="red">%7d</font>'): format (n) 
+  end
   
   local function devname (d)
     d = tonumber(d) or 0
@@ -435,7 +412,7 @@ function run (wsapi_env)
         local count = call.count
         local status = call.status
         if count and count > 0 then
-          printout (name, number(count), number(status))
+          printout (name, number(count), status_number(status))
         end
       end
     end
@@ -646,49 +623,164 @@ function run (wsapi_env)
     print ''
   end
   
+  -- compares corresponding elements of array
+  local function keysort (a,b) 
+    a, b = a.sortkey, b.sortkey
+    local function lt (i)
+      local x,y = a[i], b[i]
+      if not  y then return false end
+      if not  x then return true  end
+      if x <  y then return true  end
+      if x == y then return lt (i+1) end
+      return false
+    end
+    return lt(1)
+  end
+
   local function historian ()
     local N = 0
     local H = {}
     for _,d in pairs (luup.devices) do
-      for _,v in ipairs (d.variables) do
-        N = N + 1
-        local history = v.history
-        if history and #history > 0 then 
-          H[#H+1] = {v.dev, v.srv: match "[^:]+$", v.name, #history/2}
+      for _,v in ipairs (d.variables) do 
+        N = N + 1 
+        if v.history and #v.history > 2 then
+          local finderName = hist.metrics.var2finder (v)
+          H[#H+1] = {v = v, finderName = finderName, sortkey = {v.dev, v.shortSid, v.name}}
         end
       end
     end
+     
+--    local layout = "    %8s  %10s%-28s %-20s %s"
+    local layout = "    %8s  %8s %-20s %s"
+    local T = 0
+    table.sort (H, keysort)
     
-    table.sort (H,  -- sort by device numver, then service, then variable name
-      function(a,b) 
-        if a[1] < b[1] then return true end
-        if a[1] == b[1] then
-          if a[2] < b[2] then return true end
-          if a[2] == b[2] then return a[3] < b[3] end
+    print ("Data Historian Cache Memory, " .. os.date(date))
+    print ("\n  Total number of device variables: " .. N)
+    print ("\n  Variables with History: " .. #H)
+    print ''
+--    print (layout: format ("#points", "device ", "name", "service", "variable \n"))
+    print (layout: format ("#points", "device ", "service", "variable"))
+    
+    local link = [[<a href="/render?target=%s&from=%s">%s</a>]]
+    local prev  -- previous device (for line spacing)
+    for _, x in ipairs(H) do
+      local v = x.v
+      local vname = v.name
+      if x.finderName then 
+        local _,start = v:oldest()      -- get earliest entry in the cache (if any)
+        if start then
+          local from = timers.util.epoch2ISOdate (start + 1)    -- ensure we're AFTER the start... 
+          vname = link: format (x.finderName, from, vname)      -- ...and use fixed time format
+        end
+      end
+      local h = #v.history / 2
+      T = T + h
+--      local _, number, dname = devname(v.dev)
+      local dname = devname(v.dev)
+      if dname ~= prev then 
+        local devname = "\n%14s<em>%s</em>"
+        print(devname: format ('', dname)) 
+      end
+      prev = dname
+--      print (layout:format (h, number, dname, v.srv: match "[^:]+$" or v.srv, vname))
+      print (layout:format (h, '', v.srv: match "[^:]+$" or v.srv, vname))
+    end
+    print ("\n  Total number of history points:", T)
+  end
+  
+  
+  local function database ()
+    local folder = luup.attr_get "openLuup.Historian.Directory"
+    
+    print ("Data Historian Disk Database, " .. os.date(date))
+    
+    if not (folder and isWhisper) then
+      print "\n  On-disk archiving not enabled"
+      return
+    end
+    
+    -- stats
+    local s = hist.stats
+    local tot, cpu, wall = s.total_updates, s.cpu_seconds, s.elapsed_sec
+    
+    local cpu_rate   = cpu / tot * 1e3
+    local wall_rate  = wall / tot * 1e3
+    local write_rate = 60 * tot / (timers.timenow() - timers.loadtime)
+    
+    print ''
+    local stats = "   updates/min: %0.1f,  time/point: %0.1f ms (cpu: %0.1f ms),  directory: %s"
+    print (stats: format (write_rate, wall_rate, cpu_rate, folder))
+    
+    local tally = hist.tally        -- here's the historian's stats on individual file updates
+    
+    local files = mapFiles (folder, 
+      function (a)        -- file attributes including path, name, size,... (see lfs.attributes)
+        local filename = a.name: match "^(.+).wsp$"
+        if filename then
+         local pk,d,s,v = filename: match "(%d+)%.(%d+)%.([%w_]+)%.(.+)"  -- pk.dev.svc.var, for sorting
+          a.sortkey = {tonumber(pk), tonumber(d), s, v}
+          local i = whisper.info (folder .. a.name)
+          a.shortName = filename
+          a.retentions = tostring(i.retentions) -- text representation of archive retentions
+          a.updates = tally[filename] or ''
+          local finderName, devnum, description = hist.metrics.pkdsv2finder (pk,d,s,v)
+          a.finderName = finderName
+          a.devnum = devnum or ''
+          a.description = description or "-- unknown --"
+          local links = {}
+          if a.finderName then 
+            local link = [[<a href="/render?target=%s&from=-%s">%s</a>]]      -- use relative time format
+            for arch in a.retentions: gmatch "[^,]+" do
+              local _, duration = arch: match "([^:]+):(.+)"                  -- rate:duration
+              links[#links+1] = link: format (a.finderName, duration, arch) 
+            end
+            a.links = table.concat (links, ',')
+          end
+          return a
         end
       end)
     
-    local layout = "%7s %8s  %10s%-24s %-20s %s"
-    local T = 0
-    for k,v in ipairs(H) do
-      T = T + v[4]
-      local _, number, name =  devname(v[1])
-      H[k] =  layout:format (k, v[4], number, name, v[2], v[3])
+    table.sort (files, keysort)
+    
+    local list = "%s %40s %10s  %8s   %s"
+    print ''
+--    print (list:format ('', "archives", "size", "(kB)", "#updates", "filename (node.dev.srv.var) \n"))
+    print (list:format ('', "archives", "(kB)", "#updates", "filename (node.dev.srv.var)"))
+    local prev
+    local N,T = 0,0
+    for _,f in ipairs (files) do 
+      N = N + 1
+      T = T + f.size
+      -- have to tab space manually, since archive links contain HTML (not visible)
+      local tab = ''    
+      local spc = ' '
+      if f.links then tab = spc: rep(40 - #f.retentions) end
+      --
+      local devnum = f.devnum     -- openLuup device number (if present)
+      if devnum ~= prev then 
+        local devname = "\n <em>%40s</em>"
+--        local devname = "\n%s<em>%s</em>"
+--        print(devname: format (spc: rep(52), f.description: match "%s*(.*)"))
+        print(devname: format (f.description))
+      end
+      prev = devnum
+      print (list:format (tab, f.links or f.retentions, f.size, f.updates, f.shortName)) 
+--      if i % 5 == 0 then print '' end     -- cosmetic line spacing
     end
     
-    print ("Data Historian, " .. os.date(date))
-    print ("\n  Total number of device variables:", N)
-    print  "\n  Variables with History:"
-    print (layout: format ('', "#points", "device ", "name", "service", "variable"))
-    print (table.concat (H,'\n'))
-    print ("\n  Total number of history points:", T)
+    print '\n'
+    T = T / 1000;
+    print (list:format ('',"TOTALS: " .. N .. " database files, ", (T - T % 0.1) .. " (Mb)", tot, ''))
   end
+  
   
   local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
   
   local pages = {
     about   = function () for a,b in pairs (ABOUTopenLuup) do print (a .. ' : ' .. tostring(b)) end end,
     backups = backups,
+    database = database,
     delays  = function () listit (dlist, "Delayed Callbacks") end,
     images  = images,
     jobs    = function () listit (jlist, "Scheduled Jobs") end,
@@ -704,9 +796,6 @@ function run (wsapi_env)
     udp     = udplist,
     
     historian   = historian,
-    
-    uncompress      = uncompress,
-    uncompressform  = uncompressform,
     
     parameters = function ()
       local info = luup.attr_get "openLuup"

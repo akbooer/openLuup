@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2018.04.22",
+  VERSION       = "2018.06.27",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -50,9 +50,10 @@ local ABOUT = {
 -- 2018.03.28  add server module for core server framework methods
 -- 2018.04.10  use servlet model for io.server incoming callbacks
 -- 2018.04.19  add udp.register_handler for incomgin datagrams
+-- 2018.06.27  better error message on startup failure
 
 
--- TODO: add fully-fledged UDP and TCP server/client modules
+-- TODO: add fully-fledged TCP module
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
@@ -566,7 +567,8 @@ function server.new (config)
     msg = logline: format ("starting", name, port)
     mod = {stop = stop}
   else
-    msg = "error starting server: " .. tostring(err)
+    -- "%s %s server on port: %s " .. tostring(server)
+    msg = logline: format ("ERROR starting", name, port .. ' - ' .. tostring(err))
   end  
   _log (msg)
   return mod, msg

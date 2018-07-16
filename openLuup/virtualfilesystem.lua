@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.05.02",
+  VERSION       = "2018.07.04",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -307,7 +307,7 @@ local S_openLuup_svc = [[
         </argument>
       </argumentList>
     </action>
-    
+
     <action>    <!-- added by @rafale77 -->
       <name>RunScene</name>
       <argumentList>
@@ -639,7 +639,7 @@ local I_VeraBridge_impl = [[
   		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
   		<name>GetVeraFiles</name>
   		<job>
-  			GetVeraFiles ()
+  			GetVeraFiles (lul_settings)
   			return 4,0
   		</job>
     </action>
@@ -675,7 +675,15 @@ local S_VeraBridge_svc = [[
     <minor>0</minor>
   </specVersion>
   <actionList>
-    <action> <name>GetVeraFiles</name> </action>
+    <action>
+      <name>GetVeraFiles</name>
+      <argumentList>
+        <argument>
+          <name>Files</name>
+          <direction>in</direction>
+        </argument>
+      </argumentList>
+    </action>
     <action> <name>GetVeraScenes</name> </action>
     <action>
       <name>SetHouseMode</name>
@@ -714,7 +722,7 @@ local openLuup_reload = [[
 #
 # reload loop for openLuup
 # @akbooer, Aug 2015
-# you may need to change ‘lua’ to ‘lua5.1’ depending on your install
+# you may need to change ‘lua5.1’ to ‘lua’ depending on your install
 
 lua5.1 openLuup/init.lua $1
 
@@ -874,6 +882,7 @@ local I_ZWay_xml = [[
 local I_ZWay2_xml = [[
 <?xml version="1.0"?>
 <implementation>
+  <handleChildren>1</handleChildren>
   <functions>
     local M = require "L_ZWay2"
     ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
@@ -913,14 +922,10 @@ local I_openLuupCamera1_xml = [[
       local last = get "LastTrip"
       if (tonumber (last) + timeout) &lt;= (now + 1) then  -- NOTE the XML escape!
         set ("Tripped", '0')
-        set ("ArmedTripped", '0')
-        set ("LastTrip", now)
       end
     end
     local function openLuupCamera (ip, mail)      -- email callback
       set ("Tripped", '1')
-      set ("LastTrip", os.time())
-      if get "Armed" == '1' then set ("ArmedTripped", '1') end
       timers.call_delay (clear, timeout, '', "camera motion reset")
     end
     function startup (devNo)
@@ -1015,14 +1020,63 @@ local I_openLuupSecuritySensor1_xml = [[
         set ("Armed", lul_settings.newArmedValue)
 	  </run>
 	  </action>
+
+local I_openLuupSecurity1_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <functions>
+    function startup (...)
+    end
+  </functions>
+  <actionList>
+
+    <action>
+  		<serviceId>urn:micasaverde-com:serviceId:SecuritySensor1</serviceId>
+      <name>SetArmed</name>
+      <run>
+        local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
+        luup.variable_set (sid, "Armed", lul_settings.newArmedValue or 0, lul_device)
+      </run>
+    </action>
+
   </actionList>
   <startup>startup</startup>
 </implementation>
 ]]
+
+local I_Dummy_xml = [[
+<?xml version="1.0"?>
+  <implementation />
+]]
+
 -----
 --
 -- DataYours schema and aggregation definitions for AltUI DataStorage Provider
 --
+
+--[[
+
+    retentionDef = timePerPoint (resolution) and timeToStore (retention) specify lengths of time, for example:
+    units are: (s)econd, (m)inute, (h)our, (d)ay, (y)ear    (no months or weeks)
+
+      60:1440      60 seconds per datapoint, 1440 datapoints = 1 day of retention
+      15m:8        15 minutes per datapoint, 8 datapoints = 2 hours of retention
+      1h:7d        1 hour per datapoint, 7 days of retention
+      12h:2y       12 hours per datapoint, 2 years of retention
+
+    An ArchiveList must:
+        1. Have at least one archive config. Example: (60, 86400)
+        2. No archive may be a duplicate of another.
+        3. Higher precision archives' precision must evenly divide all lower precision archives' precision.
+        4. Lower precision archives must cover larger time intervals than higher precision archives.
+        5. Each archive must have at least enough points to consolidate to the next archive
+
+    Aggregation types are: 'average', 'sum', 'last', 'max', 'min'
+    XFilesFactor is a float: 0.0 - 1.0
+
+    see: http://graphite.readthedocs.io/en/latest/whisper.html",
+
+--]]
 
 local storage_schemas_conf = [[
 #
@@ -1035,59 +1089,68 @@ local storage_schemas_conf = [[
 
 #  2016.01.24  @akbooer
 #  basic patterns for AltUI Data Storage Provider
+#  names are DURATION of single archive
 
-[day]
+[for_1d]
 pattern = \.d$
 retentions = 1m:1d
 
-[week]
+[for_7d]
 pattern = \.w$
 retentions = 5m:7d
 
-[month]
+[for_30d]
 pattern = \.m$
 retentions = 20m:30d
 
-[quarter]
+[for_90d]
 pattern = \.q$
 retentions = 1h:90d
 
-[year]
+[for_1y]
 pattern = \.y$
 retentions = 6h:1y
 
+[for_10y]
+pattern = \.y$
+retentions = 1d:10y
+
 #  2017.02.14  @akbooer
 #  EXTENDED (10 year) patterns for AltUI Data Storage Provider
+#  names are SAMPLE RATES, with multiple archives aggregated at various rates for 10 years
 
-[1minute]
+[every_1s]        # used for security sensors, etc.
+pattern = \.1s$
+retentions = 1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y
+[every_1m]
 pattern = \.1m$
 retentions = 1m:1d,10m:7d,1h:30d,3h:1y,1d:10y
 
-[5minute]
+[every_5m]
 pattern = \.5m$
 retentions = 5m:7d,1h:30d,3h:1y,1d:10y
 
-[10minute]
+[every_10m]
 pattern = \.10m$
 retentions = 10m:7d,1h:30d,3h:1y,1d:10y
 
-[20minute]
+[every_20m]
 pattern = \.20m$
 retentions = 20m:30d,3h:1y,1d:10y
 
-[1hour]
+[every_1h]
 pattern = \.1h$
 retentions = 1h:90d,3h:1y,1d:10y
 
-[3hour]
+[every_3h]
 pattern = \.3h$
 retentions = 3h:1y,1d:10y
 
-[6hour]
+[every_6h]
 pattern = \.6h$
 retentions = 6h:1y,1d:10y
 
-[1day]
+[every_1d]
 pattern = \.1d$
 retentions = 1d:10y
 
@@ -1111,6 +1174,18 @@ local storage_aggregation_conf = [[
 #  2014.02.22  @akbooer
 
 #
+[maxima]
+pattern = [Mm]ax
+xFilesFactor = 0
+aggregationMethod = maximum
+
+#
+[minima]
+pattern = [Mm]in
+xFilesFactor = 0
+aggregationMethod = minimum
+
+#
 [otherwise]
 pattern = .
 xFilesFactor = 0
@@ -1124,6 +1199,9 @@ local unknown_wsp = [[
           0,                      0
 ]]
 
+--
+-- Data Historian Disk Archive - schemas and aggregations
+--
 
 -----
 
@@ -1148,8 +1226,10 @@ local manifest = {
     ["D_ZWay.json"] = D_ZWay_json,
     ["I_ZWay.xml"]  = I_ZWay_xml,
     ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
-
-    ["I_openLuupCamera1.xml"] = I_openLuupCamera1_xml,
+    ["I_openLuupSecuritySensor1_xml"] = I_openLuupSecuritySensor1_xml,
+    ["I_openLuupCamera1.xml"]   = I_openLuupCamera1_xml,
+    ["I_openLuupSecurity1.xml"] = I_openLuupSecurity1_xml,
+    ["I_Dummy.xml"]             = I_Dummy_xml,
 
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,
@@ -1177,9 +1257,14 @@ return {
   open = function (filename, mode)
     mode = mode or 'r'
 
-    if mode: match "r" then
+    local function readline ()
+      for line in manifest[filename]:gmatch "%C*" do coroutine.yield (line) end
+    end
+
+    if mode: match 'r' then
       if manifest[filename] then
         return {
+          lines = function () return coroutine.wrap (readline) end,
           read  = function () return manifest[filename] end,
           close = function () filename = nil end,
         }

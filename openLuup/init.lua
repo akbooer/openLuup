@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.05.28",
+  VERSION       = "2018.06.14",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -49,6 +49,8 @@ local ABOUT = {
 -- 2018.04.23  re-order module loading (to tidy startup log banners)
 -- 2018.04.25  change server module name back to http, and use opeLuup.HTTP... attributes
 -- 2018.05.25  add Data Historian configuration
+-- 2018.05.29  remove HTTP.WgetAuthorization option
+-- 2018.06.14  rename openLuup.Databases to openLuup.DataStorageProvider
 
 
 local logs  = require "openLuup.logs"
@@ -139,9 +141,9 @@ do -- set attributes, possibly decoding if required
       Compress = "LZAP",
       Directory = "backup/",
     },
-    Databases = {
-      ["-- Influx = '172.16.42.129:8089'"] = [[-- EXAMPLE Influx UDP port]],
-      ["-- Graphite = '127.0.0.1:2003'"]   = [[-- EXAMPLE Graphite UDP port]],
+    DataStorageProvider = {
+      ["-- Influx = '172.16.42.129:8089'"] = [[-- EXAMPLE Influx   UDP port]],
+      ["-- Graphite = '127.0.0.1:2003'"] = [[  -- EXAMPLE Graphite UDP port]],
     },
     Logfile = {
       Name      = "logs/LuaUPnP.log",
@@ -158,15 +160,15 @@ do -- set attributes, possibly decoding if required
       Name        = "user_data.json",     -- not recommended to change
     },
     Historian = {
-      CacheSize = 1000,                   -- in-memory cache size (per variable)
-      ["-- Directory = 'history'"] = [[-- on-disc archive folder]],
-      NoArchive = "LastUpdate, LastValidComm",
+      CacheSize = 1024,                   -- in-memory cache size (per variable) (allows 7 days of 10 min)
+      ["-- Directory   = 'history/'"] = [[-- on-disc archive folder]],
+      Graphite_UDP  = '',
+      InfluxDB_UDP  = '',
     },
     HTTP = {
       Backlog = 2000,                     -- used in socket.bind() for queue length
       ChunkedLength = 16000,              -- size of chunked transfers
       CloseIdleSocketAfter  = 90,         -- number of seconds idle after which to close socket
-      WgetAuthorization = "URL",          -- "URL" or else uses request header authorization
     },
     SMTP = {
       Backlog = 100,                      -- RFC 821 recommended minimum queue length
@@ -179,7 +181,7 @@ do -- set attributes, possibly decoding if required
       Port = 11011,
     },
     Scenes = {
-      ["-- set Prolog/Epilog to global function names"] = [[-- to run before/after ALL scenes]],
+      ["-- set Prolog/Epilog to global function names "] = [[ to run before/after ALL scenes]],
       Prolog = '',                        -- name of global function to call before any scene
       Epilog = '',                        -- ditto, after any scene
     },

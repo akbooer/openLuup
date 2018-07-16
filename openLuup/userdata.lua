@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2018.05.28",
+  VERSION       = "2018.05.29",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -54,6 +54,9 @@ local ABOUT = {
 -- 2018.04.05   do not create status as a device attribute when loading user_data
 -- 2018.04.23   update_plugin_versions additions for ALT... plugins and MySensors
 -- 2018.05.25   restore openLuup variables on reload (for history)
+-- 2018.05.29   fix several possibly numeric attributes
+-- 2018.05.29   added device (sub)category (thanks @rafale77)
+-- 2018.06.26   remove DataYour from default plugins list
 
 
 local json    = require "openLuup.json"
@@ -456,7 +459,7 @@ local default_plugins = {
     preinstalled.VeraBridge,
     preinstalled.ZWay,
     preinstalled.MySensors,
-    preinstalled.DataYours,
+--    preinstalled.DataYours,
 --    preinstalled.Graphite_CGI,
   }
 
@@ -596,7 +599,9 @@ local function load_user_data (user_data_json)
     -- DEVICES
     _log "loading devices..."
     for _, d in ipairs (user_data.devices or {}) do
-      if d.id == 2 then               -- device #2 is special (it's the openLuup plugin, and already exists)
+      if d.id == 2 then
+
+        -- device #2 is special (it's the openLuup plugin, and already exists)
         local ol = luup.devices[2]
         local room = tonumber (d.room) or 0
         ol:attr_set {room = room}     -- set the device attribute...
@@ -607,6 +612,7 @@ local function load_user_data (user_data_json)
         end
         -- 2017.01.18 create openLuup HouseMode variable
         ol:variable_set ("openLuup", "HouseMode", luup.attr_get "Mode")
+
       else
         local dev = chdev.create {      -- the variation in naming within luup is appalling
             devNo = d.id,
@@ -627,11 +633,12 @@ local function load_user_data (user_data_json)
             disabled        = d.disabled,
             username        = d.username,
             password        = d.password,
+            -- 2018.05.29  added device (sub)category
             category_num    = d.category_num,
             subcategory_num = d.subcategory_num,
           }
         dev:attr_set ("time_created", d.time_created)     -- set time_created to original, not current
-        -- set other device attributes
+        -- set other device attributes (including category_num and subcategory_num)
         for a,v in pairs (d) do
           if type(v) ~= "table" and not dev.attributes[a] then
             if a ~= "status" then   -- 2018.04.05 status is NOT a device ATTRIBUTE
@@ -738,8 +745,15 @@ local function devices_table (device_list)
       states          = states,
       status          = status,
     }
+
     for a,b in pairs (d.attributes) do tbl[a] = b end
-    tbl.id = tonumber(tbl.id) or tbl.id      -- 2017.08.27  fix for non-numeric device id
+    -- 2017.08.27  fix for non-numeric device id
+    -- 2018.05.29  fix several possibly numeric attributes
+    local numbers = {"id", "category_num", "subcategory_num"}
+    for _,name in ipairs (numbers) do
+      tbl[name] = tonumber(tbl[name]) or tbl[name]    -- force numeric value, if possible
+    end
+
     info[#info+1] = tbl
   end
   return info
