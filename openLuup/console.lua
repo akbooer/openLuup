@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.07.15",
+  VERSION       = "2018.07.19",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -45,6 +45,7 @@ ABOUT = {
 -- 2018.07.08  add hyperlink database files to render graphics
 -- 2018.07.12  add typerlink backup files to uncompress and retrieve
 -- 2018.07.15  colour code non-200 status numbers
+-- 2018.07.19  use openLuup.whisper, not L_DataWhisper! (thanks @powisquare)
 
 
 -- TODO: HTML pages with sorted tables?
@@ -64,8 +65,7 @@ local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
 local hist      = require "openLuup.historian"    -- for disk archive stats   
 local timers    = require "openLuup.timers"       -- for startup time
-
-local isWhisper, whisper = pcall (require, "L_DataWhisper")   -- might not be installed
+local whisper   = require "openLuup.whisper"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -356,7 +356,7 @@ function run (wsapi_env)
     return files
   end
   
-  local function backups (p)
+  local function backups ()
     local dir = luup.attr_get "openLuup.Backup.Directory" or "backup/"
     print ("Backup directory: ", dir)
     print ''
@@ -366,7 +366,7 @@ function run (wsapi_env)
     print (list:format ("yyyy-mm-dd", "(kB)", "filename"))
     for _,f in ipairs (files) do 
       local hyperlink = [[<a href="cgi-bin/cmh/backup.sh?retrieve=%s" download="%s">%s</a>]]
-      local name = hyperlink:format (f.name, f.name: gsub (".lzap$",".json"), f.name)
+      local name = hyperlink:format (f.name, f.name: gsub (".lzap$",'') .. ".json", f.name)
       print (list:format (f.date, f.size, name)) 
     end
   end
@@ -695,7 +695,7 @@ function run (wsapi_env)
     
     print ("Data Historian Disk Database, " .. os.date(date))
     
-    if not (folder and isWhisper) then
+    if not folder then
       print "\n  On-disk archiving not enabled"
       return
     end
