@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.07.08",
+  VERSION       = "2018.07.21",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -63,6 +63,8 @@ see: https://github.com/graphite-project/carbon/blob/master/lib/carbon/instrumen
 
 --]]
     
+-- 2018.07.21  ensure Directory ends with '/'
+
 
 local BRIDGEBLOCK = 10000   -- hardcoded VeraBridge blocksize (sorry, but easy and quick)
 local Bridges               -- VeraBridge info for nodeNames and device offsets
@@ -892,6 +894,7 @@ local function start (config)
   devutil.set_cache_size (CacheSize)
   
   if Directory then     -- we're using the write-thru on-disk archive as well as in-memory cache
+    Directory = Directory: gsub ("[^/]$","%1/")   -- 2018.07.21  ensure Directory ends with '/'
     _log ("using on-disk archive: " .. Directory)
     lfs.mkdir (Directory)             -- ensure it exists
     Hcarbon = CarbonCache (Directory) 
