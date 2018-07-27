@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.07.21",
+  VERSION       = "2018.07.25",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -23,6 +23,9 @@ local ABOUT = {
 ]]
 
 }
+    
+-- 2018.07.21  ensure Directory ends with '/'
+
 
 local logs    = require "openLuup.logs"
 local devutil = require "openLuup.devices"
@@ -62,8 +65,6 @@ TODO: consider recording some internal metrics
 see: https://github.com/graphite-project/carbon/blob/master/lib/carbon/instrumentation.py
 
 --]]
-    
--- 2018.07.21  ensure Directory ends with '/'
 
 
 local BRIDGEBLOCK = 10000   -- hardcoded VeraBridge blocksize (sorry, but easy and quick)
@@ -271,7 +272,7 @@ Different APIs have different formats/requirements:
 
  - luup.variable_...(),   serviceId, name, deviceNo is used to access variable history, as usual.
  - disk cache filenames,  node.localDevNo.shortSid.variable.wsp  
- - finder metrics,        nodeName.localDevNo:shortDevName.shortSid.variable
+ - finder metrics,        nodeName.localDevNo_shortDevName.shortSid.variable
  
 where:
 
@@ -317,7 +318,19 @@ function Metrics.dsv2filepath (dev,shortSid,var)
   end
 end
 
--- bsv2finder (b, d, shortSid, var)
+-- find the file path and filename give metrics finder name
+function Metrics.finder2filepath (metric)
+  -- ignore non-numeric device name
+  local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([%w_]+)%.(.+)$"
+  local b = Bridges.by_name[n]
+  if b then 
+    local filename = table.concat ({b.PK, d, s, v}, '.')
+    local path = table.concat {Directory, filename, ".wsp"}
+    return path, filename
+  end
+end
+
+-- bsv2finder (b, d, shortSid, var)  -- INTERNAL routine
 -- ALSO returns openLuup device number  and full device name
 local function bdsv2finder (b, d, shortSid, var)
   if b then
@@ -706,7 +719,7 @@ end
 
 local function WhisperReader(metric_path)
  
-  local function fetch (startTime, endTime)  -- TODO: use History-style reader, removing nil points, etc.
+  local function fetch (startTime, endTime) 
     local fs_path = table.concat {DYdirectory, metric_path: match "%.(.*)", ".wsp"}  -- ignore tree root
     local _, tv = pcall (whisper.fetch, fs_path, startTime, endTime)  -- catch file missing error
     return tv
