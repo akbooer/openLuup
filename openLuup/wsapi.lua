@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2018.07.20",
+  VERSION       = "2018.07.27",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -59,6 +59,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 -- 2017.01.12  remove leading colon from REMOTE_PORT metavariable value
 -- 2018.07.14  improve error handling when calling CGI
 -- 2018.07.20  add the Kepler project request and response libraries
+-- 2018.07.27  export the util module with url_encode() and url_decode()
 
 
 --[[
@@ -732,6 +733,7 @@ return {
     
     -- modules
     
+    util      = util,               -- only url_decode() and url_encode() implemented
     request   = _M_request (),
     response  = _M_response (),
     

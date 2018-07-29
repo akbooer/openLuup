@@ -677,10 +677,11 @@ local ABOUT = {
     --value is a float array (may contain nils)
     --timestamp is either an int or float array 
     -- only 'optimisation' here is that __file_open() is not called for every point
-    -- returns index of points actually written
+    -- returns indices of points actually written
     return __file_open(path,'r+b', 
       function (header) 
         local idx = {}
+        -- update_many (path,values,timestamps)
         if timestamps then
           for i, t in ipairs (timestamps) do
             local value = values[i]

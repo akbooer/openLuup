@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.07.04",
+  VERSION       = "2018.07.29",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -88,6 +88,7 @@ ABOUT = {
 -- 2018.06.04   Expose OFFSET and remote PK_AccessPoint as device variables
 -- 2018.07.04   Add .svg file type to remote directory listing in GetVeraFiles()
 --              add Files parameter to GetFiles action request
+-- 2018.07.29   only start up when valid PK_AccessPoint
 
 
 local devNo                      -- our device number
@@ -874,9 +875,6 @@ function init (lul_device)
 
   luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
   
-  local Ndev, Nscn
-  Ndev, Nscn, BuildVersion, PK_AccessPoint = GetUserData ()
-  
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
@@ -884,17 +882,23 @@ function init (lul_device)
     luup.log (version)
   end
   
-  setVar ("PK_AccessPoint", PK_AccessPoint)     -- 2018.06.04   Expose PK_AccessPoint as device variable
-
-  setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
-  setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
+  local Ndev, Nscn
+  Ndev, Nscn, BuildVersion, PK_AccessPoint = GetUserData ()
   
-  if Ndev > 0 or Nscn > 0 then
---    watch_mirror_variables (Mirrored)         -- set up variable watches for mirrored devices
-    VeraBridge_delay_callback ()
-    luup.set_failure (0)                      -- all's well with the world
+  if PK_AccessPoint then                          -- 2018.07.29   only start up when valid PK_AccessPoint
+    setVar ("PK_AccessPoint", PK_AccessPoint)     -- 2018.06.04   Expose PK_AccessPoint as device variable
+
+    setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
+    setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
+    
+    if Ndev > 0 or Nscn > 0 then
+  --    watch_mirror_variables (Mirrored)         -- set up variable watches for mirrored devices
+      VeraBridge_delay_callback ()
+      luup.set_failure (0)                        -- all's well with the world
+    end
   else
-    luup.set_failure (2)                      -- say it's an authentication error
+    luup.set_failure (2)                          -- say it's an authentication error
+    setVar ("DisplayLine2", "No Vera", SID.altui)
   end
 
   register_AltUI_Data_Storage_Provider ()     -- register with AltUI as MIRROR data storage provider
