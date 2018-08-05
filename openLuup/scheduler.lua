@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.06.06",
+  VERSION       = "2018.08.04",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -49,6 +49,7 @@ local ABOUT = {
 -- 2018.04.22  fix missing device 0 description in meta.__index:sandbox ()
 -- 2018.04.25  update sandbox function (I believe that this one actually works properly)
 -- 2018.06.06  add extra time parameter to variable_watch callbacks (for historian)
+-- 2018.08.04  coerce error return to string in context_switch() (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -127,7 +128,7 @@ local function context_switch (devNo, fct, ...)
   local function restore (ok, msg, ...) 
     current_device = old                        -- restore old device context
     if not ok then
-      _log (" ERROR: " .. (msg or '?'), "openLuup.context_switch") 
+      _log (" ERROR: " .. tostring(msg or '?'), "openLuup.context_switch")  -- 2018.08.04 
     end
     return ok, msg, ... 
   end

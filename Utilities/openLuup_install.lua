@@ -1,13 +1,14 @@
 -- first-time download and install of openLuup files from GitHub
 
 -- 2018.02.17  add local ./www/ directory
+-- 2018.08.05  use servertables for myIP  (thanks @samunders)
 
 local lua = "lua5.1"     -- change this to "lua" if required
 
 local x = os.execute
 local p = print
 
-p "openLuup_install   2017.03.28   @akbooer"
+p "openLuup_install   2018.08.05   @akbooer"
 
 local http  = require "socket.http"
 local https = require "ssl.https"
