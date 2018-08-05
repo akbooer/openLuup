@@ -63,7 +63,7 @@ p "initialising..."
 
 x "chmod a+x openLuup_reload"
 
-local s= require "openLuup.server"
+local s= require "openLuup.servertables"
 local ip = s.myIP or "openLuupIP"
 
 p "downloading and installing AltUI..."
