@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.03.21",
+  VERSION       = "2018.08.07",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -45,6 +45,7 @@ local ABOUT = {
 -- 2018.02.19  add current directory to startup log
 -- 2018.02.25  add ip address to openLuup.Server
 -- 2018.03.09  add SMTP server
+-- 2018.08.07  update path to user supplied user_data.json in userdata
 
 
 local loader = require "openLuup.loader" -- keep this first... it prototypes the global environment
@@ -207,6 +208,9 @@ do -- STARTUP
       local json_code = code: match "^%s*{"               -- what sort of code is this?
       if json_code then 
         ok = userdata.load (code)
+        if ok then
+            luup.attr_set("openLuup.UserData.Name", init)
+        end
         code = userdata.attributes ["StartupCode"] or ''  -- substitute the Startup Lua
       end
       compile_and_run (code, "_openLuup_STARTUP_")        -- the given file or the code in user_data

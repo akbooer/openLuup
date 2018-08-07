@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.03.22",
+  VERSION       = "2018.08.07",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -51,6 +51,7 @@ local ABOUT = {
 -- 2018.02.10  ensure valid error in luup.call_action() even if missing parameters
 -- 2018.03.08  extend register_handler to work with email (local SMTP server)
 -- 2018.03.22  use renamed io.luupio module, use logs.register()
+-- 2018.08.07  use user_data.json as configure in userdata to save userdata to before reload
 
 
 local logs          = require "openLuup.logs"
@@ -679,7 +680,8 @@ local function reload (exit_status)
   end
   
   _log ("saving user_data", "luup.reload") 
-  local ok, msg = userdata.save (luup)
+  local name = (attr_get "openLuup.UserData.Name") or "user_data.json"
+  local ok, msg = userdata.save (luup, name)
   assert (ok, msg or "error writing user_data")
   
   local shutdown = attr_get "ShutdownCode"

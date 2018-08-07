@@ -9,7 +9,7 @@ CD %CURRENT_PATH%
 
 :loop
 IF NOT %ERRORLEVEL% == 42 GOTO exit
-"%LUA_DEV%\lua" openLuup\init.lua
+"%LUA_DEV%\lua" openLuup\init.lua %1
 GOTO loop
 
 :exit
