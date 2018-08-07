@@ -8,5 +8,5 @@ lua5.1 openLuup/init.lua $1
 
 while [ $? -eq 42 ]
 do
-   lua5.1 openLuup/init.lua
+   lua5.1 openLuup/init.lua $1
 done
