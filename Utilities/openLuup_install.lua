@@ -18,7 +18,7 @@ local lfs   = require "lfs"
 p "getting latest openLuup version tar file from GitHub..."
 
 local _, code = https.request{
-  url = "https://codeload.github.com/akbooer/openLuup/tar.gz/master",
+  url = "https://codeload.github.com/akbooer/openLuup/tar.gz/development",
   sink = ltn12.sink.file(io.open("latest.tar.gz", "wb"))
 }
 
@@ -27,8 +27,8 @@ assert (code == 200, "GitHub download failed with code " .. code)
 p "un-zipping download files..."
 
 x "tar -xf latest.tar.gz" 
-x "mv openLuup-master/openLuup/ ."
-x "rm -r openLuup-master/"
+x "mv openLuup-development/openLuup/ ."
+x "rm -r openLuup-development/"
    
 p "getting dkjson.lua..."
 _, code = http.request{
