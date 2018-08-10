@@ -2,11 +2,13 @@
 
 -- 2018.02.17  add local ./www/ directory
 -- 2018.08.05  use servertables for myIP  (thanks @samunders)
+-- 2018.08.10  add parameter for install branch (thanks @vwout)
 
 local lua = "lua5.1"     -- change this to "lua" if required
 
 local x = os.execute
 local p = print
+local branch = arg[1] or "master"
 
 p "openLuup_install   2018.08.05   @akbooer"
 
@@ -15,10 +17,10 @@ local https = require "ssl.https"
 local ltn12 = require "ltn12"
 local lfs   = require "lfs"
 
-p "getting latest openLuup version tar file from GitHub..."
+p ("getting openLuup version tar file from GitHub branch " .. branch .. "...")
 
 local _, code = https.request{
-  url = "https://codeload.github.com/akbooer/openLuup/tar.gz/master",
+  url = "https://codeload.github.com/akbooer/openLuup/tar.gz/" .. branch,
   sink = ltn12.sink.file(io.open("latest.tar.gz", "wb"))
 }
 
@@ -27,8 +29,8 @@ assert (code == 200, "GitHub download failed with code " .. code)
 p "un-zipping download files..."
 
 x "tar -xf latest.tar.gz" 
-x "mv openLuup-master/openLuup/ ."
-x "rm -r openLuup-master/"
+x ("mv openLuup-" .. branch .. "/openLuup/ .")
+x ("rm -r openLuup-" .. branch "/")
    
 p "getting dkjson.lua..."
 _, code = http.request{
