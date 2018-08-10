@@ -30,7 +30,7 @@ p "un-zipping download files..."
 
 x "tar -xf latest.tar.gz" 
 x ("mv openLuup-" .. branch .. "/openLuup/ .")
-x ("rm -r openLuup-" .. branch "/")
+x ("rm -r openLuup-" .. branch .. "/")
    
 p "getting dkjson.lua..."
 _, code = http.request{
