@@ -1,10 +1,11 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.07.29",
+  VERSION       = "2018.08.23",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -89,6 +90,7 @@ ABOUT = {
 -- 2018.07.04   Add .svg file type to remote directory listing in GetVeraFiles()
 --              add Files parameter to GetFiles action request
 -- 2018.07.29   only start up when valid PK_AccessPoint
+-- 2018.08.23   modify generic action to avoid duplication of action name and serviceId
 
 
 local devNo                      -- our device number
@@ -716,11 +718,8 @@ end
 -- returns action tag object with possible run/job/incoming/timeout functions
 --
 local function generic_action (serviceId, name)
-  local basic_request = table.concat {
-      "http://", ip, "/port_3480/data_request?id=action",
-      "&serviceId=", serviceId,
-      "&action=", name,
-    }
+  local basic_request = table.concat {"http://", ip, "/port_3480/data_request?id=action"}
+  
   local function job (lul_device, lul_settings)
     local devNo = remote_by_local_id (lul_device)
     if not devNo then return end        -- not a device we have cloned
@@ -729,11 +728,18 @@ local function generic_action (serviceId, name)
       return 
     end
   
-    local request = {basic_request, "DeviceNum=" .. devNo }
+    local params = {}
     for a,b in pairs (lul_settings) do
-      if a ~= "DeviceNum" then        -- thanks to @CudaNet for finding this bug!
-        request[#request+1] = table.concat {a, '=', url.escape(b) or ''} 
-      end
+      params[a] = url.escape(b)
+    end
+    
+    params.DeviceNum = devNo        -- use remote device number
+    params.serviceId = serviceId
+    params.action    = name
+    
+    local request = {basic_request}
+    for a,b in pairs (params) do
+      request[#request+1] = table.concat {a, '=', b} 
     end
     local url = table.concat (request, '&')
     wget (url)
