@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.whisper",
-  VERSION       = "2018.05.25",
+  VERSION       = "2018.07.23",
   DESCRIPTION   = "openLuup Whisper time-series databasa",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -42,7 +42,8 @@ local ABOUT = {
   -- 
     
   -- 2014.07.31  Lua translation and refactoring  @akbooer
-
+  -- 2018.07.23  add update_many() with a rather inefficient implementation
+  
 
   local  CACHE_HEADERS           = true;     -- improves file access performance for read and write
 
@@ -670,6 +671,39 @@ local ABOUT = {
     return __file_open(path,'r+b', function (header) return header: update(value, timestamp, now) end)
   end
 
+  local function update_many (path,values,timestamps, now)    -- 2018.07.23
+    --original Python: update_many(path,points)     points is a list of (timestamp,value) points
+    --path is a string
+    --value is a float array (may contain nils)
+    --timestamp is either an int or float array 
+    -- only 'optimisation' here is that __file_open() is not called for every point
+    -- returns indices of points actually written
+    return __file_open(path,'r+b', 
+      function (header) 
+        local idx = {}
+        -- update_many (path,values,timestamps)
+        if timestamps then
+          for i, t in ipairs (timestamps) do
+            local value = values[i]
+            if value then 
+              idx[#idx+1] = i 
+              header: update(value, t, now) 
+            end
+          end
+        else  -- assume values is array of {value, timestamp} pairs,  
+          -- NB: opposite order to Python original to match Graphite /render?format=json layout
+          for i, x in ipairs (values) do
+            local value, t = x[1], x[2]
+            if value then 
+              idx[#idx+1] = i 
+              header: update(value, t, now) 
+            end
+          end
+        end
+        return idx
+      end)
+  end
+
   local function fetch (path,fromTime,untilTime,now)
     -- path is a string
     -- fromTime is an epoch time
@@ -704,6 +738,7 @@ return {
   fetch                   = fetch;                    -- read data
   info                    = info;                     -- get file info (archive structure, etc.)
   update                  = update;                   -- write a datapoint
+  update_many             = update_many;              -- write multiple datapoints
   
   aggregationTypeToMethod = aggregationTypeToMethod;
   aggregationMethodToType = aggregationMethodToType; 

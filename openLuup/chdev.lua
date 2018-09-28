@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.07.02",
+  VERSION       = "2018.07.22",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -51,6 +51,7 @@ local ABOUT = {
 -- 2018.06.11  don't use impl_file if parent handles actions (thanks @rigpapa)
 -- 2018.06.16  check for duplicate altids in chdev.append()  (thanks @rigpapa)
 -- 2018.07.02  fix room number/string type problem in create()
+-- 2018.07.22  create only non-blank default device variables (blank was breaking AlTUI install)
 
 
 local logs      = require "openLuup.logs"
@@ -143,7 +144,7 @@ local function create (x)
     local sid = srv.serviceId
     _debug (sid)
     for _, var in ipairs ((sdata[sid] or {}).variables or {}) do
-      if var.defaultValue then
+      if var.defaultValue and var.defaultValue ~= '' then   -- 2018.07.22 only non-blank defaults
         _debug (var.name, var.defaultValue)
         dev:variable_set (sid, var.name, var.defaultValue)
       end

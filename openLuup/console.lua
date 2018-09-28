@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.07.19",
+  VERSION       = "2018.07.28",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -46,6 +46,7 @@ ABOUT = {
 -- 2018.07.12  add typerlink backup files to uncompress and retrieve
 -- 2018.07.15  colour code non-200 status numbers
 -- 2018.07.19  use openLuup.whisper, not L_DataWhisper! (thanks @powisquare)
+-- 2018.07.28  use wsapi request and response libraries
 
 
 -- TODO: HTML pages with sorted tables?
@@ -54,7 +55,6 @@ ABOUT = {
 --  WSAPI Lua implementation
 
 local lfs       = require "lfs"                   -- for backup file listing
-local url       = require "socket.url"            -- for url unescape
 local luup      = require "openLuup.luup"         -- not automatically in scope for CGIs
 local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
@@ -66,6 +66,7 @@ local ioutil    = require "openLuup.io"
 local hist      = require "openLuup.historian"    -- for disk archive stats   
 local timers    = require "openLuup.timers"       -- for startup time
 local whisper   = require "openLuup.whisper"
+local wsapi     = require "openLuup.wsapi"        -- for response library
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -821,32 +822,47 @@ function run (wsapi_env)
   }
 
   
+--  -- unpack the parameters and read the data
+--  local p = {}
+--  for a,b in (wsapi_env.QUERY_STRING or ''): gmatch "([^=]+)=([^&]*)&?" do
+--    p[a] = url.unescape (b)
+--  end
+  
+--  lines = {console_html.prefix}
+--  local status = 200
+--  local headers = {}
+  
+--  local page = p.page or ''
+  
+--  do (pages[page] or function () end) (p) end
+--  headers["Content-Type"] = "text/html"
+  
+--  print (console_html.postfix)
+--  local return_content = table.concat (lines)
+
+  
+--  local function iterator ()     -- one-shot iterator, returns content, then nil
+--    local x = return_content
+--    return_content = nil 
+--    return x
+--  end
+
+--  return status, headers, iterator
+ 
+  local req = wsapi.request.new (wsapi_env)
+  local res = wsapi.response.new ()
+  
   -- unpack the parameters and read the data
-  local p = {}
-  for a,b in (wsapi_env.QUERY_STRING or ''): gmatch "([^=]+)=([^&]*)&?" do
-    p[a] = url.unescape (b)
-  end
+  local p = req.GET
   
-  lines = {console_html.prefix}
-  local status = 200
-  local headers = {}
-  
-  local page = p.page or ''
-  
-  do (pages[page] or function () end) (p) end
-  headers["Content-Type"] = "text/html"
-  
+  lines = {console_html.prefix}  
+  local page = p.page or ''  
+  do (pages[page] or function () end) (p) end  
   print (console_html.postfix)
-  local return_content = table.concat (lines)
-
   
-  local function iterator ()     -- one-shot iterator, returns content, then nil
-    local x = return_content
-    return_content = nil 
-    return x
-  end
+  res: write (lines)
 
-  return status, headers, iterator
+  return res: finish()
 end
 
 -----

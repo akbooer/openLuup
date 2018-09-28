@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "backup.sh",
-  VERSION       = "2018.07.12",
+  VERSION       = "2018.07.28",
   DESCRIPTION   = "user_data backup script /etc/cmh-ludl/cgi-bin/cmh/backup.sh",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -39,11 +39,12 @@ local DIRECTORY_DEFAULT = "backup"      -- default backup directory
 -- 2016.12.10   use directory path from openLuuup system attribute
 
 -- 2018.07.12   add &retrieve=filename option (for console page)
+-- 2018.07.28   use wsapi.response library
 
 
 local userdata  = require "openLuup.userdata"
 local compress  = require "openLuup.compression"
-local wsapi     = require "openLuup.wsapi"      -- for the require library methods
+local wsapi     = require "openLuup.wsapi"      -- for the require and response library methods
 local lfs       = require "lfs"
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
@@ -81,6 +82,9 @@ return values: the HTTP status code, a table with headers, and the output iterat
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
   
+  local req = wsapi.request.new(wsapi_env)
+  local res = wsapi.response.new ()
+
   local DIRECTORY = (luup.attr_get "openLuup.Backup.Directory") or DIRECTORY_DEFAULT
   lfs.mkdir (DIRECTORY)
    
@@ -108,61 +112,50 @@ function run (wsapi_env)
       end
     end
     
-    local headers = {["Content-Type"] = "text/plain"}
-    local status, return_content
     if ok then 
       msg = ("%0.0f kb compressed to %0.0f kb (%0.1f:1)") : format (ok, small, ok/small)
       local body = html: format (msg, fname, fname)
-      headers["Content-Type"] = "text/html"
-      status, return_content = 200, body
+      res.content_type = "text/html"
+      res: write (body)
     else
-      status, return_content = 500, "backup failed: " .. msg
+      res.status = 500
+      res:write ("backup failed: " .. msg)
     end
     _log (msg)
-    return status, headers, return_content
   end
-  
   
   -- retrieve the contents of a backup file, uncompressing if necessary
   local function retrieveFile (file)
-    local headers = {["Content-Type"] = "text/plain"}
     local fname = table.concat {DIRECTORY: gsub('/$',''), '/', file}
     local f, err = io.open (fname, 'rb')
-    if not f then return  404, headers, err or "Unknown error opening file" end
-    
-    local code = f: read "*a"
-    f: close ()
-    
-    if file: match "%.lzap$" then                       -- it's a compressed user_data file
-      local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
-      code = compress.lzap.decode (code, codec)         -- uncompress the file
+    if f then 
+      local code = f: read "*a"
+      f: close ()
+      
+      if file: match "%.lzap$" then                       -- it's a compressed user_data file
+        local codec = compress.codec (nil, "LZAP")        -- full-width binary codec with header text
+        code = compress.lzap.decode (code, codec)         -- uncompress the file
+      end
+      
+      res: write (code)
+      res.content_type = "application/json"
+    else
+      res.status = 404
+      res: write (err or "Unknown error opening file")
     end
-    
-    headers["Content-Type"] = "application/json"
-    return 200, headers, code
   end
   
   -----------
   
-  local status, headers, return_content
-  
-    
-  local req = wsapi.request.new(wsapi_env)
   local retrieve = req.GET.retrieve     -- &retrieve=filename option
 
   if retrieve then
-    status, headers, return_content = retrieveFile (retrieve)
+    retrieveFile (retrieve)
   else
-    status, headers, return_content = backup ()
-  end
-  
-  local function iterator ()     -- one-shot iterator, returns content, then nil
-    local x = return_content
-    return_content = nil 
-    return x
+    backup ()
   end
 
-  return status, headers, iterator
+  return res: finish ()
 end
 
 -----

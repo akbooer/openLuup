@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.07.07",
+  VERSION       = "2018.08.05",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -60,6 +60,8 @@ local ABOUT = {
 -- 2018.06.23  Added luup.openLuup flag (==true) to indicate not a Vera (for plugin developers)
 -- 2018.07.02  luup.rooms... ensure room number IS a number!
 -- 2018.07.07  coerce vaule to string in variable_set truncate()  (thanks @rigpapa
+-- 2018.07.18  change luup.openLuup from true to {}, with possible methods
+-- 2018.08.05  AutoUntrip functionality (thanks @rigpapa)
 
 
 local logs          = require "openLuup.logs"
@@ -362,8 +364,25 @@ local function variable_set (service, name, value, device, startup)
   local Armed = dev:variable_get (service, "Armed") or {}
   local isArmed = Armed.value == '1'
   
+  -- 2018.08.05  AutoUntrip functionality (thanks @rigpapa)
+  
+  local untrip = dev:variable_get (service, "AutoUntrip") or {}
+  untrip = tonumber (untrip.value) or 0
+  
+  local function clear ()
+    local now = os.time()
+    local last = dev: variable_get (service, "LastTrip") .value
+    if (tonumber (last) + untrip) <= (now + 1) then
+      -- recursive call to this whole routine, since we need to modify: Tripped, LastTrip, ArmedTrip
+      variable_set (service, name, '0', device, startup)
+    end
+  end
+  
+  -- ArmedTripped functionality
+  
   if value == '1' then
     if isArmed then set ("ArmedTripped", '1') end
+    if untrip > 0 then timers.call_delay (clear, untrip, '', "AutoUntrip device #" .. device) end
   else
     local ArmedTripped = dev:variable_get (service, "ArmedTripped")
     if ArmedTripped ~= '0' then set ("ArmedTripped", '0') end
@@ -1012,7 +1031,7 @@ return {
   
     -- constants: really not expected to be changed dynamically
     
-    openLuup = true,    -- 2018.06.23  ...to indicate not a Vera (for plugin developers)
+    openLuup = {}, -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate not a Vera (for plugin developers)
     
     hw_key              = "--hardware key--",
     event_server        = '',   

@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "sysinfo.sh",
-  VERSION       = "2016.05.09",
+  VERSION       = "2018.07.28",
   DESCRIPTION   = "sysinfo script /etc/cmh-ludl/cgi-bin/cmh/sysinfo.sh",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2016 AKBooer",
@@ -27,8 +27,14 @@ ABOUT = {
 ]]
 }
 
+-- 2016.05.09  original version
+-- 2018.07.28  updated to use wsapi.response library
+
+
 local json      = require "openLuup.json"
 local userdata  = require "openLuup.userdata"
+local wsapi     = require "openLuup.wsapi"
+
 
 local attr = userdata.attributes 
 
@@ -77,41 +83,20 @@ local original_MiOS_shell_script_returns =  -- using this, can easily insert new
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
-
 -- global entry point called by WSAPI connector
-
---[[
-
-The environment is a Lua table containing the CGI metavariables (at minimum the RFC3875 ones) plus any 
-server-specific metainformation. It also contains an input field, a stream for the request's data, 
-and an error field, a stream for the server's error log. 
-
-The input field answers to the read([n]) method, where n is the number
-of bytes you want to read (or nil if you want the whole input). 
-
-The error field answers to the write(...) method.
-
-return values: the HTTP status code, a table with headers, and the output iterator. 
-
---]]
-
 function run (wsapi_env)
-  _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax -- 2016.02.26
+  _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
   
-  local msg = "running sysinfo.sh WSAPI CGI"
-  _log (msg)
+  _log "running sysinfo.sh WSAPI CGI"
 
-  local status, return_content  = 200, json.encode (original_MiOS_shell_script_returns)
+  local res = wsapi.response.new ()         -- use the response library to build the response!
   
-  local headers = {["Content-Type"] = "text/plain"}
+  local j, err = json.encode (original_MiOS_shell_script_returns)
   
-  local function iterator ()     -- one-shot iterator, returns content, then nil
-    local x = return_content
-    return_content = nil 
-    return x
-  end
+  res:content_type "text/plain"
+  res: write (j or err)                     -- return valid JSON, or error message
 
-  return status, headers, iterator
+  return res: finish()
 end
 
 -----

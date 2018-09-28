@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2018.07.14",
+  VERSION       = "2018.07.27",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -19,6 +19,20 @@ local ABOUT = {
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   See the License for the specific language governing permissions and
   limitations under the License.
+  
+  -----
+  
+This module also contains the WSAPI request and response libraries from the Kepler project
+see: https://keplerproject.github.io/wsapi/libraries.html
+
+Copyright © 2007-2014 Kepler Project.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 ]]
 }
 
@@ -44,6 +58,8 @@ local ABOUT = {
 
 -- 2017.01.12  remove leading colon from REMOTE_PORT metavariable value
 -- 2018.07.14  improve error handling when calling CGI
+-- 2018.07.20  add the Kepler project request and response libraries
+-- 2018.07.27  export the util module with url_encode() and url_decode()
 
 
 --[[
@@ -303,10 +319,11 @@ end
 --
 -- The original WSAPI has a number of additional libraries
 -- see: https://keplerproject.github.io/wsapi/libraries.html
--- here, just the request library is included.
+-- here, the request and response libraries are included.
 -- use in a CGI file like this:
 --    local wsapi = require "openLuup.wsapi" 
 --    local req = wsapi.request.new(wsapi_env)
+--    local res = wsapi.response.new([status, headers])
 
 ------------------------------------------------------
 
@@ -321,17 +338,6 @@ local util = {
 -- request library, this is the verbatim keplerproject code 
 -- see: https://github.com/keplerproject/wsapi/blob/master/src/wsapi/request.lua
 --
---[[
-
-Copyright © 2007-2014 Kepler Project.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
---]]
 
 local function _M_request ()
   
@@ -592,6 +598,132 @@ end
 
 
 ----------
+--
+-- response library, this is the verbatim keplerproject code 
+-- see: https://github.com/keplerproject/wsapi/blob/master/src/wsapi/response.lua
+--
+
+local function _M_response ()
+  
+--  local util = require"wsapi.util"
+
+  local date = os.date
+  local format = string.format
+
+  local _M = {}
+
+  local methods = {}
+  methods.__index = methods
+
+  _M.methods = methods
+
+  local unpack = table.unpack or unpack
+
+  function methods:write(...)
+    for _, s in ipairs{ ... } do
+      if type(s) == "table" then
+        self:write(unpack(s))
+      elseif s then
+        local s = tostring(s)
+        self.body[#self.body+1] = s
+        self.length = self.length + #s
+      end
+    end
+  end
+
+  function methods:forward(url)
+    self.env.PATH_INFO = url or self.env.PATH_INFO
+    return "MK_FORWARD"
+  end
+
+  function methods:finish()
+    self.headers["Content-Length"] = self.length
+    return self.status, self.headers, coroutine.wrap(function ()
+      for _, s in ipairs(self.body) do
+       coroutine.yield(s)
+      end
+    end)
+  end
+
+  local function optional (what, name)
+    if name ~= nil and name ~= "" then
+      return format("; %s=%s", what, name)
+    else
+      return ""
+    end
+  end
+
+  local function optional_flag(what, isset)
+    if isset then
+      return format("; %s", what)
+    end
+    return ""
+  end
+
+  local function make_cookie(name, value)
+    local options = {}
+    local t
+    if type(value) == "table" then
+      options = value
+      value = value.value
+    end
+    local cookie = name .. "=" .. util.url_encode(value)
+    if options.expires then
+      t = date("!%A, %d-%b-%Y %H:%M:%S GMT", options.expires)
+      cookie = cookie .. optional("expires", t)
+    end
+    if options.max_age then
+      t = date("!%A, %d-%b-%Y %H:%M:%S GMT", options.max_age)
+      cookie = cookie .. optional("Max-Age", t)
+    end
+    cookie = cookie .. optional("path", options.path)
+    cookie = cookie .. optional("domain", options.domain)
+    cookie = cookie .. optional_flag("secure", options.secure)
+    cookie = cookie .. optional_flag("HttpOnly", options.httponly)
+    return cookie
+  end
+
+  function methods:set_cookie(name, value)
+    local cookie = self.headers["Set-Cookie"]
+    if type(cookie) == "table" then
+      table.insert(self.headers["Set-Cookie"], make_cookie(name, value))
+    elseif type(cookie) == "string" then
+      self.headers["Set-Cookie"] = { cookie, make_cookie(name, value) }
+    else
+      self.headers["Set-Cookie"] = make_cookie(name, value)
+    end
+  end
+
+  function methods:delete_cookie(name, path, domain)
+    self:set_cookie(name, { value =  "xxx", expires = 1, path = path, domain = domain })
+  end
+
+  function methods:redirect(url)
+    self.status = 302
+    self.headers["Location"] = url
+    self.body = {}
+    return self:finish()
+  end
+
+  function methods:content_type(type)
+    self.headers["Content-Type"] = type
+  end
+
+  function _M.new(status, headers)
+    status = status or 200
+    headers = headers or {}
+    if not headers["Content-Type"] then
+      headers["Content-Type"] = "text/html"
+    end
+    return setmetatable({ status = status, headers = headers, body = {}, length = 0 }, methods)
+  end
+
+  return _M
+
+end
+
+
+----------
 
 return {
     ABOUT = ABOUT,
@@ -601,7 +733,9 @@ return {
     
     -- modules
     
+    util      = util,               -- only url_decode() and url_encode() implemented
     request   = _M_request (),
+    response  = _M_response (),
     
   }
   

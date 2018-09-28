@@ -1,10 +1,11 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.07.04",
+  VERSION       = "2018.08.23",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2018 AK Booer
 
@@ -88,6 +89,8 @@ ABOUT = {
 -- 2018.06.04   Expose OFFSET and remote PK_AccessPoint as device variables
 -- 2018.07.04   Add .svg file type to remote directory listing in GetVeraFiles()
 --              add Files parameter to GetFiles action request
+-- 2018.07.29   only start up when valid PK_AccessPoint
+-- 2018.08.23   modify generic action to avoid duplication of action name and serviceId
 
 
 local devNo                      -- our device number
@@ -715,11 +718,8 @@ end
 -- returns action tag object with possible run/job/incoming/timeout functions
 --
 local function generic_action (serviceId, name)
-  local basic_request = table.concat {
-      "http://", ip, "/port_3480/data_request?id=action",
-      "&serviceId=", serviceId,
-      "&action=", name,
-    }
+  local basic_request = table.concat {"http://", ip, "/port_3480/data_request?id=action"}
+  
   local function job (lul_device, lul_settings)
     local devNo = remote_by_local_id (lul_device)
     if not devNo then return end        -- not a device we have cloned
@@ -728,11 +728,18 @@ local function generic_action (serviceId, name)
       return 
     end
   
-    local request = {basic_request, "DeviceNum=" .. devNo }
+    local params = {}
     for a,b in pairs (lul_settings) do
-      if a ~= "DeviceNum" then        -- thanks to @CudaNet for finding this bug!
-        request[#request+1] = table.concat {a, '=', url.escape(b) or ''} 
-      end
+      params[a] = url.escape(b)
+    end
+    
+    params.DeviceNum = devNo        -- use remote device number
+    params.serviceId = serviceId
+    params.action    = name
+    
+    local request = {basic_request}
+    for a,b in pairs (params) do
+      request[#request+1] = table.concat {a, '=', b} 
     end
     local url = table.concat (request, '&')
     wget (url)
@@ -874,9 +881,6 @@ function init (lul_device)
 
   luup.devices[devNo].action_callback (generic_action)     -- catch all undefined action calls
   
-  local Ndev, Nscn
-  Ndev, Nscn, BuildVersion, PK_AccessPoint = GetUserData ()
-  
   do -- version number
     local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
     local version = ("v%d.%d.%d"): format (y%2000,m,d)
@@ -884,17 +888,23 @@ function init (lul_device)
     luup.log (version)
   end
   
-  setVar ("PK_AccessPoint", PK_AccessPoint)     -- 2018.06.04   Expose PK_AccessPoint as device variable
-
-  setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
-  setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
+  local Ndev, Nscn
+  Ndev, Nscn, BuildVersion, PK_AccessPoint = GetUserData ()
   
-  if Ndev > 0 or Nscn > 0 then
---    watch_mirror_variables (Mirrored)         -- set up variable watches for mirrored devices
-    VeraBridge_delay_callback ()
-    luup.set_failure (0)                      -- all's well with the world
+  if PK_AccessPoint then                          -- 2018.07.29   only start up when valid PK_AccessPoint
+    setVar ("PK_AccessPoint", PK_AccessPoint)     -- 2018.06.04   Expose PK_AccessPoint as device variable
+
+    setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
+    setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
+    
+    if Ndev > 0 or Nscn > 0 then
+  --    watch_mirror_variables (Mirrored)         -- set up variable watches for mirrored devices
+      VeraBridge_delay_callback ()
+      luup.set_failure (0)                        -- all's well with the world
+    end
   else
-    luup.set_failure (2)                      -- say it's an authentication error
+    luup.set_failure (2)                          -- say it's an authentication error
+    setVar ("DisplayLine2", "No Vera", SID.altui)
   end
 
   register_AltUI_Data_Storage_Provider ()     -- register with AltUI as MIRROR data storage provider
