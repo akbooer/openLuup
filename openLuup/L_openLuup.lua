@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.08.23",
+  VERSION       = "2018.11.15",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -54,6 +54,7 @@ ABOUT = {
 -- 2018.05.02  add StartTime device variable, also on Control panel (thanks @rafale77)
 -- 2018.05.16  SendToTrash applied to the trash/ folder will DELETE selected files
 -- 2018.06.11  Added Vnumber (purely numeric six digit version number yymmdd) for @rigpapa
+-- 2018.08.30  fixed nil ctype in openLuup_images (thanks @ramwal)
 
 
 local json        = require "openLuup.json"
@@ -577,6 +578,7 @@ function openLuup_images (email, data)
       cname = cname or os.date "Snap_%Y%m%d-%H%M%S-" .. i .. ".jpg"   -- make up a name if necessary      
       log ("Content-Type:", ContentType) 
       
+      ctype = ctype or ''                     -- 2018.08.30
       if (ctype: match "image")               -- 2018.03.28  add application type
       or (ctype: match "application") then    -- write out image files  (thanks @jswim788)
         local f, err = io.open ("images/" .. cname, 'wb') 

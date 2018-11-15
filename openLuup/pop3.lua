@@ -368,7 +368,7 @@ local function start (config)
       return OK
     end
 
-    -- clear flags marking meessages for deletion
+    -- clear flags marking messages for deletion
     local function RSET ()
       maildrop: reset ()
       return OK

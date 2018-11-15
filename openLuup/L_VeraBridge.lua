@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.08.23",
+  VERSION       = "2018.09.26",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -91,6 +91,7 @@ ABOUT = {
 --              add Files parameter to GetFiles action request
 -- 2018.07.29   only start up when valid PK_AccessPoint
 -- 2018.08.23   modify generic action to avoid duplication of action name and serviceId
+-- 2018.09.26   remove outdated code, from when dev #2 was a scene controller, not the openLuup plugin!
 
 
 local devNo                      -- our device number
@@ -872,10 +873,13 @@ function init (lul_device)
   if OFFSET == BLOCKSIZE then 
     Zwave = {1}                   -- device IDs for mapping (same value on local and remote)
     set_parent (1, devNo)         -- ensure Zwave controller is an existing child 
-    local d2 = luup.devices[2]
-    if d2.device_num_parent ~= 0 then   --   2016.06.20
-      set_parent (2, 0)           -- unhook local scene controller (remote will have its own)
-    end
+
+-- 2018.09.26  remove this outdated code, from when dev #2 was a scene controller, not the openLuup plugin!
+--    local d2 = luup.devices[2]
+--    if d2.device_num_parent ~= 0 then   --   2016.06.20
+--      set_parent (2, 0)           -- unhook local scene controller (remote will have its own)
+--    end
+
     luup.log "VeraBridge maps remote Zwave controller"
   end
 
