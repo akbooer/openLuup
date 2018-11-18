@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.08.05",
+  VERSION       = "2018.11.15",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -62,6 +62,7 @@ local ABOUT = {
 -- 2018.07.07  coerce vaule to string in variable_set truncate()  (thanks @rigpapa
 -- 2018.07.18  change luup.openLuup from true to {}, with possible methods
 -- 2018.08.05  AutoUntrip functionality (thanks @rigpapa)
+-- 2018.11.15  luup.attr_set ("Mode", _) calls gateway action to keep openLuup variable in sync (thanks @DesT)
 
 
 local logs          = require "openLuup.logs"
@@ -361,10 +362,8 @@ local function variable_set (service, name, value, device, startup)
   if (name ~= "Tripped") or (service ~= security) or (device >= BRIDGEBLOCK) then return end   -- not interested 
   
   set ("LastTrip", tostring(os.time()))
-  local Armed = dev:variable_get (service, "Armed") or {}
-  local isArmed = Armed.value == '1'
   
-  -- 2018.08.05  AutoUntrip functionality (thanks @rigpapa)
+  -- 2018.08.05  AutoUntrip functionality (thanks for the suggestion @rigpapa)
   
   local untrip = dev:variable_get (service, "AutoUntrip") or {}
   untrip = tonumber (untrip.value) or 0
@@ -373,19 +372,22 @@ local function variable_set (service, name, value, device, startup)
     local now = os.time()
     local last = dev: variable_get (service, "LastTrip") .value
     if (tonumber (last) + untrip) <= (now + 1) then
-      -- recursive call to this whole routine, since we need to modify: Tripped, LastTrip, ArmedTrip
+      -- call this whole routine, since we need to modify: Tripped, LastTrip, ArmedTrip
       variable_set (service, name, '0', device, startup)
     end
   end
   
   -- ArmedTripped functionality
   
+  local Armed = dev:variable_get (service, "Armed") or {}
+  local isArmed = Armed.value == '1'
+  
   if value == '1' then
     if isArmed then set ("ArmedTripped", '1') end
     if untrip > 0 then timers.call_delay (clear, untrip, '', "AutoUntrip device #" .. device) end
   else
-    local ArmedTripped = dev:variable_get (service, "ArmedTripped")
-    if ArmedTripped ~= '0' then set ("ArmedTripped", '0') end
+    local ArmedTripped = dev:variable_get (service, "ArmedTripped") or {}
+    if ArmedTripped.value ~= '0' then set ("ArmedTripped", '0') end
   end
 end
 
@@ -467,7 +469,12 @@ local function attr_set (attribute, value, device)
   value = tostring (value  or '')
   attribute = tostring (attribute or '')
   if device == 0 then
-    if attribute: match "^openLuup%." then                    -- 2016.12.06 
+    if attribute == "Mode" then                                   -- 2018.11.15
+      local hag = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+      -- following call is equivalent to 
+      -- luup.call_action (hag, "SetHouseMode", {Mode = value, Now = "1"}, 0)
+      Device_0.services[hag].actions.SetHouseMode.run ("SetHouseMode", {Mode = value, Now = "1"})
+    elseif attribute: match "^openLuup%." then                    -- 2016.12.06 
       local x = userdata.attributes
       for y,z in attribute: gmatch "([^%.]+)(%.?)" do
         if (z == '.') then

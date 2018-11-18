@@ -55,7 +55,7 @@ Note that ONLY numeric variable values are supported by the historian.
 
 There are three major parts:
 
- CarbonCache    - an implementation of the Graphite Carbon Cache which write data to disk
+ CarbonCache    - an implementation of the Graphite Carbon Cache which writes data to disk
  HistoryFinder  - called by the Graphite API (in openLuup, implemented as a CGI) to find metrics
  HistoryReader  - called by the Graphite API to return metric values (from both cache and disk archives)
  
