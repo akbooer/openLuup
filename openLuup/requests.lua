@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.07.07",
+  VERSION       = "2018.11.21",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -60,6 +60,7 @@ local ABOUT = {
 -- 2018.04.05  sdata_devices_table - reflect true state from job status
 -- 2018.04.09  add archive_video request
 -- 2018.04.22  add &id=lua request (not yet done &DeviceNum=xxx - doesn't seem to work on Vera anyway)
+-- 2018.11.21  add &id=actions request (thanks @rigpapa for pointing this out)
 
 
 local http          = require "openLuup.http"
@@ -88,6 +89,17 @@ local function device_present (device_type)
       return devNo
     end
   end
+end
+
+  
+local function spairs (x, fsort)  -- sorted pairs iterator
+  local i = 0
+  local I = {}
+  local function iterator () i = i+1; return I[i], x[I[i]] end
+  
+  for n in pairs(x) do I[#I+1] = n end
+  table.sort(I, fsort)
+  return iterator
 end
 
 -----
@@ -214,16 +226,6 @@ local function invoke (_, p)
   local Scene   = [[<a href="data_request?id=action&serviceId=%s&action=RunScene&SceneNum=%d"> #%d %s</a><br>]]  
   local Action  = [[<a href="data_request?id=action&DeviceNum=%d&serviceId=%s&action=%s">%s%s</a><br>]]
   local Service = [[<br><i>%s</i><br>]]
-    
-  local function spairs (x, fsort)  -- sorted pairs iterator
-    local i = 0
-    local I = {}
-    local function iterator () i = i+1; return I[i], x[I[i]] end
-    
-    for n in pairs(x) do I[#I+1] = n end
-    table.sort(I, fsort)
-    return iterator
-  end
 
   local body
   local D, S = {}, {}
@@ -257,6 +259,39 @@ local function invoke (_, p)
   end
   return html: format (body)
 end
+
+
+-- actions   (thanks to @rigpapa for pointing this out to me)
+-- This returns all the XML with all the UPNP device description documents. 
+-- Use: http://ip_address:3480/data_request?id=device&output_format=xml&DeviceNum=x 
+-- [or &UDN=y -- NOT implemented] to narrow it down.
+local function actions (_, p)
+  local S = {}
+  
+  local dev = luup.devices[tonumber(p.DeviceNum)]
+  if not dev then 
+    return "BAD_DEVICE", "text/plain"
+  end
+  
+  for s, srv in spairs (dev.services) do
+    local A = {}
+    S[#S+1] = {serviceId = s, actionList = A}
+--      local implemented_actions = srv.actions
+    for _,act in spairs ((loader.service_data[s] or {}).actions or {}) do
+      local args = {}
+      for i,arg in ipairs (act.argumentList or {}) do
+          args[i] = {name = arg.name, dataType = arg.dataType}    -- TODO: dataType not in arg?
+      end
+--        local star = implemented_actions[name] and '*' or ''
+      A[#A+1] = {name = act.name, arguments = args}
+    end
+  end
+  
+  local j, err = json.encode {serviceList = S}
+  j = j or {error = err or "unknown error"}
+  return j, "application/json"
+end
+
 
 -- Returns the recent IP requests in order by most recent first, [ACTUALLY, IT'S NOT ORDERED]
 -- including information about devices in use and if the IP is blacklisted (ignored by the plug and play mechanism).  [NOT IMPLEMENTED] 
@@ -1007,6 +1042,7 @@ local function exit () scheduler.stop() ; return ("requested openLuup exit at ".
 local luup_requests = {
   
   action              = action, 
+  actions             = actions,
   alive               = alive,
   archive_video       = archive_video,
   device              = device,

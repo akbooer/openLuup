@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.05.26",
+  VERSION       = "2018.11.21",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -55,6 +55,8 @@ local ABOUT = {
 -- 2018.05.10  SUBSTANTIAL REWRITE, to accomodate new XML DOM parser
 -- 2018.05.26  add new line before action end - beware final comment lines!! Debug dump erroneous source code.
 -- 2018.07.15  change search path order in raw_read()
+-- 2018.11.21  implement find_file (for @rigpapa)
+
 
 ------------------
 --
@@ -177,14 +179,34 @@ local function memoize (fct, cache)
   end
 end
 
-
+-- 2018.11.21  return search path and file descriptor
+local function open_file (filename)
 -- 2018.07.15  changed search path order to look first in openLuup/ (for system files, esp. VeraBridge)
+  local fullpath
+  local function open (path)
+    fullpath = path .. filename
+    return io.open (fullpath, 'rb')
+  end
+  local f = open "openLuup/"        -- 2016.06.18  look in openLuup/ (for AltAppStore)
+    or open "./"                    -- current directory (cmh-ludl/) 
+    or open "../cmh-lu/"            -- look in 'cmh-lu/' directory
+    or open "files/"                -- 2016.06.09  also look in files/
+    or open "www/"                  -- 2018.02.15  also look in www/
+  return f, fullpath
+end  
+
+-- find the full path name of a file
+local function find_file (filename)
+  local f, path = open_file (filename)
+  if f then
+    f: close ()
+    return path
+  end
+end
+
+-- raw_read, ignoring the cache
 local function raw_read (filename)
-  local f = io.open("openLuup/" .. filename, 'rb')        -- 2016.06.18  look in openLuup/ (for AltAppStore)
-    or io.open (filename, 'rb') 
-    or io.open ("../cmh-lu/" .. filename)             -- look in 'cmh-lu/' directory
-    or io.open ("files/" .. filename, 'rb')           -- 2016.06.09  also look in files/
-    or io.open ("www/" .. filename, 'rb')                 -- 2018.02.15  also look in www/
+  local f = open_file (filename)
   if f then 
     local data = f: read "*a"
     f: close () 
@@ -623,6 +645,7 @@ return {
   -- methods
   assemble_device     = assemble_device_from_files,
   compile_lua         = compile_lua,
+  find_file           = find_file,
   new_environment     = new_environment,
   parse_service_xml   = parse_service_xml,
   parse_device_xml    = parse_device_xml,
