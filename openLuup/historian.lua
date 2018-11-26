@@ -76,7 +76,7 @@ local DYtree = "DataYours"  -- root name of the DataYours tree for Finder
 
 local Hcarbon, DYcarbon     -- Carbon Cache (Whisper archives) for Historian and DataYours replacement
 
-local Graphite_UDP          -- external Graphite UDP port to mirror hisotiran disk cache
+local Graphite_UDP          -- external Graphite UDP port to mirror historian disk cache
 local InfluxDB_UDP          -- ditto InfluxDB
 
 local CacheSize             -- in-memory cache size
@@ -331,7 +331,7 @@ function Metrics.finder2filepath (metric)
 end
 
 -- bsv2finder (b, d, shortSid, var)  -- INTERNAL routine
--- ALSO returns openLuup device number  and full device name
+-- ALSO returns openLuup device number and full device name
 local function bdsv2finder (b, d, shortSid, var)
   if b then
     -- Bridges[bridge] = {nodeName = name, PK = PK, offset = offset}
