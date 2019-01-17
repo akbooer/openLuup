@@ -19,6 +19,9 @@
 -- 2018.04.14  removed upnp/ from CGI directories and HAG module...
 --              ["upnp/control/hag"] = "openLuup/hag.lua", --- DEPRECATED, Feb 2018 ---
 -- 2018.06.12  added Data Historian Disk Archive Whisper schemas and aggregations
+-- 2018.08.20  added *Time* to nocache rules
+-- 2018.12.31  start to add retentions, xFF and aggregation to Historian archive_rules
+ 
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -190,6 +193,10 @@ local archive_rules = {
     {
       schema   = "every_1s", 
       patterns = {"*.*.Tripped"},
+      -- TODO: add retentions, xFF and aggregation method, and deprecate indirect reference to .conf files
+      retentions = "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
+      xFilesFactor = 0,
+      aggregationMethod = "maximum",
     },{
       schema   = "every_1m", 
       patterns = {"*.*.Status"},
@@ -224,7 +231,7 @@ local archive_rules = {
 
 local cache_rules = {
   nocache = {
-      dates_and_times = "*.*.{*Date*,*Last*,Poll*,Configured,CommFailure}",
+      dates_and_times = "*.*.{*Date*,*Time*,*Last*,Poll*,Configured,CommFailure}",
       zwave_devices = "*.ZWaveDevice1.*",
     },
   }

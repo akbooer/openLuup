@@ -865,7 +865,10 @@ local function HistoryFinder(config)
   
   DYdirectory = ((config or {}).historian or {}).DataYours   -- explicit override of DY finder
   
-  if DYdirectory then DYcarbon = CarbonCache (DYdirectory) end
+  if DYdirectory then 
+    DYcarbon = CarbonCache (DYdirectory) 
+    -- TODO: check for DY receiver UDP and start listener
+  end
   
   return {
     find_nodes = function(query) 
