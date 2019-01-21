@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.07.25",
+  VERSION       = "2018.11.26",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -25,6 +25,7 @@ local ABOUT = {
 }
     
 -- 2018.07.21  ensure Directory ends with '/'
+-- 2017.11.26  enable historian mirroring to external Graphite and InfluxDB databases via UDP
 
 
 local logs    = require "openLuup.logs"
@@ -346,9 +347,17 @@ local function bdsv2finder (b, d, shortSid, var)
   end
 end
 
--- find the metrics finder name given all the components of the filename
+-- find the metrics finder name given all the components of the filename, including pk
 function Metrics.pkdsv2finder (pk, d, shortSid, var)
   local b = Bridges.by_pk [pk]
+  return bdsv2finder (b, d,shortSid,var)
+end
+
+-- find the metrics finder name given components of the filename, without pk
+function Metrics.dsv2finder (dev, shortSid, var)
+  local d = dev % BRIDGEBLOCK   -- local device number, possibly on remote Vera 
+  local bridge = math.floor (dev / BRIDGEBLOCK)
+  local b = Bridges[bridge]
   return bdsv2finder (b, d,shortSid,var)
 end
 
@@ -538,22 +547,22 @@ local function write_thru (dev, svc, var, old, value, timestamp)
   tally[filename] = (tally[filename] or 0) + 1
   
   -- send to external DBs also:  Graphite / InfluxDB
-  
-  -- see: http://graphite.readthedocs.io/en/latest/feeding-carbon.html#the-plaintext-protocol
-  if Graphite_UDP then                    -- send all updates (even if same, to populate archives)
-    --TODO: send to Graphite
-    -- Graphite_UDP: send (...need to make correct metric name)
-  end
+  -- use finder metric name for compatibility with Grafana, etc.
+  if Graphite_UDP or InfluxDB_UDP then
+    local message = "%s value=%s"
+    local findername = Metrics.dsv2finder (dev, short_svc, var)
+    local datagram = message: format (findername, value)    -- TODO: add TIME stamp?
+    
+    -- see: http://graphite.readthedocs.io/en/latest/feeding-carbon.html#the-plaintext-protocol
+    if Graphite_UDP then                    -- send all updates (even if same, to populate archives)
+      Graphite_UDP: send (datagram)
+    end
 
-  -- see: https://docs.influxdata.com/influxdb/v1.5/write_protocols/line_protocol_reference/
-  if InfluxDB_UDP and value ~= old then   -- only send changes
-    --TODO: send to InfluxDB
-    -- InfluxDB_UDP: send (...need to make correct metric name)
---    local influx = "%s value=%s"
---    _debug (json.encode {Influx_DSP = {p}})   -- TIME stamp?
---    if InfluxSocket and p.measurement and p.new then 
---      InfluxSocket: send (influx: format (p.measurement, p.new))
---    end
+    -- see: https://docs.influxdata.com/influxdb/v1.7/write_protocols/line_protocol_reference/
+    -- also: https://docs.influxdata.com/influxdb/v1.7/supported_protocols/udp/
+    if InfluxDB_UDP and value ~= old then   -- only send changes
+      InfluxDB_UDP: send (datagram)
+    end
   end
 
 end
@@ -856,7 +865,10 @@ local function HistoryFinder(config)
   
   DYdirectory = ((config or {}).historian or {}).DataYours   -- explicit override of DY finder
   
-  if DYdirectory then DYcarbon = CarbonCache (DYdirectory) end
+  if DYdirectory then 
+    DYcarbon = CarbonCache (DYdirectory) 
+    -- TODO: check for DY receiver UDP and start listener
+  end
   
   return {
     find_nodes = function(query) 

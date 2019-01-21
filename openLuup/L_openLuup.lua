@@ -1,13 +1,13 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2018.11.21",
+  VERSION       = "2019.01.17",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.

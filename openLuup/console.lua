@@ -5,13 +5,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2018.07.28",
+  VERSION       = "2019.01.12",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-18 AK Booer
+  Copyright 2013-19 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -47,7 +47,9 @@ ABOUT = {
 -- 2018.07.15  colour code non-200 status numbers
 -- 2018.07.19  use openLuup.whisper, not L_DataWhisper! (thanks @powisquare)
 -- 2018.07.28  use wsapi request and response libraries
+-- 2018.08.26  correct file size units in POP3 page listing
 
+-- 2019.01.12  use <form> on Historian page to selet which variables to archive
 
 -- TODO: HTML pages with sorted tables?
 -- see: https://www.w3schools.com/w3js/w3js_sort.asp
@@ -304,6 +306,28 @@ function run (wsapi_env)
     }
   end
 
+--  local function listit (list, title)
+--    print (title .. ", " .. os.date "%c")
+--    table.sort (list, function (a,b) return a.t < b.t end)
+--    print ('#', (line: format ("date       time    ", "device", "status[n]","info", '')))
+--    for i,x in ipairs (list) do print (i, x.l) end
+--    print ''
+--  end
+
+  local  html5 = {}
+  
+  function html5.table ()
+    
+    local rows = {}
+    
+    local function row (r)
+      
+    end
+    
+    return 
+  end
+  
+
   local function listit (list, title)
     print (title .. ", " .. os.date "%c")
     table.sort (list, function (a,b) return a.t < b.t end)
@@ -484,14 +508,14 @@ function run (wsapi_env)
     
     local layout = "     %-21s %9s"
     local number = "%7s"
-    local header = "\n    Mailbox '%s': %d messages, %0.1fkB"
+    local header = "\n    Mailbox '%s': %d messages, %0.1f (kB)\n"
     local accounts = pop3.accounts
     
     for name, folder in pairs (accounts) do
       local mbx = pop3.mailbox.open (folder)
       local total, bytes = mbx: status()
       print (header: format (name, total, bytes/1e3))
-      print ('      #' .. (layout: format ("date       time", "size\n")))
+      print ('      #' .. (layout: format ("date       time", "size (bytes)\n")))
       
       local list = {}
       for _, size, _, timestamp in mbx:scan() do
@@ -639,6 +663,23 @@ function run (wsapi_env)
   end
 
   local function historian ()
+    
+    -- find all the archived metrics
+    local folder = luup.attr_get "openLuup.Historian.Directory"
+    local archived = {}
+    if folder then 
+      mapFiles (folder, 
+        function (a)
+          local filename = a.name: match "^(.+).wsp$"
+          if filename then
+            local pk,d,s,v = filename: match "(%d+)%.(%d+)%.([%w_]+)%.(.+)"  -- pk.dev.svc.var
+            local findername = hist.metrics.pkdsv2finder (pk,d,s,v)
+            if findername then archived[findername] = true end
+          end
+        end)
+    end
+    
+    -- find all the variables with history
     local N = 0
     local H = {}
     for _,d in pairs (luup.devices) do
@@ -646,12 +687,12 @@ function run (wsapi_env)
         N = N + 1 
         if v.history and #v.history > 2 then
           local finderName = hist.metrics.var2finder (v)
-          H[#H+1] = {v = v, finderName = finderName, sortkey = {v.dev, v.shortSid, v.name}}
+          H[#H+1] = {v = v, finderName = finderName, archived = archived[finderName], 
+                        sortkey = {v.dev, v.shortSid, v.name}}
         end
       end
     end
      
---    local layout = "    %8s  %10s%-28s %-20s %s"
     local layout = "    %8s  %8s %-20s %s"
     local T = 0
     table.sort (H, keysort)
@@ -660,10 +701,10 @@ function run (wsapi_env)
     print ("\n  Total number of device variables: " .. N)
     print ("\n  Variables with History: " .. #H)
     print ''
---    print (layout: format ("#points", "device ", "name", "service", "variable \n"))
-    print (layout: format ("#points", "device ", "service", "variable"))
+    print (layout: format ("#points", "device ", "service", "variable (archived if checked)"))
     
     local link = [[<a href="/render?target=%s&from=%s">%s</a>]]
+    local tick = '<input type="checkbox" readonly %s /> %s'
     local prev  -- previous device (for line spacing)
     for _, x in ipairs(H) do
       local v = x.v
@@ -677,15 +718,21 @@ function run (wsapi_env)
       end
       local h = #v.history / 2
       T = T + h
---      local _, number, dname = devname(v.dev)
       local dname = devname(v.dev)
       if dname ~= prev then 
         local devname = "\n%14s<em>%s</em>"
+        --
+--        devname = [[\n%14s<em>%s</em>
+--        <form action="cgi/no-content.lua" method="post"> 
+--        <input type="Submit" value="Update"> 
+--        </form>
+--        ]]
+        --
         print(devname: format ('', dname)) 
       end
       prev = dname
---      print (layout:format (h, number, dname, v.srv: match "[^:]+$" or v.srv, vname))
-      print (layout:format (h, '', v.srv: match "[^:]+$" or v.srv, vname))
+      local check = x.archived and "checked" or ''
+      print (layout:format (h, '', v.srv: match "[^:]+$" or v.srv, tick: format (check, vname)))
     end
     print ("\n  Total number of history points:", T)
   end
@@ -821,39 +868,12 @@ function run (wsapi_env)
     
   }
 
+  -- run()
   
---  -- unpack the parameters and read the data
---  local p = {}
---  for a,b in (wsapi_env.QUERY_STRING or ''): gmatch "([^=]+)=([^&]*)&?" do
---    p[a] = url.unescape (b)
---  end
-  
---  lines = {console_html.prefix}
---  local status = 200
---  local headers = {}
-  
---  local page = p.page or ''
-  
---  do (pages[page] or function () end) (p) end
---  headers["Content-Type"] = "text/html"
-  
---  print (console_html.postfix)
---  local return_content = table.concat (lines)
-
-  
---  local function iterator ()     -- one-shot iterator, returns content, then nil
---    local x = return_content
---    return_content = nil 
---    return x
---  end
-
---  return status, headers, iterator
- 
   local req = wsapi.request.new (wsapi_env)
   local res = wsapi.response.new ()
   
-  -- unpack the parameters and read the data
-  local p = req.GET
+  local p = req.GET 
   
   lines = {console_html.prefix}  
   local page = p.page or ''  
