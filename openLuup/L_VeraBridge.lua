@@ -756,7 +756,7 @@ local function generic_action (serviceId, name)
     return {serviceId = serviceId, name = name, extra_returns = {IP = ip} }
   end
     
-  return {run = job}    -- TODO: job or run ?
+  return {job = job}    -- TODO: job or run ?
 end
 
 -- make either "1" or "true" work the same way
