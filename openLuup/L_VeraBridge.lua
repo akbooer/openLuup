@@ -1,13 +1,13 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2018.09.26",
+  VERSION       = "2019.01.20",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -92,6 +92,9 @@ ABOUT = {
 -- 2018.07.29   only start up when valid PK_AccessPoint
 -- 2018.08.23   modify generic action to avoid duplication of action name and serviceId
 -- 2018.09.26   remove outdated code, from when dev #2 was a scene controller, not the openLuup plugin!
+
+-- 2019.01.20   changed {run = job} to {job = job} in generic_action()
+--              see: http://forum.micasaverde.com/index.php/topic,118763.0.html
 
 
 local devNo                      -- our device number
@@ -603,7 +606,7 @@ function GetVeraFiles (params)
 
   ]]
 
--- TODO: New Vera security measures will disable, by default, RunLua
+-- New Vera security measures will disable, by default, RunLua
 -- could bypass this by defining and running a scene with Lua code attached
   local function get_directory (path, filename)
     local template = "/data_request?id=action" ..
@@ -620,7 +623,6 @@ function GetVeraFiles (params)
     return info or ''
   end
 
--- TODO: does this work with new port_3480 access?
   local function get_files_from (path, filename, dest, url_prefix)
     dest = dest or '.'
     url_prefix = url_prefix or "/port_3480/"
@@ -756,7 +758,7 @@ local function generic_action (serviceId, name)
     return {serviceId = serviceId, name = name, extra_returns = {IP = ip} }
   end
     
-  return {run = job}    -- TODO: job or run ?
+  return {job = job}    -- 2019.01.20
 end
 
 -- make either "1" or "true" work the same way
@@ -867,18 +869,11 @@ function init (lul_device)
   
   Included = convert_to_set (Included)
   Excluded = convert_to_set (Excluded)  
---  Mirrored, MirrorHash = set_of_mirrored_devices ()       -- create set and hash of remote device IDs which are mirrored
   
   -- map remote Zwave controller device if we are the primary VeraBridge 
   if OFFSET == BLOCKSIZE then 
     Zwave = {1}                   -- device IDs for mapping (same value on local and remote)
     set_parent (1, devNo)         -- ensure Zwave controller is an existing child 
-
--- 2018.09.26  remove this outdated code, from when dev #2 was a scene controller, not the openLuup plugin!
---    local d2 = luup.devices[2]
---    if d2.device_num_parent ~= 0 then   --   2016.06.20
---      set_parent (2, 0)           -- unhook local scene controller (remote will have its own)
---    end
 
     luup.log "VeraBridge maps remote Zwave controller"
   end
@@ -902,7 +897,6 @@ function init (lul_device)
     setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
     
     if Ndev > 0 or Nscn > 0 then
-  --    watch_mirror_variables (Mirrored)         -- set up variable watches for mirrored devices
       VeraBridge_delay_callback ()
       luup.set_failure (0)                        -- all's well with the world
     end
