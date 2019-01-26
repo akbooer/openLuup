@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.01.20",
+  VERSION       = "2019.01.26",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -95,6 +95,7 @@ ABOUT = {
 
 -- 2019.01.20   changed {run = job} to {job = job} in generic_action()
 --              see: http://forum.micasaverde.com/index.php/topic,118763.0.html
+-- 2019.01.26   add RemotePort to allow possible link to openLuup systems (thanks @DesT)
 
 
 local devNo                      -- our device number
@@ -114,6 +115,8 @@ local remote_room_index          -- bi-directional of remote rooms
 
 local BuildVersion                -- ...of remote machine
 local PK_AccessPoint              -- ... ditto
+
+local RemotePort                  -- port to access remote machine ("/port_3480" for Vera, ":3480" for openLuup)
 
 local SID = {
   altui    = "urn:upnp-org:serviceId:altui1"  ,         -- Variables = 'DisplayLine1' and 'DisplayLine2'
@@ -182,7 +185,7 @@ end
 
 -- remote request to port_3480
 local function remote_request (request)    -- 2018.01.11
-  return luup.inet.wget (table.concat {"http://", ip, "/port_3480", request})
+  return luup.inet.wget (table.concat {"http://", ip, RemotePort, request})
 end
 
 
@@ -721,7 +724,7 @@ end
 -- returns action tag object with possible run/job/incoming/timeout functions
 --
 local function generic_action (serviceId, name)
-  local basic_request = table.concat {"http://", ip, "/port_3480/data_request?id=action"}
+  local basic_request = table.concat {"http://", ip, RemotePort, "/data_request?id=action"}
   
   local function job (lul_device, lul_settings)
     local devNo = remote_by_local_id (lul_device)
@@ -858,6 +861,8 @@ function init (lul_device)
   Included    = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
   Excluded    = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge, 
                                               -- ...takes precedence over the first two.
+                                              
+  RemotePort  = uiVar ("RemotePort", "/port_3480")
   
   local hmm = uiVar ("HouseModeMirror",HouseModeOptions['0'])   -- 2016.05.23
   HouseModeMirror = hmm: match "^([012])" or '0'
