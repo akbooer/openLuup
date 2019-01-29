@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2018.08.04",
+  VERSION       = "2019.01.28",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -50,6 +50,8 @@ local ABOUT = {
 -- 2018.04.25  update sandbox function (I believe that this one actually works properly)
 -- 2018.06.06  add extra time parameter to variable_watch callbacks (for historian)
 -- 2018.08.04  coerce error return to string in context_switch() (thanks @rigpapa)
+
+-- 2019.01.28  add sandbox lookup table to metatable for external pretty-printing (console)
 
 
 local logs      = require "openLuup.logs"
@@ -210,6 +212,7 @@ local function sandbox (tbl, name)
   name = name or "{}"
   local lookup = {}             -- user function lookup indexed by [device][key]
   local meta = {__index = {}}   -- used to store proxy functions for each new key
+  meta.lookup = lookup          -- 2019.01.28
   
   function meta:__newindex(k,v)   -- only ever called if key not already defined
   -- so this sandbox can't protect the original table keys from being changed
