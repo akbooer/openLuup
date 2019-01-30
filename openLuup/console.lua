@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.01.29",
+  VERSION       = "2019.01.30",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -164,8 +164,8 @@ prefix = table.concat {
 --     <div style="overflow:scroll; height:500px;">
 
 postfix = [[
-    </div>
-
+  <br/>
+  </div>
   </body>
 </html>
 
@@ -227,9 +227,13 @@ function html5.table ()
     return table.concat (t, '\n')
   end
 
-  return setmetatable ({header = header, row = row}, {
+  return setmetatable ({
+      header = header, 
+      row = row,
+      length = function() return #rows end,
+    },{
       __tostring = render,
-      __len = function () return #rows end,
+--      __len = function () return #rows end,   -- sadly, not implemented by some v5.1 Lua implementations
     })
 end
 
@@ -437,7 +441,7 @@ function run (wsapi_env)
       local count = number (req.count)
       t.row {ip, count, todate(req.date)}
     end
-    if #t == 0 then t.row {'', "--- none ---", ''} end
+    if t.length() == 0 then t.row {'', "--- none ---", ''} end
     print (tostring(t))
   end
   
@@ -458,7 +462,7 @@ function run (wsapi_env)
           t.row {name, number(count), status_number(status)}
         end
       end
-      if #t == 0 then t.row {'', "--- none ---", ''} end
+      if t.length() == 0 then t.row {'', "--- none ---", ''} end
       print (tostring(t))
     end
     
@@ -489,7 +493,7 @@ function run (wsapi_env)
           t.row {ip, count, name}
         end
       end
-      if #t == 0 then t.row {'', none, ''} end
+      if t.length() == 0 then t.row {'', none, ''} end
       print (tostring(t))
     end
     
@@ -505,7 +509,7 @@ function run (wsapi_env)
     for email in pairs (smtp.blocked) do
       t.row {email, '?'}
     end
-    if #t == 0 then t.row {'', none, ''} end
+    if t.length() == 0 then t.row {'', none, ''} end
     print (tostring(t))
   end
   
@@ -531,7 +535,7 @@ function run (wsapi_env)
         t.row {i, x.d, x.s} 
       end
       mbx: close ()
-      if #t == 0 then t.row {'', "--- none ---", ''} end
+      if t.length() == 0 then t.row {'', "--- none ---", ''} end
       print (tostring(t))
     end
   end
@@ -551,7 +555,7 @@ function run (wsapi_env)
     for _,x in ipairs (list) do 
       t.row {x.port, x.n, x.dev} 
     end
-    if #t == 0 then t.row {'', "--- none ---", ''} end 
+    if t.length() == 0 then t.row {'', "--- none ---", ''} end 
     print (tostring(t))
     t = html5.table()
     t.header { {"Opened for write:", colspan = 2} }
@@ -565,7 +569,7 @@ function run (wsapi_env)
     for _,x in ipairs (list) do 
       t.row {x.ip_and_port, x.dev} 
     end
-    if #t == 0 then t.row {"--- none ---", ''} end 
+    if t.length() == 0 then t.row {"--- none ---", ''} end 
     print (tostring(t)) 
   end
   
@@ -652,7 +656,7 @@ function run (wsapi_env)
     for i,f in ipairs (files) do
       t.row {i, f.name, f.size}
     end
-    if #t == 0 then t.row {'', "--- none ---", ''} end
+    if t.length() == 0 then t.row {'', "--- none ---", ''} end
     print (tostring(t))
   end
   
