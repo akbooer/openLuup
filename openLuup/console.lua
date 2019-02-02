@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.01.30",
+  VERSION       = "2019.02.02",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -57,6 +57,8 @@ ABOUT = {
 
 -- TODO: HTML pages with sorted tables?
 -- see: https://www.w3schools.com/w3js/w3js_sort.asp
+-- TODO: HTML pages with tabbed tables?
+-- see: http://qnimate.com/tabbed-area-using-html-and-css-only/
 
 --  WSAPI Lua implementation
 
@@ -161,15 +163,9 @@ prefix = table.concat {
   <div class="content">
 ]]}
 ,
---     <div style="overflow:scroll; height:500px;">
 
-postfix = [[
-  <br/>
-  </div>
-  </body>
-</html>
+postfix = os.date "<br/> <hr/><pre> \n%c </pre><br/> </div></body></html>"
 
-]]
 }
 
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
@@ -258,17 +254,21 @@ return values: the HTTP status code, a table with headers, and the output iterat
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
 
-  local lines     -- print buffer
---  local function print (a,b)
---    local fmt = "%5s %s \n"
---    lines[#lines+1] = fmt: format (a, b or '')
---  end
-  local function print (x)
-    lines[#lines+1] = x
+  local function title (x)
+    return table.concat {"<h4>", x, "</h4>"}
   end
 
-  local function title (x)
-    print (table.concat {"<h4>", x,  os.date ", %c </h4>"})
+  local function red (x)
+    return ('<font color="crimson">%s</font>'): format (x) 
+  end
+  
+  local function status_number (n)
+    if n ~= 200 then return red (n) end
+    return n
+  end
+  
+  local function preformatted (x)
+    return {"<br /><pre>", x, "</pre>"}
   end
   
   -- sort table list elements by first index, then number them in sequence
@@ -279,22 +279,21 @@ function run (wsapi_env)
   end
   
   local function joblist2 ()
-    title "Scheduled Jobs"
     local t = html5.table()
-    t.header {"#", "date / time", "device", "status[n]", "info", "notes"}
+    t.header {"#", "date / time", "device", "status", "run", "info", "notes"}
     local jlist = {}
     for _,b in pairs (scheduler.job_list) do
-      local status = table.concat {state[b.status] or '', '[', b.logging.invocations, ']'}
-      jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, b.type or '?', b.notes or ''}
+      local status = state[b.status] or ''
+      local n = b.logging.invocations
+      jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, n, b.type or '?', b.notes or ''}
     end
     for _, row in ipairs (sort_and_number(jlist)) do
       t.row (row)
     end
-    print (tostring(t))
+    return title "Scheduled Jobs", tostring(t)
   end
 
   local function delaylist2 ()
-    title "Delayed Callbacks"
     local t = html5.table()
     t.header {"#", "date / time", "device", "status", "info"}
     local dlist = {}
@@ -306,22 +305,22 @@ function run (wsapi_env)
     for _, row in ipairs (sort_and_number(dlist)) do
       t.row (row)
     end
-    print (tostring(t))
+    return title "Delayed Callbacks", tostring(t)
   end
 
   local function startup2 ()
-    title "Startup Jobs"
     local t = html5.table()
-    t.header {"#", "date / time", "device", "status[n]", "info", "notes"}
+    t.header {"#", "date / time", "device", "status", "info", "notes"}
     local jlist = {}
     for _,b in pairs (scheduler.startup_list) do
-      local status = table.concat {state[b.status] or '', '[', b.logging.invocations, ']'}
+      local status = state[b.status] or ''
+      if status ~= "Done" then status = red (status) end
       jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, b.type or '?', b.notes or ''}
     end
     for _, row in ipairs (sort_and_number(jlist)) do
       t.row (row)
     end
-    print (tostring(t))
+    return title "Startup Jobs", tostring(t)
   end
   
   local function watchlist2 ()
@@ -346,12 +345,11 @@ function run (wsapi_env)
     end
 
     local t = html5.table()
-    title "Variable Watches"
     t.header {'#', "dev", "callback", "watching"}
     for _, row in ipairs (sort_and_number(W)) do
       t.row (row)
     end
-    print (tostring(t))
+    return title "Variable Watches", tostring(t)
   end
   
   local function printlog (p)
@@ -370,10 +368,7 @@ function run (wsapi_env)
     if f then
       local x = f:read "*a"
       f: close()
-      title (name)
-      print "<br/><pre>"
-      print (escape (x))       -- thanks @a-lurker
-      print "</pre>"
+      return title (name), preformatted (escape (x))       -- thanks @a-lurker for the escape() suggestion
     end
   end
   
@@ -404,7 +399,6 @@ function run (wsapi_env)
   
   local function backups ()
     local dir = luup.attr_get "openLuup.Backup.Directory" or "backup/"
-    title ("Backup directory: " .. dir)
     local pattern = "backup%.openLuup%-%w+%-([%d%-]+)%.?%w*"
     local files = get_matching_files_from ("backup/", pattern)
     local t = html5.table ()
@@ -414,14 +408,7 @@ function run (wsapi_env)
       local name = hyperlink:format (f.name, f.name: gsub (".lzap$",'') .. ".json", f.name)
       t.row {f.date, f.size, name} 
     end
-    print (tostring(t))
-  end
-  
-  local function number (n) return n end    -- TODO: remove
-  
-  local function status_number (n)
-    if n == 200 then return n end
-    return ('<font color="crimson">%d</font>'): format (n) 
+    return title ("Backup directory: " .. dir), tostring(t)
   end
   
   local function devname (d)
@@ -433,16 +420,14 @@ function run (wsapi_env)
   end
 
   local function printConnections (iprequests)
---    print "<br/>"
     local t = html5.table ()
     t.header { {"Received connections:", colspan=3} }
     t.header {"IP address", "#connects", "date / time"}
     for ip, req in pairs (iprequests) do
-      local count = number (req.count)
-      t.row {ip, count, todate(req.date)}
+      t.row {ip, req.count, todate(req.date)}
     end
     if t.length() == 0 then t.row {'', "--- none ---", ''} end
-    print (tostring(t))
+    return tostring(t)
   end
   
   
@@ -459,19 +444,18 @@ function run (wsapi_env)
         local count = call.count
         local status = call.status
         if count and count > 0 then
-          t.row {name, number(count), status_number(status)}
+          t.row {name, count, status_number(status)}
         end
       end
       if t.length() == 0 then t.row {'', "--- none ---", ''} end
-      print (tostring(t))
+      return tostring(t)
     end
     
-    title "HTTP Web Server"
-    printConnections (http.iprequests)     
-    
-    printinfo (http.http_handler, "/data_request?", {"id=... ", "#requests  ","status"})
-    printinfo (http.cgi_handler, "CGI requests", {"URL ", "#requests  ","status"})
-    printinfo (http.file_handler, "File requests", {"filename ", "#requests  ","status"})
+    return title "HTTP Web Server", 
+      printConnections (http.iprequests),   
+      printinfo (http.http_handler, "/data_request?", {"id=... ", "#requests  ","status"}),
+      printinfo (http.cgi_handler, "CGI requests", {"URL ", "#requests  ","status"}),
+      printinfo (http.file_handler, "File requests", {"filename ", "#requests  ","status"})
     
   end
   
@@ -488,20 +472,13 @@ function run (wsapi_env)
       for _,ip in ipairs (index) do
         local dest = info[ip]
         local name = devname (dest.devNo)
-        local count = number (dest.count)
         if ok(ip) then 
-          t.row {ip, count, name}
+          t.row {ip, dest.count, name}
         end
       end
       if t.length() == 0 then t.row {'', none, ''} end
-      print (tostring(t))
+      return tostring(t)
     end
-    
-    title "SMTP eMail Server"
-    printConnections (smtp.iprequests)    
-    
-    print_sorted ("Registered email sender IPs:", smtp.destinations, function(x) return not x:match "@" end)
-    print_sorted ("Registered destination mailboxes:", smtp.destinations, function(x) return x:match "@" end)
     
     local t = html5.table ()
     t.header {{ "Blocked senders:", colspan=2 }}
@@ -510,12 +487,16 @@ function run (wsapi_env)
       t.row {email, '?'}
     end
     if t.length() == 0 then t.row {'', none, ''} end
-    print (tostring(t))
+    
+    return title "SMTP eMail Server",
+      printConnections (smtp.iprequests),
+      print_sorted ("Registered email sender IPs:", smtp.destinations, function(x) return not x:match "@" end),
+      print_sorted ("Registered destination mailboxes:", smtp.destinations, function(x) return x:match "@" end),
+      tostring(t)
   end
   
   local function pop3list ()
-    title "POP3 eMail Server"
-    printConnections (pop3.iprequests)    
+    local T = {}
     local header = "Mailbox '%s': %d messages, %0.1f (kB)"
     local accounts = pop3.accounts    
     for name, folder in pairs (accounts) do
@@ -536,16 +517,18 @@ function run (wsapi_env)
       end
       mbx: close ()
       if t.length() == 0 then t.row {'', "--- none ---", ''} end
-      print (tostring(t))
+      T[#T+1] = tostring(t)
     end
+    return
+      title "POP3 eMail Server",
+      printConnections (pop3.iprequests),
+      T
   end
   
   local function udplist ()
-    title "UDP datagram Listeners"
-    printConnections (ioutil.udp.iprequests)    
-    local t = html5.table ()
-    t.header { {"Registered listeners:", colspan = 3} }
-    t.header {"port", "#datagrams", "for device"}
+    local t0 = html5.table ()
+    t0.header { {"Registered listeners:", colspan = 3} }
+    t0.header {"port", "#datagrams", "for device"}
     local list = {}
     for port, x in pairs(ioutil.udp.listeners) do
       local dname = devname (x.devNo)
@@ -553,11 +536,11 @@ function run (wsapi_env)
     end
     table.sort (list, function (a,b) return a.port < b.port end)
     for _,x in ipairs (list) do 
-      t.row {x.port, x.n, x.dev} 
+      t0.row {x.port, x.n, x.dev} 
     end
-    if t.length() == 0 then t.row {'', "--- none ---", ''} end 
-    print (tostring(t))
-    t = html5.table()
+    if t0.length() == 0 then t0.row {'', "--- none ---", ''} end 
+    
+    local t = html5.table()
     t.header { {"Opened for write:", colspan = 2} }
     t.header {"ip:port", "by device"}
     list = {}
@@ -570,7 +553,12 @@ function run (wsapi_env)
       t.row {x.ip_and_port, x.dev} 
     end
     if t.length() == 0 then t.row {"--- none ---", ''} end 
-    print (tostring(t)) 
+    
+    return 
+      title "UDP datagram Listeners",
+      printConnections (ioutil.udp.iprequests),  
+      tostring (t0),
+      tostring(t)
   end
   
   
@@ -588,8 +576,9 @@ function run (wsapi_env)
     for i,x in ipairs (cols) do x[1] = i; t.row (x) end
     if #cols == 0 then t.row {0, '', "--- none ---", ''} end
     
-    title "Watched Sockets"
-    print (tostring (t))
+    return
+      title "Watched Sockets",
+      tostring (t)
   end
   
   local function sandbox ()               -- 2018.04.07
@@ -609,55 +598,53 @@ function run (wsapi_env)
         for _, row in ipairs(y) do
           t.row (row)
         end
-        print (tostring(t))
+        return tostring(t)
       end
+      local T = {}
       for d, idx in pairs (lookup) do
-        sorted(idx, boxmsg: format (d, devname(d)))
+        T[#T+1] = sorted(idx, boxmsg: format (d, devname(d)))
       end
-      sorted (tbl, "Shared items:")
+      T[#T+1] = sorted (tbl, "Shared items:")
+      return T
     end
-    title "Sandboxed system tables"
+    
+    local G = {}
     for n,v in pairs (_G) do
       local meta = ((type(v) == "table") and getmetatable(v)) or {}
       if meta.__newindex and meta.__tostring and meta.lookup then   -- not foolproof, but good enough?
-        print (table.concat {'<h4>', n, ".sandbox</h4>"})  
-        format(v)
+        G[#G+1] = table.concat {'<br/><p>', n, ".sandbox</p>"} 
+        G[#G+1] = format(v)
       end
     end
+    return title "Sandboxed system tables", G
   end
   
   local function images ()
     local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
     
-    title "Images"
-    
-    print [[<nav>]]
---    local option = '%s <a href="/images/%s" target="image">%s</a>'
     local option = '<a href="/images/%s" target="image">%s</a>'
     local t = html5.table ()
     t.header {'#', "filename"}
     for i,f in ipairs (files) do 
---      print (option: format (number(i), f.name, f.name))
       t.row {i, option: format (f.name, f.name)}
     end
-    print (tostring(t))
-    print "</nav>"
---    print [[<iframe name="output" rows=60 cols=50 height="700px" width="50%" >]]
-    print [[<article><iframe name="image" width="50%" ></article>]]
-
-    print ''
+    
+    return title "Images",
+      "<nav>",
+      tostring(t),
+      "</nav>",
+      [[<article><iframe name="image" width="50%" ></article>]]
   end
  
   local function trash ()
     local files = get_matching_files_from ("trash/", '^[^%.]+%.[^%.]+$')     -- *.*
     local t = html5.table ()
-    title "Trash"
     t.header {'#', "filename", "size"}
     for i,f in ipairs (files) do
       t.row {i, f.name, f.size}
     end
     if t.length() == 0 then t.row {'', "--- none ---", ''} end
-    print (tostring(t))
+    return title "Trash", tostring(t)
   end
   
   -- compares corresponding elements of array
@@ -707,9 +694,7 @@ function run (wsapi_env)
      
     local T = 0
     table.sort (H, keysort)
-    
-    title "Data Historian Cache Memory"
-    
+        
     local t = html5.table()
     t.header {"device ", "service", "#points", "variable (archived if checked)" }
     
@@ -750,19 +735,16 @@ function run (wsapi_env)
     t0.row {"total # device variables", N}
     t0.row {"total # variables with history", #H}
     t0.row {"total # history points", T}
-    print (tostring(t0))
-    print (tostring(t))
+    
+    return title "Data Historian Cache Memory", tostring(t0), tostring(t)
   end
   
   
   local function database ()
     local folder = luup.attr_get "openLuup.Historian.Directory"
     
-    title "Data Historian Disk Database"
-    
     if not folder then
-      print "On-disk archiving not enabled"
-      return
+      return "On-disk archiving not enabled"
     end
     
     -- stats
@@ -821,9 +803,7 @@ function run (wsapi_env)
       T = T + f.size
       local devnum = f.devnum     -- openLuup device number (if present)
       if devnum ~= prev then 
---        local devname = "<em>%s</em>"
         local dname = "<strong>[%s] %s</strong>"
---        local devname = "\n%s<em>%s</em>"
         t.row { { dname: format (f.devnum,f.description), colspan = 5} }
       end
       prev = devnum
@@ -831,11 +811,11 @@ function run (wsapi_env)
     end
     
     T = T / 1000;
-    t0.row {"total # files", N}
     t0.row {"total size (Mb)", T - T % 0.1}
+    t0.row {"total # files", N}
     t0.row {"total # updates", tot}
-    print (tostring (t0))
-    print (tostring (t))
+    
+    return title "Data Historian Disk Database", tostring (t0), tostring (t)
   end
   
   
@@ -843,12 +823,11 @@ function run (wsapi_env)
   
   local pages = {
     about   = function () 
-      title "About..."
-      print "<br/><pre>"
+      local t = {}
       for a,b in pairs (ABOUTopenLuup) do
-        print (table.concat {a, ' : ', tostring(b), '\n'}) 
+        t[#t+1] = table.concat {a, ' : ', tostring(b), '\n'}
       end
-      print "</pre>"
+      return title "About...", preformatted (t)
     end,
     
     backups = backups,
@@ -870,27 +849,21 @@ function run (wsapi_env)
     historian   = historian,
     
     parameters = function ()
-      title "openLuup Parameters"
-      print "<br/><pre>"
       local info = luup.attr_get "openLuup"
       local p = json.encode (info or {})
-      print (p or "--- none ---")
-      print "</pre>"
+      return title "openLuup Parameters", preformatted (p or "--- none ---")
     end,
     
-    userdata = function ()
-      local u = requests.user_data()
-      print(u)
+    userdata = function (p, _)
+      return title "Userdata", preformatted (requests.user_data (_, p))
     end,
     
-    status = function ()
-      local s = requests.status()
-      print(s)
+    status = function (p, _)
+      return title "Status", preformatted (requests.status (_, p))
     end,
     
-    sdata = function ()
-      local d = requests.sdata()
-      print(d)
+    sdata = function (p, _)
+      return title "Sdata", preformatted (requests.sdata (_, p))
     end,
     
   }
@@ -898,17 +871,14 @@ function run (wsapi_env)
   -- run()
   
   local req = wsapi.request.new (wsapi_env)
-  local res = wsapi.response.new ()
-  
   local p = req.GET 
+  local page = pages[p.page] or function () end
   
-  lines = {console_html.prefix}  
-  local page = p.page or ''  
-  do (pages[page] or function () end) (p) end  
-  print (console_html.postfix)
+  local res = wsapi.response.new ()
+  res:write (console_html.prefix)
+  res:write (page (p))                -- note that page function may have multiple returns
+  res:write (console_html.postfix)
   
-  res: write (lines)
-
   return res: finish()
 end
 

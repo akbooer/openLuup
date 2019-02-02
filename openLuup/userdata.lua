@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2018.05.29",
+  VERSION       = "2019.02.02",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@ local ABOUT = {
 -- 2018.05.29   fix several possibly numeric attributes
 -- 2018.05.29   added device (sub)category (thanks @rafale77)
 -- 2018.06.26   remove DataYour from default plugins list
+
+-- 2019.02.02  add device file manufacturer and model name (thanks @rigpapa)
 
 
 local json    = require "openLuup.json"
@@ -626,6 +628,8 @@ local function load_user_data (user_data_json)
             mac             = d.mac, 
             hidden          = nil, 
             invisible       = d.invisible == "1",
+            manufacturer    = d.manufacturer,     -- 2019.02.02
+            model           = d.model,            -- 2019.02.02
             parent          = d.id_parent,
             room            = tonumber (d.room), 
             pluginnum       = d.plugin,
@@ -721,7 +725,7 @@ local function devices_table (device_list)
         id = item.id, 
         service = item.srv,
         variable = item.name,
-        value = item.value,
+        value = item.value or '',
       }
     end
     local curls 
