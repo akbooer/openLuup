@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.02.02",
+  VERSION       = "2019.02.03",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -164,7 +164,8 @@ prefix = table.concat {
 ]]}
 ,
 
-postfix = os.date "<br/> <hr/><pre> \n%c </pre><br/> </div></body></html>"
+--postfix = [[<br/> <hr/> <pre>%c </pre><br/> </div></body></html>]]
+postfix = [[<footer><hr/><pre>%c</pre></footer> </div></body></html>]]
 
 }
 
@@ -205,7 +206,7 @@ function html5.table ()
   end
 
   local function render ()
-    local t = {[[<br/><table>]]}
+    local t = {[[<table>]]}
     local function new_rows (rs, typ)
       typ = typ or "td"
       for _, r in ipairs (rs) do
@@ -268,7 +269,7 @@ function run (wsapi_env)
   end
   
   local function preformatted (x)
-    return {"<br /><pre>", x, "</pre>"}
+    return {"<pre>", x, "</pre>"}
   end
   
   -- sort table list elements by first index, then number them in sequence
@@ -612,7 +613,7 @@ function run (wsapi_env)
     for n,v in pairs (_G) do
       local meta = ((type(v) == "table") and getmetatable(v)) or {}
       if meta.__newindex and meta.__tostring and meta.lookup then   -- not foolproof, but good enough?
-        G[#G+1] = table.concat {'<br/><p>', n, ".sandbox</p>"} 
+        G[#G+1] = table.concat {'<p>', n, ".sandbox</p>"} 
         G[#G+1] = format(v)
       end
     end
@@ -736,6 +737,7 @@ function run (wsapi_env)
     t0.row {"total # variables with history", #H}
     t0.row {"total # history points", T}
     
+--    return title "Data Historian Cache Memory", tostring(t0), [[<div style="height:50%;">]], tostring(t), "</div>"
     return title "Data Historian Cache Memory", tostring(t0), tostring(t)
   end
   
@@ -815,7 +817,9 @@ function run (wsapi_env)
     t0.row {"total # files", N}
     t0.row {"total # updates", tot}
     
-    return title "Data Historian Disk Database", tostring (t0), tostring (t)
+    return title "Data Historian Disk Database", tostring (t0), 
+      [[<div style="height:50%; overflow:scroll">]], tostring(t), "</div>"
+--    return title "Data Historian Disk Database", tostring (t0), tostring(t)
   end
   
   
@@ -877,7 +881,7 @@ function run (wsapi_env)
   local res = wsapi.response.new ()
   res:write (console_html.prefix)
   res:write (page (p))                -- note that page function may have multiple returns
-  res:write (console_html.postfix)
+  res:write (os.date (console_html.postfix))
   
   return res: finish()
 end

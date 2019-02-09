@@ -4,14 +4,14 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2018.07.08",
+  VERSION       = "2019.02.08",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -41,6 +41,7 @@ ABOUT = {
 -- 2018.06.26  add Google Charts module for SVG rendering
 -- 2018.07.03  add alias(), aliasByMetric(), aliasByNode() to /render?target=... syntax
 
+-- 2019.02.08  debug rom/until times
 
 -- CGI implementation of Graphite API
 
@@ -712,7 +713,7 @@ local function svgRender (_, p)
   -- construct the data rows for plotting  
   local col = n+1
   local value = {}
-  local staircase = true
+--  local staircase = true
   for _,t in ipairs(index) do
 --    if staircase then
       value[1] = t                                   -- change the time
@@ -773,8 +774,12 @@ local function render (env, p)
   end
 
   local now = os.time()
-  p["from"]  = getTime (p["from"])  or now - 24*60*60  -- default to 24 hours ago
-  p["until"] = getTime (p["until"]) or now
+  local pfrom  = p["from"]
+  local puntil =  p["until"]
+  p["from"]  = getTime (pfrom)  or now - 24*60*60  -- default to 24 hours ago
+  p["until"] = getTime (puntil) or now
+  
+  _debug (("from: %s [%s], to: %s [%s]"): format (pfrom or '', p["from"], puntil, p["until"]))
   
   local format = p.format or "svg"
   local reportStyle = {csv = csvRender, svg = svgRender, json = jsonRender}
@@ -861,6 +866,8 @@ end
 --
 -- global entry point called by WSAPI connector
 --
+
+-- TODO: use WSAPI request and response libraries (or does JSON syntax preclude this?)
 
 function run (wsapi_env)
 

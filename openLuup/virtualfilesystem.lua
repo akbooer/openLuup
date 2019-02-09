@@ -1198,7 +1198,10 @@ local console_css = [[
     background-color: SaddleBrown;
   }
   
-  table {table-layout:fixed; font-size:10pt; font-family: "Arial", "Helvetica", "sans-serif";}
+  pre {margin-top: 20px;}
+  footer {margin-top: 20px; margin-bottom: 20px; }
+  
+  table {table-layout:fixed; font-size:10pt; font-family: "Arial", "Helvetica", "sans-serif"; margin-top:20px}
   th,td {width:1px; white-space:nowrap; padding: 0 15px 0 15px;}
   th {background: DarkGray; color:Black;}
   tr:nth-child(even) {background: LightGray;}
