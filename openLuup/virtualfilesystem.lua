@@ -1192,10 +1192,10 @@ local console_css = [[
   *    { box-sizing:border-box; margin:0px; padding:0px; }
   html { width:100%; height:100%; overflow:hidden; border:none 0px; }
   body { font-family:Arial; background:LightGray; width:100%; height:100%; overflow:hidden; padding-top:60px; }
-  
+
   .menu { position:absolute; top:0px; width:100%; height:60px; }
   .content { width:100%; height:100%; overflow:scroll; padding:4px; }
-  
+
   .dropbtn {
     background-color: Sienna;
     color: white;
@@ -1237,10 +1237,10 @@ local console_css = [[
   .dropdown:hover .dropbtn {
     background-color: SaddleBrown;
   }
-  
+
   pre {margin-top: 20px;}
   footer {margin-top: 20px; margin-bottom: 20px; }
-  
+
   table {table-layout:fixed; font-size:10pt; font-family: "Arial", "Helvetica", "sans-serif"; margin-top:20px}
   th,td {width:1px; white-space:nowrap; padding: 0 15px 0 15px;}
   th {background: DarkGray; color:Black;}
@@ -1276,18 +1276,11 @@ local manifest = {
     ["I_openLuupCamera1.xml"]   = I_openLuupCamera1_xml,
     ["I_openLuupSecurity1.xml"] = I_openLuupSecurity1_xml,
     ["I_Dummy.xml"]             = I_Dummy_xml,
-<<<<<<< HEAD
 
-    ["index.html"]          = index_html,
-    ["openLuup_reload"]     = openLuup_reload,
-    ["openLuup_reload.bat"] = openLuup_reload_bat,
-=======
-    
     ["index.html"]            = index_html,
     ["openLuup_console.css"]  = console_css,
     ["openLuup_reload"]       = openLuup_reload,
     ["openLuup_reload.bat"]   = openLuup_reload_bat,
->>>>>>> upstream/development
 
     ["storage-schemas.conf"]      = storage_schemas_conf,
     ["storage-aggregation.conf"]  = storage_aggregation_conf,

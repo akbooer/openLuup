@@ -185,15 +185,9 @@ local function create (x)
     impl_file       = d.impl_file,
     invisible       = x.invisible and "1" or "0",   -- convert true/false to "1"/"0"
     local_udn       = UUID,
-<<<<<<< HEAD
-    manufacturer    = d.manufacturer or '',
-    model           = d.modelName or '',
-    name            = device_name,
-=======
     manufacturer    = x.manufacturer or d.manufacturer or '',
     model           = x.model or d.modelName or '',
-    name            = device_name, 
->>>>>>> upstream/development
+    name            = device_name,
     plugin          = tostring(x.pluginnum or ''),
     password        = x.password,
     room            = tostring(tonumber (x.room) or 0),   -- why it's a string, I have no idea 2018.07.02
