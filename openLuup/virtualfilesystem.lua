@@ -989,8 +989,8 @@ local I_openLuupSecuritySensor1_xml = [[
   end
 
   function startup()
-    local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
-    luup.variable_watch("ArmedTrippedCheck", "Tripped", sid, lul_device)
+    set ("Tripped", 0)
+    luup.variable_watch("ArmedTrippedCheck", sid, "Tripped", lul_device)
   end
   </functions>
   <actionList>
