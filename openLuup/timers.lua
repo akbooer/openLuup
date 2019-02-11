@@ -1,12 +1,16 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
+<<<<<<< HEAD
   VERSION       = "2018.05.25",
+=======
+  VERSION       = "2019.02.09",
+>>>>>>> upstream/development
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -50,7 +54,14 @@ local ABOUT = {
 -- 2018.02.25  move sol_ra_dec from TEST to normal exported function
 -- 2018.03.15  add RFC 5322 format date (for SMTP)
 -- 2018.04.14  add util module to export useful utility time functions
+<<<<<<< HEAD
 -- 2018.05.25  fixed interval target call
+=======
+
+-- 2019.02.09  in UNIXdateTime(), assume Unix epoch if argument is purely numeric (thanks @skogen75)
+--             see: http://forum.micasaverde.com/index.php/topic,99475.msg442182.html#msg442182
+
+>>>>>>> upstream/development
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.)
 -- The function callbacks are actual functions, not named globals.
@@ -149,8 +160,13 @@ local function ISOdateTime (unixTime)       -- return ISO 8601 date/time: YYYY-M
   return os.date ("%Y-%m-%dT%H:%M:%S", unixTime)
 end
 
+<<<<<<< HEAD
 local function UNIXdateTime (time)          -- return Unix time value for ISO date/time extended-format...
 --  if string.find (time, "^%d+$") then return tonumber (time) end
+=======
+local function UNIXdateTime (time)          -- return Unix time value for ISO date/time extended-format...   
+  if string.find (time, "^%d+$") then return tonumber (time) end    -- 2019.02.09 assume Unix epoch
+>>>>>>> upstream/development
   local field   = {string.match (time, "^(%d%d%d%d)-?(%d?%d?)(-?)(%d?%d?)T?(%d?%d?):?(%d?%d?):?(%d?%d?)") }
   if #field == 0 then return end
   local name    = {"year", "month", "MDsep", "day", "hour", "min", "sec"}

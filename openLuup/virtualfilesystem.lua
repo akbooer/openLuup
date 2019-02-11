@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2018.07.04",
+  VERSION       = "2019.01.29",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2018 AK Booer
+  Copyright 2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -890,10 +890,8 @@ local I_openLuupCamera1_xml = [[
 <implementation>
   <handleChildren>1</handleChildren>
   <functions>
-    local timeout = 30
     local child -- the motion sensor
     local smtp = require "openLuup.smtp"
-    local timers = require "openLuup.timers"
     local requests = require "openLuup.requests"
     local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
     function get (name)
@@ -907,19 +905,10 @@ local I_openLuupCamera1_xml = [[
     function archive (p)
       requests.archive_video ("archive_video", p)
     end
-    local function clear ()
-      local now = os.time()
-      local last = get "LastTrip"
-      if (tonumber (last) + timeout) &lt;= (now + 1) then  -- NOTE the XML escape!
-        set ("Tripped", '0')
-      end
-    end
     local function openLuupCamera (ip, mail)      -- email callback
       set ("Tripped", '1')
-      timers.call_delay (clear, timeout, '', "camera motion reset")
     end
     function startup (devNo)
-      local smtp = require "openLuup.smtp"
       do -- install MotionSensor as child device
         local var = "urn:micasaverde-com:serviceId:SecuritySensor1,%s=%s\n"
         local statevariables = table.concat {
@@ -927,6 +916,7 @@ local I_openLuupCamera1_xml = [[
             var:format("ArmedTripped", 0),
             var:format("Tripped", 0),
             var:format("LastTrip", 0),
+            var:format("AutoUntrip", 30),   -- default timeout
           }
         local ptr = luup.chdev.start (devNo)
         local altid = "openLuupCamera"
@@ -1194,8 +1184,70 @@ local unknown_wsp = [[
 ]]
 
 --
--- Data Historian Disk Archive - schemas and aggregations
+-- Style sheet for console web pages
 --
+
+local console_css = [[
+
+  *    { box-sizing:border-box; margin:0px; padding:0px; }
+  html { width:100%; height:100%; overflow:hidden; border:none 0px; }
+  body { font-family:Arial; background:LightGray; width:100%; height:100%; overflow:hidden; padding-top:60px; }
+  
+  .menu { position:absolute; top:0px; width:100%; height:60px; }
+  .content { width:100%; height:100%; overflow:scroll; padding:4px; }
+  
+  .dropbtn {
+    background-color: Sienna;
+    color: white;
+    padding: 16px;
+    font-size: 16px;
+    line-height:18px;
+    vertical-align:middle;
+    border: none;
+    cursor: pointer;
+  }
+
+  .dropdown {
+    position: relative;
+    display: inline-block;
+  }
+
+  .dropdown-content {
+    display: none;
+    position: absolute;
+    background-color: Sienna;
+    min-width: 160px;
+    border-top:1px solid Gray;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
+  }
+
+  .dropdown-content a {
+    color: white;
+    padding: 12px 16px;
+    text-decoration: none;
+    display: block;
+  }
+
+  .dropdown-content a:hover {background-color: SaddleBrown}
+
+  .dropdown:hover .dropdown-content {
+    display: block;
+  }
+
+  .dropdown:hover .dropbtn {
+    background-color: SaddleBrown;
+  }
+  
+  pre {margin-top: 20px;}
+  footer {margin-top: 20px; margin-bottom: 20px; }
+  
+  table {table-layout:fixed; font-size:10pt; font-family: "Arial", "Helvetica", "sans-serif"; margin-top:20px}
+  th,td {width:1px; white-space:nowrap; padding: 0 15px 0 15px;}
+  th {background: DarkGray; color:Black;}
+  tr:nth-child(even) {background: LightGray;}
+  tr:nth-child(odd)  {background: Silver;}
+
+]]
 
 -----
 
@@ -1224,10 +1276,18 @@ local manifest = {
     ["I_openLuupCamera1.xml"]   = I_openLuupCamera1_xml,
     ["I_openLuupSecurity1.xml"] = I_openLuupSecurity1_xml,
     ["I_Dummy.xml"]             = I_Dummy_xml,
+<<<<<<< HEAD
 
     ["index.html"]          = index_html,
     ["openLuup_reload"]     = openLuup_reload,
     ["openLuup_reload.bat"] = openLuup_reload_bat,
+=======
+    
+    ["index.html"]            = index_html,
+    ["openLuup_console.css"]  = console_css,
+    ["openLuup_reload"]       = openLuup_reload,
+    ["openLuup_reload.bat"]   = openLuup_reload_bat,
+>>>>>>> upstream/development
 
     ["storage-schemas.conf"]      = storage_schemas_conf,
     ["storage-aggregation.conf"]  = storage_aggregation_conf,

@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.01.12",
+  VERSION       = "2019.02.03",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -49,14 +49,21 @@ ABOUT = {
 -- 2018.07.28  use wsapi request and response libraries
 -- 2018.08.26  correct file size units in POP3 page listing
 
--- 2019.01.12  use <form> on Historian page to selet which variables to archive
+-- 2019.01.12  checkbox on Historian page to show which variables are archived (readonly at present)
+-- 2019.01.22  link to external CSS file
+-- 2019.01.24  move CSS to openLuup_console.css in virtualfilesystem
+-- 2019.01.29  use html tables for most console pages
+
 
 -- TODO: HTML pages with sorted tables?
 -- see: https://www.w3schools.com/w3js/w3js_sort.asp
+-- TODO: HTML pages with tabbed tables?
+-- see: http://qnimate.com/tabbed-area-using-html-and-css-only/
 
 --  WSAPI Lua implementation
 
 local lfs       = require "lfs"                   -- for backup file listing
+local vfs       = require "openLuup.virtualfilesystem"
 local luup      = require "openLuup.luup"         -- not automatically in scope for CGIs
 local json      = require "openLuup.json"
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
@@ -74,62 +81,19 @@ local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run
 
 local console_html = {
 
-prefix = [[
+prefix = table.concat {
+[[
 <!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
     <title>Console</title>
-    <style>
-      *    { box-sizing:border-box; margin:0px; padding:0px; }
-      html { width:100%; height:100%; overflow:hidden; border:none 0px; }
-      body { font-family:Arial; background:LightGray; width:100%; height:100%; overflow:hidden; padding-top:60px; }
-      
-      .menu { position:absolute; top:0px; width:100%; height:60px; }
-      .content { width:100%; height:100%; overflow:scroll; padding:4px; }
-      
-      .dropbtn {
-        background-color: Sienna;
-        color: white;
-        padding: 16px;
-        font-size: 16px;
-        line-height:18px;
-        vertical-align:middle;
-        border: none;
-        cursor: pointer;
-      }
+]],
 
-      .dropdown {
-        position: relative;
-        display: inline-block;
-      }
+"<style>", vfs.read "openLuup_console.css", "</style>",
 
-      .dropdown-content {
-        display: none;
-        position: absolute;
-        background-color: Sienna;
-        min-width: 160px;
-        border-top:1px solid Gray;
-        box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
-      }
-
-      .dropdown-content a {
-        color: white;
-        padding: 12px 16px;
-        text-decoration: none;
-        display: block;
-      }
-
-      .dropdown-content a:hover {background-color: SaddleBrown}
-
-      .dropdown:hover .dropdown-content {
-        display: block;
-      }
-
-      .dropdown:hover .dropbtn {
-        background-color: SaddleBrown;
-      }
-    </style>
+[[
+  
   </head>
     <body>
     
@@ -197,27 +161,77 @@ prefix = [[
   </div>
 
   <div class="content">
-  <pre>
-]],
---     <div style="overflow:scroll; height:500px;">
+]]}
+,
 
-  postfix = [[
-    </pre>
-    </div>
+--postfix = [[<br/> <hr/> <pre>%c </pre><br/> </div></body></html>]]
+postfix = [[<footer><hr/><pre>%c</pre></footer> </div></body></html>]]
 
-  </body>
-</html>
-
-]]
 }
 
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
-local line = "%20s  %8s  %12s  %s %s"
 local date = "%Y-%m-%d %H:%M:%S"
 
 
 local function todate (epoch)
   return os.date (date, epoch)
+end
+
+
+local html5 = {}
+
+function html5.table ()
+  
+  local headers = {}
+  local rows = {}
+  
+  local function header (h)
+    headers[#headers+1] = h
+  end
+
+  local function row (r)
+    rows[#rows+1] = r
+  end
+  
+  local function item (tag, x)
+    if type (x) ~= "table" then x = {x} end
+    local attr = {'<', tag}
+    for n,v in pairs (x) do
+      if n ~= 1 then
+        attr[#attr+1] = table.concat {' ', n, '="', v, '"'}
+      end
+    end
+    attr[#attr+1] = table.concat {'>', x[1] or '', '</', tag, '>'}
+    return table.concat (attr)
+  end
+
+  local function render ()
+    local t = {[[<table>]]}
+    local function new_rows (rs, typ)
+      typ = typ or "td"
+      for _, r in ipairs (rs) do
+        local row = {}
+        for _, x in ipairs (r) do
+          row[#row+1] = item (typ, x)
+        end
+    t[#t+1] = table.concat {"  <tr>", table.concat (row), "</tr>"}
+      end
+    end
+    
+    new_rows (headers, "th")
+    new_rows (rows)
+    t[#t+1] = "</table>\n"
+    return table.concat (t, '\n')
+  end
+
+  return setmetatable ({
+      header = header, 
+      row = row,
+      length = function() return #rows end,
+    },{
+      __tostring = render,
+--      __len = function () return #rows end,   -- sadly, not implemented by some v5.1 Lua implementations
+    })
 end
 
 
@@ -241,36 +255,82 @@ return values: the HTTP status code, a table with headers, and the output iterat
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
 
-  local lines     -- print buffer
-  local function print (a,b)
-    local fmt = "%5s %s \n"
-    lines[#lines+1] = fmt: format (a, b or '')
+  local function title (x)
+    return table.concat {"<h4>", x, "</h4>"}
   end
 
-  local job_list = scheduler.job_list
-  local startup_list = scheduler.startup_list
-  local delay_list = scheduler.delay_list ()
-
-  local function joblist (job_list)
+  local function red (x)
+    return ('<font color="crimson">%s</font>'): format (x) 
+  end
+  
+  local function status_number (n)
+    if n ~= 200 then return red (n) end
+    return n
+  end
+  
+  local function preformatted (x)
+    return {"<pre>", x, "</pre>"}
+  end
+  
+  -- sort table list elements by first index, then number them in sequence
+  local function sort_and_number (list)
+    table.sort (list, function (a,b) return a[1] < b[1] end)
+    for i, row in ipairs (list) do row[1] = i end
+    return list
+  end
+  
+  local function joblist2 ()
+    local t = html5.table()
+    t.header {"#", "date / time", "device", "status", "run", "info", "notes"}
     local jlist = {}
-    for _,b in pairs (job_list) do
-      local status = table.concat {state[b.status] or '', '[', b.logging.invocations, ']'}
-      jlist[#jlist+1] = {
-        t = b.expiry,
-        l = line: format (todate(b.expiry + 0.5), b.devNo or "system", 
-                            status, b.type or '?', b.notes or '')
-      }
+    for _,b in pairs (scheduler.job_list) do
+      local status = state[b.status] or ''
+      local n = b.logging.invocations
+      jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, n, b.type or '?', b.notes or ''}
     end
-    return jlist
+    for _, row in ipairs (sort_and_number(jlist)) do
+      t.row (row)
+    end
+    return title "Scheduled Jobs", tostring(t)
   end
 
-  local function watchlist ()
+  local function delaylist2 ()
+    local t = html5.table()
+    t.header {"#", "date / time", "device", "status", "info"}
+    local dlist = {}
+    local delays = "%4.0fs :callback %s"
+    for _,b in pairs (scheduler.delay_list()) do
+      local dtype = delays: format (b.delay, b.type or '')
+      dlist[#dlist+1] = {b.time, todate(b.time), b.devNo, "Delay", dtype}
+    end
+    for _, row in ipairs (sort_and_number(dlist)) do
+      t.row (row)
+    end
+    return title "Delayed Callbacks", tostring(t)
+  end
+
+  local function startup2 ()
+    local t = html5.table()
+    t.header {"#", "date / time", "device", "status", "info", "notes"}
+    local jlist = {}
+    for _,b in pairs (scheduler.startup_list) do
+      local status = state[b.status] or ''
+      if status ~= "Done" then status = red (status) end
+      jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, b.type or '?', b.notes or ''}
+    end
+    for _, row in ipairs (sort_and_number(jlist)) do
+      t.row (row)
+    end
+    return title "Startup Jobs", tostring(t)
+  end
+  
+  local function watchlist2 ()
     local W = {}
-    local line = "%5s   :watch   %s (%s.%s.%s)"
+    
     local function isW (w, d,s,v)
       if next (w.watchers) then
         for _, what in ipairs (w.watchers) do
-          W[#W+1] = line:format (what.devNo, what.name or '?', d,s or '*',v or '*')
+          W[#W+1] = {what.devNo, what.devNo, what.name or '?', table.concat ({d,s or '*',v or '*'}, '.')}
         end
       end
     end
@@ -285,57 +345,14 @@ function run (wsapi_env)
       end
     end
 
-    print ("Variable Watches, " .. os.date "%c")
-    print ('#', line: format ('dev', 'callback', "device","serviceId","variable"))
-    table.sort (W)
-    for i,w in ipairs (W) do
-      print (i,w)
-    end    
-  end
-  
-  local jlist = joblist (job_list)
-  local slist = joblist (startup_list)
-
-  local dlist = {}
-  local delays = "%4.0fs :callback %s"
-  for _,b in pairs (delay_list) do
-    local dtype = delays: format (b.delay, b.type or '')
-    dlist[#dlist+1] = {
-      t = b.time,
-      l = line: format (todate(b.time), b.devNo, "Delay", dtype, '')
-    }
-  end
-
---  local function listit (list, title)
---    print (title .. ", " .. os.date "%c")
---    table.sort (list, function (a,b) return a.t < b.t end)
---    print ('#', (line: format ("date       time    ", "device", "status[n]","info", '')))
---    for i,x in ipairs (list) do print (i, x.l) end
---    print ''
---  end
-
-  local  html5 = {}
-  
-  function html5.table ()
-    
-    local rows = {}
-    
-    local function row (r)
-      
+    local t = html5.table()
+    t.header {'#', "dev", "callback", "watching"}
+    for _, row in ipairs (sort_and_number(W)) do
+      t.row (row)
     end
-    
-    return 
+    return title "Variable Watches", tostring(t)
   end
   
-
-  local function listit (list, title)
-    print (title .. ", " .. os.date "%c")
-    table.sort (list, function (a,b) return a.t < b.t end)
-    print ('#', (line: format ("date       time    ", "device", "status[n]","info", '')))
-    for i,x in ipairs (list) do print (i, x.l) end
-    print ''
-  end
-
   local function printlog (p)
     local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
     local function escape (x) return (x: gsub ([=[[<>"'&]]=], fwd)) end
@@ -352,7 +369,7 @@ function run (wsapi_env)
     if f then
       local x = f:read "*a"
       f: close()
-      print (escape (x))       -- thanks @a-lurker
+      return title (name), preformatted (escape (x))       -- thanks @a-lurker for the escape() suggestion
     end
   end
   
@@ -383,23 +400,16 @@ function run (wsapi_env)
   
   local function backups ()
     local dir = luup.attr_get "openLuup.Backup.Directory" or "backup/"
-    print ("Backup directory: ", dir)
-    print ''
     local pattern = "backup%.openLuup%-%w+%-([%d%-]+)%.?%w*"
     local files = get_matching_files_from ("backup/", pattern)
-    local list = "%-12s %4s   %s"
-    print (list:format ("yyyy-mm-dd", "(kB)", "filename"))
+    local t = html5.table ()
+    t.header {"yyyy-mm-dd", "(kB)", "filename"}
     for _,f in ipairs (files) do 
       local hyperlink = [[<a href="cgi-bin/cmh/backup.sh?retrieve=%s" download="%s">%s</a>]]
       local name = hyperlink:format (f.name, f.name: gsub (".lzap$",'') .. ".json", f.name)
-      print (list:format (f.date, f.size, name)) 
+      t.row {f.date, f.size, name} 
     end
-  end
-  
-  local function number (n) return ("%7d  "): format (n) end
-  local function status_number (n)
-    if n == 200 then return number(n) end
-    return ('<font color="red">%7d</font>'): format (n) 
+    return title ("Backup directory: " .. dir), tostring(t)
   end
   
   local function devname (d)
@@ -411,24 +421,22 @@ function run (wsapi_env)
   end
 
   local function printConnections (iprequests)
-    local layout1 = "     %-32s %s %s"
-    local none = "--- none ---"
-    local function printout (a,b,c) print (layout1: format (a,b or '',c or '')) end
-    print "\n Received connections:"
-    printout("IP address", "#connects", "    date     time\n")
-    if not next (iprequests) then printout (none) end
+    local t = html5.table ()
+    t.header { {"Received connections:", colspan=3} }
+    t.header {"IP address", "#connects", "date / time"}
     for ip, req in pairs (iprequests) do
-      local count = number (req.count)
-      printout (ip, count, todate(req.date))
+      t.row {ip, req.count, todate(req.date)}
     end
+    if t.length() == 0 then t.row {'', "--- none ---", ''} end
+    return tostring(t)
   end
   
   
-  local function httplist ()
-    local layout = "     %-42s %s %s"
-    local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
-    
-    local function printinfo (requests)
+  local function httplist ()    
+    local function printinfo (requests, title, columns)
+      local t = html5.table ()
+      t.header { {title, colspan = 3} }
+      t.header (columns)
       local calls = {}
       for name in pairs (requests) do calls[#calls+1] = name end
       table.sort (calls)
@@ -437,215 +445,207 @@ function run (wsapi_env)
         local count = call.count
         local status = call.status
         if count and count > 0 then
-          printout (name, number(count), status_number(status))
+          t.row {name, count, status_number(status)}
         end
       end
+      if t.length() == 0 then t.row {'', "--- none ---", ''} end
+      return tostring(t)
     end
     
-    print ("HTTP Web Server, " .. os.date "%c")
-    printConnections (http.iprequests)     
-    
-    print "\n /data_request?"
-    printout ("id=... ", "#requests  ","status")
-    printinfo (http.http_handler)
-    
-    print "\n CGI requests"
-    printout ("URL ", "#requests  ","status")
-    printinfo (http.cgi_handler)
-    
-    print "\n File requests"
-    printout ("filename ", "#requests  ","status")
-    printinfo (http.file_handler)
+    return title "HTTP Web Server", 
+      printConnections (http.iprequests),   
+      printinfo (http.http_handler, "/data_request?", {"id=... ", "#requests  ","status"}),
+      printinfo (http.cgi_handler, "CGI requests", {"URL ", "#requests  ","status"}),
+      printinfo (http.file_handler, "File requests", {"filename ", "#requests  ","status"})
     
   end
   
   local function smtplist ()
-    local layout = "     %-32s %s %s"
     local none = "--- none ---"
-    local function printout (a,b,c) print (layout: format (a,b or '',c or '')) end
     
-    local function print_sorted (info, ok)
-      printout ("Address", "#messages", "for device\n")
-      local n = 0
+    local function print_sorted (title, info, ok)
+      local t = html5.table ()
+      t.header { {title, colspan = 3} }
+      t.header {"Address", "#messages", "for device"}
       local index = {}
       for ip in pairs (info) do index[#index+1] = ip end
       table.sort (index)    -- get the email addresses into order
       for _,ip in ipairs (index) do
         local dest = info[ip]
         local name = devname (dest.devNo)
-        local count = number (dest.count)
         if ok(ip) then 
-          n = n + 1
-          printout (ip, count, name) 
+          t.row {ip, dest.count, name}
         end
       end
-      if n == 0 then printout (none) end
+      if t.length() == 0 then t.row {'', none, ''} end
+      return tostring(t)
     end
     
-    print ("SMTP eMail Server, " .. os.date "%c")
-    printConnections (smtp.iprequests)    
-    
-    print "\n Registered email sender IPs:"
-    print_sorted (smtp.destinations, function(x) return not x:match "@" end)
-    
-    print "\n Registered destination mailboxes:"
-    print_sorted (smtp.destinations, function(x) return x:match "@" end)
-    
-    print "\n Blocked senders:"
-    printout ("eMail address", '', '\n')
-    if not next (smtp.blocked) then printout (none) end
+    local t = html5.table ()
+    t.header {{ "Blocked senders:", colspan=2 }}
+    t.header {"eMail address","#attempts"}
     for email in pairs (smtp.blocked) do
-      printout (email)
+      t.row {email, '?'}
     end
+    if t.length() == 0 then t.row {'', none, ''} end
+    
+    return title "SMTP eMail Server",
+      printConnections (smtp.iprequests),
+      print_sorted ("Registered email sender IPs:", smtp.destinations, function(x) return not x:match "@" end),
+      print_sorted ("Registered destination mailboxes:", smtp.destinations, function(x) return x:match "@" end),
+      tostring(t)
   end
   
   local function pop3list ()
-    
-    print ("POP3 eMail Server, " .. os.date "%c")
-    printConnections (pop3.iprequests)    
-    
-    print "\n Registered accounts:"
-    
-    local layout = "     %-21s %9s"
-    local number = "%7s"
-    local header = "\n    Mailbox '%s': %d messages, %0.1f (kB)\n"
-    local accounts = pop3.accounts
-    
+    local T = {}
+    local header = "Mailbox '%s': %d messages, %0.1f (kB)"
+    local accounts = pop3.accounts    
     for name, folder in pairs (accounts) do
       local mbx = pop3.mailbox.open (folder)
       local total, bytes = mbx: status()
-      print (header: format (name, total, bytes/1e3))
-      print ('      #' .. (layout: format ("date       time", "size (bytes)\n")))
+      
+      local t = html5.table()
+      t.header { {header: format (name, total, bytes/1e3), colspan = 3 } }
+      t.header {'#', "date / time", "size (bytes)"}
       
       local list = {}
       for _, size, _, timestamp in mbx:scan() do
-        list[#list+1] = {t=timestamp, l=layout:format (os.date (date, timestamp), size)}
+        list[#list+1] = {t = timestamp, d = os.date (date, timestamp), s = size}
       end
       table.sort (list, function (a,b) return a.t > b.t end)  -- newest first
-      if #list == 0 then 
-        print "              --- none ---" 
-      else
-        for i,x in ipairs (list) do print (number:format(i) .. x.l) end
+      for i,x in ipairs (list) do 
+        t.row {i, x.d, x.s} 
       end
-      print ''
       mbx: close ()
+      if t.length() == 0 then t.row {'', "--- none ---", ''} end
+      T[#T+1] = tostring(t)
     end
+    return
+      title "POP3 eMail Server",
+      printConnections (pop3.iprequests),
+      T
   end
   
   local function udplist ()
-    print ("UDP datagram Listeners, " .. os.date "%c")
-    printConnections (ioutil.udp.iprequests)    
-    
---[[
-       udp.listeners[port] = {                     -- record info for console server page
-            callback = callback, 
-            devNo = scheduler.current_device (),
-            port = port,
-            count = 0,
-          }
---]]
-    print "\n Registered listeners:"
+    local t0 = html5.table ()
+    t0.header { {"Registered listeners:", colspan = 3} }
+    t0.header {"port", "#datagrams", "for device"}
     local list = {}
-    print        "    port           #datagrams for device \n"
-    local listeners = "%8s            %5d     %s"
     for port, x in pairs(ioutil.udp.listeners) do
-      local name = devname (x.devNo)
-      list[#list+1] = {port = port, l = listeners:format (port, x.count, name)}
+      local dname = devname (x.devNo)
+      list[#list+1] = {port = port, n = x.count, dev = dname}
     end
     table.sort (list, function (a,b) return a.port < b.port end)
-    if #list == 0 then 
-      print "              --- none ---" 
-    else
-      for _,x in ipairs (list) do print (x.l) end
+    for _,x in ipairs (list) do 
+      t0.row {x.port, x.n, x.dev} 
     end
-    print ''
-  
---[[
-      udp.senders[#udp.senders+1] = {                         -- can't index by port, perhaps not unique
-          devNo = scheduler.current_device (),
-          ip_and_port = ip_and_port,
-          sock = sock,
-          count = 0,      -- don't, at the moment, count number of datagrams sent
-        }
- --]]
-    print "\n Opened for write:"
+    if t0.length() == 0 then t0.row {'', "--- none ---", ''} end 
+    
+    local t = html5.table()
+    t.header { {"Opened for write:", colspan = 2} }
+    t.header {"ip:port", "by device"}
     list = {}
-    print        "    ip:port                   by device \n"
-    local senders = "%20s          %s"
     for i, x in pairs(ioutil.udp.senders) do
-      local name = devname (x.devNo)
-      list[i] = {ip_and_port = x.ip_and_port, l = senders:format (x.ip_and_port, name)}
+      local dname = devname (x.devNo)
+      list[i] = {ip_and_port = x.ip_and_port, n = x.count, dev = dname}   -- doesn't yet count datagrams sent
     end
     table.sort (list, function (a,b) return a.ip_and_port < b.ip_and_port end)
-    if #list == 0 then 
-      print "              --- none ---" 
-    else
-      for _,x in ipairs (list) do print (x.l) end
+    for _,x in ipairs (list) do 
+      t.row {x.ip_and_port, x.dev} 
     end
-    print ''
- 
+    if t.length() == 0 then t.row {"--- none ---", ''} end 
+    
+    return 
+      title "UDP datagram Listeners",
+      printConnections (ioutil.udp.iprequests),  
+      tostring (t0),
+      tostring(t)
   end
   
   
   local function sockets ()
-    print "Watched Sockets"
-
-    local number = "%7s"
-    local layout = "     %-21s  %5s    %-20s"
-    print "      #     date       time         device           socket"
-    local list = {}
+    local cols = {}
     local sock_drawer = scheduler.get_socket_list()    -- list is indexed by socket !!
     for sock, x in pairs (sock_drawer) do
---    callback = action,
---    devNo = current_device,
---    io = io or {intercept = false},  -- assume no intercepts: incoming data is passed to handler
       local sockname = table.concat {tostring(x.name), ' ', tostring(sock)}
-      list[#list+1] = layout: format (os.date(date, x.time), x.devNo or 0, sockname)
+      cols[#cols+1] = {0, os.date(date, x.time), x.devNo or 0, sockname}
     end
-    table.sort (list, function (a,b) return a > b end)
+    table.sort (cols, function (a,b) return a[1] > b[1] end)
     
-    if #list == 0 then 
-      print "      --- none ---" 
-    else
-      for i,x in ipairs (list) do print (number:format(i) .. x) end
-    end
-    print ''
-
+    local t = html5.table()
+    t.header {"#", "date / time", "device", "socket"}
+    for i,x in ipairs (cols) do x[1] = i; t.row (x) end
+    if #cols == 0 then t.row {0, '', "--- none ---", ''} end
+    
+    return
+      title "Watched Sockets",
+      tostring (t)
   end
   
   local function sandbox ()               -- 2018.04.07
-    print "Sandboxed system tables"
-    for _,v in pairs (_G) do
+    local function format (tbl)
+      local lookup = getmetatable (tbl).lookup
+      local boxmsg = "[%d] %s - Private items:"
+      local function devname (d) 
+        return ((luup.devices[d] or {}).description or "System"): match "^%s*(.+)" 
+      end
+      local function sorted(x, title)
+        local y = {}
+        for k,v in pairs (x) do y[#y+1] = {k, tostring(v)} end
+        table.sort (y, function (a,b) return a[1] < b[1] end)
+        local t = html5.table()
+        t.header {{title, colspan = 2}}
+        t.header {"name","type"}
+        for _, row in ipairs(y) do
+          t.row (row)
+        end
+        return tostring(t)
+      end
+      local T = {}
+      for d, idx in pairs (lookup) do
+        T[#T+1] = sorted(idx, boxmsg: format (d, devname(d)))
+      end
+      T[#T+1] = sorted (tbl, "Shared items:")
+      return T
+    end
+    
+    local G = {}
+    for n,v in pairs (_G) do
       local meta = ((type(v) == "table") and getmetatable(v)) or {}
-      if meta.__newindex and meta.__tostring then   -- not foolproof, but good enough?
-        print ('\n' .. tostring(v))
+      if meta.__newindex and meta.__tostring and meta.lookup then   -- not foolproof, but good enough?
+        G[#G+1] = table.concat {'<p>', n, ".sandbox</p>"} 
+        G[#G+1] = format(v)
       end
     end
+    return title "Sandboxed system tables", G
   end
   
   local function images ()
     local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
     
-    print ("Images  " .. os.date "%c", '\n')
-    
-    print [[<nav>]]
-    local option = '%s <a href="/images/%s" target="image">%s</a>'
+    local option = '<a href="/images/%s" target="image">%s</a>'
+    local t = html5.table ()
+    t.header {'#', "filename"}
     for i,f in ipairs (files) do 
-      print (option: format (number(i), f.name, f.name))
+      t.row {i, option: format (f.name, f.name)}
     end
-    print "</nav>"
---    print [[<iframe name="output" rows=60 cols=50 height="700px" width="50%" >]]
-    print [[<article><iframe name="image" width="50%" ></article>]]
-
-    print ''
+    
+    return title "Images",
+      "<nav>",
+      tostring(t),
+      "</nav>",
+      [[<article><iframe name="image" width="50%" ></article>]]
   end
  
   local function trash ()
     local files = get_matching_files_from ("trash/", '^[^%.]+%.[^%.]+$')     -- *.*
-    print ("Trash  " .. os.date "%c", '\n')
-    for i,f in ipairs (files) do print (i, f.name) end
-    if #files == 0 then print "       --- none ---" end
-    print ''
+    local t = html5.table ()
+    t.header {'#', "filename", "size"}
+    for i,f in ipairs (files) do
+      t.row {i, f.name, f.size}
+    end
+    if t.length() == 0 then t.row {'', "--- none ---", ''} end
+    return title "Trash", tostring(t)
   end
   
   -- compares corresponding elements of array
@@ -693,19 +693,15 @@ function run (wsapi_env)
       end
     end
      
-    local layout = "    %8s  %8s %-20s %s"
     local T = 0
     table.sort (H, keysort)
-    
-    print ("Data Historian Cache Memory, " .. os.date(date))
-    print ("\n  Total number of device variables: " .. N)
-    print ("\n  Variables with History: " .. #H)
-    print ''
-    print (layout: format ("#points", "device ", "service", "variable (archived if checked)"))
+        
+    local t = html5.table()
+    t.header {"device ", "service", "#points", "variable (archived if checked)" }
     
     local link = [[<a href="/render?target=%s&from=%s">%s</a>]]
     local tick = '<input type="checkbox" readonly %s /> %s'
-    local prev  -- previous device (for line spacing)
+    local prev  -- previous device (for formatting)
     for _, x in ipairs(H) do
       local v = x.v
       local vname = v.name
@@ -720,7 +716,7 @@ function run (wsapi_env)
       T = T + h
       local dname = devname(v.dev)
       if dname ~= prev then 
-        local devname = "\n%14s<em>%s</em>"
+        local devname = "<strong>%s</strong>"
         --
 --        devname = [[\n%14s<em>%s</em>
 --        <form action="cgi/no-content.lua" method="post"> 
@@ -728,24 +724,29 @@ function run (wsapi_env)
 --        </form>
 --        ]]
         --
-        print(devname: format ('', dname)) 
+        t.row { {devname: format (dname), colspan = 4} } -- , style = "background-color: lightblue;"} }
       end
       prev = dname
       local check = x.archived and "checked" or ''
-      print (layout:format (h, '', v.srv: match "[^:]+$" or v.srv, tick: format (check, vname)))
+      t.row {'', v.srv: match "[^:]+$" or v.srv, h, tick: format (check, vname)}
     end
-    print ("\n  Total number of history points:", T)
+    
+    local t0 = html5.table()
+    t0.header { {"Summary:", colspan = 2} }
+    t0.row {"total # device variables", N}
+    t0.row {"total # variables with history", #H}
+    t0.row {"total # history points", T}
+    
+--    return title "Data Historian Cache Memory", tostring(t0), [[<div style="height:50%;">]], tostring(t), "</div>"
+    return title "Data Historian Cache Memory", tostring(t0), tostring(t)
   end
   
   
   local function database ()
     local folder = luup.attr_get "openLuup.Historian.Directory"
     
-    print ("Data Historian Disk Database, " .. os.date(date))
-    
     if not folder then
-      print "\n  On-disk archiving not enabled"
-      return
+      return "On-disk archiving not enabled"
     end
     
     -- stats
@@ -756,9 +757,13 @@ function run (wsapi_env)
     local wall_rate  = wall / tot * 1e3
     local write_rate = 60 * tot / (timers.timenow() - timers.loadtime)
     
-    print ''
-    local stats = "   updates/min: %0.1f,  time/point: %0.1f ms (cpu: %0.1f ms),  directory: %s"
-    print (stats: format (write_rate, wall_rate, cpu_rate, folder))
+    local function dp1(x) return x - x % 0.1 end
+    
+    local t0 = html5.table ()
+    t0.header { {"Summary: " .. folder, colspan = 2} }
+    t0.row {"updates/min", dp1 (write_rate)}
+    t0.row {"time/point (ms)", dp1(wall_rate)}
+    t0.row {"cpu/point (ms)", dp1(cpu_rate)}
     
     local tally = hist.tally        -- here's the historian's stats on individual file updates
     
@@ -783,7 +788,7 @@ function run (wsapi_env)
               local _, duration = arch: match "([^:]+):(.+)"                  -- rate:duration
               links[#links+1] = link: format (a.finderName, duration, arch) 
             end
-            a.links = table.concat (links, ',')
+            a.links = table.concat (links, ', ')
           end
           return a
         end
@@ -791,50 +796,52 @@ function run (wsapi_env)
     
     table.sort (files, keysort)
     
-    local list = "%s %40s %10s  %8s   %s"
-    print ''
---    print (list:format ('', "archives", "size", "(kB)", "#updates", "filename (node.dev.srv.var) \n"))
-    print (list:format ('', "archives", "(kB)", "#updates", "filename (node.dev.srv.var)"))
+    local t = html5.table ()
+    t.header {'', "archives", "(kB)", "#updates", "filename (node.dev.srv.var)"}
     local prev
     local N,T = 0,0
     for _,f in ipairs (files) do 
       N = N + 1
       T = T + f.size
-      -- have to tab space manually, since archive links contain HTML (not visible)
-      local tab = ''    
-      local spc = ' '
-      if f.links then tab = spc: rep(40 - #f.retentions) end
-      --
       local devnum = f.devnum     -- openLuup device number (if present)
       if devnum ~= prev then 
-        local devname = "\n <em>%40s</em>"
---        local devname = "\n%s<em>%s</em>"
---        print(devname: format (spc: rep(52), f.description: match "%s*(.*)"))
-        print(devname: format (f.description))
+        local dname = "<strong>[%s] %s</strong>"
+        t.row { { dname: format (f.devnum,f.description), colspan = 5} }
       end
       prev = devnum
-      print (list:format (tab, f.links or f.retentions, f.size, f.updates, f.shortName)) 
---      if i % 5 == 0 then print '' end     -- cosmetic line spacing
+      t.row {'', f.links or f.retentions, f.size, f.updates, f.shortName}
     end
     
-    print '\n'
     T = T / 1000;
-    print (list:format ('',"TOTALS: " .. N .. " database files, ", (T - T % 0.1) .. " (Mb)", tot, ''))
+    t0.row {"total size (Mb)", T - T % 0.1}
+    t0.row {"total # files", N}
+    t0.row {"total # updates", tot}
+    
+    return title "Data Historian Disk Database", tostring (t0), 
+      [[<div style="height:50%; overflow:scroll">]], tostring(t), "</div>"
+--    return title "Data Historian Disk Database", tostring (t0), tostring(t)
   end
   
   
   local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
   
   local pages = {
-    about   = function () for a,b in pairs (ABOUTopenLuup) do print (a .. ' : ' .. tostring(b)) end end,
+    about   = function () 
+      local t = {}
+      for a,b in pairs (ABOUTopenLuup) do
+        t[#t+1] = table.concat {a, ' : ', tostring(b), '\n'}
+      end
+      return title "About...", preformatted (t)
+    end,
+    
     backups = backups,
     database = database,
-    delays  = function () listit (dlist, "Delayed Callbacks") end,
+    delays  = delaylist2,
     images  = images,
-    jobs    = function () listit (jlist, "Scheduled Jobs") end,
+    jobs    = joblist2,
     log     = printlog,
-    startup = function () listit (slist, "Startup Jobs") end,
-    watches = watchlist,
+    startup = startup2,
+    watches = watchlist2,
     http    = httplist,
     smtp    = smtplist,
     pop3    = pop3list,
@@ -848,22 +855,19 @@ function run (wsapi_env)
     parameters = function ()
       local info = luup.attr_get "openLuup"
       local p = json.encode (info or {})
-      print (p or "--- none ---")
+      return title "openLuup Parameters", preformatted (p or "--- none ---")
     end,
     
-    userdata = function ()
-      local u = requests.user_data()
-      print(u)
+    userdata = function (p, _)
+      return title "Userdata", preformatted (requests.user_data (_, p))
     end,
     
-    status = function ()
-      local s = requests.status()
-      print(s)
+    status = function (p, _)
+      return title "Status", preformatted (requests.status (_, p))
     end,
     
-    sdata = function ()
-      local d = requests.sdata()
-      print(d)
+    sdata = function (p, _)
+      return title "Sdata", preformatted (requests.sdata (_, p))
     end,
     
   }
@@ -871,17 +875,14 @@ function run (wsapi_env)
   -- run()
   
   local req = wsapi.request.new (wsapi_env)
-  local res = wsapi.response.new ()
-  
   local p = req.GET 
+  local page = pages[p.page] or function () end
   
-  lines = {console_html.prefix}  
-  local page = p.page or ''  
-  do (pages[page] or function () end) (p) end  
-  print (console_html.postfix)
+  local res = wsapi.response.new ()
+  res:write (console_html.prefix)
+  res:write (page (p))                -- note that page function may have multiple returns
+  res:write (os.date (console_html.postfix))
   
-  res: write (lines)
-
   return res: finish()
 end
 

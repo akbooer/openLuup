@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2018.07.22",
+  VERSION       = "2019.02.02",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -52,6 +52,8 @@ local ABOUT = {
 -- 2018.06.16  check for duplicate altids in chdev.append()  (thanks @rigpapa)
 -- 2018.07.02  fix room number/string type problem in create()
 -- 2018.07.22  create only non-blank default device variables (blank was breaking AlTUI install)
+
+-- 2019.02.02  override device file manufacturer and modelName with existing attributes (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -183,9 +185,15 @@ local function create (x)
     impl_file       = d.impl_file,
     invisible       = x.invisible and "1" or "0",   -- convert true/false to "1"/"0"
     local_udn       = UUID,
+<<<<<<< HEAD
     manufacturer    = d.manufacturer or '',
     model           = d.modelName or '',
     name            = device_name,
+=======
+    manufacturer    = x.manufacturer or d.manufacturer or '',
+    model           = x.model or d.modelName or '',
+    name            = device_name, 
+>>>>>>> upstream/development
     plugin          = tostring(x.pluginnum or ''),
     password        = x.password,
     room            = tostring(tonumber (x.room) or 0),   -- why it's a string, I have no idea 2018.07.02
