@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.02.03",
+  VERSION       = "2019.02.12",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -817,9 +817,9 @@ function run (wsapi_env)
     t0.row {"total # files", N}
     t0.row {"total # updates", tot}
     
-    return title "Data Historian Disk Database", tostring (t0), 
-      [[<div style="height:50%; overflow:scroll">]], tostring(t), "</div>"
---    return title "Data Historian Disk Database", tostring (t0), tostring(t)
+--    return title "Data Historian Disk Database", tostring (t0), 
+--      [[<div style="height:50%; overflow:scroll">]], tostring(t), "</div>"
+    return title "Data Historian Disk Database", tostring (t0), tostring(t)
   end
   
   

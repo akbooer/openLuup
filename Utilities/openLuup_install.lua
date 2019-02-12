@@ -4,13 +4,16 @@
 -- 2018.08.05  use servertables for myIP  (thanks @samunders)
 -- 2018.08.10  add parameter for install branch (thanks @vwout)
 
+-- 2019.02.12  fix tslv1_2 protocol error
+
+
 local lua = "lua5.1"     -- change this to "lua" if required
 
 local x = os.execute
 local p = print
 local branch = arg[1] or "master"
 
-p "openLuup_install   2018.08.05   @akbooer"
+p "openLuup_install   2019.02.12   @akbooer"
 
 local http  = require "socket.http"
 local https = require "ssl.https"
@@ -35,7 +38,8 @@ x ("rm -r openLuup-" .. branch .. "/")
 p "getting dkjson.lua..."
 _, code = http.request{
     url = "http://dkolf.de/src/dkjson-lua.fsl/raw/dkjson.lua?name=16cbc26080996d9da827df42cb0844a25518eeb3",
-    sink = ltn12.sink.file(io.open("dkjson.lua", "wb"))
+    sink = ltn12.sink.file(io.open("dkjson.lua", "wb")),
+    protocol = "tlsv1_2",
   }
 
 assert (code == 200, "GitHub download failed with code " .. code)
