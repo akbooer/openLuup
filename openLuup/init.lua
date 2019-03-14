@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2018.06.14",
+  VERSION       = "2019.03.14",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -51,6 +51,8 @@ local ABOUT = {
 -- 2018.05.25  add Data Historian configuration
 -- 2018.05.29  remove HTTP.WgetAuthorization option
 -- 2018.06.14  rename openLuup.Databases to openLuup.DataStorageProvider
+
+-- 2019.03.14  change openLuup parameter comment style
 
 
 local logs  = require "openLuup.logs"
@@ -142,8 +144,8 @@ do -- set attributes, possibly decoding if required
       Directory = "backup/",
     },
     DataStorageProvider = {
-      ["-- Influx = '172.16.42.129:8089'"] = [[-- EXAMPLE Influx   UDP port]],
-      ["-- Graphite = '127.0.0.1:2003'"] = [[  -- EXAMPLE Graphite UDP port]],
+      ["-- Influx"]   = "172.16.42.129:8089",
+      ["-- Graphite"] = "127.0.0.1:2003",
     },
     Logfile = {
       Name      = "logs/LuaUPnP.log",
@@ -161,7 +163,7 @@ do -- set attributes, possibly decoding if required
     },
     Historian = {
       CacheSize = 1024,                   -- in-memory cache size (per variable) (allows 7 days of 10 min)
-      ["-- Directory   = 'history/'"] = [[-- on-disc archive folder]],
+      ["-- Directory"] = "history/",      -- on-disc archive folder
       Graphite_UDP  = '',
       InfluxDB_UDP  = '',
     },
@@ -181,7 +183,7 @@ do -- set attributes, possibly decoding if required
       Port = 11011,
     },
     Scenes = {
-      ["-- set Prolog/Epilog to global function names "] = [[ to run before/after ALL scenes]],
+      -- Prolog/Epilog are global function names to run before/after ALL scenes
       Prolog = '',                        -- name of global function to call before any scene
       Epilog = '',                        -- ditto, after any scene
     },

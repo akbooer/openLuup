@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.01.26",
+  VERSION       = "2019.03.14",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -96,6 +96,7 @@ ABOUT = {
 -- 2019.01.20   changed {run = job} to {job = job} in generic_action()
 --              see: http://forum.micasaverde.com/index.php/topic,118763.0.html
 -- 2019.01.26   add RemotePort to allow possible link to openLuup systems (thanks @DesT)
+-- 2019.03.12   start testing http.async_request()
 
 
 local devNo                      -- our device number
@@ -117,6 +118,7 @@ local BuildVersion                -- ...of remote machine
 local PK_AccessPoint              -- ... ditto
 
 local RemotePort                  -- port to access remote machine ("/port_3480" for Vera, ":3480" for openLuup)
+local AsyncPoll                   -- asynchronous polling
 
 local SID = {
   altui    = "urn:upnp-org:serviceId:altui1"  ,         -- Variables = 'DisplayLine1' and 'DisplayLine2'
@@ -539,24 +541,75 @@ local function UpdateHouseMode (Mode)
   end
 end
 
+
 -- poll remote Vera for changes
--- TODO: make callback use asynchronous I/O
-local poll_count = 0
-function VeraBridge_delay_callback (DataVersion)
-  local s
-  poll_count = (poll_count + 1) % 10            -- wrap every 10
-  if poll_count == 0 then DataVersion = '' end  -- .. and go for the complete list (in case we missed any)
-  local url = "/data_request?id=status2&output_format=json&DataVersion=" .. (DataVersion or '')
-  local status, j = remote_request (url)
-  if status == 0 then s = json.decode (j) end
-  if s and s.devices then
-    UpdateHouseMode (s.Mode)
-    DataVersion = s.DataVersion
-    if UpdateVariables (s.devices) then -- 2016.11.20 only update if any variable changes
-      luup.devices[devNo]:variable_set (SID.gateway, "LastUpdate", os.time(), true) -- 2016.03.20 set without log entry
-    end 
-  end 
-  luup.call_delay ("VeraBridge_delay_callback", POLL_DELAY, DataVersion)
+-- two versions: synchronous delay short polling / asynchronous long polling
+do
+  local poll_count = 0
+  local DataVersion = ''
+
+  local function update_from_status (j)   -- 2019.03.14
+    local s = json.decode (j)
+    local ok = type(s) == "table" 
+    if ok then
+      DataVersion = s.DataVersion or ''
+      UpdateHouseMode (s.Mode)
+      if s.devices and UpdateVariables (s.devices) then -- 2016.11.20 only update if any variable changes
+        luup.devices[devNo]:variable_set (SID.gateway, "LastUpdate", os.time(), true) -- 2016.03.20 set without log entry
+      end 
+    end
+    return ok
+  end
+  
+  -- original short polling
+  
+  function VeraBridge_delay_callback ()
+    poll_count = (poll_count + 1) % 10            -- wrap every 10
+    if poll_count == 0 then DataVersion = '' end  -- .. and go for the complete list (in case we missed any)
+    local url = "/data_request?id=status2&output_format=json&DataVersion=" .. DataVersion 
+    local status, j = remote_request (url)
+    if status == 0 then update_from_status (j) end 
+    luup.call_delay ("VeraBridge_delay_callback", POLL_DELAY)
+  end
+
+  -- 2019.03.14   long polling, this is the way that the lu_status request is supposed to be used     
+
+  local uri = "%s%s%s/data_request?id=status2&output_format=json&MinimumDelay=%s&Timeout=%s&DataVersion=%s"
+  local log = "VeraBridge ASYNC callback status code: %s, data length: %s"
+  local erm = "VeraBridge ASYNC request: %s"
+  
+  function VeraBridge_async_callback (response, code, headers, statusline)
+    
+--      local tr, tc, th, ts = type(response), type(code), type(headers), type(statusline)
+--      if not ((tr == "string") and (tc == "number") and (th == "table") and (ts == "string")) then
+--      luup.log "ASYNC parameters"
+--      luup.log ("code:       " .. (code or '?'))
+--      luup.log ("statusline: " .. (statusline or '?'))
+--      luup.log ("response:   " .. (string.sub (response or '',1,500)))
+--      luup.log ("headers:    " .. (json.encode (headers) or '?'))
+--      end
+    
+    luup.log (log: format (code or '?', #(response or '')))
+    
+    local ok, err = response == "INIT", "invalid JSON data received"
+
+    if code == 200 and headers and statusline then 
+      ok = update_from_status (response)    -- did we get valid data for update?
+    end
+    
+    if ok then    -- carry on, and set up for next status request
+      poll_count = (poll_count + 1) % 20            -- wrap every 20
+      if poll_count == 0 then DataVersion = '' end  -- .. and go for the complete list (in case we missed any)
+      local url = uri: format ("http://", ip, RemotePort,     500, 30, DataVersion)  -- 500ms min, 30 max
+      ok, err = luup.openLuup.async_request (url, VeraBridge_async_callback)
+    end
+  
+    if not ok then -- we will never be called again, unless we do something about it
+      luup.log (erm: format (err or '?'))                                 -- report error...
+      DataVersion = ''                                                    -- ...reset our version baseline...  
+      luup.call_delay ("VeraBridge_async_callback", POLL_DELAY, "INIT")   -- ...and reschedule ourselves to try again
+    end
+  end
 end
 
 -- find other bridges in order to establish base device number for cloned devices
@@ -860,9 +913,10 @@ function init (lul_device)
   ZWaveOnly   = uiVar ("ZWaveOnly", '')         -- if set to 'true' then only Z-Wave devices are considered by VeraBridge.
   Included    = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
   Excluded    = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge, 
-                                              -- ...takes precedence over the first two.
+                                                -- ...takes precedence over the first two.
                                               
   RemotePort  = uiVar ("RemotePort", "/port_3480")
+  AsyncPoll   = uiVar ("AsyncPoll", "false")    -- set to "true" to use ansynchronous polling of remote Vera
   
   local hmm = uiVar ("HouseModeMirror",HouseModeOptions['0'])   -- 2016.05.23
   HouseModeMirror = hmm: match "^([012])" or '0'
@@ -902,7 +956,11 @@ function init (lul_device)
     setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
     
     if Ndev > 0 or Nscn > 0 then
-      VeraBridge_delay_callback ()
+      if logical_true (AsyncPoll) then
+        VeraBridge_async_callback "INIT"
+      else
+        VeraBridge_delay_callback ()
+      end
       luup.set_failure (0)                        -- all's well with the world
     end
   else
@@ -911,7 +969,7 @@ function init (lul_device)
   end
 
   register_AltUI_Data_Storage_Provider ()     -- register with AltUI as MIRROR data storage provider
-  
+    
   return true, "OK", ABOUT.NAME
 end
 

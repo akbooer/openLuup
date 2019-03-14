@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.02.12",
+  VERSION       = "2019.03.14",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -177,6 +177,19 @@ local function todate (epoch)
   return os.date (date, epoch)
 end
 
+-- sorted version of the pairs iterator
+-- use like this:  for a,b in sorted (x, fct) do ... end
+-- optional second parameter is sort function cf. table.sort
+local function sorted (x, fct)
+  local y, i = {}, 0
+  for z in pairs(x) do y[#y+1] = tostring(z) end
+  table.sort (y, fct) 
+  return function ()
+    i = i + 1
+    local z = y[i]
+    return z, x[z]  -- if z is nil, then x[z] is nil, and loop terminates
+  end
+end
 
 local html5 = {}
 
@@ -279,7 +292,7 @@ function run (wsapi_env)
     return list
   end
   
-  local function joblist2 ()
+  local function joblist ()
     local t = html5.table()
     t.header {"#", "date / time", "device", "status", "run", "info", "notes"}
     local jlist = {}
@@ -294,7 +307,7 @@ function run (wsapi_env)
     return title "Scheduled Jobs", tostring(t)
   end
 
-  local function delaylist2 ()
+  local function delaylist ()
     local t = html5.table()
     t.header {"#", "date / time", "device", "status", "info"}
     local dlist = {}
@@ -309,7 +322,7 @@ function run (wsapi_env)
     return title "Delayed Callbacks", tostring(t)
   end
 
-  local function startup2 ()
+  local function startup ()
     local t = html5.table()
     t.header {"#", "date / time", "device", "status", "info", "notes"}
     local jlist = {}
@@ -324,7 +337,7 @@ function run (wsapi_env)
     return title "Startup Jobs", tostring(t)
   end
   
-  local function watchlist2 ()
+  local function watchlist ()
     local W = {}
     
     local function isW (w, d,s,v)
@@ -822,6 +835,25 @@ function run (wsapi_env)
     return title "Data Historian Disk Database", tostring (t0), tostring(t)
   end
   
+  local function parameters ()
+    local info = luup.attr_get "openLuup"
+--      local p = json.encode (info or {})
+    local t = html5.table ()
+    t.header {"section", "name", "value" }
+    local index = {}
+    for n,v in sorted (info) do 
+      if type(v) ~= "table" then
+        t.row {n, '', tostring(v)}
+      else
+        t.row { {table.concat {"<strong>", n, "</strong>"}, colspan = 3} }
+        for m,u in sorted (v) do
+          t.row { '', m, tostring(u) }
+        end
+      end
+    end
+--    return title "openLuup Parameters", preformatted (p or "--- none ---")
+    return title "openLuup Parameters", tostring (t)
+  end
   
   local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
   
@@ -836,12 +868,12 @@ function run (wsapi_env)
     
     backups = backups,
     database = database,
-    delays  = delaylist2,
+    delays  = delaylist,
     images  = images,
-    jobs    = joblist2,
+    jobs    = joblist,
     log     = printlog,
-    startup = startup2,
-    watches = watchlist2,
+    startup = startup,
+    watches = watchlist,
     http    = httplist,
     smtp    = smtplist,
     pop3    = pop3list,
@@ -849,14 +881,8 @@ function run (wsapi_env)
     sandbox = sandbox,
     trash   = trash,
     udp     = udplist,
-    
-    historian   = historian,
-    
-    parameters = function ()
-      local info = luup.attr_get "openLuup"
-      local p = json.encode (info or {})
-      return title "openLuup Parameters", preformatted (p or "--- none ---")
-    end,
+    historian  = historian,
+    parameters = parameters,
     
     userdata = function (p, _)
       return title "Userdata", preformatted (requests.user_data (_, p))

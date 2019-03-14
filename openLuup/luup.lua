@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2018.11.15",
+  VERSION       = "2019.03.14",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -63,6 +63,8 @@ local ABOUT = {
 -- 2018.07.18  change luup.openLuup from true to {}, with possible methods
 -- 2018.08.05  AutoUntrip functionality (thanks @rigpapa)
 -- 2018.11.15  luup.attr_set ("Mode", _) calls gateway action to keep openLuup variable in sync (thanks @DesT)
+
+-- 2019.03.14  added luup.openLuup.async_request()
 
 
 local logs          = require "openLuup.logs"
@@ -576,6 +578,7 @@ end
 -- function: set_failure
 -- parameters: value (int), device (string or number)
 -- 2017.04.21  but see also: http://forum.micasaverde.com/index.php/topic,27420.msg207850.html#msg207850
+-- 15 May 2017, @vosmont re. Comms variables
 -- returns:
 --
 -- Luup maintains a 'failure' flag for every device to indicate if it is not functioning. 
@@ -850,10 +853,55 @@ parameters:
 
 return: nothing 
 --]]
+--[[
+{
+"id": 0,
+"status": 2,
+"type": "GET_LANG(system_error,System error)",
+"comments": "Device: 149. Fail to load implementation file D_InsecurityCamera1.xml"
+}
+--]]
+
+--d.jobs[1] = {
+--id = 42,
+--status = 4,
+--type = "error",
+--comments = "very insecure"
+--}
+--d.jobs[1]= nil
+
+--]]
 
 --TODO: local function device_message (device_id, status, message, timeout, source)
-local function device_message (...)
-  _debug "device_message not yet implemented"
+local function device_message (device_id, status, message, timeout, source)
+  -- have to find startup job with given device id...
+  local job
+  local jn
+  for job_no, info in pairs (scheduler.startup_list) do
+    if info.devNo == device_id then
+      jn = job_no
+      job = info
+      break
+    end
+  end
+  
+  if job then   
+    luup.devices[device_id].jobs[1] = {
+      id = jn,
+      status = status or 4,
+      type = source or "device_message",
+      comments = message or '?',
+    }
+--    luup.devices[device_id].jobs[2] = {
+--      id = jn,
+--      status =  4,
+--      type = source or "device_message",
+--      comments = "transient",
+--    }
+  end
+  
+  --TODO: remove device message after timeout
+  
 end
 
 --------------
@@ -1038,7 +1086,10 @@ return {
   
     -- constants: really not expected to be changed dynamically
     
-    openLuup = {}, -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate not a Vera (for plugin developers)
+    openLuup = {   -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate not a Vera (for plugin developers)
+      -- openLuup-specific API extensions go here...
+      async_request = http.async_request,
+    },
     
     hw_key              = "--hardware key--",
     event_server        = '',   
