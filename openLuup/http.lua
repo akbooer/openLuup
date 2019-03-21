@@ -1,13 +1,17 @@
 local ABOUT = {
   NAME          = "openLuup.http",
+<<<<<<< HEAD
   VERSION       = "2018.05.11",
+=======
+  VERSION       = "2019.03.14",
+>>>>>>> upstream/development
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -76,8 +80,14 @@ local ABOUT = {
 -- 2018.03.24   add connection count to iprequests
 -- 2018.04.09   add _debug() listing of external luup.inet.wget requests
 -- 2018.04.11   refactor to use io.server.new()
--- 2018.04.12   don't bother to try and response to closed socket!
+-- 2018.04.12   don't bother to try and respond to closed socket!
 -- 2018.04.25   change module name (back) to openLuup.http, as that's all it does now
+-- 2018.05.25   updates for digest authentication testing
+-- 2018.07.06   catch any error in servlet response iterator
+
+-- 2019.01.14   fix possible missing post_content in parameter decoding
+-- 2019.03.12   fix permanent modifcation of schema.TIMEOUT parameter
+-- 2019.03.14   add async_request()
 
 
 local socket    = require "socket"
@@ -87,10 +97,13 @@ local https     = require "ssl.https"
 local ltn12     = require "ltn12"                       -- for wget handling
 local mime      = require "mime"                        -- for basic authorization in wget
 
+local OKmd5,md5 = pcall (require, "md5")                -- for digest authenication (may be missing)
+
 local logs      = require "openLuup.logs"
 local ioutil    = require "openLuup.io"                 -- for core server functions
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local servlet   = require "openLuup.servlet"
+local scheduler = require "openLuup.scheduler"          -- for async_request() use of socket_watch
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
@@ -99,7 +112,6 @@ local _log, _debug = logs.register (ABOUT)
 
 local CHUNKED_LENGTH            = 16000     -- size of chunked transfers
 local MAX_HEADER_LINES          = 100       -- limit lines to help mitigate DOS attack or other client errors
-local URL_AUTHORIZATION         = true      -- use URL rather than Authorization header for wget basic authorization
 
 local PORT -- filled in during start()
 
@@ -154,6 +166,128 @@ end
 
 ----------------------------------------------------
 --
+--  http_digest()
+--
+-- this code abstracted and modified from: https://github.com/catwell/lua-http-digest
+-- as suggested by @jswim77 here: http://forum.micasaverde.com/index.php/topic,63465.msg380840.html#msg380840
+-- and prototyped by @rafale77 here: https://github.com/akbooer/openLuup/pull/11
+--
+-- this requires the lua-md5 module to be on the Lua path
+-- and needs further work to integrate more fully into this module
+
+local parse_header = function(h)
+  local r = {}
+  for k,v in h: gmatch '(%w+)="?([^",]+)' do
+    r[k:lower()] = v 
+  end
+  return r
+end
+
+local function http_digest ()
+  local md5sum = md5.sumhexa
+
+  local s_http = http
+  local s_url = url
+
+  local hash = function(...)
+      return md5sum(table.concat({...}, ":"))
+  end
+
+  local make_digest_header = function(t)
+    local s = {}
+    for i, x in ipairs (t) do
+      local q = x.unquote and '' or '"'
+      s[i] =  table.concat {x[1], '=', q, x[2], q }
+    end
+    return "Digest " .. table.concat(s, ', ')
+  end
+
+  local hcopy = function(t)
+      local r = {}
+      for k,v in pairs(t) do r[k] = v end
+      return r
+  end
+
+  local _request = function(t)
+      if not t.url then error("missing URL") end
+      local url = s_url.parse(t.url)
+      local user, password = url.user, url.password
+      if not (user and password) then
+          error("missing credentials in URL")
+      end
+      url.user, url.password, url.authority, url.userinfo = nil, nil, nil, nil
+      t.url = s_url.build(url)
+      
+      local b, c, h = s_http.request(t)
+      if (c == 401) and h["www-authenticate"] then
+          local ht = parse_header(h["www-authenticate"])
+          assert(ht.realm and ht.nonce)
+          if ht.qop ~= "auth" then
+              return nil, string.format("unsupported qop (%s)", tostring(ht.qop))
+          end
+          if ht.algorithm and (ht.algorithm:lower() ~= "md5") then
+              return nil, string.format("unsupported algo (%s)", tostring(ht.algorithm))
+          end
+          local nc, cnonce = "00000001", string.format("%08x", os.time())
+          local uri = s_url.build{path = url.path, query = url.query}
+          local method = t.method or "GET"
+          local response = hash(
+              hash(user, ht.realm, password),
+              ht.nonce,
+              nc,
+              cnonce,
+              "auth",
+              hash(method, uri)
+          )
+          t.headers = t.headers or {}
+          print ("RESPONSE: ", response)
+          local auth_header = {
+              {"username", user},
+              {"realm", ht.realm},
+              {"nonce", ht.nonce},
+              {"uri", uri},
+              {"cnonce", cnonce},
+              {"nc", nc, unquote=false},
+              {"qop", "auth"},
+              {"algorithm", "MD5"},
+              {"response", response},
+          }
+          if ht.opaque then
+              table.insert(auth_header, {"opaque", ht.opaque})
+          end
+          t.headers.authorization = make_digest_header(auth_header)
+--          if not t.headers.cookie and h["set-cookie"] then
+--              -- not really correct but enough for httpbin
+--              local cookie = (h["set-cookie"] .. ";"):match("(.-=.-)[;,]")
+--              if cookie then
+--                  t.headers.cookie = "$Version: 0; " .. cookie .. ";"
+--              end
+--          end
+          
+          b, c, h = s_http.request(t)
+          return b, c, h
+      else return b, c, h end
+  end
+
+  local request = function(x)
+      local _t = type(x)
+      if _t == "table" then
+          return _request(hcopy(x))
+      elseif _t == "string" then
+          local r = {}
+          local _, c, h = _request{url = x, sink = ltn12.sink.table(r)}
+          return table.concat(r), c, h
+      else error(string.format("unexpected type %s", _t)) end
+  end
+
+  return {
+      request = request,
+  }
+
+end
+
+----------------------------------------------------
+--
 -- return a request object containing all the information a handler needs
 -- only required parameter is request_URI, others have sensible defaults.
  
@@ -169,9 +303,8 @@ local function request_object (request_URI, headers, post_content, method, http_
   
   local request_start = socket.gettime()
   
-  -- we seem to get requests without the usual prefix, eg. just "/data_request..."
-  -- think this is from persistent connections from the browser (AltUI in particular)
-  -- without the scheme, ip, and port, then the request would be mis-handled
+  -- for requests without the usual prefix, eg. just "/data_request..."
+  -- need to add the scheme, ip, and port, else the request would be mis-handled
   
   if not (request_URI: match "^%w+://") then 
     if request_URI: match "^/" then    -- 2018.03.15  it's a relative URL, must be served from here
@@ -192,7 +325,7 @@ local function request_object (request_URI, headers, post_content, method, http_
   
   if method == "POST" 
   and (headers["Content-Type"] or ''): find ("application/x-www-form-urlencoded",1,true) then -- 2017.02.21
-    local p2 = parse_parameters (post_content:gsub('+', ' '))   -- 2017.03.03 fix embedded spaces
+    local p2 = parse_parameters ((post_content or ''):gsub('+', ' '))   -- 2017.03.03 fix embedded spaces
     for a,b in pairs (p2) do        -- 2017.02.06  combine URL and POST parameters
       parameters[a] = b
     end
@@ -245,36 +378,49 @@ local function wget (request_URI, Timeout, Username, Password)
     local URL = request.URL
     URL.scheme = URL.scheme or "http"                 -- assumed undefined is http request
     if URL.scheme == "https" then scheme = https end  -- 2016.03.20
-    if URL_AUTHORIZATION then                         -- 2017.06.15
-      URL.user = Username                             -- add authorization credentials to URL
-      URL.password = Password
-    end
+    
+    Username = Username or URL.user                   -- 2018.08.20
+    Password = Password or URL.password
+    URL.user, URL.password = nil
+    
     URL = url.build (URL)                             -- reconstruct request for external use
     _debug (URL)
-    scheme.TIMEOUT = Timeout or 5
     
-    if Username and not URL_AUTHORIZATION then        -- 2017.06.14 build Authorization header
-      local flag
-      local auth = table.concat {Username, ':', Password or ''}
-      local headers = {
-          Authorization = "Basic " .. mime.b64 (auth),
-        }
-      result = {}
-      flag, status, responseHeaders = scheme.request {
-          url=URL, 
-          sink=ltn12.sink.table(result),
-          headers = headers,
-        }
-      result = table.concat (result)
-    else
+    do
+       -- this may not be good enough since http.request uses http.request
+      local oldTimeout
+      oldTimeout, scheme.TIMEOUT = scheme.TIMEOUT, Timeout or 5   -- 2019.03.12
       result, status, responseHeaders = scheme.request (URL)
+      scheme.TIMEOUT = oldTimeout
     end
+  
+    if (status == 401) and responseHeaders["www-authenticate"] and Username then
+      -- try it with username and password
+    end
+<<<<<<< HEAD
     if status == 401 then                                     -- Retry with digest
       local http_digest = require "http-digest"               -- 2018.05.07
       URL = ("http://" ..Username.. ":" ..Password.. "@" ..string.gsub(request_URI,"http://",""))
       scheme = http_digest
       result, status, responseHeaders = scheme.request (URL)
     end
+=======
+--    if Username then        -- 2017.06.14 build Authorization header
+--      local flag
+--      local auth = table.concat {Username, ':', Password or ''}
+--      local headers = {
+--          Authorization = "Basic " .. mime.b64 (auth),
+--        }
+--      result = {}
+--      flag, status, responseHeaders = scheme.request {
+--          url=URL, 
+--          sink=ltn12.sink.table(result),
+--          headers = headers,
+--        }
+--      result = table.concat (result)
+--    end
+--  
+>>>>>>> upstream/development
   end
   
   local wget_status = status                          -- wget has a strange return code
@@ -291,6 +437,205 @@ end
 
 ----------------------------------------------------
 --
+-- ASYNCHRONOUS http.async_request()
+--
+--
+-- much of the utility code here is lifted from the high-level routines of the socket.http module
+-- but split into two parts for sending the request and then reading the response in a callback handler.
+-- proxy and redirects are not supported (neither are they for ssl requests)
+
+-- async_request (u, b, callback) or (u, callback) where 'u' may table or string
+  local function async_request (u, b, callback)
+    local simple_string   -- used to concatentae responses of 'simple' string-type url requests
+    local base = _G
+
+    -- create() function returns a proxy socket which mirrors all the actual socket methods
+    -- but intercepts the close() function to remove the socket from the scheduler list when done.
+      local function create_proxy_socket ()
+        local sock = socket.tcp()
+        return setmetatable ({
+            close = function (self)
+                scheduler.socket_unwatch (self)       -- immediately stop watching for incoming
+                return sock: close ()
+              end
+            },{
+            __index = function (s, f) 
+              s[f] = function (_, ...) return sock[f] (sock, ...) end
+              return s[f]  -- it's there now, so no need to recreate it in future
+            end,
+            __tostring = function () return "async-" .. tostring(sock) end,   -- cosmetic for console
+            })
+      end
+
+    local function adjusturi(reqt)
+        local u = reqt
+        -- if there is a proxy, we need the full url. otherwise, just a part.
+    --    if not reqt.proxy and not _M.PROXY then
+            u = {
+               path = socket.try(reqt.path, "invalid path 'nil'"),
+               params = reqt.params,
+               query = reqt.query,
+               fragment = reqt.fragment
+            }
+    --    end
+        return url.build(u)
+    end
+
+    local function shouldreceivebody(reqt, code)
+        if reqt.method == "HEAD" then return nil end
+        if code == 204 or code == 304 then return nil end
+        if code >= 100 and code < 200 then return nil end
+        return 1
+    end
+
+    local function adjustheaders(reqt)
+        -- default headers
+        local host = string.gsub(reqt.authority, "^.-@", "")
+        local lower = {
+            ["user-agent"] = "openLuup_USERAGENT",
+            ["host"] = host,
+            ["connection"] = "close, TE",
+            ["te"] = "trailers"
+        }
+        -- if we have authentication information, pass it along
+    --    if reqt.user and reqt.password then
+    --        lower["authorization"] = 
+    --            "Basic " ..  (mime.b64(reqt.user .. ":" .. reqt.password))
+    --    end
+        -- if we have proxy authentication information, pass it along
+    --    local proxy = reqt.proxy or _M.PROXY
+    --    if proxy then
+    --        proxy = url.parse(proxy)
+    --        if proxy.user and proxy.password then
+    --            lower["proxy-authorization"] = 
+    --                "Basic " ..  (mime.b64(proxy.user .. ":" .. proxy.password))
+    --        end
+    --    end
+        -- override with user headers
+        for i,v in base.pairs(reqt.headers or lower) do
+            lower[string.lower(i)] = v
+        end
+        return lower
+    end
+
+    -- default url parts
+    local default = {
+        host = "",
+        port = 80,
+        path ="/",
+        scheme = "http"
+    }
+
+    local function adjustrequest(reqt)
+        -- parse url if provided
+        local nreqt = reqt.url and url.parse(reqt.url, default) or {}
+        -- explicit components override url
+        for i,v in base.pairs(reqt) do nreqt[i] = v end
+        if nreqt.port == "" then nreqt.port = 80 end
+        socket.try(nreqt.host and nreqt.host ~= "", 
+            "invalid host '" .. base.tostring(nreqt.host) .. "'")
+        -- compute uri if user hasn't overriden
+        nreqt.uri = reqt.uri or adjusturi(nreqt)
+        -- adjust headers in request
+        nreqt.headers = adjustheaders(nreqt)
+        -- ajust host and port if there is a proxy
+    --    nreqt.host, nreqt.port = adjustproxy(nreqt)
+        return nreqt
+    end
+    
+    local function trequest(reqt)
+      local nreqt = adjustrequest(reqt)
+      if nreqt.proxy then
+        return nil, "proxy not supported"
+      elseif url.redirect then
+        return nil, "redirect not supported"
+      end
+    
+      local old
+      old, http.TIMEOUT = http.TIMEOUT, 75    -- replace current http module global timeout
+      local h = http.open(nreqt.host, nreqt.port, create_proxy_socket)
+      http.TIMEOUT = old                            -- restore after opening (it's the only time it's used)
+ 
+ -- send request line and headers
+      local ok1, err1 = h:sendrequestline(nreqt.method, nreqt.uri)
+      local ok2, err2 = h:sendheaders(nreqt.headers)
+      local ok3, err3 = 1
+      -- if there is a body, send it
+      if nreqt.source then
+          ok3, err3 = h:sendbody(nreqt.headers, nreqt.source, nreqt.step) 
+      end
+      local ok, err = ok1 and ok2 and ok3, err1 or err2 or err3
+      
+      -------------------------------------------
+      --
+      -- this handler is called when the socket receives data (or times out)
+      local function callback_handler ()
+        local code, status = h:receivestatusline()
+        -- if it is an HTTP/0.9 server, simply get the body and we are done
+        if not code then
+            h:receive09body(status, nreqt.sink, nreqt.step)
+            return 1, 200
+        end
+        local headers
+        -- ignore any 100-continue messages
+        while code == 100 do 
+            headers = h:receiveheaders()
+            code, status = h:receivestatusline()
+        end
+        headers = h:receiveheaders()
+        -- at this point we should have a honest reply from the server
+        -- we can't redirect if we already used the source, so we report the error 
+    --    if shouldredirect(nreqt, code, headers) and not nreqt.source then
+    --        h:close()
+    --        return tredirect(reqt, headers.location)
+    --    end
+        -- here we are finally done
+        if shouldreceivebody(nreqt, code) then
+            h:receivebody(headers, nreqt.sink, nreqt.step)
+        end
+        h:close()
+        -- if it was a simple request, return the string response, else just 1
+        callback (simple_string and table.concat (simple_string) or 1, code, headers, status)
+      end
+      --
+      -------------------------------------------
+      
+      if ok then scheduler.socket_watch (h.c, callback_handler, nil, "VERA") end
+      return ok, err
+
+    end
+
+    
+  -- async_request (u, b, callback) or (u, callback) where 'u' may table or string
+    
+    -- cope with optional body parameter for 'simple' string request
+    if not callback then callback, b = b, nil end
+    if type (callback) ~= "function" then return nil, "callback parameter is missing'" end
+    
+    local reqt = u
+    if type(u) == "string" then 
+      simple_string = {}
+      reqt = {
+          url = u,
+          sink = ltn12.sink.table(simple_string)
+      }
+      if b then
+          reqt.source = ltn12.source.string(b)
+          reqt.headers = {
+              ["content-length"] = string.len(b),
+              ["content-type"] = "application/x-www-form-urlencoded"
+          }
+          reqt.method = "POST"
+      end
+    end
+    
+    return trequest(reqt) -- note that this is just a (status, error return) and not the response!
+  end
+
+
+
+----------------------------------------------------
+--
 -- RESPOND to requests over HTTP
 --
 
@@ -301,10 +646,14 @@ local function http_response (status, headers, iterator)
   for a,b in pairs (headers or {}) do Hdrs[CamelCaps(a)] = b end
   headers = Hdrs        
   
-  local response = make_content (iterator)    -- just for the moment, simply unwrap the iterator
+  -- 2018.07.06  catch any error in servlet response iterator
+  
+  local ok, response = pcall (make_content, iterator)    -- just for the moment, simply unwrap the iterator
   local content_type = headers["Content-Type"]
   local content_length = headers["Content-Length"]  
  
+  if not ok then status = 500 end    -- 2018.06.07  Internal Server Error
+  
   if status ~= 200 then 
     headers = {}
     response, content_type = error_html (status, response)
@@ -411,6 +760,7 @@ local function http_read_headers (sock)
   local n = 0
   local line, err
   local headers = {}
+  -- TODO:   remove quotes, if present, from header values?
   local header_format = "(%a[%w%-]*)%s*%:%s*(.+)%s*"   -- essentially,  header:value pairs
   repeat
     n = n + 1
@@ -485,7 +835,6 @@ end
 -- returns list of utility function(s)
 -- 
 local function start (config)
-  URL_AUTHORIZATION = config.WgetAuthorization == "URL"
   PORT = tostring(config.Port or 3480)
   
   -- start(), create HTTP server
@@ -500,6 +849,24 @@ local function start (config)
 
 end
 
+---------------------------------------------
+--
+-- TEST digest authentication
+--
+--[[ 
+
+local httpd = http_digest()
+local pretty = require "pretty"
+
+local okurl  = "http://user:passwd@httpbin.org/digest-auth/auth/user/passwd"
+local badurl = "http://user:nawak@httpbin.org/digest-auth/auth/user/passwd"
+
+local a,b,c,d = httpd.request (okurl)
+print (a,b,pretty(c),d)
+
+--]]
+--
+---------------------------------------------
 
 --- return module variables and methods
 return {
@@ -524,6 +891,7 @@ return {
     
     --methods
     add_callback_handlers = servlet.add_callback_handlers,
+    async_request = socket.protect(async_request),
     wget = wget,
     start = start,
   }

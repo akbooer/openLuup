@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.02.08",
+  VERSION       = "2019.02.13",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -41,7 +41,7 @@ ABOUT = {
 -- 2018.06.26  add Google Charts module for SVG rendering
 -- 2018.07.03  add alias(), aliasByMetric(), aliasByNode() to /render?target=... syntax
 
--- 2019.02.08  debug rom/until times
+-- 2019.02.08  debug from/until times
 
 -- CGI implementation of Graphite API
 
@@ -778,8 +778,6 @@ local function render (env, p)
   local puntil =  p["until"]
   p["from"]  = getTime (pfrom)  or now - 24*60*60  -- default to 24 hours ago
   p["until"] = getTime (puntil) or now
-  
-  _debug (("from: %s [%s], to: %s [%s]"): format (pfrom or '', p["from"], puntil, p["until"]))
   
   local format = p.format or "svg"
   local reportStyle = {csv = csvRender, svg = svgRender, json = jsonRender}
