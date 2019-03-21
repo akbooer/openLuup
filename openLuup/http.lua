@@ -1,10 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-<<<<<<< HEAD
-  VERSION       = "2018.05.11",
-=======
   VERSION       = "2019.03.14",
->>>>>>> upstream/development
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -397,30 +393,13 @@ local function wget (request_URI, Timeout, Username, Password)
     if (status == 401) and responseHeaders["www-authenticate"] and Username then
       -- try it with username and password
     end
-<<<<<<< HEAD
+    
     if status == 401 then                                     -- Retry with digest
       local http_digest = require "http-digest"               -- 2018.05.07
       URL = ("http://" ..Username.. ":" ..Password.. "@" ..string.gsub(request_URI,"http://",""))
       scheme = http_digest
       result, status, responseHeaders = scheme.request (URL)
     end
-=======
---    if Username then        -- 2017.06.14 build Authorization header
---      local flag
---      local auth = table.concat {Username, ':', Password or ''}
---      local headers = {
---          Authorization = "Basic " .. mime.b64 (auth),
---        }
---      result = {}
---      flag, status, responseHeaders = scheme.request {
---          url=URL, 
---          sink=ltn12.sink.table(result),
---          headers = headers,
---        }
---      result = table.concat (result)
---    end
---  
->>>>>>> upstream/development
   end
   
   local wget_status = status                          -- wget has a strange return code
