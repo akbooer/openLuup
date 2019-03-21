@@ -971,7 +971,6 @@ local I_openLuupSecuritySensor1_xml = [[
 <implementation>
   <functions>
   local sid = "urn:micasaverde-com:serviceId:SecuritySensor1"
-
   function get (name)
     return (luup.variable_get (sid, name, lul_device))
   end
@@ -983,8 +982,13 @@ local I_openLuupSecuritySensor1_xml = [[
   end
 
   function ArmedTrippedCheck()
-    if get "Armed" == '1' and get "Tripped" == '1' then set ("ArmedTripped", '1')
-    else set ("ArmedTripped", '0')
+    if get "Armed" == "1" and get "Tripped" == "1" then
+      set ("ArmedTripped", "1")
+    else
+      set ("ArmedTripped", "0")
+    end
+    if get "Tripped" == '1' then
+      set ("LastTrip", os.time())
     end
   end
 
