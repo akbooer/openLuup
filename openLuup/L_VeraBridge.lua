@@ -543,25 +543,6 @@ end
 
 
 -- poll remote Vera for changes
-<<<<<<< HEAD
--- TODO: make callback use asynchronous I/O
-local poll_count = 0
-function VeraBridge_delay_callback (DataVersion)
-  local s
-  poll_count = (poll_count + 1) % 10            -- wrap every 10
-  if poll_count == 0 then DataVersion = '' end  -- .. and go for the complete list (in case we missed any)
-  local url = "/data_request?id=status2&output_format=json&DataVersion=" .. (DataVersion or '')
-  local status, j = remote_request (url)
-  if status == 0 then s = json.decode (j) end
-  if s and s.devices then
-    UpdateHouseMode (s.Mode)
-    DataVersion = s.DataVersion
-    if UpdateVariables (s.devices) then -- 2016.11.20 only update if any variable changes
-      luup.devices[devNo]:variable_set (SID.gateway, "LastUpdate", os.time(), true) -- 2016.03.20 set without log entry
-    end
-  end
-  luup.call_delay ("VeraBridge_delay_callback", POLL_DELAY, DataVersion)
-=======
 -- two versions: synchronous delay short polling / asynchronous long polling
 do
   local poll_count = 0
@@ -629,7 +610,6 @@ do
       luup.call_delay ("VeraBridge_async_callback", POLL_DELAY, "INIT")   -- ...and reschedule ourselves to try again
     end
   end
->>>>>>> upstream/development
 end
 
 -- find other bridges in order to establish base device number for cloned devices
@@ -932,20 +912,11 @@ function init (lul_device)
   CloneRooms  = uiVar ("CloneRooms", '')        -- if set to 'true' then clone rooms and place devices there
   ZWaveOnly   = uiVar ("ZWaveOnly", '')         -- if set to 'true' then only Z-Wave devices are considered by VeraBridge.
   Included    = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
-<<<<<<< HEAD
-  Excluded    = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge,
-                                              -- ...takes precedence over the first two.
-
-  RemotePort  = uiVar ("RemotePort", "/port_3480")
-
-=======
   Excluded    = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge, 
-                                                -- ...takes precedence over the first two.
-                                              
+                                                -- ...takes precedence over the first two.                                              
   RemotePort  = uiVar ("RemotePort", "/port_3480")
   AsyncPoll   = uiVar ("AsyncPoll", "false")    -- set to "true" to use ansynchronous polling of remote Vera
   
->>>>>>> upstream/development
   local hmm = uiVar ("HouseModeMirror",HouseModeOptions['0'])   -- 2016.05.23
   HouseModeMirror = hmm: match "^([012])" or '0'
   setVar ("HouseModeMirror", HouseModeOptions[HouseModeMirror]) -- replace with full string
@@ -997,11 +968,6 @@ function init (lul_device)
   end
 
   register_AltUI_Data_Storage_Provider ()     -- register with AltUI as MIRROR data storage provider
-<<<<<<< HEAD
-
-=======
-    
->>>>>>> upstream/development
   return true, "OK", ABOUT.NAME
 end
 
