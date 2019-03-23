@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.01.29",
+  VERSION       = "2019.03.23",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -195,16 +195,6 @@ local I_openLuup_impl = [[
     
     <action>
       <serviceId>openLuup</serviceId>
-      <name>Test</name>
-      <run>
-        luup.log "openLuup Test action called"
-        luup.variable_set ("openLuup", "Test", lul_settings.TestValue, lul_device) 
-        luup.log "openLuup Test action completed"
-      </run>
-    </action>
-    
-    <action>
-      <serviceId>openLuup</serviceId>
       <name>SendToTrash</name>
       <job>
         SendToTrash (lul_settings)
@@ -249,22 +239,6 @@ local S_openLuup_svc = [[
     <minor>0</minor>
   </specVersion>
   <actionList>
-
-    <action>
-      <name>Test</name>
-      <argumentList>
-        <argument>
-          <name>TestValue</name>
-          <direction>in</direction>
-          <relatedStateVariable>Test</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>ReturnValue</name>
-          <direction>out</direction>
-          <relatedStateVariable>Test</relatedStateVariable>
-        </argument>
-      </argumentList>
-    </action>
 
     <action>
       <name>SendToTrash</name>

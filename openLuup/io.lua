@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2018.06.27",
+  VERSION       = "2019.03.17",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2017 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -52,11 +52,16 @@ local ABOUT = {
 -- 2018.04.19  add udp.register_handler for incomgin datagrams
 -- 2018.06.27  better error message on startup failure
 
+-- 2019.01.25  set_raw_blocksize, see: http://forum.micasaverde.com/index.php/topic,119217.0.html
+-- 2019.03.17  __index() function in client socket allows ANY valid socket call to be used
+
 
 -- TODO: add fully-fledged TCP module
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
+
+local RAW_BLOCKSIZE = 1
 
 local socket    = require "socket"
 local logs      = require "openLuup.logs"
@@ -83,6 +88,10 @@ Caution: the <protocol> tag can be either in the I_xxxx file or the D_xxxx file 
 
 -- utility functions
 
+local function set_raw_blocksize (n)    -- 2019.01.25
+  RAW_BLOCKSIZE = n
+end
+  
 local function get_dev_and_socket (device)
   local devNo = tonumber (device) or scheduler.current_device()
   local dev = devNo and luup.devices [devNo] 
@@ -90,7 +99,7 @@ local function get_dev_and_socket (device)
 end
 
 local function read_raw (sock)
-  return sock: receive (1)             -- single byte only
+  return sock: receive (RAW_BLOCKSIZE)             -- single byte only
 end
 
 local function read_cr (sock)          -- 2016.11.09 
@@ -498,23 +507,27 @@ function server.new (config)
     end
     
     -- create the client object... a modified socket
-    local client = {                -- client object
-        ip = ip,                    -- ip address of the client
-        send    = function (_, ...) return sock:send(...)      end,
-        receive = function (_, ...) return sock:receive(...)   end,
+    -- 2019.03.17 __index() function allows ANY valid socket call to be used
+    local client = setmetatable ({            -- client object
+        ip = ip,                              -- ip address of the client
         closed = false,
-        close   = function (self, msg)        -- note optional log message cf. standard socket close
+        close  = function (self, msg)         -- note optional log message cf. standard socket close
           if not self.closed then
             self.closed = true
             local disconnect = "%s connection closed %s %s"
             _log (disconnect: format (name, msg or '', tostring(sock)))
-            scheduler.socket_unwatch (sock)       -- immediately stop watching for incoming
+            scheduler.socket_unwatch (sock)   -- immediately stop watching for incoming
             sock: close ()
           end
           expiry = 0             -- let the job timeout
         end,
-      }
-    setmetatable (client, {__tostring = function() return tostring(sock) end})   -- for pretty log
+      },{
+        __index = function (s, f) 
+            s[f] = function (_, ...) return sock[f] (sock, ...) end
+            return s[f]  -- it's there now, so no need to recreate it in future
+          end,
+        __tostring = function() return tostring(sock) end,   -- for pretty log
+      })
   
     do -- configure the socket
       expiry = socket.gettime () + idletime     -- set initial socket expiry 
@@ -581,6 +594,8 @@ end
 
 return {
   ABOUT = ABOUT,
+  
+  set_raw_blocksize = set_raw_blocksize,    -- 2019.01.25
   
   luupio = {                    -- this is the luup.io module as seen by the user       
     intercept     = intercept, 

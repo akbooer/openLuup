@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.03.14",
+  VERSION       = "2019.03.23",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -97,6 +97,8 @@ ABOUT = {
 --              see: http://forum.micasaverde.com/index.php/topic,118763.0.html
 -- 2019.01.26   add RemotePort to allow possible link to openLuup systems (thanks @DesT)
 -- 2019.03.12   start testing http.async_request()
+-- 2019.03.16   make generic action calls asynchronous (actual response was, anyway, ignored)
+-- 2019.03.18   add LoadTime variable derived from remote attributes
 
 
 local devNo                      -- our device number
@@ -109,13 +111,18 @@ local url       = require "socket.url"
 local lfs       = require "lfs"
 
 local ip                          -- remote machine ip address
-local POLL_DELAY = 5              -- number of seconds between remote polls
+
+-- these parameters are global, so can be externally access
+POLL_DELAY = 5              -- number of seconds between remote polls
+POLL_MINIMUM = 1500         -- minimum delay (ms) for async polling
+POLL_MAXIMUM = 30           -- maximum delay (s) ditto
 
 local local_room_index           -- bi-directional index of our rooms
 local remote_room_index          -- bi-directional of remote rooms
 
 local BuildVersion                -- ...of remote machine
 local PK_AccessPoint              -- ... ditto
+local LoadTime                    -- ... ditto
 
 local RemotePort                  -- port to access remote machine ("/port_3480" for Vera, ":3480" for openLuup)
 local AsyncPoll                   -- asynchronous polling
@@ -143,6 +150,12 @@ local VeraScenes, VeraRoom
 local BridgeScenes, CloneRooms, ZWaveOnly, Included, Excluded
 
 -- LUUP utility functions 
+
+local function debug (msg)
+  if ABOUT.DEBUG then
+    luup.log (msg)
+  end
+end
 
 local function getVar (name, service, device) 
   service = service or SID.gateway
@@ -188,6 +201,11 @@ end
 -- remote request to port_3480
 local function remote_request (request)    -- 2018.01.11
   return luup.inet.wget (table.concat {"http://", ip, RemotePort, request})
+end
+
+-- make either "1" or "true" work the same way
+local function logical_true (flag)
+  return flag == "1" or flag == "true"
 end
 
 
@@ -481,7 +499,7 @@ local function GetUserData ()
       end
     end
   end
-  return Ndev, Nscn, version, PK_AccessPoint
+  return Ndev, Nscn, version, PK_AccessPoint, Vera.LoadTime
 end
 
 -- MONITOR variables
@@ -556,6 +574,10 @@ do
       UpdateHouseMode (s.Mode)
       if s.devices and UpdateVariables (s.devices) then -- 2016.11.20 only update if any variable changes
         luup.devices[devNo]:variable_set (SID.gateway, "LastUpdate", os.time(), true) -- 2016.03.20 set without log entry
+        if s.LoadTime ~= LoadTime then                                                -- 2019.03.18 ditto
+          LoadTime = s.LoadTime
+          luup.devices[devNo]:variable_set (SID.gateway, "LoadTime", LoadTime, true)
+        end 
       end 
     end
     return ok
@@ -575,38 +597,29 @@ do
   -- 2019.03.14   long polling, this is the way that the lu_status request is supposed to be used     
 
   local uri = "%s%s%s/data_request?id=status2&output_format=json&MinimumDelay=%s&Timeout=%s&DataVersion=%s"
-  local log = "VeraBridge ASYNC callback status code: %s, data length: %s"
+  local log = "VeraBridge ASYNC callback status: %s, #data: %s"
   local erm = "VeraBridge ASYNC request: %s"
   
   function VeraBridge_async_callback (response, code, headers, statusline)
     
---      local tr, tc, th, ts = type(response), type(code), type(headers), type(statusline)
---      if not ((tr == "string") and (tc == "number") and (th == "table") and (ts == "string")) then
---      luup.log "ASYNC parameters"
---      luup.log ("code:       " .. (code or '?'))
---      luup.log ("statusline: " .. (statusline or '?'))
---      luup.log ("response:   " .. (string.sub (response or '',1,500)))
---      luup.log ("headers:    " .. (json.encode (headers) or '?'))
---      end
-    
-    luup.log (log: format (code or '?', #(response or '')))
+    debug (log: format (code or '?', #(response or '')))
     
     local ok, err = response == "INIT", "invalid JSON data received"
+    if ok then DataVersion = '' end                   -- ...reset our version baseline...  
 
     if code == 200 and headers and statusline then 
-      ok = update_from_status (response)    -- did we get valid data for update?
+      ok = update_from_status (response)              -- did we get valid data for update?
     end
     
     if ok then    -- carry on, and set up for next status request
       poll_count = (poll_count + 1) % 20            -- wrap every 20
       if poll_count == 0 then DataVersion = '' end  -- .. and go for the complete list (in case we missed any)
-      local url = uri: format ("http://", ip, RemotePort,     500, 30, DataVersion)  -- 500ms min, 30 max
+      local url = uri: format ("http://", ip, RemotePort, POLL_MINIMUM, POLL_MAXIMUM, DataVersion)
       ok, err = luup.openLuup.async_request (url, VeraBridge_async_callback)
     end
   
     if not ok then -- we will never be called again, unless we do something about it
       luup.log (erm: format (err or '?'))                                 -- report error...
-      DataVersion = ''                                                    -- ...reset our version baseline...  
       luup.call_delay ("VeraBridge_async_callback", POLL_DELAY, "INIT")   -- ...and reschedule ourselves to try again
     end
   end
@@ -801,7 +814,13 @@ local function generic_action (serviceId, name)
       request[#request+1] = table.concat {a, '=', b} 
     end
     local url = table.concat (request, '&')
-    wget (url)
+    
+    if logical_true(AsyncPoll) then
+      luup.openLuup.async_request (url, function() debug "RESPONSE (async)" end)
+      debug ("REQUEST (async) " .. url)
+    else
+      wget (url)
+    end
     return 4,0
   end
   
@@ -815,11 +834,6 @@ local function generic_action (serviceId, name)
   end
     
   return {job = job}    -- 2019.01.20
-end
-
--- make either "1" or "true" work the same way
-local function logical_true (flag)
-  return flag == "1" or flag == "true"
 end
 
 --------------
@@ -947,11 +961,12 @@ function init (lul_device)
   end
   
   local Ndev, Nscn
-  Ndev, Nscn, BuildVersion, PK_AccessPoint = GetUserData ()
+  Ndev, Nscn, BuildVersion, PK_AccessPoint, LoadTime = GetUserData ()
   
   if PK_AccessPoint then                          -- 2018.07.29   only start up when valid PK_AccessPoint
     setVar ("PK_AccessPoint", PK_AccessPoint)     -- 2018.06.04   Expose PK_AccessPoint as device variable
-
+    setVar ("LoadTime", LoadTime or 0)            -- 2019.03.18
+    
     setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
     setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
     
