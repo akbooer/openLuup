@@ -168,7 +168,6 @@ prefix = table.concat {
 ]]}
 ,
 
---postfix = [[<br/> <hr/> <pre>%c </pre><br/> </div></body></html>]]
 postfix = [[<footer><hr/><pre>%c</pre></footer> </div></body></html>]]
 
 }
@@ -216,10 +215,6 @@ function run (wsapi_env)
   local function status_number (n)
     if n ~= 200 then return red (n) end
     return n
-  end
-  
-  local function preformatted (x)
-    return {"<pre>", x, "</pre>"}
   end
   
   -- sort table list elements by first index, then number them in sequence
@@ -362,9 +357,11 @@ function run (wsapi_env)
     local t = html5.table ()
     t.header {"yyyy-mm-dd", "(kB)", "filename"}
     for _,f in ipairs (files) do 
-      local hyperlink = [[<a href="cgi-bin/cmh/backup.sh?retrieve=%s" download="%s">%s</a>]]
-      local name = hyperlink:format (f.name, f.name: gsub (".lzap$",'') .. ".json", f.name)
-      t.row {f.date, f.size, name} 
+      local hyperlink = html5.a {
+        href = "cgi-bin/cmh/backup.sh?retrieve="..f.name, 
+        download = f.name: gsub (".lzap$",'') .. ".json",
+        f.name}
+      t.row {f.date, f.size, hyperlink} 
     end
     return title ("Backup directory: " .. dir), tostring(t)
   end
@@ -582,19 +579,17 @@ function run (wsapi_env)
   
   local function images ()
     local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
-    
-    local option = '<a href="/images/%s" target="image">%s</a>'
     local t = html5.table ()
     t.header {'#', "filename"}
     for i,f in ipairs (files) do 
-      t.row {i, option: format (f.name, f.name)}
+      t.row {i, html5.a {href="/images/" .. f.name, target="image", f.name}}
     end
-    
-    return title "Images",
-      "<nav>",
-      tostring(t),
-      "</nav>",
-      [[<article><iframe name="image" width="50%" ></article>]]
+    local div = html5.div {
+        html5_title "Images",
+        html5.nav {t}, 
+        html5.article {[[<iframe name="image" width="50%" >]]},
+      }
+    return tostring(div)
   end
  
   local function trash ()
@@ -831,17 +826,17 @@ function run (wsapi_env)
     historian  = historian,
     parameters = parameters,
     
-    userdata = function (p, _)
-      return title "Userdata", preformatted (requests.user_data (_, p))
-    end,
+--    userdata = function (p, _)
+--      return title "Userdata", preformatted (requests.user_data (_, p))
+--    end,
     
-    status = function (p, _)
-      return title "Status", preformatted (requests.status (_, p))
-    end,
+--    status = function (p, _)
+--      return title "Status", preformatted (requests.status (_, p))
+--    end,
     
-    sdata = function (p, _)
-      return title "Sdata", preformatted (requests.sdata (_, p))
-    end,
+--    sdata = function (p, _)
+--      return title "Sdata", preformatted (requests.sdata (_, p))
+--    end,
     
   }
 

@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.03.23",
+  VERSION       = "2019.03.24",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -81,7 +81,7 @@ I've written a finder specifically for the dataMine database, to replace the exi
 local url       = require "socket.url"
 local luup      = require "openLuup.luup"
 local json      = require "openLuup.json"
-
+local vfs       = require "openLuup.virtualfilesystem"    -- for Graphite CSS
 local historian = require "openLuup.historian"
 local timers    = require "openLuup.timers"
 
@@ -490,6 +490,8 @@ local function svgRender (_, p)
       end
     end
     
+    if #T < 2 then return end
+    
     local tmin, tmax = T[1], T[#T]      -- times are sorted, so we know where to find min and max
     if tmin == tmax then tmax = tmax + 1 end
     
@@ -508,57 +510,55 @@ local function svgRender (_, p)
   for name, tv in target (p).next() do
     local T, V = scale (tv)
     
-  -- construct the data rows for plotting  
- 
     local s = html5.svg {
-      height="30%", 
-      width="90%",
-      viewBox= table.concat ({0, 0, Xscale, Yscale}, ' '),
-      preserveAspectRatio="none",
-      style="border: 1px dashed silver; margin-left: 5%; margin-right: 5%",
-    }
-    
-    local floor = math.floor
-    
-    local timeformat = "%d %b '%y %X"
-    local Tscale, Vscale = T.scale, V.scale
-    local Tmin, Vmin = T.min, V.min
-    local T1, V1 = T[1], V[1]
-    local T1_label = os.date (timeformat, T1)
-    local t1, v1 = floor ((T1-Tmin) * Tscale), floor((V1-Vmin) * Vscale)
-    for i = 2,#T do
-      local T2, V2 = T[i], V[i]
-      local t2, v2 = floor ((T2-Tmin) * Tscale), floor((V2-Vmin) * Vscale)
+        height="30%", 
+        width="90%",
+        viewBox= table.concat ({0, 0, Xscale, Yscale}, ' '),
+        preserveAspectRatio="none",
+        style="border: 1px dashed silver; margin-left: 5%; margin-right: 5%",
+      }
+
+    if not T then
       
-      local T2_label = os.date (timeformat, T2)
-      local title = table.concat {T1_label, ' - ', T2_label, '\n', name, ": ", V1}
-      local popup = s:title {title}
+      s:text (2000, Yscale/2, {"No Data",     -- TODO: move to external style sheet
+          style = "font-size:180pt; fill:Crimson; font-family:Arial; transform:scale(2,1)"} )
+    
+    else
+      -- construct the data rows for plotting  
+         
+      local floor = math.floor
       
-      s:rect (t1, Yscale-v1, t2-t1, v1, {class="bar", popup})
-      t1, v1, T1, V1, T1_label = t2, v2, T2, V2, T2_label
+      local timeformat = "%d %b '%y %X"
+      local Tscale, Vscale = T.scale, V.scale
+      local Tmin, Vmin = T.min, V.min
+      local T1, V1 = T[1], V[1]
+      local T1_label = os.date (timeformat, T1)
+      local t1, v1 = floor ((T1-Tmin) * Tscale), floor((V1-Vmin) * Vscale)
+      for i = 2,#T do
+        local T2, V2 = T[i], V[i]
+        local t2, v2 = floor ((T2-Tmin) * Tscale), floor((V2-Vmin) * Vscale)
+        
+        local T2_label = os.date (timeformat, T2)
+        local title = table.concat {T1_label, ' - ', T2_label, '\n', name, ": ", V1}
+        local popup = s:title {title}
+        
+        s:rect (t1, Yscale-v1, t2-t1, v1, {class="bar", popup})
+        t1, v1, T1, V1, T1_label = t2, v2, T2, V2, T2_label
+      end
     end
     
-    svgs[#svgs+1] = s
+    svgs[#svgs+1] = html5.div {html5.h4 {name, style="font-family: Arial;"}, s}
   end
   
   -- add the options  
-  local css = html5.style {[[
-    .bar {
-      cursor: crosshair;
-      font-family: Arial, sans-serif;
-    }
-    .bar:hover,
-    .bar:focus {
-      fill: DarkGray;
-    }
-    rect {fill:SteelBlue; stroke-width:0}
-  ]]}
+
+  local css = html5.style {vfs.read "openLuup_graphite.css"}
 
 --  if p.yMax or p.yMin then clip = {max = p.yMax, min = p.yMin} end
 --  if p.vtitle then vtitle = p.vtitle: gsub ('+',' ') end
 --  chartType = p.graphType or chartType    -- specified value overrides defaults
   local cpu = timers.cpu_clock ()
-  local doc = html5.document  {css, svgs[1] or ''}
+  local doc = html5.document  {css, html5.div (svgs)}
   cpu = timers.cpu_clock () - cpu
 --  local render = "render: CPU = %.3f mS for %dx%d=%d points"
   local render = "render: CPU = %.3f ms"

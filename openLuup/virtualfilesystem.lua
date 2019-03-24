@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.03.23",
+  VERSION       = "2019.03.24",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -1118,7 +1118,7 @@ local unknown_wsp = [[
 ]]
 
 --
--- Style sheet for console web pages
+-- Style sheets for console web pages
 --
 
 local console_css = [[
@@ -1183,6 +1183,13 @@ local console_css = [[
 
 ]]
 
+local graphite_css = [[
+  .bar {cursor: crosshair; }
+  .bar:hover, .bar:focus {fill: DarkGray; }
+  rect {fill:LightSteelBlue; stroke-width:3px; stroke:LightSteelBlue; }
+]]
+
+
 -----
 
 local manifest = {
@@ -1213,6 +1220,8 @@ local manifest = {
     
     ["index.html"]            = index_html,
     ["openLuup_console.css"]  = console_css,
+    ["openLuup_graphite.css"]  = graphite_css,
+    
     ["openLuup_reload"]       = openLuup_reload,
     ["openLuup_reload.bat"]   = openLuup_reload_bat,
 
