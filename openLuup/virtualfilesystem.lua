@@ -195,19 +195,6 @@ local I_openLuup_impl = [[
 
     <action>
       <serviceId>openLuup</serviceId>
-<<<<<<< HEAD
-      <name>Test</name>
-      <run>
-        luup.log "openLuup Test action called"
-        luup.variable_set ("openLuup", "Test", lul_settings.TestValue, lul_device)
-        luup.log "openLuup Test action completed"
-      </run>
-    </action>
-
-    <action>
-      <serviceId>openLuup</serviceId>
-=======
->>>>>>> upstream/development
       <name>SendToTrash</name>
       <job>
         SendToTrash (lul_settings)
