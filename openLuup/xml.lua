@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2018.05.15",
+  VERSION       = "2019.03.23",
   DESCRIPTION   = "XML DOM-style parser",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2018 AK Booer
+  Copyright 2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -80,6 +80,9 @@ but in the .nodeValue attribute of the element itself.  It seemed much easier th
 
 
 -- 2018.05.08  COMPLETE REWRITE - using DOM-style parser
+-- 2018.07.07  handle multiple string values in encode(), add compatible simplify()
+
+-- 2019.03.22  add HTML5 and SVG encoding
 
 
 -- this single metatable is attached to every node element to provide navigation methods
@@ -225,10 +228,13 @@ local function decode (xml)
   
 end
 
-
+----------------------------------------------------
+--
 -- encode(), input argument should be a table, optional wrapper gives name tag to whole structure
 -- Note that this function is NOT the inverse of decode() but operates on simple Lua tables
 -- to produce an adequate XML representation of request responses which are usually sent as JSON.
+-- It should, however, work on the output of simplify() (see below)
+-- TODO: handle attributes correctly from simplify()
 local function encode (Lua, wrapper)
   local xml = {}        -- or perhaps    {'<?xml version="1.0"?>\n'}
   local function p(x)
@@ -238,20 +244,24 @@ local function encode (Lua, wrapper)
   
   local function value (x, name, depth)
     local function spc ()  p ((' '):rep (2*depth)) end
-    local function atag () spc() ; p {'<', name,'>'} end
     local function ztag () p {'</',name:match "^[^%s]+",'>\n'} end
+    local function attr (x) for a,b in pairs(x or {}) do p {' ', a, '="', escape(b), '"'} end end
+    local function atag (x) spc() ; p {'<', name}; attr(x); p '>' end
     local function str (x) atag() ; p(escape (tostring(x): gsub("%s+", ' '))) ; ztag() end
     local function err (x) error ("xml: unsupported data type "..type (x)) end
     local function tbl (x)
       local y
       if #x == 0 then y = {x} else y = x end
       for _, z in ipairs (y) do
-        local i = {}
-        for a in pairs (z) do i[#i+1] = a end
-        table.sort (i, function (a,b) return tostring(a) < tostring (b) end)
-        if name then atag() ; p '\n' end
-        for _,a in ipairs (i) do value(z[a], a, depth+1) end
-        if name then spc() ; ztag() end
+        if type(z) == "string" then atag(z)    -- 2018.07.07 handle multiple string values
+        else
+          if name then atag(z._attr) ; p '\n' end
+          local i = {}
+          for a in pairs (z) do if a ~= "_attr" then i[#i+1] = a end end
+          table.sort (i, function (a,b) return tostring(a) < tostring (b) end)
+          for _,a in ipairs (i) do value(z[a], a, depth+1) end
+          if name then spc() ; ztag() end
+        end
       end
     end
     
@@ -266,16 +276,260 @@ local function encode (Lua, wrapper)
 end
 
 
+-- simplify(), this yields a structure which can be encoded into XML
+-- attributes on non-structured (string-only) elements are ignored
+local function simplify (x)
+  local children = {}
+  local function item (k,v)
+    local x = children[k] or {}
+    x[#x+1] = v
+    children[k] = x
+  end
+  for _,y in ipairs (x.childNodes or {}) do
+    item (y.nodeName, y.nodeValue or simplify(y))  -- what about attrs of node with nodeValue ???
+  end
+  for k,v in pairs (children) do
+    if #v == 1 then
+      if v._attr then 
+        -- problem here
+      else
+        v = v[1]       -- un-nest single element lists
+        if (type(v) == "table") and not next(v) then v = '' end   -- replace empty list with empty string        
+      end
+    children[k] = v
+    end
+  end
+  if next(x.attributes) then children._attr = x.attributes end
+  return children
+end
+
+
+----------------------------------------------------
+--
+-- 2019.03.22  encode Lua table as HTML element
+-- named items are attributes, list is contents (possibly other elements)
+-- element()
+--
+local function element (name, contents)
+    
+  local self = {}
+  for n,v in pairs (contents or {}) do self[n] = v end    -- shallow copy of contents
+    
+  local function _serialize (self, stream, depth)
+
+    local function is_element (v) return type (v) == "table" and v._serialize end
+    
+    stream = stream or {}
+    depth = depth or 0
+    local space = ' '
+    
+    local function p(x) 
+      local s = stream
+      local t = type (x)
+      if t ~= "table" or is_element (x) then
+        s[#s+1] = x 
+      else
+        for _,v in ipairs (x) do s[#s+1] = v end
+      end
+    end
+    
+    p {'\n', space: rep (depth), '<', name}
+    for n,v in pairs (self) do 
+      if type (n) == "string" then p {' ', n, '="', v, '"'} end
+    end
+    if #self == 0 then
+      p '/>'
+    else
+      p '>'
+      for _,v in ipairs (self) do
+        if is_element (v) then v: _serialize (stream, depth+1) else p (v) end
+      end
+      p {'</', name, '>'}
+    end
+    return stream
+  end
+  
+  local meta
+  meta = {
+    __index = {
+      _name = name,
+      _serialize = _serialize,
+    },
+    __tostring = function (self) return table.concat (self:_serialize ()) end,
+  }
+  
+  meta.__index._method = meta.__index     -- usage:  function svg._method:my_method(...) ... end 
+
+  return setmetatable (self, meta)
+
+end
+
+
+----------------------------------------------------
+--
+-- 2019.03.22  HTML and SVG
+--
+
+local html5 = {element = element}
+
+-- structural tags
+
+local tags = {"a", "article", "aside", "body", "br", "details", "div", "footer", 
+  "header", "hgroup", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr", "html", "nav",
+  "p", "section", "span", "summary", 
+
+-- metadata
+
+  "base", "basefont", 	"link", "meta", "style", "title",
+}
+
+for _, name in ipairs (tags) do
+  html5[name] = function(contents) return element(name, contents) end
+end
+  
+--
+-- tables
+--
+
+function html5.table (attr)
+  
+  local tbl = element ("table", attr)
+  
+  local rows = 0
+  
+  local function make_row (typ, r)
+    local items = {}
+    for _, x in ipairs (r or {}) do
+      local y
+      if type(x) ~= "table" or x._name then
+        y = element (typ, {x})
+      else
+        y = element (typ, x)  -- else it's got some attributes
+      end
+      items[#items+1] = y 
+    end
+    local tr = element ("tr", items)
+    tbl[#tbl+1] = tr
+    return tr
+  end
+      
+  -- add specific constructors and other methods
+  -- not that these can be called with colon (:) or dot (.) notation for compatibility
+  
+  function tbl._method.header (h1, h2) return make_row ("th", h2 or h1) end  
+  function tbl._method.row (r1, r2)    rows = rows + 1; return make_row ("td", r2 or r1) end
+  function tbl._method.length ()        return rows end
+  
+  return tbl
+end
+
+--
+-- SVG: Scalable Vector Graphics
+--
+
+local function add_svg_functions (svg)
+    
+  local function add_props (s, props)
+    for n,v in pairs (props or {}) do s[n] = v end
+    return s
+  end
+  
+  local function add_to (p, e)
+    p[#p+1] = e
+    return e
+  end
+  
+  local function coords (xs,ys)
+    local poly = {}
+    local coord = "%0.1f,%0.1f "
+    for i , x in ipairs(xs) do
+      poly[i] = coord: format(x, ys[i])
+    end
+    return table.concat (poly)
+  end
+  
+  function svg._method:polyline (xs,ys, props)
+    return add_to (self, element ("polyline", add_props ({points=coords (xs,ys)}, props)))
+  end
+  
+  function svg._method:polygon (xs,ys, props)
+    return add_to (self, element ("polygon", add_props ({points=coords (xs,ys)}, props)))
+  end
+  
+  function svg._method:rect (x,y, width,height, props)
+    return add_to (self, element ("rect", add_props ({x = x, y = y, width = width, height = height}, props)))
+  end
+  
+  svg._method.rectangle = svg._method.rect   -- add method alias
+  
+  -- circle
+  function svg._method:circle (cx,cy, radius, props)
+    return add_to (self, element ("circle", add_props ({cx = cx, cy = cy, r = radius}, props)))
+  end
+  
+  -- ellipse
+  
+  -- line
+  function svg._method:line (x1,y1, x2,y2, props)
+    return add_to (self, element ("line", add_props ({x = x1, y = y1, x2 = x2, y2 = y2}, props)))
+  end
+  
+  -- path
+  
+  -- text
+  function svg._method:text (x,y, txt)
+    if type (txt) == "string," then txt = {txt} end
+    return add_to (self, element ("text", add_props ({x = x, y = y}, txt)))
+  end
+  
+  -- group
+  function svg._method:group (attr)  
+    local g = element ("g", attr)  
+    add_svg_functions(g)
+    return g
+  end
+  
+  svg._method.g = svg._method.group   -- add method alias
+  
+  -- not automatically added to SVG element
+  function svg._method:title (attr)
+    return element ("title", attr)
+  end
+  
+end
+
+
+function html5.svg (attr)    
+  local svg = element ("svg", attr)  
+  add_svg_functions(svg)
+  return svg
+end
+
+function html5.document (contents)
+  local doc = element ("html", contents)
+  return tostring(doc)
+end
+
+-------------------------------------
+
+
 return {
+    
+    -- XML
     
     escape    = escape,
     unescape  = unescape,
     
     decode    = decode, 
     encode    = encode,
+    simplify  = simplify,
     
     documentElement = documentElement,
     
+    -- 2019.03.22   HTML5 and SVG
+    
+    html5 = html5,
+
   }
 
 -----

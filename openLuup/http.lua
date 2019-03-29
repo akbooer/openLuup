@@ -82,7 +82,7 @@ local ABOUT = {
 -- 2018.07.06   catch any error in servlet response iterator
 
 -- 2019.01.14   fix possible missing post_content in parameter decoding
--- 2019.03.12   fix permanent modifcation of schema.TIMEOUT parameter
+-- 2019.03.12   fix permanent modification of schema.TIMEOUT parameter
 -- 2019.03.14   add async_request()
 
 
@@ -579,7 +579,8 @@ end
       --
       -------------------------------------------
       
-      if ok then scheduler.socket_watch (h.c, callback_handler, nil, "VERA") end
+      -- could include nreqt.host
+      if ok then scheduler.socket_watch (h.c, callback_handler, nil, nreqt.scheme: upper()) end    -- TODO: username parameter
       return ok, err
 
     end
@@ -797,7 +798,7 @@ local function HTTPservlet (client)
   local function incoming ()
     local request, err = receive (client)                         -- get the request         
     if not err then
-      local err, msg, jobNo = servlet.execute (request, respond)  --  returns are as for scheduler.run_job ()
+      local err, msg, jobNo = servlet.execute (request, respond)  -- returns are as for scheduler.run_job ()
       local _, _, _ = err, msg, jobNo                             -- unused, at present
     else 
       client: close (ABOUT.NAME.. ".incoming " .. err)

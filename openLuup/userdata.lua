@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.02.02",
+  VERSION       = "2019.03.18",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -58,7 +58,8 @@ local ABOUT = {
 -- 2018.05.29   added device (sub)category (thanks @rafale77)
 -- 2018.06.26   remove DataYour from default plugins list
 
--- 2019.02.02  add device file manufacturer and model name (thanks @rigpapa)
+-- 2019.02.02   add device file manufacturer and model name (thanks @rigpapa)
+-- 2019.03.18   change default currency to GBP
 
 
 local json    = require "openLuup.json"
@@ -135,7 +136,7 @@ luup.log "startup code completed"
 --  Using_2G = 0,
 --  breach_delay = "30",
 --  category_filter = {},
-  currency = "£",
+  currency = "GBP",
   date_format = "dd/mm/yy",
 --  device_sync = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21",
 --  devices = {},

@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.02.13",
+  VERSION       = "2019.03.24",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -42,6 +42,8 @@ ABOUT = {
 -- 2018.07.03  add alias(), aliasByMetric(), aliasByNode() to /render?target=... syntax
 
 -- 2019.02.08  debug from/until times
+-- 2019.03.22  abandon Google Charts in favour of simple SVG, that works offline
+
 
 -- CGI implementation of Graphite API
 
@@ -79,9 +81,11 @@ I've written a finder specifically for the dataMine database, to replace the exi
 local url       = require "socket.url"
 local luup      = require "openLuup.luup"
 local json      = require "openLuup.json"
-
+local vfs       = require "openLuup.virtualfilesystem"    -- for Graphite CSS
 local historian = require "openLuup.historian"
 local timers    = require "openLuup.timers"
+
+local html5     = require "openLuup.xml" .html5
 
 local isFinders, finders = pcall (require, "L_DataFinders")  -- only present if DataYours there
 
@@ -117,226 +121,9 @@ end
 
 -----------------------------------
 --
--- GoogleCharts API
+-- SVG plotting
 --
 
-local function Gviz ()
-
-  ----------
-  --
-  -- This Lua package is an API to a subset of the google.visualization javascript library.
-  -- see:  https://google-developers.appspot.com/chart/interactive/docs/index
-  -- also: https://developers.google.com/chart/interactive/docs/gallery/controls
-
-  -- 2016.07.01   Google Charts API changes broke old code!
-  -- 2018.07.08   clone array elements in addRow()
-  
-  local version = "2016.07.01  @akbooer"
-
-  local key
-  local quote, equote, nowt = "'", '', 'null' 
-  local old = "[\"'\\\b\f\n\r\t]"
-  local new = { ['"']  = '\\"', ["'"]="\\'", ['\b']="\\b", ['\f']="\\f", ['\n']="\\n", ['\r']="\\r", ['\t']="\\t"}
-
---  local string_char = string.char
-
-  local function null     ( ) return nowt end 
-  local function user     (x) return x () end 
-  local function boolean  (x) return tostring (x) end
-  local function number   (x) return tostring (x) or nowt end
-  local function string   (x, sep) 
-    sep = sep or quote
-    x = tostring(x)
-    return table.concat {sep, x: gsub (old, new), sep} 
-  end
-  local function clone (x)
-    local y = {}
-    for k,v in pairs (x) do y[k] = v end
-    return y
-  end
-
-  -- toJScr() convert Lua data structures to JavaScript
-  local function toJScr (Lua)
-    local lua_type    
-    local function value (x) return lua_type [type (x)] (x) end
-    local function array (x, X) for i = 1, #x do X[i] = value (x[i]) end; return '['..table.concat(X,',')..']' end
-    local function object (x, X) for i,j in pairs (x) do X[#X+1] = string(i, equote)..':'..value (j) end; return '{'..table.concat(X,',')..'}'; end
-    local function object_or_array (x) if #x > 0 then return array (x, {}) else return object (x, {}) end; end
-    lua_type = {table = object_or_array, string = string, number = number, boolean = boolean, ["nil"] = null, ["function"] = user}  
-    return value (Lua)
-  end
-
-  -- DataTable (), fundamental data type for charts
-  local function DataTable ()
-    local cols, rows = {}, {}
-
-    local function formatDate    (x) return table.concat {"new Date (", x*1e3, ")"} end
-    local function formatTime    (x) local t = os.date ("*t", x); return table.concat {"[", t.hour, ",", t.min, ",", t.sec, "]"} end
-
-    local format = {boolean = boolean, string = string, number = number, 
-            date = formatDate, datetime = formatDate, timeofday = formatTime}
-
-    local function getNumberOfColumns () return #cols end
-    local function getNumberOfRows () return #rows end
-    local function addRow (row) rows[#rows+1] = clone(row) end -- should clone?  2018.07.08... yes!!
-    local function addRows (rows) for _,row in ipairs (rows) do addRow (row) end; end
-    local function addColumn (tableOrType, label, id) 
-      local info = {}
-      if type (tableOrType) ~= "table" 
-        then info = {type = tableOrType, label = label, id = id}  -- make a table, or...
-        else for i,j in pairs (tableOrType) do info[i] = j end    -- ...make a copy
-      end
-      if format[info.type] 
-        then cols[#cols+1] = info 
-        else error (("unsupported column type '%s' in DataTable"): format (info.type or '?'), 2) end
-    end
-    local function setValue (row, col, value) rows[row][col] = value end
-
-    local function sort (col) -- unlike JavaScript, we start column number at 1 in Lua
-      local desc = false
-      local function ascending  (a,b) return a[col] < b[col] end  -- TODO: cope with tables (formats and properties)
-      local function descending (a,b) return a[col] > b[col] end
-      if type (col) == "table" then
-        desc = col.desc or desc
-        col = col.column
-      end
-      if desc 
-        then table.sort (rows, descending)
-        else table.sort (rows, ascending)
-      end
-    end
-    
-    
-    local function toJavaScript (buffer)
-      local b = buffer or {}
-      local function p (x) b[#b+1] = x end
-      local formatter = {}
-      for i,col in ipairs (cols) do formatter[i] = format[col.type] end
-      p "\n{cols: "; p (toJScr (cols))
-      p ",\nrows: [\n"
-      for n,row in ipairs (rows) do
-        if n > 1 then p ',\n' end
-        p "{c:["
-        for i,f in ipairs (formatter) do 
-          if i > 1 then p ',' end
-          p '{v: '
-          local v = row[i] or nowt
-          if type(v) == "table" then
-            p (f(v.v))
-            p ', f: '
-            p (string(v.f))
-          elseif v == nowt then 
-            p (nowt) 
-          else
-            p (f(v))
-          end 
-          p '}'
-        end
-        p "]}"
-      end
-      p "]\n}"
-      if not buffer then return table.concat (b) end
-    end
-
-    return  {toJScr = toJavaScript, addColumn = addColumn, addRow = addRow, addRows = addRows,  
-            getNumberOfColumns = getNumberOfColumns, getNumberOfRows = getNumberOfRows, 
-            setValue = setValue, sort = sort}
-  end
-
-  -- JavaScript() concatentate string buffers and macros into valid script
-  local function JavaScript(S)
-    local b= {}
-    for _, x in ipairs (S) do
-       if type (x) == "function" then x(b) else b[#b+1] = x end
-       b[#b+1] = '\n' 
-    end
-    return table.concat (b)
-   end  
-
-  -- ChartWrapper ()
-  local function ChartWrapper (this)
-    this = this or {}
-    local function draw (extras)  
-      extras = extras or ''
-      local t = os.clock ()       
-      local id   = this.containerId  or "gVizDiv"
-      local opts = {options = this.options or {}, chartType = this.chartType, containerId = id}
-
-      local html = JavaScript {[[
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
-    <script type="text/javascript">
-      google.charts.load('current', {'packages':['corechart', 'table', 'treemap']});
-      google.charts.setOnLoadCallback(gViz);
-      function gViz() {
-          var w = new google.visualization.ChartWrapper(]], toJScr (opts), [[);
-          var data = new google.visualization.DataTable(]], this.dataTable.toJScr, [[);
-          w.setDataTable(data);
-          w.draw();]],
-          extras, [[
-        }
-    </script>
-  </head>
-  <body><div id=]], toJScr(id), [[></div></body>
-</html>
-]]}
-      t = (os.clock() - t) * 1e3
-      if luup then luup.log (
-        ("visualization: %s(%dx%d) %dkB in %dmS"): format (this.chartType,  
-                this.dataTable.getNumberOfRows(), this.dataTable.getNumberOfColumns(), 
-                math.floor(#html/1e3 + 0.5), math.floor(t+0.5) )) end
-      return html
-    end 
-
-    return {
-      draw = draw,
-      setOptions    = function (x) this.options = x   end,
-      setChartType  = function (x) this.chartType = x   end,
-      setContainerId  = function (x) this.containerId = x end,
-      setDataTable  = function (x) this.dataTable = x   end,
-      }
-  end
-
-  -- Chart (), generic Chart object
-  local function Chart (chartType)
-    local this = ChartWrapper {chartType = chartType}
-    local function draw (dataTable, options, extras, head, body)  
-      this.setDataTable (dataTable)
-      this.setOptions (options)
-      return this.draw (extras, head, body)
-    end 
-    return {draw = draw}
-  end
-
-  -- Methods
-
-  return {
-
-    Version      = version,
-
-    Chart        = Chart,
-    DataTable    = DataTable,
-    ChartWrapper = ChartWrapper,
-    setKey       = function (x) key = x end,
-    Table        = function () return Chart "Table"         end,
-    Gauge        = function () return Chart "Gauge"         end,
-    TreeMap      = function () return Chart "TreeMap"       end,
-    BarChart     = function () return Chart "BarChart"      end,
-    LineChart    = function () return Chart "LineChart"     end,
-    ColumnChart  = function () return Chart "ColumnChart"   end,
-    AreaChart    = function () return Chart "AreaChart"     end,
-    PieChart     = function () return Chart "PieChart"      end,
-    ScatterChart = function () return Chart "ScatterChart"  end,
-    OrgChart     = function () return Chart "OrgChart"      end,
-  }
-
-end
-
-local gviz = Gviz()   -- create an instance of the Google Charts API
 
 -----------------------------------
 
@@ -527,7 +314,7 @@ The target parameter specifies a path identifying one or several metrics, option
 
 --[[
 
-TODO: aliases...
+Aliases...
 
 
 alias(seriesList, newName)
@@ -550,7 +337,7 @@ aliasByNode(seriesList, *nodes)
 
     &target=aliasByNode(ganglia.*.cpu.load5,1)
 
-aliasSub(seriesList, search, replace)
+TODO: aliasSub(seriesList, search, replace)
 
     Runs series names through a regex search/replace.
 
@@ -663,7 +450,7 @@ end
 
 -----------------------------------
 --
---  SVG render using Google Charts
+--  SVG render
 
 -- plotting options - just a subset of the full Graphite Webapp set
 -- see: http://graphite.readthedocs.org/en/latest/render_api.html
@@ -677,87 +464,106 @@ end
 -- bgcolor:     background colour
 -- areaAlpha:   opacity of area fill
 -- &colorList=green,yellow,orange,red,purple,#DECAFF
+--]]
+
 
 local function svgRender (_, p)
   --  return "[]", 200, {["Content-Type"] = "application/json"}
   -- An empty response is just sufficient for Grafana to recognise that a 
   -- graphite_api server is available, thereafter it uses its own rendering.
-  -- but using Google Charts, we can do better: a simple staircase, ignoring nulls.
+  -- but we can do better with a simple SVG plot.
   -- note: this svg format does not include Graphite's embedded metadata object
+  local Xscale, Yscale = 10000, 1000    -- SVG viewport scale
   
-  local data = gviz.DataTable ()
-  data.addColumn('datetime', 'Time');
-  local m, n = 0, 0
-  
-  -- fetch the data
-  local row = {}   -- rows indexed by time
-  local title = {}
-  for name, tv in target (p).next() do
-    title[#title+1] = name
-    n = n + 1
-    local col = n + 1
-    data.addColumn('number', name);        
-    for _, v,t in tv:ipairs() do
-      t = math.floor(t)                             -- nearest second will do
-      row[t] = row[t] or {t}                        -- create the row if it doesn't exist
-      row[t][col] = v                               -- fill in the column
+  -- scale tv structure given array 0-1 to min/max of series
+  local function scale (tv)
+    local V, T = {}, {}
+    local vmin, vmax = 0, 1
+    local fmin, fmax = math.min, math.max
+    
+    for _,v,t in tv:ipairs() do
+      if v then
+        T[#T+1] = t
+        V[#V+1] = v
+        vmax = fmax (vmax, v or vmax)
+        vmin = fmin (vmin, v or vmin)
+      end
     end
+    
+    if #T < 2 then return end
+    
+    local tmin, tmax = T[1], T[#T]      -- times are sorted, so we know where to find min and max
+    if tmin == tmax then tmax = tmax + 1 end
+    
+    T.scale = Xscale / (tmax - tmin)
+    V.scale = Yscale / (vmax - vmin)
+     
+    T.min, T.max = tmin, tmax
+    V.min, V.max = vmin, vmax
+    return T, V
   end
+    
+  -- fetch the data
   
-  -- sort the time axes  
-  local index = {}
-  for t in pairs(row) do index[#index+1] = t end    -- list all the time values
-  table.sort(index)                                 -- sort them
-  m = #index
+  local svgs = {}   -- separate SVGs for multiple plots
   
-  -- construct the data rows for plotting  
-  local col = n+1
-  local value = {}
---  local staircase = true
-  for _,t in ipairs(index) do
---    if staircase then
-      value[1] = t                                   -- change the time
-      data.addRow (value)
---    end
-    local v = row[t]
-    for i = 1,col do value[i] = v[i] or value[i] end  -- fill in missing values
-    data.addRow (value)
+  for name, tv in target (p).next() do
+    local T, V = scale (tv)
+    
+    local s = html5.svg {
+        height="30%", 
+        width="90%",
+        viewBox= table.concat ({0, 0, Xscale, Yscale}, ' '),
+        preserveAspectRatio="none",
+        style="border: 1px dashed silver; margin-left: 5%; margin-right: 5%",
+      }
+
+    if not T then
+      
+      s:text (2000, Yscale/2, {"No Data",     -- TODO: move to external style sheet
+          style = "font-size:180pt; fill:Crimson; font-family:Arial; transform:scale(2,1)"} )
+    
+    else
+      -- construct the data rows for plotting  
+         
+      local floor = math.floor
+      
+      local timeformat = "%d %b '%y %X"
+      local Tscale, Vscale = T.scale, V.scale
+      local Tmin, Vmin = T.min, V.min
+      local T1, V1 = T[1], V[1]
+      local T1_label = os.date (timeformat, T1)
+      local t1, v1 = floor ((T1-Tmin) * Tscale), floor((V1-Vmin) * Vscale)
+      for i = 2,#T do
+        local T2, V2 = T[i], V[i]
+        local t2, v2 = floor ((T2-Tmin) * Tscale), floor((V2-Vmin) * Vscale)
+        
+        local T2_label = os.date (timeformat, T2)
+        local title = table.concat {T1_label, ' - ', T2_label, '\n', name, ": ", V1}
+        local popup = s:title {title}
+        
+        s:rect (t1, Yscale-v1, t2-t1, v1, {class="bar", popup})
+        t1, v1, T1, V1, T1_label = t2, v2, T2, V2, T2_label
+      end
+    end
+    
+    svgs[#svgs+1] = html5.div {html5.h4 {name, style="font-family: Arial;"}, s}
   end
   
   -- add the options  
-  local legend = "none"
-  local areaOpacity
-  if p.areaMode == "all" then areaOpacity = p.areaAlpha or 0.3 end
-  if p.hideLegend == "false" then legend = 'bottom' end
-  title = p.title or table.concat (title, ', ')
-  local opt = {
-    title = title, 
-    height = p.height or 500, 
-    width = p.width, 
-    legend = legend, 
---    interpolateNulls = "true", 
-    areaOpacity = areaOpacity,
-    backgroundColor = p.bgcolor,
--- HTML color string, for example: colors:['red','#004411']
---    explorer = {},    -- add interactivity!
-  }  
 
-  local clip, vtitle
-  if p.yMax or p.yMin then clip = {max = p.yMax, min = p.yMin} end
-  if p.vtitle then vtitle = p.vtitle: gsub ('+',' ') end
-  opt.vAxis = {title = vtitle, viewWindow = clip }
---  opt.crosshair = {trigger="selection", orientation = "vertical"}       -- or trigger = "focus"
+  local css = html5.style {vfs.read "openLuup_graphite.css"}
 
-  local chartType = "LineChart"
-  if p.areaMode and (p.areaMode ~= "none") then chartType = "AreaChart" end
-  chartType = p.graphType or chartType    -- specified value overrides defaults
+--  if p.yMax or p.yMin then clip = {max = p.yMax, min = p.yMin} end
+--  if p.vtitle then vtitle = p.vtitle: gsub ('+',' ') end
+--  chartType = p.graphType or chartType    -- specified value overrides defaults
   local cpu = timers.cpu_clock ()
-  local chart = gviz.Chart (chartType)
-  local status = chart.draw (data, opt)
+  local doc = html5.document  {css, html5.div (svgs)}
   cpu = timers.cpu_clock () - cpu
-  local render = "render: CPU = %.3f mS for %dx%d=%d points"
-  _debug (render: format (cpu*1e3, n, m, n*m))
-  return status, 200, {["Content-Type"] = "text/html"}
+--  local render = "render: CPU = %.3f mS for %dx%d=%d points"
+  local render = "render: CPU = %.3f ms"
+  _debug (render: format (cpu*1e3))
+  return doc, 200, {["Content-Type"] = "text/html"}
 end
 
 -----------------------------------

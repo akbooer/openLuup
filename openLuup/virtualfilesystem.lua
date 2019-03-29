@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.01.29",
+  VERSION       = "2019.03.24",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -195,6 +195,7 @@ local I_openLuup_impl = [[
 
     <action>
       <serviceId>openLuup</serviceId>
+<<<<<<< HEAD
       <name>Test</name>
       <run>
         luup.log "openLuup Test action called"
@@ -205,6 +206,8 @@ local I_openLuup_impl = [[
 
     <action>
       <serviceId>openLuup</serviceId>
+=======
+>>>>>>> upstream/development
       <name>SendToTrash</name>
       <job>
         SendToTrash (lul_settings)
@@ -249,22 +252,6 @@ local S_openLuup_svc = [[
     <minor>0</minor>
   </specVersion>
   <actionList>
-
-    <action>
-      <name>Test</name>
-      <argumentList>
-        <argument>
-          <name>TestValue</name>
-          <direction>in</direction>
-          <relatedStateVariable>Test</relatedStateVariable>
-        </argument>
-        <argument>
-          <name>ReturnValue</name>
-          <direction>out</direction>
-          <relatedStateVariable>Test</relatedStateVariable>
-        </argument>
-      </argumentList>
-    </action>
 
     <action>
       <name>SendToTrash</name>
@@ -1189,7 +1176,7 @@ local unknown_wsp = [[
 ]]
 
 --
--- Style sheet for console web pages
+-- Style sheets for console web pages
 --
 
 local console_css = [[
@@ -1254,6 +1241,13 @@ local console_css = [[
 
 ]]
 
+local graphite_css = [[
+  .bar {cursor: crosshair; }
+  .bar:hover, .bar:focus {fill: DarkGray; }
+  rect {fill:LightSteelBlue; stroke-width:3px; stroke:LightSteelBlue; }
+]]
+
+
 -----
 
 local manifest = {
@@ -1284,6 +1278,8 @@ local manifest = {
 
     ["index.html"]            = index_html,
     ["openLuup_console.css"]  = console_css,
+    ["openLuup_graphite.css"]  = graphite_css,
+    
     ["openLuup_reload"]       = openLuup_reload,
     ["openLuup_reload.bat"]   = openLuup_reload_bat,
 
