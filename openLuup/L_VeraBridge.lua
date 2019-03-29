@@ -151,9 +151,6 @@ local BridgeScenes, CloneRooms, ZWaveOnly, Included, Excluded
 
 -- LUUP utility functions
 
-<<<<<<< HEAD
-local function getVar (name, service, device)
-=======
 local function debug (msg)
   if ABOUT.DEBUG then
     luup.log (msg)
@@ -161,7 +158,6 @@ local function debug (msg)
 end
 
 local function getVar (name, service, device) 
->>>>>>> upstream/development
   service = service or SID.gateway
   device = device or devNo
   local x = luup.variable_get (service, name, device)
@@ -964,13 +960,7 @@ function init (lul_device)
   end
 
   local Ndev, Nscn
-<<<<<<< HEAD
-  Ndev, Nscn, BuildVersion, PK_AccessPoint = GetUserData ()
-
-=======
   Ndev, Nscn, BuildVersion, PK_AccessPoint, LoadTime = GetUserData ()
-  
->>>>>>> upstream/development
   if PK_AccessPoint then                          -- 2018.07.29   only start up when valid PK_AccessPoint
     setVar ("PK_AccessPoint", PK_AccessPoint)     -- 2018.06.04   Expose PK_AccessPoint as device variable
     setVar ("LoadTime", LoadTime or 0)            -- 2019.03.18
