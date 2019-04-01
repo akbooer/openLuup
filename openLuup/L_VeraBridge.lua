@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.03.23",
+  VERSION       = "2019.03.31",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -99,6 +99,7 @@ ABOUT = {
 -- 2019.03.12   start testing http.async_request()
 -- 2019.03.16   make generic action calls asynchronous (actual response was, anyway, ignored)
 -- 2019.03.18   add LoadTime variable derived from remote attributes
+-- 2019.03.31   abandon MinimumTime for async status and use call_delay (trying to reduce rate of hitting Vera requests)
 
 
 local devNo                      -- our device number
@@ -114,7 +115,7 @@ local ip                          -- remote machine ip address
 
 -- these parameters are global, so can be externally access
 POLL_DELAY = 5              -- number of seconds between remote polls
-POLL_MINIMUM = 1500         -- minimum delay (ms) for async polling
+POLL_MINIMUM = 1.5          -- minimum delay (s) for async polling
 POLL_MAXIMUM = 30           -- maximum delay (s) ditto
 
 local local_room_index           -- bi-directional index of our rooms
@@ -583,6 +584,11 @@ do
     return ok
   end
   
+--  local uri = "%s%s%s/data_request?id=status2&output_format=json&MinimumDelay=%s&Timeout=%s&DataVersion=%s"
+  local uri = "%s%s%s/data_request?id=status2&output_format=json&Timeout=%s&DataVersion=%s"
+  local log = "VeraBridge ASYNC callback status: %s, #data: %s"
+  local erm = "VeraBridge ASYNC request: %s"
+  
   -- original short polling
   
   function VeraBridge_delay_callback ()
@@ -596,33 +602,33 @@ do
 
   -- 2019.03.14   long polling, this is the way that the lu_status request is supposed to be used     
 
-  local uri = "%s%s%s/data_request?id=status2&output_format=json&MinimumDelay=%s&Timeout=%s&DataVersion=%s"
-  local log = "VeraBridge ASYNC callback status: %s, #data: %s"
-  local erm = "VeraBridge ASYNC request: %s"
-  
-  function VeraBridge_async_callback (response, code, headers, statusline)
+  function VeraBridge_async_request (init)
+    poll_count = (poll_count + 1) % 20                                    -- wrap every 20 ...
+    if init == "INIT" or poll_count == 0 then DataVersion = '' end        -- .. and go for the complete list 
     
-    debug (log: format (code or '?', #(response or '')))
-    
-    local ok, err = response == "INIT", "invalid JSON data received"
-    if ok then DataVersion = '' end                   -- ...reset our version baseline...  
-
-    if code == 200 and headers and statusline then 
-      ok = update_from_status (response)              -- did we get valid data for update?
-    end
-    
-    if ok then    -- carry on, and set up for next status request
-      poll_count = (poll_count + 1) % 20            -- wrap every 20
-      if poll_count == 0 then DataVersion = '' end  -- .. and go for the complete list (in case we missed any)
-      local url = uri: format ("http://", ip, RemotePort, POLL_MINIMUM, POLL_MAXIMUM, DataVersion)
-      ok, err = luup.openLuup.async_request (url, VeraBridge_async_callback)
-    end
+    local url = uri: format ("http://", ip, RemotePort, POLL_MAXIMUM, DataVersion)
+    local ok, err = luup.openLuup.async_request (url, VeraBridge_async_callback)
   
     if not ok then -- we will never be called again, unless we do something about it
-      luup.log (erm: format (err or '?'))                                 -- report error...
-      luup.call_delay ("VeraBridge_async_callback", POLL_DELAY, "INIT")   -- ...and reschedule ourselves to try again
+      luup.log (erm: format (tostring(err)))                              -- report error...
+      luup.call_delay ("VeraBridge_async_request", POLL_DELAY, "INIT")    -- ...and reschedule ourselves to try again
     end
   end
+  
+  function VeraBridge_async_callback (response, code, headers, statusline)
+    local delay = POLL_DELAY
+    local init = "INIT"           -- assume the worst
+    if code == 200 and headers and statusline then 
+      local ok = update_from_status (response)              -- did we get valid data for update?
+      if ok then 
+        delay = POLL_MINIMUM end                    -- yes, ask for another one soon...
+        init = ''                                   -- ... without initialising data version
+    else
+      luup.log (log: format (code or '?', #(response or '')))
+    end
+    luup.call_delay ("VeraBridge_async_request", delay, init)    -- schedule next request
+  end
+
 end
 
 -- find other bridges in order to establish base device number for cloned devices
@@ -972,7 +978,7 @@ function init (lul_device)
     
     if Ndev > 0 or Nscn > 0 then
       if logical_true (AsyncPoll) then
-        VeraBridge_async_callback "INIT"
+        VeraBridge_async_request "INIT"
       else
         VeraBridge_delay_callback ()
       end

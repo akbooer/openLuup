@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2019.03.14",
+  VERSION       = "2019.03.26",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -433,7 +433,7 @@ end
 
 -- async_request (u, b, callback) or (u, callback) where 'u' may table or string
   local function async_request (u, b, callback)
-    local simple_string   -- used to concatentae responses of 'simple' string-type url requests
+    local simple_string   -- used to concatenate responses of 'simple' string-type url requests
     local base = _G
 
     -- create() function returns a proxy socket which mirrors all the actual socket methods
