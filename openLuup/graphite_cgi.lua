@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.03.24",
+  VERSION       = "2019.04.03",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -43,6 +43,7 @@ ABOUT = {
 
 -- 2019.02.08  debug from/until times
 -- 2019.03.22  abandon Google Charts in favour of simple SVG, that works offline
+-- 2019.04.03  add "startup" as valid time option (for console historian plots)
 
 
 -- CGI implementation of Graphite API
@@ -115,6 +116,7 @@ local function relativeTime  (time, now)     -- Graphite Render URL syntax, rela
 end
 
 local function getTime (time)                        -- convert relative or ISO 8601 times as necessary
+  if time == "startup" then return timers.loadtime end    -- 2019.04.03
   if time then return relativeTime (time) or timers.util.ISOdate2epoch (time) end
 end
 
@@ -450,6 +452,58 @@ end
 
 -----------------------------------
 --
+
+local function makeYaxis(yMin, yMax, ticks)
+--[[
+  converted from PHP here: http://code.i-harness.com/en/q/4fc17
+  
+  // This routine creates the Y axis values for a graph.
+  //
+  // Calculate Min amd Max graphical labels and graph
+  // increments.  The number of ticks defaults to
+  // 10 which is the SUGGESTED value.  Any tick value
+  // entered is used as a suggested value which is
+  // adjusted to be a 'pretty' value.
+  //
+  // Output will be an array of the Y axis values that
+  // encompass the Y values.
+--]]
+
+  ticks = ticks or 10
+  ticks = math.max (2, ticks - 2)   -- Adjust ticks if needed
+
+--  // If yMin and yMax are identical, then
+--  // adjust the yMin and yMax values to actually
+--  // make a graph. Also avoids division by zero errors.
+  if(yMin == yMax) then
+    yMin = yMin - 10;   -- some small value
+    yMax = yMax + 10;   --some small value
+  end
+  
+  local range = yMax - yMin    -- Determine Range
+  local tempStep = range/ticks    -- Get raw step value
+
+--  // Calculate pretty step value
+  local mag = math.floor(math.log10(tempStep));
+  local magPow = math.pow(10,mag);
+  local magMsd = math.floor(tempStep/magPow + 0.5);
+  local stepSize = magMsd*magPow;
+
+--  // build Y label array.
+--  // Lower and upper bounds calculations
+  local lb = stepSize * math.floor(yMin/stepSize);
+  local ub = stepSize * math.ceil((yMax/stepSize));
+--  // Build array
+  local result = {}
+  for val = lb, ub, stepSize do
+    result[#result+1] = val;
+  end
+  return result;
+end
+
+
+-----------------------------------
+--
 --  SVG render
 
 -- plotting options - just a subset of the full Graphite Webapp set
@@ -478,22 +532,28 @@ local function svgRender (_, p)
   -- scale tv structure given array 0-1 to min/max of series
   local function scale (tv)
     local V, T = {}, {}
-    local vmin, vmax = 0, 1
+    local vmin, vmax
     local fmin, fmax = math.min, math.max
     
     for _,v,t in tv:ipairs() do
       if v then
         T[#T+1] = t
         V[#V+1] = v
-        vmax = fmax (vmax, v or vmax)
-        vmin = fmin (vmin, v or vmin)
+        vmax = fmax (vmax or v, v)
+        vmin = fmin (vmin or v, v)
       end
     end
     
     if #T < 2 then return end
     
+    local v = makeYaxis(vmin, vmax, 5)
+    if vmin < v[1]  then table.insert (v, 1, vmin) end
+    if vmax > v[#v] then table.insert (v, vmax) end
+    V.ticks, vmin, vmax = v, v[1], v[#v]
+    
     local tmin, tmax = T[1], T[#T]      -- times are sorted, so we know where to find min and max
     if tmin == tmax then tmax = tmax + 1 end
+    if vmin == vmax then vmax = vmax + 1 end
     
     T.scale = Xscale / (tmax - tmin)
     V.scale = Yscale / (vmax - vmin)
@@ -506,12 +566,15 @@ local function svgRender (_, p)
   -- fetch the data
   
   local svgs = {}   -- separate SVGs for multiple plots
+  local body, div, head, h4, style, title = html5.body, html5.div, html5.head, html5.h4, html5.style, html5.title
   
   for name, tv in target (p).next() do
+    local info
+    local timeformat = "%d %b '%y %X"
     local T, V = scale (tv)
     
     local s = html5.svg {
-        height="30%", 
+        height="300px", 
         width="90%",
         viewBox= table.concat ({0, 0, Xscale, Yscale}, ' '),
         preserveAspectRatio="none",
@@ -528,7 +591,6 @@ local function svgRender (_, p)
          
       local floor = math.floor
       
-      local timeformat = "%d %b '%y %X"
       local Tscale, Vscale = T.scale, V.scale
       local Tmin, Vmin = T.min, V.min
       local T1, V1 = T[1], V[1]
@@ -537,29 +599,37 @@ local function svgRender (_, p)
       for i = 2,#T do
         local T2, V2 = T[i], V[i]
         local t2, v2 = floor ((T2-Tmin) * Tscale), floor((V2-Vmin) * Vscale)
-        
         local T2_label = os.date (timeformat, T2)
-        local title = table.concat {T1_label, ' - ', T2_label, '\n', name, ": ", V1}
-        local popup = s:title {title}
-        
+        local popup = s:title {{T1_label, ' - ', T2_label, '\n', name, ": ", V1}}
         s:rect (t1, Yscale-v1, t2-t1, v1, {class="bar", popup})
         t1, v1, T1, V1, T1_label = t2, v2, T2, V2, T2_label
       end
+      
+      -- add the axes
+      for _,y in ipairs (V.ticks) do
+        -- need to scale
+        local v = Yscale - floor((y-Vmin) * Vscale)
+        s: line (0, v, Xscale, v, {style = "stroke:White; stroke-width:2"})
+      end
+      info = html5.p { os.date(timeformat, T.min), " - ", os.date (timeformat, T.max), 
+                        ", Ymin: ", V.min, ", Ymax: ", V.max}
     end
-    
-    svgs[#svgs+1] = html5.div {html5.h4 {name, style="font-family: Arial;"}, s}
+    svgs[#svgs+1] = div {h4 {name, style="font-family: Arial;"}, s, info}
   end
   
   -- add the options  
-
-  local css = html5.style {vfs.read "openLuup_graphite.css"}
-
 --  if p.yMax or p.yMin then clip = {max = p.yMax, min = p.yMin} end
 --  if p.vtitle then vtitle = p.vtitle: gsub ('+',' ') end
 --  chartType = p.graphType or chartType    -- specified value overrides defaults
+  
   local cpu = timers.cpu_clock ()
-  local doc = html5.document  {css, html5.div (svgs)}
+  local doc = html5.document {
+    head {'<meta charset="utf-8">',
+      title {"Graphics"},
+      style {vfs.read "openLuup_graphite.css"}},
+    body (svgs)}
   cpu = timers.cpu_clock () - cpu
+
 --  local render = "render: CPU = %.3f mS for %dx%d=%d points"
   local render = "render: CPU = %.3f ms"
   _debug (render: format (cpu*1e3))

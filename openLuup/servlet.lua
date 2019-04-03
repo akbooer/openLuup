@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2018.02.22",
+  VERSION       = "2019.04.03",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -53,6 +53,10 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2018.03.22   add invocation count to data_request calls, export http_handler, use logs.register()
 -- 2018.07.15   use raw_read() in file handler, for consistency in path search order
 
+-- 2019.04.03   ignore MinimumTime parameter from AltUI requests (to improve responsiveness)
+
+
+-- TODO: use WSAPI response library in servlets
 
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"            -- to access 'dataversion'
@@ -165,8 +169,13 @@ local function data_request_task (request, respond)
   local function run ()
     -- /data_request?DataVersion=...&MinimumDelay=...&Timeout=... parameters have special significance
     local p = request.parameters
+    
+    -- 20190403  disable MinimumDelay option from AltUI, it is a band-aid for Vera, openLuup queues responses anyway
+    if not p._ then   -- assume this request is not from AltUI
+      MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3    -- milliseconds
+    end
+
     Timeout      = tonumber (p.Timeout)                     -- seconds
-    MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3    -- milliseconds
     DataVersion  = tonumber (p.DataVersion)                 -- timestamp
   end
   

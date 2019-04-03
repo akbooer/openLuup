@@ -116,6 +116,7 @@ local ip                          -- remote machine ip address
 -- these parameters are global, so can be externally access
 POLL_DELAY = 5              -- number of seconds between remote polls
 POLL_MINIMUM = 1.5          -- minimum delay (s) for async polling
+POLL_MINIMUM = 0.5  -- TODO: DECIDE
 POLL_MAXIMUM = 30           -- maximum delay (s) ditto
 
 local local_room_index           -- bi-directional index of our rooms

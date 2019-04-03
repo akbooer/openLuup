@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.03.23",
+  VERSION       = "2019.04.03",
   DESCRIPTION   = "XML DOM-style parser",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -30,6 +30,14 @@ local ABOUT = {
 -- decode()  a basic XML DOM paser
 -- encode()  XML representation of a simple Lua structure... not the inverse of decode()
 --
+
+
+-- 2018.05.08  COMPLETE REWRITE - using DOM-style parser
+-- 2018.07.07  handle multiple string values in encode(), add compatible simplify()
+
+-- 2019.03.22  add HTML5 and SVG encoding
+-- 2019.04.03  fix svg:rect() coordinate attribute names
+
 
 --[[
 
@@ -77,12 +85,6 @@ In a break from the WWW3 standard, text is NOT stored in a child text element,
 but in the .nodeValue attribute of the element itself.  It seemed much easier this way.
 
 --]]
-
-
--- 2018.05.08  COMPLETE REWRITE - using DOM-style parser
--- 2018.07.07  handle multiple string values in encode(), add compatible simplify()
-
--- 2019.03.22  add HTML5 and SVG encoding
 
 
 -- this single metatable is attached to every node element to provide navigation methods
@@ -471,7 +473,7 @@ local function add_svg_functions (svg)
   
   -- line
   function svg._method:line (x1,y1, x2,y2, props)
-    return add_to (self, element ("line", add_props ({x = x1, y = y1, x2 = x2, y2 = y2}, props)))
+    return add_to (self, element ("line", add_props ({x1 = x1, y1 = y1, x2 = x2, y2 = y2}, props)))
   end
   
   -- path
@@ -507,7 +509,7 @@ end
 
 function html5.document (contents)
   local doc = element ("html", contents)
-  return tostring(doc)
+  return table.concat (doc:_serialize {"<!DOCTYPE html>"})
 end
 
 -------------------------------------
