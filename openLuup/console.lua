@@ -54,6 +54,7 @@ ABOUT = {
 -- 2019.01.24  move CSS to openLuup_console.css in virtualfilesystem
 -- 2019.01.29  use html tables for most console pages
 -- 2019.03.22  use xml.html5 module to construct tables, and xml.escape() rather than internal routine
+-- 2019.04.03  use "startup" as time option for historian plots
 
 
 -- TODO: HTML pages with sorted tables?
@@ -83,95 +84,6 @@ local html5     = xml.html5                       -- html5 and svg libraries
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
-local console_html = {
-
-prefix = table.concat {
-[[
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Console</title>
-]],
-
-"<style>", vfs.read "openLuup_console.css", "</style>",
-
-[[
-  
-  </head>
-    <body>
-    
-    <div class="menu" style="background:DarkGrey;">
-    
-      <div class="dropdown" >
-        <img src="https://avatars.githubusercontent.com/u/4962913" alt="X"  
-                style="width:60px;height:60px;border:0;vertical-align:middle;">
-      </div>
-
-      <div class="dropdown">
-        <button class="dropbtn">openLuup</button>
-        <div class="dropdown-content">
-          <a class="left" href="/console?page=about">About</a>
-          <a class="left" href="/console?page=parameters">Parameters</a>
-          <a class="left" href="/console?page=historian">Historian</a>
-        </div>
-      </div>
-
-      <div class="dropdown">
-        <button class="dropbtn">Files</button>
-        <div class="dropdown-content">
-          <a class="left" href="/console?page=backups">Backups</a>
-          <a class="left" href="/console?page=images">Images</a>
-          <a class="left" href="/console?page=database">History DB</a>
-          <a class="left" href="/console?page=trash">Trash</a>
-        </div>
-      </div>
-
-      <div class="dropdown">
-        <button class="dropbtn">Scheduler</button>
-        <div class="dropdown-content">
-          <a class="left" href="/console?page=jobs">Jobs</a>
-          <a class="left" href="/console?page=delays">Delays</a>
-          <a class="left" href="/console?page=watches">Watches</a>
-          <a class="left" href="/console?page=sockets">Sockets</a>
-          <a class="left" href="/console?page=sandbox">Sandboxes</a>
-          <a class="left" href="/console?page=startup">Startup Jobs</a>
-        </div>
-      </div>
-
-      <div class="dropdown">
-        <button class="dropbtn">Servers</button>
-        <div class="dropdown-content">
-          <a class="left" href="/console?page=http">HTTP Web</a>
-          <a class="left" href="/console?page=smtp">SMTP eMail</a>
-          <a class="left" href="/console?page=pop3">POP3 eMail</a>
-          <a class="left" href="/console?page=udp" >UDP  datagrams</a>
-        </div>
-      </div>
-
-      <div class="dropdown">
-        <button class="dropbtn">Logs</button>
-        <div class="dropdown-content">
-          <a class="left" href="/console?page=log">Log</a>
-          <a class="left" href="/console?page=log&version=1">Log.1</a>
-          <a class="left" href="/console?page=log&version=2">Log.2</a>
-          <a class="left" href="/console?page=log&version=3">Log.3</a>
-          <a class="left" href="/console?page=log&version=4">Log.4</a>
-          <a class="left" href="/console?page=log&version=5">Log.5</a>
-          <a class="left" href="/console?page=log&version=startup">Startup Log</a>
-        </div>
-      </div>
-    
-  </div>
-
-  <div class="content">
-]]}
-,
-
-postfix = [[<footer><hr/><pre>%c</pre></footer> </div></body></html>]]
-
-}
-
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
 local date = "%Y-%m-%d %H:%M:%S"
 
@@ -200,22 +112,9 @@ end
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
 
-  local function html5_title (x)
-    return html5.h4 {x}
-  end
-  
-  local function title (x)
-    return table.concat {"<h4>", x, "</h4>"}
-  end
-
-  local function red (x)
-    return ('<font color="crimson">%s</font>'): format (x) 
-  end
-  
-  local function status_number (n)
-    if n ~= 200 then return red (n) end
-    return n
-  end
+  local function html5_title (x) return html5.h4 {x} end
+  local function red (x) return ('<font color="crimson">%s</font>'): format (x)  end
+  local function status_number (n) if n ~= 200 then return red (n) end; return n end
   
   -- sort table list elements by first index, then number them in sequence
   local function sort_and_number (list)
@@ -237,7 +136,7 @@ function run (wsapi_env)
       t.row (row)
     end
     local div = html5.div {html5_title "Scheduled Jobs", t}
-    return tostring (div)
+    return div
   end
 
   local function delaylist ()
@@ -253,7 +152,7 @@ function run (wsapi_env)
       t.row (row)
     end
     local div = html5.div {html5_title "Delayed Callbacks", t}
-    return tostring (div)
+    return div
   end
 
   local function startup ()
@@ -269,7 +168,7 @@ function run (wsapi_env)
       t.row (row)
     end
     local div = html5.div {html5_title "Startup Jobs", t}
-    return tostring (div)
+    return div
   end
   
   local function watchlist ()
@@ -299,7 +198,7 @@ function run (wsapi_env)
       t.row (row)
     end
     local div = html5.div {html5_title "Variable Watches", t}
-    return tostring (div)
+    return div
   end
   
   local function printlog (p)
@@ -321,7 +220,7 @@ function run (wsapi_env)
       f: close()
       local pre = html5.element ("pre", {xml.escape (x)})
       local div = html5.div {html5_title (name), pre}
-      return tostring (div)
+      return div
     end
   end
   
@@ -363,7 +262,8 @@ function run (wsapi_env)
         f.name}
       t.row {f.date, f.size, hyperlink} 
     end
-    return title ("Backup directory: " .. dir), tostring(t)
+    local div = html5.div { html5_title ("Backup directory: ", dir), t} 
+    return div
   end
   
   local function devname (d)
@@ -412,7 +312,7 @@ function run (wsapi_env)
         requestTable (http.cgi_handler, "CGI requests", {"URL ", "#requests  ","status"}),
         requestTable (http.file_handler, "File requests", {"filename ", "#requests  ","status"}),
       }
-    return tostring(div)
+    return div
   end
   
   local function smtplist ()
@@ -450,7 +350,7 @@ function run (wsapi_env)
       sortedTable ("Registered destination mailboxes:", smtp.destinations, function(x) return x:match "@" end),
       t }
     
-    return tostring(div)
+    return div
   end
   
   local function pop3list ()
@@ -481,7 +381,7 @@ function run (wsapi_env)
     local div = html5.div {html5_title "POP3 eMail Server", 
       connectionsTable (ioutil.udp.iprequests), T}
     
-    return tostring (div)
+    return div
   end
   
   local function udplist ()
@@ -517,7 +417,7 @@ function run (wsapi_env)
       connectionsTable (ioutil.udp.iprequests), 
       t0, t}
     
-    return tostring(div)
+    return div
   end
   
   
@@ -536,7 +436,7 @@ function run (wsapi_env)
     if #cols == 0 then t.row {0, '', "--- none ---", ''} end
     
     local div = html5.div {html5_title "Watched Sockets", t}
-    return tostring (div)
+    return div
   end
   
   local function sandbox ()               -- 2018.04.07
@@ -566,15 +466,15 @@ function run (wsapi_env)
       return T
     end
     
-    local G = html5.div {html5_title "Sandboxed system tables"}
+    local div = html5.div {html5_title "Sandboxed system tables"}
     for n,v in pairs (_G) do
       local meta = ((type(v) == "table") and getmetatable(v)) or {}
       if meta.__newindex and meta.__tostring and meta.lookup then   -- not foolproof, but good enough?
-        G[#G+1] = html5.p { n, ".sandbox"} 
-        G[#G+1] = format(v)
+        div[#div+1] = html5.p { n, ".sandbox"} 
+        div[#div+1] = format(v)
       end
     end
-    return tostring (G)
+    return div
   end
   
   local function images ()
@@ -589,7 +489,7 @@ function run (wsapi_env)
         html5.nav {t}, 
         html5.article {[[<iframe name="image" width="50%" >]]},
       }
-    return tostring(div)
+    return div
   end
  
   local function trash ()
@@ -601,7 +501,7 @@ function run (wsapi_env)
     end
     if t.length() == 0 then t.row {'', "--- none ---", ''} end
     local div = html5.div {html5_title "Trash", t}
-    return tostring(div)
+    return div
   end
   
   -- compares corresponding elements of array
@@ -694,7 +594,7 @@ function run (wsapi_env)
     t0.row {"total # history points", T}
     
     local div = html5.div {html5_title "Data Historian Cache Memory", t0, t}
-    return tostring(div)
+    return div
   end
   
   
@@ -774,7 +674,7 @@ function run (wsapi_env)
     t0.row {"total # updates", tot}
     
     local div = html5.div {html5_title "Data Historian Disk Database", t0, t}
-    return tostring(div)
+    return div
   end
   
   local function parameters ()
@@ -792,7 +692,7 @@ function run (wsapi_env)
       end
     end
     local div = html5.div {html5_title "openLuup Parameters", t}
-    return tostring (div)
+    return div
   end
   
   local function about () 
@@ -803,7 +703,7 @@ function run (wsapi_env)
         html5.element ("pre", {tostring(b), style = "margin-top: 0.5em; margin-bottom: 0.5em;"})}
     end
     local div = html5.div {html5_title "About...", t}
-    return tostring (div)
+    return div
   end  
   
   local pages = {
@@ -840,17 +740,91 @@ function run (wsapi_env)
     
   }
 
+  ----------------------------------------
   -- run()
-  
+  --
+
   local req = wsapi.request.new (wsapi_env)
   local p = req.GET 
   local page = pages[p.page] or function () end
+    
+  local a, body, div, footer, head, style, title = 
+    html5.a, html5.body, html5.div, html5.footer, html5.head, html5.style, html5.title
+
+  local function button (...) return html5.element ("button", ...) end
+  local function pre (...) return html5.element ("pre", ...) end
+
+  local menu = div {class="menu", style="background:DarkGrey;",
+    div {
+      div {class="dropdown",
+        [[<img src="https://avatars.githubusercontent.com/u/4962913" alt="X"  
+                style="width:60px;height:60px;border:0;vertical-align:middle;">]]},
+
+      div {class="dropdown",
+        button {class="dropbtn", "openLuup"},
+        div {class="dropdown-content",
+          a {class="left", href="/console?page=about", "About"},
+          a {class="left", href="/console?page=parameters", "Parameters"},
+          a {class="left", href="/console?page=historian", "Historian"},
+        }},
+
+      div {class="dropdown",
+        button {class="dropbtn", "Files"},
+        div {class="dropdown-content",
+          a {class="left", href="/console?page=backups", "Backups"},
+          a {class="left", href="/console?page=images", "Images"},
+          a {class="left", href="/console?page=database", "History DB"},
+          a {class="left", href="/console?page=trash", "Trash"},
+        }},
+
+      div {class="dropdown",
+        button {class="dropbtn", "Scheduler"},
+        div {class="dropdown-content",
+          a {class="left", href="/console?page=jobs", "Jobs"},
+          a {class="left", href="/console?page=delays", "Delays"},
+          a {class="left", href="/console?page=watches", "Watches"},
+          a {class="left", href="/console?page=sockets", "Sockets"},
+          a {class="left", href="/console?page=sandbox", "Sandboxes"},
+          a {class="left", href="/console?page=startup", "Startup Jobs"},
+        }},
+
+      div {class="dropdown",
+        button {class="dropbtn", "Servers"},
+        div {class="dropdown-content",
+          a {class="left", href="/console?page=http", "HTTP Web"},
+          a {class="left", href="/console?page=smtp", "SMTP eMail"},
+          a {class="left", href="/console?page=pop3", "POP3 eMail"},
+          a {class="left", href="/console?page=udp", "UDP  datagrams"},
+        }},
+
+      div {class="dropdown",
+        button {class="dropbtn", "Logs"},
+        div {class="dropdown-content",
+          a {class="left", href="/console?page=log", "Log"},
+          a {class="left", href="/console?page=log&version=1", "Log.1"},
+          a {class="left", href="/console?page=log&version=2", "Log.2"},
+          a {class="left", href="/console?page=log&version=3", "Log.3"},
+          a {class="left", href="/console?page=log&version=4", "Log.4"},
+          a {class="left", href="/console?page=log&version=5", "Log.5"},
+          a {class="left", href="/console?page=log&version=startup", "Startup Log"},
+      }}},
+    
+  }
+
+  local html = html5.document { 
+      head {'<meta charset="utf-8">',
+        title {"Console"},
+        style {vfs.read "openLuup_console.css"}},
+    
+      body {
+        menu,
+        div {class="content",
+          page (p),
+          footer {"<hr/>", pre {os.date "%c"}},
+    }}}
   
   local res = wsapi.response.new ()
-  res:write (console_html.prefix)
-  res:write (page (p))                -- note that page function may have multiple returns
-  res:write (os.date (console_html.postfix))
-  
+  res: write (html)  
   return res: finish()
 end
 
