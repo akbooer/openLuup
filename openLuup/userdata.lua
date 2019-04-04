@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.03.18",
+  VERSION       = "2019.04.04",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -60,6 +60,7 @@ local ABOUT = {
 
 -- 2019.02.02   add device file manufacturer and model name (thanks @rigpapa)
 -- 2019.03.18   change default currency to GBP
+-- 2019.04.04   remove outdated preinstalled plugin metadata
 
 
 local json    = require "openLuup.json"
@@ -315,60 +316,7 @@ local preinstalled = {
         folders   = {"/openLuup"},                    -- these are the bits of the repository that we want
       },
     },
-
-  DataYours =
-
-    {
-      AllowMultiple   = "0",
-      Title           = "DataYours",
-      Icon            = "https://raw.githubusercontent.com/akbooer/DataYours/master/icons/DataYours.png",
-      Instructions    = "https://github.com/akbooer/DataYours/tree/master/Documentation",
-      AutoUpdate      = "0",
-      VersionMajor    = "not",
-      VersionMinor    = 'installed',
-      id              = 8211,
-      timestamp       = os.time(),
-      Files           = {},
-      Devices         = {
-        {
-          DeviceFileName  = "D_DataYours.xml",
-          DeviceType      = "urn:akbooer-com:device:DataYours:1",
-          ImplFile        = "I_DataYours.xml",
-          Invisible       =  "0",
-          StateVariables  = [[
-            urn:akbooer-com:serviceId:DataYours1,DAEMONS=Watch Cache Graph
-            urn:akbooer-com:serviceId:DataYours1,LOCAL_DATA_DIR=whisper/
-          ]],
-        },
-      },
-      Repository      = {
-        type      = "GitHub",
-        source    = "akbooer/Datayours",
-        pattern   = "[DILS]_Data%w+%.%w+",             -- pattern match string for required files
-      },
-    },
   
-  Graphite_CGI =
-
-    {
-      AllowMultiple   = "0",
-      Title           = "Graphite_CGI",
-      Icon            = "https://raw.githubusercontent.com/akbooer/DataYours/master/icons/Graphite_CGI.png",
-      Instructions    = "https://github.com/akbooer/DataYours/tree/master/Documentation",
-      AutoUpdate      = "0",
-      VersionMajor    = "not",
-      VersionMinor    = 'installed',
-      id              = "graphite_cgi",
-      timestamp       = os.time(),
-      Files           = {},
-      Devices         = { },
-      Repository      = {
-        type      = "GitHub",
-        source    = "akbooer/Datayours",
-        pattern   = "graphite_cgi.lua",             -- pattern match string for required files
-      },
-    },
-
   MySensors =
 
     {
@@ -394,34 +342,6 @@ local preinstalled = {
         type      = "GitHub",
         source    = "mysensors/Vera",
         pattern   = "[DILS]_Arduino%w*%.%w+",             -- pattern match string for required files
-      },
-    },
-
-  Razberry =
-
-    {
-      AllowMultiple   = "1",
-      Title           = "RaZberry (ALPHA)",
-      Icon            = "https://raw.githubusercontent.com/amg0/razberry-altui/master/iconRAZB.png", 
-      Instructions    = "https://github.com/amg0/razberry-altui",
-      AutoUpdate      = "1",
-      VersionMajor    = "not",
-      VersionMinor    = "installed",
-      id              = "razberry-altui",
-      timestamp       = os.time(),
-      Files           = {},
-      Devices         = {
-        {
-          DeviceFileName  = "D_RAZB.xml",
-          DeviceType      = "urn:schemas-upnp-org:device:razb:1",
-          ImplFile        = "I_RAZB.xml",
-          Invisible       =  "0",
-        },
-      },
-      Repository      = {
-        type      = "GitHub",
-        source    = "amg0/razberry-altui",
-        pattern   = "RAZB",
       },
     },
 
@@ -462,8 +382,6 @@ local default_plugins = {
     preinstalled.VeraBridge,
     preinstalled.ZWay,
     preinstalled.MySensors,
---    preinstalled.DataYours,
---    preinstalled.Graphite_CGI,
   }
 
 --
