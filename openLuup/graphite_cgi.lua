@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.04.04",
+  VERSION       = "2019.04.07",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -44,6 +44,7 @@ ABOUT = {
 -- 2019.02.08  debug from/until times
 -- 2019.03.22  abandon Google Charts in favour of simple SVG, that works offline
 -- 2019.04.03  add "startup" as valid time option (for console historian plots)
+-- 2019.04.07  add yMin, yMax, title, vtitle, options to SVG render
 
 
 -- CGI implementation of Graphite API
@@ -509,8 +510,6 @@ end
 -- plotting options - just a subset of the full Graphite Webapp set
 -- see: http://graphite.readthedocs.org/en/latest/render_api.html
 --
--- hideLegend:  [false] If set to true, the legend is not drawn. If set to false, the legend is drawn. 
--- areaMode:    none, all, [not done: first, stacked]
 -- title:       plot title
 -- height/width plot size
 -- vtitle:      y-axis title
@@ -545,8 +544,8 @@ local function svgRender (_, p)
     end
     
     if #T < 2 then return end
-    vmax = math.ceil (vmax)
-    vmin = math.floor (vmin)
+    vmax = math.ceil (p.yMax or vmax)
+    vmin = math.floor (p.yMin or vmin)
     
     local v = makeYaxis(vmin, vmax, 5)
     if vmin < v[1]  then table.insert (v, 1, vmin) end
@@ -572,7 +571,7 @@ local function svgRender (_, p)
   local span = html5.span
   
   local function timeformat (epoch)
-    local t = os.date ("%d %b '%y %X", epoch):gsub ("^0", '')
+    local t = os.date ("%d %b '%y, %X", epoch):gsub ("^0", '')
     return t
   end
 
@@ -581,12 +580,11 @@ local function svgRender (_, p)
     local T, V = scale (tv)
     local vscale 
     local s = html5.svg {
-        height="300px", 
-        width="90%",
-        viewBox= table.concat ({0, -Yscale/10, Xscale, 1.1 * Yscale}, ' '),
-        preserveAspectRatio="none",
---        style="border: 1px dashed silver; margin-left: 5%; margin-right: 5%;",
-        style="border: none; margin-left: 5%; margin-right: 5%;",
+        height = p.height or "300px", 
+        width = p.width or "90%",
+        viewBox = table.concat ({0, -Yscale/10, Xscale, 1.1 * Yscale}, ' '),
+        preserveAspectRatio = "none",
+        style ="border: none; margin-left: 5%; margin-right: 5%;",
       }
 
     if not T then
@@ -608,7 +606,7 @@ local function svgRender (_, p)
         local T2, V2 = T[i], V[i]
         local t2, v2 = floor ((T2-Tmin) * Tscale), floor((V2-Vmin) * Vscale)
         local T2_label = timeformat (T2)
-        local popup = s:title {{T1_label, ' - ', T2_label, '\n', name, ": ", V1}}
+        local popup = s:title {{T1_label, ' - ', T2_label, '\n', name, ": ", V1 - V1%0.001}}
         s:rect (t1, Yscale-v1, t2-t1, v1, {class="bar", popup})
         t1, v1, T1, V1, T1_label = t2, v2, T2, V2, T2_label
       end
@@ -624,10 +622,10 @@ local function svgRender (_, p)
       local left  = span {style="float:left",  timeformat (T.min)}
       local right = span {style="float:right", timeformat (T.max)}
       local hscale = html5.p {style="margin-left: 5%; margin-right: 5%; color:Grey; font-family:Arial; ", left, right, br}
-      s = html5.div {s, br, hscale}
+      s = html5.div {p.vtitle or '', s, br, hscale}
     end
     
-    svgs[#svgs+1] = div {h4 {name, style="font-family: Arial;"}, s}
+    svgs[#svgs+1] = div {h4 {p.title or name, style="font-family: Arial;"}, s}
   end
   
   -- add the options  
