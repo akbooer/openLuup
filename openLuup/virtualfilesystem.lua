@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.03.24",
+  VERSION       = "2019.04.05",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -864,6 +864,7 @@ local I_openLuupCamera1_xml = [[
 <implementation>
   <handleChildren>1</handleChildren>
   <functions>
+    TIMEOUT = 30    -- global, so can be changed externally
     local child -- the motion sensor
     local smtp = require "openLuup.smtp"
     local requests = require "openLuup.requests"
@@ -890,7 +891,7 @@ local I_openLuupCamera1_xml = [[
             var:format("ArmedTripped", 0),
             var:format("Tripped", 0),
             var:format("LastTrip", 0),
-            var:format("AutoUntrip", 30),   -- default timeout
+            var:format("AutoUntrip", TIMEOUT),   -- default timeout
           }
         local ptr = luup.chdev.start (devNo)
         local altid = "openLuupCamera"

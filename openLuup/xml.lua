@@ -1,7 +1,7 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.04.03",
-  DESCRIPTION   = "XML DOM-style parser",
+  VERSION       = "2019.04.06",
+  DESCRIPTION   = "XML utilities (HTML5, SVG) and DOM-style parser",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
@@ -37,6 +37,7 @@ local ABOUT = {
 
 -- 2019.03.22  add HTML5 and SVG encoding
 -- 2019.04.03  fix svg:rect() coordinate attribute names
+-- 2019.04.06  add any unknown HTML5 tag as a new element
 
 
 --[[
@@ -372,22 +373,12 @@ end
 -- 2019.03.22  HTML and SVG
 --
 
-local html5 = {element = element}
-
--- structural tags
-
-local tags = {"a", "article", "aside", "body", "br", "details", "div", "footer", 
-  "header", "hgroup", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr", "html", "nav",
-  "p", "section", "span", "summary", 
-
--- metadata
-
-  "base", "basefont", 	"link", "meta", "style", "title",
-}
-
-for _, name in ipairs (tags) do
-  html5[name] = function(contents) return element(name, contents) end
-end
+local html5 = setmetatable ({},
+  {__index = function (self, tag)    -- 2019.04.06  just add any unknown tag as a new element...
+    local fct = function(contents) return element(tag, contents) end
+    rawset (self, tag, fct)
+    return fct
+  end})
   
 --
 -- tables
@@ -416,7 +407,7 @@ function html5.table (attr)
   end
       
   -- add specific constructors and other methods
-  -- not that these can be called with colon (:) or dot (.) notation for compatibility
+  -- note that these can be called with colon (:) or dot (.) notation for compatibility
   
   function tbl._method.header (h1, h2) return make_row ("th", h2 or h1) end  
   function tbl._method.row (r1, r2)    rows = rows + 1; return make_row ("td", r2 or r1) end

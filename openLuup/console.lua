@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.03.23",
+  VERSION       = "2019.04.07",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -55,6 +55,7 @@ ABOUT = {
 -- 2019.01.29  use html tables for most console pages
 -- 2019.03.22  use xml.html5 module to construct tables, and xml.escape() rather than internal routine
 -- 2019.04.03  use "startup" as time option for historian plots
+-- 2019.04.05  add latest vlue to historian cache table
 
 
 -- TODO: HTML pages with sorted tables?
@@ -74,6 +75,7 @@ local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
 local hist      = require "openLuup.historian"    -- for disk archive stats   
+local loader    = require "openLuup.loader"       -- for service data
 local timers    = require "openLuup.timers"       -- for startup time
 local whisper   = require "openLuup.whisper"
 local wsapi     = require "openLuup.wsapi"        -- for response library
@@ -96,8 +98,9 @@ end
 -- use like this:  for a,b in sorted (x, fct) do ... end
 -- optional second parameter is sort function cf. table.sort
 local function sorted (x, fct)
+  fct = fct or function(a, b) return tostring(a) < tostring(b) end
   local y, i = {}, 0
-  for z in pairs(x) do y[#y+1] = tostring(z) end
+  for z in pairs(x) do y[#y+1] = z end
   table.sort (y, fct) 
   return function ()
     i = i + 1
@@ -218,7 +221,7 @@ function run (wsapi_env)
     if f then
       local x = f:read "*a"
       f: close()
-      local pre = html5.element ("pre", {xml.escape (x)})
+      local pre = html5.pre {xml.escape (x)}
       local div = html5.div {html5_title (name), pre}
       return div
     end
@@ -271,7 +274,7 @@ function run (wsapi_env)
     local name = (luup.devices[d] or {}).description or 'system'
     name = name: match "^%s*(.+)"
     local number = table.concat {'[', d, '] '}
-    return number .. name, number, name
+    return number .. name
   end
 
   local function connectionsTable (iprequests)
@@ -553,7 +556,7 @@ function run (wsapi_env)
     table.sort (H, keysort)
         
     local t = html5.table()
-    t.header {"device ", "service", "#points", 
+    t.header {"device ", "service", "#points", "value",
       {"variable (archived if checked)", title="note that the checkbox field \n is currently READONLY"} }
     
     local link = [[<a href="/render?target=%s&from=%s">%s</a>]]
@@ -580,11 +583,11 @@ function run (wsapi_env)
 --        </form>
 --        ]]
         --
-        t.row { {dname, colspan = 4, style = "font-weight: bold"} }
+        t.row { {dname, colspan = 5, style = "font-weight: bold"} }
       end
       prev = dname
       local check = x.archived and "checked" or ''
-      t.row {'', v.srv: match "[^:]+$" or v.srv, h, tick: format (check, vname)}
+      t.row {'', v.srv: match "[^:]+$" or v.srv, h, v.value, tick: format (check, vname)}
     end
     
     local t0 = html5.table()
@@ -661,8 +664,7 @@ function run (wsapi_env)
       T = T + f.size
       local devnum = f.devnum     -- openLuup device number (if present)
       if devnum ~= prev then 
-        local dname = "<strong>[%s] %s</strong>"
-        t.row { { dname: format (f.devnum,f.description), colspan = 5} }
+        t.row { {html5.strong {'[', f.devnum, '] ', f.description}, colspan = 5} }
       end
       prev = devnum
       t.row {'', f.links or f.retentions, f.size, f.updates, f.shortName}
@@ -674,6 +676,67 @@ function run (wsapi_env)
     t0.row {"total # updates", tot}
     
     local div = html5.div {html5_title "Data Historian Disk Database", t0, t}
+    return div
+  end
+  
+  local function plugin_globals ()
+    local ignored = {"ABOUT", "_NAME", "lul_device"}
+    local ignore = {}
+    for _, name in pairs (ignored) do ignore[name] = true end
+    local t = html5.table ()
+    t: header {"device", "variable", "value"}
+    for dno,d in pairs (luup.devices) do
+      local env = d.environment
+      if env then
+        local x = {}
+        for n,v in pairs (env or {}) do 
+          if not _G[n] and not ignore[n] and type(v) ~= "function" then x[n] = v end
+        end
+        if next(x) then
+          local dname = devname (dno)
+          t: row {{html5.strong {dname}, colspan = 3}}
+          for n,v in sorted (x) do
+            t: row {'', n, tostring(v)}
+          end
+        end
+      end
+    end    
+    local div = html5.div {html5_title "Plugin Globals", t}
+    return div
+  end
+  
+  local function device_states ()
+    local sd = loader.service_data
+    local ignored = {"commFailure"}
+    local ignore = {}
+    local maxlength = 40
+    for _, name in pairs (ignored) do ignore[name] = true end
+    local t = html5.table ()
+    t: header {"device", "state", "value"}
+    for dno,d in sorted (luup.devices, function(a,b) return a < b end) do   -- nb. not default string sort
+      local info = {}
+      if not d.invisible then
+        for svc, s in pairs (d.services) do
+          local known_service = sd[svc]
+          if known_service then
+            for var, v in pairs (s.variables) do
+              local short = known_service.short_codes[var]
+              if short and not ignore[short] then info[short] = v.value end
+            end
+          end
+        end
+        if next(info) then
+          local dname = devname (dno)
+          t: row {{html5.strong {dname}, colspan = 3}}
+          for n,v in sorted (info) do
+            local s = tostring(v)
+            if #s > maxlength then s = s: sub(1, maxlength) .. "..." end
+            t: row {'', n, s}
+          end
+        end
+      end
+    end
+    local div = html5.div {html5_title "Device States", t}
     return div
   end
   
@@ -700,7 +763,7 @@ function run (wsapi_env)
     local t = html5.table ()
     for a,b in sorted (ABOUTopenLuup) do
       t.row {{a, style = "font-weight: bold"}, 
-        html5.element ("pre", {tostring(b), style = "margin-top: 0.5em; margin-bottom: 0.5em;"})}
+        html5.pre {tostring(b), style = "margin-top: 0.5em; margin-bottom: 0.5em;"}}
     end
     local div = html5.div {html5_title "About...", t}
     return div
@@ -723,8 +786,10 @@ function run (wsapi_env)
     sandbox = sandbox,
     trash   = trash,
     udp     = udplist,
-    historian  = historian,
-    parameters = parameters,
+    historian   = historian,
+    parameters  = parameters,
+    globals     = plugin_globals,
+    states     = device_states,
     
 --    userdata = function (p, _)
 --      return title "Userdata", preformatted (requests.user_data (_, p))
@@ -751,9 +816,10 @@ function run (wsapi_env)
   local a, body, div, footer, head, style, title = 
     html5.a, html5.body, html5.div, html5.footer, html5.head, html5.style, html5.title
 
-  local function button (...) return html5.element ("button", ...) end
-  local function pre (...) return html5.element ("pre", ...) end
+  local button, pre = html5.button, html5.pre
 
+--  local hr = html5.hr {style = "color:DarkGrey"}
+  local hr = html5.hr {style = "color:Sienna;"}
   local menu = div {class="menu", style="background:DarkGrey;",
     div {
       div {class="dropdown",
@@ -766,6 +832,9 @@ function run (wsapi_env)
           a {class="left", href="/console?page=about", "About"},
           a {class="left", href="/console?page=parameters", "Parameters"},
           a {class="left", href="/console?page=historian", "Historian"},
+          hr,
+          a {class="left", href="/console?page=globals", "Globals"},
+          a {class="left", href="/console?page=states", "States"},
         }},
 
       div {class="dropdown",
