@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.04.03",
+  VERSION       = "2019.04.04",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -545,6 +545,8 @@ local function svgRender (_, p)
     end
     
     if #T < 2 then return end
+    vmax = math.ceil (vmax)
+    vmin = math.floor (vmin)
     
     local v = makeYaxis(vmin, vmax, 5)
     if vmin < v[1]  then table.insert (v, 1, vmin) end
@@ -567,18 +569,24 @@ local function svgRender (_, p)
   
   local svgs = {}   -- separate SVGs for multiple plots
   local body, div, head, h4, style, title = html5.body, html5.div, html5.head, html5.h4, html5.style, html5.title
+  local span = html5.span
   
+  local function timeformat (epoch)
+    local t = os.date ("%d %b '%y %X", epoch):gsub ("^0", '')
+    return t
+  end
+
   for name, tv in target (p).next() do
-    local info
-    local timeformat = "%d %b '%y %X"
-    local T, V = scale (tv)
     
+    local T, V = scale (tv)
+    local vscale 
     local s = html5.svg {
         height="300px", 
         width="90%",
-        viewBox= table.concat ({0, 0, Xscale, Yscale}, ' '),
+        viewBox= table.concat ({0, -Yscale/10, Xscale, 1.1 * Yscale}, ' '),
         preserveAspectRatio="none",
-        style="border: 1px dashed silver; margin-left: 5%; margin-right: 5%",
+--        style="border: 1px dashed silver; margin-left: 5%; margin-right: 5%;",
+        style="border: none; margin-left: 5%; margin-right: 5%;",
       }
 
     if not T then
@@ -594,12 +602,12 @@ local function svgRender (_, p)
       local Tscale, Vscale = T.scale, V.scale
       local Tmin, Vmin = T.min, V.min
       local T1, V1 = T[1], V[1]
-      local T1_label = os.date (timeformat, T1)
+      local T1_label = timeformat (T1)
       local t1, v1 = floor ((T1-Tmin) * Tscale), floor((V1-Vmin) * Vscale)
       for i = 2,#T do
         local T2, V2 = T[i], V[i]
         local t2, v2 = floor ((T2-Tmin) * Tscale), floor((V2-Vmin) * Vscale)
-        local T2_label = os.date (timeformat, T2)
+        local T2_label = timeformat (T2)
         local popup = s:title {{T1_label, ' - ', T2_label, '\n', name, ": ", V1}}
         s:rect (t1, Yscale-v1, t2-t1, v1, {class="bar", popup})
         t1, v1, T1, V1, T1_label = t2, v2, T2, V2, T2_label
@@ -609,12 +617,17 @@ local function svgRender (_, p)
       for _,y in ipairs (V.ticks) do
         -- need to scale
         local v = Yscale - floor((y-Vmin) * Vscale)
-        s: line (0, v, Xscale, v, {style = "stroke:White; stroke-width:2"})
+        s: line (0, v, Xscale, v, {style = "stroke:Grey; stroke-width:2"})
+        s: text (0, v, {dy="-0.2em", style = "font-size:48pt; fill:Grey; font-family:Arial; transform:scale(2,1)", y})
       end
-      info = html5.p { os.date(timeformat, T.min), " - ", os.date (timeformat, T.max), 
-                        ", Ymin: ", V.min, ", Ymax: ", V.max}
+      local br = html5.br {}
+      local left  = span {style="float:left",  timeformat (T.min)}
+      local right = span {style="float:right", timeformat (T.max)}
+      local hscale = html5.p {style="margin-left: 5%; margin-right: 5%; color:Grey; font-family:Arial; ", left, right, br}
+      s = html5.div {s, br, hscale}
     end
-    svgs[#svgs+1] = div {h4 {name, style="font-family: Arial;"}, s, info}
+    
+    svgs[#svgs+1] = div {h4 {name, style="font-family: Arial;"}, s}
   end
   
   -- add the options  
