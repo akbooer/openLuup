@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.03.31",
+  VERSION       = "2019.04.10",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -100,6 +100,8 @@ ABOUT = {
 -- 2019.03.16   make generic action calls asynchronous (actual response was, anyway, ignored)
 -- 2019.03.18   add LoadTime variable derived from remote attributes
 -- 2019.03.31   abandon MinimumTime for async status and use call_delay (trying to reduce rate of hitting Vera requests)
+-- 2019.04.09   add RemoteVariableSet action (thanks @Vosmont)
+--              see: https://github.com/akbooer/openLuup/issues/16
 
 
 local devNo                      -- our device number
@@ -115,8 +117,7 @@ local ip                          -- remote machine ip address
 
 -- these parameters are global, so can be externally access
 POLL_DELAY = 5              -- number of seconds between remote polls
-POLL_MINIMUM = 1.5          -- minimum delay (s) for async polling
-POLL_MINIMUM = 0.5  -- TODO: DECIDE
+POLL_MINIMUM = 0.5          -- minimum delay (s) for async polling
 POLL_MAXIMUM = 30           -- maximum delay (s) ditto
 
 local local_room_index           -- bi-directional index of our rooms
@@ -203,6 +204,14 @@ end
 -- remote request to port_3480
 local function remote_request (request)    -- 2018.01.11
   return luup.inet.wget (table.concat {"http://", ip, RemotePort, request})
+end
+
+-- set a remote variable
+local function set_remote_variable (dev, srv, var, val)
+  local request = "/data_request?id=variableset&DeviceNum=%s&serviceId=%s&Variable=%s&Value=%s"
+  local req = request: format(dev, srv, var, url.escape(val or ''))
+  luup.log ("set_remote_variable --- " .. req) 
+  remote_request (req)
 end
 
 -- make either "1" or "true" work the same way
@@ -782,6 +791,24 @@ function GetVeraScenes()
   end
 end
 
+--[[  action to set remote variable
+        <argument> <name>RemoteDevice</name> <direction>in</direction> </argument>
+        <argument> <name>RemoteServiceId</name> <direction>in</direction> </argument>
+        <argument> <name>RemoteVariable</name> <direction>in</direction> </argument>
+        <argument> <name>Value</name> <direction>in</direction> </argument>
+--]]
+function RemoteVariableSet (p)    -- 2019.04.09
+  local dev = tonumber (p.RemoteDevice)
+  if dev then
+    if dev >= BLOCKSIZE then    -- convert local devNo to remote
+      dev = remote_by_local_id (dev)
+    end
+    if dev then
+      set_remote_variable (dev, p.RemoteServiceId, p.RemoteVariable, p.Value)
+    end
+  end
+end
+
 
 function SetHouseMode (p)         -- 2018.05.15
   if tonumber (p.Mode) then
@@ -860,10 +887,7 @@ local function MirrorHandler (_,x)
     if dev and sysNo == "0" then    -- only mirror local devices
       local message = "VeraBridge DSP Mirror: %s.%s.%s --> %s.%s.%s@" .. ip
       luup.log (message: format(devNo, x.lul_service, x.lul_variable, dev, srv, var))
-      local request = "/data_request?id=variableset&DeviceNum=%s&serviceId=%s&Variable=%s&Value=%s"
-      local req = request: format(dev, srv, var, url.escape(x.new or ''))
-      luup.log (req) 
-      remote_request (req)
+      set_remote_variable (dev, srv, var, x.new)
     end
   end
   return "OK", "text/plain"

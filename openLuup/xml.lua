@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.04.06",
+  VERSION       = "2019.04.07",
   DESCRIPTION   = "XML utilities (HTML5, SVG) and DOM-style parser",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -479,7 +479,7 @@ local function add_svg_functions (svg)
   function svg._method:group (attr)  
     local g = element ("g", attr)  
     add_svg_functions(g)
-    return g
+    return add_to (self, g)
   end
   
   svg._method.g = svg._method.group   -- add method alias

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.04.05",
+  VERSION       = "2019.04.09",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -22,6 +22,8 @@ local ABOUT = {
 ]]
 }
 
+local mime = require "mime"     -- for base64 decoding
+
 -- the loader cache is preset with these files
 
 -- the local references mean that these files will not be removed from the 
@@ -30,6 +32,17 @@ local ABOUT = {
 -- openLuup reload script files and index.html to redirect to AltUI.
 -- device files for "openLuup", "AltAppStore", and "VeraBridge". 
 -- DataYours configuration files.
+
+local openLuup_svg = [[
+<svg width="60px" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg" style="border: 0; margin: 0; background-color:#F0F0F0;" height="60px">
+ <g style="stroke-width:3; fill:#CA6C5E;">
+  <rect y="1" x="1" height="6" width="10"/>
+  <rect y="7" x="3" height="3" width="6"/>
+  <rect y="9" x="1" height="2" width="10"/></g>
+ <g style="stroke-width:3; fill:#F0F0F0;">
+  <rect y="3" x="3" height="4" width="6"/>
+  <rect y="0" x="5" height="12" width="2"/></g></svg>
+]]
 
 local D_openLuup_dev = [[
 <?xml version="1.0"?>
@@ -53,9 +66,10 @@ local D_openLuup_dev = [[
 </root>
 ]]
 
+--  "default_icon": "https://avatars.githubusercontent.com/u/4962913",
 local D_openLuup_json = [[
 {
-  "default_icon": "https://avatars.githubusercontent.com/u/4962913",
+  "default_icon": "openLuup.svg",
 	"Tabs": [
 		{
 			"Label": {
@@ -238,6 +252,13 @@ local S_openLuup_svc = [[
     <major>1</major>
     <minor>0</minor>
   </specVersion>
+  
+ 	<serviceStateTable>  <!-- added just for fun to expose these as device status -->
+    <stateVariable> <name>CpuLoad</name> <shortCode>cpu_load</shortCode> </stateVariable>	
+    <stateVariable> <name>Memory_Mb</name> <shortCode>memory_mb</shortCode> </stateVariable>	
+    <stateVariable> <name>Uptime_Days</name> <shortCode>uptime_days</shortCode> </stateVariable>	
+	</serviceStateTable>
+  
   <actionList>
 
     <action>
@@ -301,6 +322,21 @@ local S_openLuup_svc = [[
 -- AltAppStore device files
 --
 
+local AltAppStore_png = mime.unb64 [[
+iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAABmJLR0QA/wD/AP+gvaeTAAADRElEQVRoge2YTWhUVxTHfye+aYJo
+QerXTpPGQrupi4DdyFAIxkwiMXSlixaxAW1rIBq6ysKFS0OLogguXIjfaKI4BpzQJjFdCIUi2BJoMoFCA9VgJB84zEzecWEq8ubN
+OPe+N6OL91uee+45/3Pvu+e9dyEiIiIiIgBiO3F8QtdmanMHQDpU+RTYCDxDeaw1ejufj11IbJP58KT6Y1XA/an8PhH9mVeiizGr
+Kt27Pnau2EkrjxrTCal0rk9EL1NaPMB6Eb2cSuf67KSVh9EOrKz8JdN5IrKvud65mprOfgEcwZU4wkbgKegDFznb0hAbM4n5Ona5
+juMTuvbFB/lJ3r7yfjwFGQTtKuqhcm7d3KrupibJmQR2ynXM1OYOoGIjHmBDSfEAoofm1i0DHDYJbHAGpMMksBWih4bTuZ0mU8ou
+QJXPzBWZ46p+Z+Jv0oU+MtRihSCV2QGBRXM5FgibzdxLMDyV+URxekTc3YpsDSDLlCWBSSAJzqnmBvmvmGPRAlLp7A8gJ4HaSig0
+YFFEuprrnat+g74FpKayhxE5a5vxxLH7vva+/l22IVVE9vsVUXAGhqZfbEXkJ9tMFUJU9fxwWjd5BwoKcHC6efePjR9rlPwRr7Gw
+CymtVZFjgUC71+bXRrdUQYsVCg1em18B2SposUW9Br8C/q6CEFvSXoNfAYNVEGLLXa+hsAuJcwaYrYocMxZc1zntNRYU8GW9PBfY
+Dxj9WFQYFZGulkZ54h3w/ZhrboilXJfdwEzFpb2dhZVf0mt+g0W/RlsaY79k6pxtovq9KkPABFDxa5IVFoE/gBOu6zQWEw8B7oVK
+Ee9MFrQ7gNGBttDzGV+rvG8EXpF4Z7IfOGqVXLV/ZLC9N0j+wDswOpDoRbloMfX6yPbffwyaP4RHSHQ2tvQtynC5MxRGV2fka44f
+dwNnDxrgf3a03vuwrk7HgM9Le+qfy1l2jifb58LIG9ohfjiUmM8v5xMo/5Rw+3fZ0URY4iHkLvTbnY4ZV6UV8BM4X4PbNn5jT6kC
+jQm9jT64nfhLhb1A5g1zVmr0q18H9jwKO19F3gNjt9rGVPkGcAEV1YMjN9vLPuTvDfHOZE+8M9nzrnVEREREVI6XP436aXY3NrkA
+AAAASUVORK5CYII=]]
+
 local D_AltAppStore_dev = [[
 <?xml version="1.0"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0">
@@ -336,7 +372,7 @@ local D_AltAppStore_dev = [[
 local D_AltAppStore_json = [[
 {
 	"flashicon": "http://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
-	"default_icon": "http://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
+	"default_icon": "AltAppStore.png",
 	"x": "2",
 	"y": "3",
 	"Tabs": [
@@ -482,6 +518,64 @@ local S_AltAppStore_svc = [[
 -- VeraBridge device files
 --
 
+-- http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png
+local VeraBridge_png = mime.unb64 [[
+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]]
+
 local D_VeraBridge_dev = [[
 <?xml version="1.0"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0">
@@ -518,7 +612,7 @@ local D_VeraBridge_dev = [[
 
 local D_VeraBridge_json = [[
 {
-	"default_icon": "http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
+	"default_icon": "VeraBridge.png",
 	"Tabs": [
 		{
 			"Label": {
@@ -618,6 +712,15 @@ local I_VeraBridge_impl = [[
     </action>
     
     <action>
+  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
+  		<name>RemoteVariableSet</name>
+  		<job>
+  			RemoteVariableSet (lul_settings)
+  			return 4,0
+  		</job>
+    </action>
+    
+    <action>
       <!-- added here to allow scenes to access this as an action (Device 0 is not visible) -->
   		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
   		<name>SetHouseMode</name>
@@ -638,7 +741,14 @@ local S_VeraBridge_svc = [[
     <major>1</major>
     <minor>0</minor>
   </specVersion>
+ 
+ 	<serviceStateTable>  <!-- added just for fun to expose these as device status -->
+    <stateVariable> <name>LoadTime</name> <shortCode>loadtime</shortCode> </stateVariable>	
+    <stateVariable> <name>LastUpdate</name> <shortCode>lastupdate</shortCode> </stateVariable>	
+    <stateVariable> <name>HouseMode</name> <shortCode>housemode</shortCode> </stateVariable>	
+	</serviceStateTable>
   <actionList>
+    
     <action>
       <name>GetVeraFiles</name> 
       <argumentList>
@@ -648,7 +758,22 @@ local S_VeraBridge_svc = [[
         </argument>
       </argumentList>
     </action>
+    
     <action> <name>GetVeraScenes</name> </action>
+    
+<!-- by analogy to this request...
+  /data_request?id=variableset&DeviceNum=6&serviceId=urn:micasaverde-com:serviceId:DoorLock1&Variable=Status&Value=
+-->>
+    <action>
+      <name>RemoteVariableSet</name>
+      <argumentList>
+        <argument> <name>RemoteDevice</name> <direction>in</direction> </argument>
+        <argument> <name>RemoteServiceId</name> <direction>in</direction> </argument>
+        <argument> <name>RemoteVariable</name> <direction>in</direction> </argument>
+        <argument> <name>Value</name> <direction>in</direction> </argument>
+      </argumentList>
+    </action>
+    
     <action>
       <name>SetHouseMode</name>
       <argumentList>
@@ -658,6 +783,7 @@ local S_VeraBridge_svc = [[
         </argument>
       </argumentList>
     </action>
+
   </actionList>
 </scpd>
 ]]
@@ -1124,6 +1250,8 @@ local unknown_wsp = [[
 
 local console_css = [[
 
+  /* Style sheets for console web pages */
+  
   *    { box-sizing:border-box; margin:0px; padding:0px; }
   html { width:100%; height:100%; overflow:hidden; border:none 0px; }
   body { font-family:Arial; background:LightGray; width:100%; height:100%; overflow:hidden; padding-top:60px; }
@@ -1195,16 +1323,19 @@ local graphite_css = [[
 
 local manifest = {
     
+    ["icons/openLuup.svg"] = openLuup_svg,
     ["D_openLuup.xml"]  = D_openLuup_dev,
     ["D_openLuup.json"] = D_openLuup_json,
     ["I_openLuup.xml"]  = I_openLuup_impl,
     ["S_openLuup.xml"]  = S_openLuup_svc,
     
+    ["icons/AltAppStore.png"] = AltAppStore_png,
     ["D_AltAppStore.xml"]  = D_AltAppStore_dev,
     ["D_AltAppStore.json"] = D_AltAppStore_json,
     ["I_AltAppStore.xml"]  = I_AltAppStore_impl,
     ["S_AltAppStore.xml"]  = S_AltAppStore_svc,
     
+    ["icons/VeraBridge.png"] = VeraBridge_png,
     ["D_VeraBridge.xml"]  = D_VeraBridge_dev,
     ["D_VeraBridge.json"] = D_VeraBridge_json,
     ["I_VeraBridge.xml"]  = I_VeraBridge_impl,
