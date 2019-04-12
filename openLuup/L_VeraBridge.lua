@@ -210,7 +210,7 @@ end
 local function set_remote_variable (dev, srv, var, val)
   local request = "/data_request?id=variableset&DeviceNum=%s&serviceId=%s&Variable=%s&Value=%s"
   local req = request: format(dev, srv, var, url.escape(val or ''))
-  luup.log ("set_remote_variable --- " .. req) 
+  luup.log ("set_remote_variable " .. req) 
   remote_request (req)
 end
 

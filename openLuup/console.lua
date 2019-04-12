@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.04.08",
+  VERSION       = "2019.04.12",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -747,6 +747,24 @@ local function device_states ()
   return div
 end
 
+
+local function cache ()
+  local t = html5.table ()
+  t: header {'#', "last access", "# hits", "size (bytes)", "filename"}
+  local i, N = 0, 0
+  for name in vfs.dir() do
+    i = i + 1
+    local v = vfs.attributes (name)
+    local d = (v.access ~= 0) and os.date (date, v.access) or ''
+    t: row {i, d, v.hits, v.size, name}
+    N = N + v.size
+  end
+  t:row { '', '', '', N/1000 .. " (kB)", html5.strong {"Total"}}
+  local div = html5.div {html5_title "File System Cache", t}
+  return div
+end
+
+
 local function parameters ()
   local info = luup.attr_get "openLuup"
   local t = html5.table ()
@@ -793,6 +811,8 @@ local pages = {
   sandbox = sandbox,
   trash   = trash,
   udp     = udplist,
+  cache   = cache,
+  
   historian   = historian,
   parameters  = parameters,
   globals     = plugin_globals,
@@ -848,6 +868,7 @@ local menu = div {class="menu", style="background:DarkGrey;",
         a {class="left", href="/console?page=backups", "Backups"},
         a {class="left", href="/console?page=images", "Images"},
         a {class="left", href="/console?page=database", "History DB"},
+        a {class="left", href="/console?page=cache", "Cache"},
         a {class="left", href="/console?page=trash", "Trash"},
       }},
 

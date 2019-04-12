@@ -34,7 +34,7 @@ local mime = require "mime"     -- for base64 decoding
 -- DataYours configuration files.
 
 local openLuup_svg = [[
-<svg width="60px" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg" style="border: 0; margin: 0; background-color:#F0F0F0;" height="60px">
+<svg width="60px" height="60px" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg" style="border: 0; margin: 0; background-color:#F0F0F0;">
  <g style="stroke-width:3; fill:#CA6C5E;">
   <rect y="1" x="1" height="6" width="10"/>
   <rect y="7" x="3" height="3" width="6"/>
@@ -264,21 +264,10 @@ local S_openLuup_svc = [[
     <action>
       <name>SendToTrash</name>
       <argumentList>
-        <argument>
-          <name>Folder</name>
-          <direction>in</direction>
-        </argument>
-        <argument>
-          <name>MaxDays</name>
-          <direction>in</direction>
-        </argument>
-        <argument>
-          <name>MaxFiles</name>
-          <direction>in</direction>
-        </argument>
-        <argument>
-          <name>FileTypes</name>
-          <direction>in</direction>
+        <argument> <name>Folder</name> <direction>in</direction> </argument>
+        <argument> <name>MaxDays</name> <direction>in</direction> </argument>
+        <argument> <name>MaxFiles</name> <direction>in</direction> </argument>
+        <argument> <name>FileTypes</name> <direction>in</direction>
         </argument>
       </argumentList>
     </action>
@@ -286,30 +275,21 @@ local S_openLuup_svc = [[
     <action>
       <name>EmptyTrash</name>
       <argumentList>
-        <argument>
-          <name>AreYouSure</name>
-          <direction>in</direction>
-        </argument>
+        <argument> <name>AreYouSure</name> <direction>in</direction> </argument>
       </argumentList>
     </action>
   
     <action>
       <name>SetHouseMode</name>
       <argumentList>
-        <argument>
-          <name>Mode</name>
-          <direction>in</direction>
-        </argument>
+        <argument> <name>Mode</name> <direction>in</direction> </argument>
       </argumentList>
     </action>
     
     <action>    <!-- added by @rafale77 -->
       <name>RunScene</name>
       <argumentList>
-        <argument>
-          <name>SceneNum</name>
-          <direction>in</direction>
-        </argument>
+        <argument> <name>SceneNum</name> <direction>in</direction> </argument>
       </argumentList>
     </action>
 
@@ -493,19 +473,13 @@ local S_AltAppStore_svc = [[
       <minor>0</minor>
   </specVersion>
 	<serviceStateTable>
-    <stateVariable sendEvents="no">
-      <name>metadata</name>
-      <dataType>string</dataType>
-    </stateVariable>	
+    <stateVariable sendEvents="no"> <name>metadata</name> <dataType>string</dataType> </stateVariable>	
 	</serviceStateTable>
   <actionList>
     <action>
       <name>update_plugin</name>
       <argumentList>
-        <argument>
-          <name>metadata</name>
-          <direction>in</direction>
-        </argument>
+        <argument <name>metadata</name> <direction>in</direction> </argument>
       </argumentList>
     </action>
 	</actionList>
@@ -751,12 +725,7 @@ local S_VeraBridge_svc = [[
     
     <action>
       <name>GetVeraFiles</name> 
-      <argumentList>
-        <argument>
-          <name>Files</name>
-          <direction>in</direction>
-        </argument>
-      </argumentList>
+      <argumentList> <argument> <name>Files</name> <direction>in</direction> </argument> </argumentList>
     </action>
     
     <action> <name>GetVeraScenes</name> </action>
@@ -777,10 +746,7 @@ local S_VeraBridge_svc = [[
     <action>
       <name>SetHouseMode</name>
       <argumentList>
-        <argument>
-          <name>Mode</name>
-          <direction>in</direction>
-        </argument>
+        <argument> <name>Mode</name> <direction>in</direction> </argument>
       </argumentList>
     </action>
 
@@ -1365,6 +1331,14 @@ local manifest = {
 
 -----
 
+local hits = {}     -- cache hit count
+local function hit (filename)
+  local info =  hits[filename] or {n = 0}
+  info.n = info.n + 1
+  info.access = os.time ()
+  hits[filename] = info
+end
+
 return {
   ABOUT = ABOUT,
   
@@ -1373,7 +1347,10 @@ return {
   
   attributes = function (filename) 
     local y = manifest[filename]
-    if type(y) == "string" then return {mode = "file", size = #y} end
+    local h = hits[filename] or {n = 0, access = 0}
+    if type(y) == "string" then 
+      return {mode = "file", size = #y, permissions = "rw-rw-rw-", access = h.access, hits = h.n} 
+    end
   end,
   
   open = function (filename, mode)
@@ -1385,6 +1362,7 @@ return {
     
     if mode: match 'r' then
       if manifest[filename] then
+        hit (filename)
         return {
           lines = function () return coroutine.wrap (readline) end,
           read  = function () return manifest[filename] end,
@@ -1405,8 +1383,14 @@ return {
     return nil, "unknown mode for vfs.open: " .. mode
   end,
 
-  dir   = function () return next, manifest end,
-  read  = function (filename) return manifest[filename] end,
+  dir = function () 
+      local idx = {}
+      for n in pairs (manifest) do idx[#idx+1] = n end
+      table.sort (idx)
+      local i = 0
+      return function(m) i=i+1; return m[i], i end, idx, 0
+    end,
+  read  = function (filename) hit(filename) return manifest[filename] end,
   write = function (filename, contents) manifest[filename] = contents end,
 
 }
