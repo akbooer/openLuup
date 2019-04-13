@@ -123,12 +123,6 @@ end
 
 
 -----------------------------------
---
--- SVG plotting
---
-
-
------------------------------------
 
 local function jsonify(data, status, headers, jsonp)
   status = status or 200
@@ -578,7 +572,6 @@ local function svgRender (_, p)
   for name, tv in target (p).next() do
     
     local T, V = scale (tv)
-    local vscale 
     local s = html5.svg {
         height = p.height or "300px", 
         width = p.width or "90%",
@@ -628,11 +621,7 @@ local function svgRender (_, p)
     svgs[#svgs+1] = div {h4 {p.title or name, style="font-family: Arial;"}, s}
   end
   
-  -- add the options  
---  if p.yMax or p.yMin then clip = {max = p.yMax, min = p.yMin} end
---  if p.vtitle then vtitle = p.vtitle: gsub ('+',' ') end
---  chartType = p.graphType or chartType    -- specified value overrides defaults
-  
+-- add the options    
   local cpu = timers.cpu_clock ()
   local doc = html5.document {
     head {'<meta charset="utf-8">',
@@ -751,8 +740,6 @@ end
 --
 -- global entry point called by WSAPI connector
 --
-
--- TODO: use WSAPI request and response libraries (or does JSON syntax preclude this?)
 
 function run (wsapi_env)
 

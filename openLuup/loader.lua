@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2018.11.21",
+  VERSION       = "2019.04.12",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -56,6 +56,8 @@ local ABOUT = {
 -- 2018.05.26  add new line before action end - beware final comment lines!! Debug dump erroneous source code.
 -- 2018.07.15  change search path order in raw_read()
 -- 2018.11.21  implement find_file (for @rigpapa)
+
+-- 2019.04.12  change cached_read() to use virtualfilesystem explicitly (to register cache hits)
 
 
 ------------------
@@ -108,7 +110,6 @@ local service_data = {}         -- cache for serviceType and serviceId data, ind
 
 local static_data = {}          -- cache for decoded static JSON data, indexed by filename
 
-local file_cache = vfs.manifest -- preset read cache to vfs contents
 
 ----
 --
@@ -170,14 +171,6 @@ end
 
 --  utilities
 
--- memoize: return new function which caches its previously computed results
-local function memoize (fct, cache)
-  cache = cache or setmetatable ({}, {__mode = "kv"})
-  return function (x)
-    cache[x] = cache[x] or fct(x)
-    return cache[x]
-  end
-end
 
 -- 2018.11.21  return search path and file descriptor
 local function open_file (filename)
@@ -215,7 +208,15 @@ local function raw_read (filename)
   return nil, "raw_read: error opening: " .. (filename or '?')
 end
 
-local cached_read = memoize (raw_read, file_cache)    -- 2016.02.23
+-- cached read, using the virtualfilesystem
+local function cached_read (x)    -- 2016.02.23, and 2019.04.12
+  local cache = vfs.read (x)
+  if not cache then
+    cache = raw_read(x)
+    vfs.write (x, cache)    -- put it into the permanent cache for next time
+  end
+  return cache
+end
 
 local function xml_read (filename)
   filename = filename or "(missing filename)"
@@ -481,6 +482,7 @@ local function read_json (json_file)
   local data, msg
   if json_file then 
     local j = cached_read (json_file)     -- 2016.05.24, restore caching to use virtual file system for .json files
+    -- NB: DONT use raw_read although JSON is decoded and cached in static_data, there are some preloaded cached files
     if j then 
       data, msg = json.decode (j) 
     end

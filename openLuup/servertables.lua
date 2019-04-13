@@ -22,6 +22,7 @@
 -- 2018.08.20  added *Time* to nocache rules
 -- 2018.12.31  start to add retentions, xFF and aggregation to Historian archive_rules
  
+-- 2019.04.08  added image/svg+xml to mimetypes
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -50,6 +51,7 @@ local mimetypes = {
   mid  = "audio/mid",
   mp3  = "audio/mpeg",
   png  = "image/png",
+  svg  = "image/svg+xml",
   txt  = "text/plain",
   wav  = "audio/wav",
   xml  = "application/xml",

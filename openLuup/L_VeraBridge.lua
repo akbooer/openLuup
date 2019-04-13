@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.03.31",
+  VERSION       = "2019.04.10",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -100,6 +100,8 @@ ABOUT = {
 -- 2019.03.16   make generic action calls asynchronous (actual response was, anyway, ignored)
 -- 2019.03.18   add LoadTime variable derived from remote attributes
 -- 2019.03.31   abandon MinimumTime for async status and use call_delay (trying to reduce rate of hitting Vera requests)
+-- 2019.04.09   add RemoteVariableSet action (thanks @Vosmont)
+--              see: https://github.com/akbooer/openLuup/issues/16
 
 
 local devNo                      -- our device number
@@ -115,8 +117,7 @@ local ip                          -- remote machine ip address
 
 -- these parameters are global, so can be externally access
 POLL_DELAY = 5              -- number of seconds between remote polls
-POLL_MINIMUM = 1.5          -- minimum delay (s) for async polling
-POLL_MINIMUM = 0.5  -- TODO: DECIDE
+POLL_MINIMUM = 0.5          -- minimum delay (s) for async polling
 POLL_MAXIMUM = 30           -- maximum delay (s) ditto
 
 local local_room_index           -- bi-directional index of our rooms
@@ -159,7 +160,7 @@ local function debug (msg)
   end
 end
 
-local function getVar (name, service, device) 
+local function getVar (name, service, device)
   service = service or SID.gateway
   device = device or devNo
   local x = luup.variable_get (service, name, device)
@@ -203,6 +204,14 @@ end
 -- remote request to port_3480
 local function remote_request (request)    -- 2018.01.11
   return luup.inet.wget (table.concat {"http://", ip, RemotePort, request})
+end
+
+-- set a remote variable
+local function set_remote_variable (dev, srv, var, val)
+  local request = "/data_request?id=variableset&DeviceNum=%s&serviceId=%s&Variable=%s&Value=%s"
+  local req = request: format(dev, srv, var, url.escape(val or ''))
+  luup.log ("set_remote_variable " .. req)
+  remote_request (req)
 end
 
 -- make either "1" or "true" work the same way
@@ -570,7 +579,7 @@ do
 
   local function update_from_status (j)   -- 2019.03.14
     local s = json.decode (j)
-    local ok = type(s) == "table" 
+    local ok = type(s) == "table"
     if ok then
       DataVersion = s.DataVersion or ''
       UpdateHouseMode (s.Mode)
@@ -579,49 +588,49 @@ do
         if s.LoadTime ~= LoadTime then                                                -- 2019.03.18 ditto
           LoadTime = s.LoadTime
           luup.devices[devNo]:variable_set (SID.gateway, "LoadTime", LoadTime, true)
-        end 
-      end 
+        end
+      end
     end
     return ok
   end
-  
+
 --  local uri = "%s%s%s/data_request?id=status2&output_format=json&MinimumDelay=%s&Timeout=%s&DataVersion=%s"
   local uri = "%s%s%s/data_request?id=status2&output_format=json&Timeout=%s&DataVersion=%s"
   local log = "VeraBridge ASYNC callback status: %s, #data: %s"
   local erm = "VeraBridge ASYNC request: %s"
-  
+
   -- original short polling
-  
+
   function VeraBridge_delay_callback ()
     poll_count = (poll_count + 1) % 10            -- wrap every 10
     if poll_count == 0 then DataVersion = '' end  -- .. and go for the complete list (in case we missed any)
-    local url = "/data_request?id=status2&output_format=json&DataVersion=" .. DataVersion 
+    local url = "/data_request?id=status2&output_format=json&DataVersion=" .. DataVersion
     local status, j = remote_request (url)
-    if status == 0 then update_from_status (j) end 
+    if status == 0 then update_from_status (j) end
     luup.call_delay ("VeraBridge_delay_callback", POLL_DELAY)
   end
 
-  -- 2019.03.14   long polling, this is the way that the lu_status request is supposed to be used     
+  -- 2019.03.14   long polling, this is the way that the lu_status request is supposed to be used
 
   function VeraBridge_async_request (init)
     poll_count = (poll_count + 1) % 20                                    -- wrap every 20 ...
-    if init == "INIT" or poll_count == 0 then DataVersion = '' end        -- .. and go for the complete list 
-    
+    if init == "INIT" or poll_count == 0 then DataVersion = '' end        -- .. and go for the complete list
+
     local url = uri: format ("http://", ip, RemotePort, POLL_MAXIMUM, DataVersion)
     local ok, err = luup.openLuup.async_request (url, VeraBridge_async_callback)
-  
+
     if not ok then -- we will never be called again, unless we do something about it
       luup.log (erm: format (tostring(err)))                              -- report error...
       luup.call_delay ("VeraBridge_async_request", POLL_DELAY, "INIT")    -- ...and reschedule ourselves to try again
     end
   end
-  
+
   function VeraBridge_async_callback (response, code, headers, statusline)
     local delay = POLL_DELAY
     local init = "INIT"           -- assume the worst
-    if code == 200 and headers and statusline then 
+    if code == 200 and headers and statusline then
       local ok = update_from_status (response)              -- did we get valid data for update?
-      if ok then 
+      if ok then
         delay = POLL_MINIMUM end                    -- yes, ask for another one soon...
         init = ''                                   -- ... without initialising data version
     else
@@ -782,6 +791,24 @@ function GetVeraScenes()
   end
 end
 
+--[[  action to set remote variable
+        <argument> <name>RemoteDevice</name> <direction>in</direction> </argument>
+        <argument> <name>RemoteServiceId</name> <direction>in</direction> </argument>
+        <argument> <name>RemoteVariable</name> <direction>in</direction> </argument>
+        <argument> <name>Value</name> <direction>in</direction> </argument>
+--]]
+function RemoteVariableSet (p)    -- 2019.04.09
+  local dev = tonumber (p.RemoteDevice)
+  if dev then
+    if dev >= BLOCKSIZE then    -- convert local devNo to remote
+      dev = remote_by_local_id (dev)
+    end
+    if dev then
+      set_remote_variable (dev, p.RemoteServiceId, p.RemoteVariable, p.Value)
+    end
+  end
+end
+
 
 function SetHouseMode (p)         -- 2018.05.15
   if tonumber (p.Mode) then
@@ -821,7 +848,7 @@ local function generic_action (serviceId, name)
       request[#request+1] = table.concat {a, '=', b}
     end
     local url = table.concat (request, '&')
-    
+
     if logical_true(AsyncPoll) then
       luup.openLuup.async_request (url, function() debug "RESPONSE (async)" end)
       debug ("REQUEST (async) " .. url)
@@ -860,10 +887,7 @@ local function MirrorHandler (_,x)
     if dev and sysNo == "0" then    -- only mirror local devices
       local message = "VeraBridge DSP Mirror: %s.%s.%s --> %s.%s.%s@" .. ip
       luup.log (message: format(devNo, x.lul_service, x.lul_variable, dev, srv, var))
-      local request = "/data_request?id=variableset&DeviceNum=%s&serviceId=%s&Variable=%s&Value=%s"
-      local req = request: format(dev, srv, var, url.escape(x.new or ''))
-      luup.log (req)
-      remote_request (req)
+      set_remote_variable (dev, srv, var, x.new)
     end
   end
   return "OK", "text/plain"
@@ -933,11 +957,11 @@ function init (lul_device)
   CloneRooms  = uiVar ("CloneRooms", '')        -- if set to 'true' then clone rooms and place devices there
   ZWaveOnly   = uiVar ("ZWaveOnly", '')         -- if set to 'true' then only Z-Wave devices are considered by VeraBridge.
   Included    = uiVar ("IncludeDevices", '')    -- list of devices to include even if ZWaveOnly is set to true.
-  Excluded    = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge, 
-                                                -- ...takes precedence over the first two.                                              
+  Excluded    = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge,
+                                                -- ...takes precedence over the first two.
   RemotePort  = uiVar ("RemotePort", "/port_3480")
   AsyncPoll   = uiVar ("AsyncPoll", "false")    -- set to "true" to use ansynchronous polling of remote Vera
-  
+
   local hmm = uiVar ("HouseModeMirror",HouseModeOptions['0'])   -- 2016.05.23
   HouseModeMirror = hmm: match "^([012])" or '0'
   setVar ("HouseModeMirror", HouseModeOptions[HouseModeMirror]) -- replace with full string
@@ -971,7 +995,7 @@ function init (lul_device)
   if PK_AccessPoint then                          -- 2018.07.29   only start up when valid PK_AccessPoint
     setVar ("PK_AccessPoint", PK_AccessPoint)     -- 2018.06.04   Expose PK_AccessPoint as device variable
     setVar ("LoadTime", LoadTime or 0)            -- 2019.03.18
-    
+
     setVar ("DisplayLine1", Ndev.." devices, " .. Nscn .. " scenes", SID.altui)
     setVar ("DisplayLine2", ip, SID.altui)        -- 2018.03.02
 

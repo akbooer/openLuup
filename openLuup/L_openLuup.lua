@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2019.04.07",
+  VERSION       = "2019.04.12",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -83,6 +83,12 @@ local function _debug (...)
   if ABOUT.DEBUG then print (ABOUT.NAME, ...) end
 end
 
+-- GLOBALS (just for fun, to show up in Console Globals page)
+
+_G["Memory Used (Mb)"]  = 0
+_G["Uptime (days)"]     = 0
+_G["CPU Load (%)"]      = 0
+
 --
 -- utilities
 --
@@ -145,25 +151,32 @@ local function calc_stats ()
   local now, cpu = timers.timenow(), timers.cpu_clock()
   local uptime = now - timers.loadtime + 1
   
-  local cpuload = round ((cpu - cpu_prev) / INTERVAL * 100, 0.1)
-  local memory  = round (AppMemoryUsed / 1000, 0.1)
-  local days    = round (uptime / 24 / 60 / 60, 0.01)
-  
+  local cpu_load = round ((cpu - cpu_prev) / INTERVAL * 100, 0.1)
+  local memory_mb  = round (AppMemoryUsed / 1000, 0.1)
+  local uptime_days    = round (uptime / 24 / 60 / 60, 0.01)
   cpu_prev= cpu
+  
+  -- store the results as module globals
+  _G["Memory Used (Mb)"]  = memory_mb
+  _G["Uptime (days)"]     = uptime_days
+  _G["CPU Load (%)"]      = cpu_load
+  
+  -- store the results as device variables
+  set ("Memory_Mb",   memory_mb)
+  set ("CpuLoad",     cpu_load)
+  set ("Uptime_Days", uptime_days)
 
-  set ("Memory_Mb",   memory)
-  set ("CpuLoad",     cpuload)
-  set ("Uptime_Days", days)
-
-  local line1 = ("%0.0f Mb, cpu %s%%, %s days"): format (memory, cpuload, days)
+  local line1 = ("%0.0f Mb, cpu %s%%, %s days"): format (memory_mb, cpu_load, uptime_days)
   display (line1)
   luup.log (line1)
  
+  -- store the results as top-level system attributes
   local set_attr = luup.attr_get "openLuup.Status"
-  set_attr ["Memory"]  = memory .. " Mbyte"
-  set_attr ["CpuLoad"] = cpuload .. '%'
-  set_attr ["Uptime"]  = days .. " days"
+  set_attr ["Memory"]  = memory_mb .. " Mbyte"
+  set_attr ["CpuLoad"] = cpu_load .. '%'
+  set_attr ["Uptime"]  = uptime_days .. " days"
   
+  -- system memory info
   local y = mem_stats()
   local memfree, memavail, memtotal = y.MemFree, y.MemAvail, y.MemTotal
   if memfree and memavail then
