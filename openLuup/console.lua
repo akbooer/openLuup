@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.04.12",
+  VERSION       = "2019.04.15",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -747,19 +747,55 @@ local function device_states ()
   return div
 end
 
+local cache_sort_direction = {} -- sort state for cache table columns (sorry!)
 
-local function cache ()
+local function cache (p)
   local t = html5.table ()
-  t: header {'#', "last access", "# hits", "size (bytes)", "filename"}
-  local i, N = 0, 0
-  for name in vfs.dir() do
-    i = i + 1
-    local v = vfs.attributes (name)
-    local d = (v.access ~= 0) and os.date (date, v.access) or ''
-    t: row {i, d, v.hits, v.size, name}
-    N = N + v.size
+  local a = html5.a
+  local function sort_column (name, column)
+    local href = "/console?page=cache&sort=" .. column
+    return a {name, href = href}
   end
-  t:row { '', '', '', N/1000 .. " (kB)", html5.strong {"Total"}}
+  t: header {
+    a {'#', href = "/console?page=cache"},    -- no sort, sorting directions are reset
+    sort_column ("last access", "access"),
+    sort_column ("# hits",  "hits"),
+    sort_column ("size (bytes)", "size"),
+    sort_column ("filename", "name")}
+  
+  local N, H = 0, 0
+  local strong = html5.strong
+  local info = {}
+  for name in vfs.dir() do 
+    local v = vfs.attributes (name) 
+    v.name = name
+    info[#info+1] = v 
+    v.index = #info    -- because sort function is a reverse sort
+  end
+  
+  local field = p.sort
+  if field then 
+    cache_sort_direction[field] = not cache_sort_direction[field]
+  else
+    cache_sort_direction = {}    -- new page, clear the sort direction
+  end
+  local reverse = cache_sort_direction[field]
+  local function in_order (a,b) 
+    print (field, a[field], b[field])
+    a, b = a[field] or a.name, b[field] or b.name
+    local sort
+    if reverse then sort = a > b else sort = a < b end  -- note that a > b is not the same as not (a < b)
+    return sort
+  end
+  if field then table.sort (info, in_order) end
+  
+  for i, v in ipairs (info) do
+    local d = (v.access ~= 0) and os.date (date, v.access) or ''
+    t: row {i, d, v.hits, v.size, v.name}
+    N = N + v.size
+    H = H + v.hits
+  end
+  t:row { '', '', strong {H}, strong {tostring (N/1000), " (kB)"}, strong {"Total"}}
   local div = html5.div {html5_title "File System Cache", t}
   return div
 end
@@ -846,10 +882,8 @@ local menu = div {class="menu", style="background:DarkGrey;",
 --              style="width:60px;height:60px;border:0;vertical-align:middle;">]]},
     div {
       class="dropdown", 
-      style="vertical-align:middle;",
-      html5.img {src="icons/openLuup.svg", alt="openLuup",  
-              style="width:60px;height:60px;border:0;vertical-align:middle;"} },
---      vfs.read "icons/openLuup.svg"},
+      style="vertical-align:middle; height:60px;",
+      vfs.read "icons/openLuup.svg"},
     
     div {class="dropdown",
       button {class="dropbtn", "openLuup"},

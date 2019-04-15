@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2019.04.12",
+  VERSION       = "2019.04.14",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -58,6 +58,7 @@ local ABOUT = {
 -- 2018.11.21  implement find_file (for @rigpapa)
 
 -- 2019.04.12  change cached_read() to use virtualfilesystem explicitly (to register cache hits)
+-- 2019.04.14  do not cache service or implementation .xml files 
 
 
 ------------------
@@ -197,30 +198,34 @@ local function find_file (filename)
   end
 end
 
--- raw_read, ignoring the cache
+-- 2019.04.14  cached read, using the virtualfilesystem, and caching result if cache parameter non-nil
+local function cached_read (filename, cache)     -- 2016.02.23, and 2019.04.12
+  local errmsg
+  local content = vfs.read (filename)                     -- always try the cache first
+  if not content then
+    local f, errmsg = open_file (filename)                -- otherwise, the actual file system
+    if f then 
+      content = f: read "*a"
+      f: close () 
+    end
+    if not content then                                   -- still none, so error
+      errmsg = "raw_read: " .. (errmsg or "error reading: " .. (filename or '?'))
+    elseif cache then 
+      vfs.write (filename, content)           -- put it into the permanent cache for next time
+    end
+  end
+  return content, errmsg
+end
+
+-- raw_read, NOT caching the result
 local function raw_read (filename)
-  local f = open_file (filename)
-  if f then 
-    local data = f: read "*a"
-    f: close () 
-    return data
-  end
-  return nil, "raw_read: error opening: " .. (filename or '?')
+  return cached_read (filename, false)
 end
 
--- cached read, using the virtualfilesystem
-local function cached_read (x)    -- 2016.02.23, and 2019.04.12
-  local cache = vfs.read (x)
-  if not cache then
-    cache = raw_read(x)
-    vfs.write (x, cache)    -- put it into the permanent cache for next time
-  end
-  return cache
-end
-
-local function xml_read (filename)
+-- read xml file, caching the result if cache parameter non-nil
+local function xml_read (filename, cache)
   filename = filename or "(missing filename)"
-  local raw_xml = cached_read (filename) 
+  local raw_xml = cached_read (filename, cache) 
   if not raw_xml then
     return nil, "ERROR: unable to read XML file " .. filename
   end
@@ -278,7 +283,7 @@ end
 -- read and parse device file, if present
 local function read_device (upnp_file)
   local info
-  local x, errmsg = xml_read (upnp_file)
+  local x, errmsg = xml_read (upnp_file, true)    -- ...and cache the result
   if x then info = parse_device_xml (x) end
   return info, errmsg
 end
@@ -469,7 +474,7 @@ end
 -- the 'relatedStateVariable' tells what data to return for 'out' arguments
 local function read_service (service_file)
   local info
-  local x, errmsg = xml_read (service_file)
+  local x, errmsg = xml_read (service_file)  -- not cached, since service files are decoded and saved in service_data
   if x then info = parse_service_xml (x) end
   return info, errmsg
 end
@@ -481,8 +486,8 @@ end
 local function read_json (json_file)
   local data, msg
   if json_file then 
-    local j = cached_read (json_file)     -- 2016.05.24, restore caching to use virtual file system for .json files
-    -- NB: DONT use raw_read although JSON is decoded and cached in static_data, there are some preloaded cached files
+    -- 2019.04.12 use raw_read so that file not cached (but still read from cache if there)
+    local j = raw_read (json_file)
     if j then 
       data, msg = json.decode (j) 
     end
