@@ -781,7 +781,6 @@ local function cache (p)
   end
   local reverse = cache_sort_direction[field]
   local function in_order (a,b) 
-    print (field, a[field], b[field])
     a, b = a[field] or a.name, b[field] or b.name
     local sort
     if reverse then sort = a > b else sort = a < b end  -- note that a > b is not the same as not (a < b)
