@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.04.15",
+  VERSION       = "2019.04.16",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -504,27 +504,22 @@ local S_AltAppStore_svc = [[
 
 local VeraBridge_svg = (
   function (N)
-    local background = "White" -- was "#F0F0F0"
+    local background = "White"
     local Grey = "#504035"  -- was "#404040"
     local mystyle = "fill:%s; stroke-width:%s; stroke:%s;"
     local s = html5.svg {height = N, width  = N,
-      viewBox= table.concat ({-5, 0,10,10}, ' '),
+      viewBox= table.concat ({-24,-24, 48,48}, ' '),
       xmlns="http://www.w3.org/2000/svg" ,
-      style="border: 0; margin: 0; background-color:" .. background }
-    local c = s:group {style= mystyle:format ("none", 0.75, Grey)}
-      c:  circle (0,7, 4.5)
-      c:  circle (0,7, 6)
-    local b0= s:group {style= mystyle: format (background, 0, background)}
-      b0: polygon ({-6,0,6,6,-6}, {-5,7,-5,10,10})
-    local l = s:group {style = mystyle: format ("none", 1.1, Grey)}
-      l: line (-5,0, 0,10)
-      l: line ( 5,0, 0,10)
-    local t = s:group {style= mystyle: format ("Green", 0, "Green")}
-      t: polygon ({-1.5,1.5,0}, {4,4,7})
+      style="border: 1; margin: 0; background-color:" .. background }
+    local c = s:group {style= mystyle:format ("none", 3, Grey)}
+      c:  circle (0,5, 17.5)
+      c:  circle (0,5, 23)
     local b = s:group {style= mystyle: format (background, 0, background)}
-      b: rect (-5,9.5, 10,1)  -- baseline
-      b: polygon ({-5,-5, -1.5,-3}, {0,4, 4,0})   -- LH V
-      b: polygon ({5,5, 1.5,3}, {0,4, 4,0})       -- RH V
+      b: polygon ({-24, -24, -16,0,16, 24,24}, {32,-24, -24,11,-24, -24, 32})
+    local t = s:group {style= mystyle: format ("Green", 0, "Green")}
+      t: polygon ({-8,8,0}, {-5,-5, 11})
+    local v = s:group {style= mystyle: format (Grey, 0, Grey)}
+      v: polygon ({-16.5, -11, 0, 11, 16.5, 3.5,-3.5}, {-5, -5, 17, -5, -5, 20.5,20.5}) 
     return tostring(s)
   end) (60)
 
