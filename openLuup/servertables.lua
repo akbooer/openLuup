@@ -23,6 +23,7 @@
 -- 2018.12.31  start to add retentions, xFF and aggregation to Historian archive_rules
  
 -- 2019.04.08  added image/svg+xml to mimetypes
+-- 2019.04.18  remove historian in-memory cache rules (now implemented in devices module)
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -229,14 +230,6 @@ local archive_rules = {
     },
   }
 
--- cache rules to disable some historian in-memory variable caching
-
-local cache_rules = {
-  nocache = {
-      dates_and_times = "*.*.{*Date*,*Time*,*Last*,Poll*,Configured,CommFailure}",
-      zwave_devices = "*.ZWaveDevice1.*",
-    },
-  }
 
 --
 

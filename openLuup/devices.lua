@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.06.25",
+  VERSION       = "2019.04.18",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -43,6 +43,8 @@ local ABOUT = {
 -- 2018.06.01  add shortSid to variables, for historian
 -- 2018.06.22  make history cache default for all variables
 -- 2018.06.25  add shortSid to service object
+
+-- 2019.04.18  do not create variable history for Zwave serviceId or epoch values
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -189,6 +191,10 @@ local metahistory = {}
     return v, t
   end
   
+local ignoreServiceHistory = {    -- these are the shortServiceIds for which we don't want history
+  ZWaveDevice1  = true,
+  ZWaveNetwork1 = true,
+}
 
 local variable = {}             -- variable CLASS
 
@@ -196,7 +202,13 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
   local device = device_list[devNo] or {}
   local vars = device.variables or {}
   local varID = #vars                             -- 2018.01.31
+  
+  local history                                   -- 2019.04.18
+  local shortSid  = serviceId: match "[^:]+$" or serviceId
+  if not ignoreServiceHistory[shortSid] then history = {} end
+  
   new_userdata_dataversion ()                     -- say structure has changed
+
   vars[varID + 1] =                               -- 2018.01.31
   setmetatable (                                  -- 2018.05.25 add history methods 
     {
@@ -209,7 +221,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       silent    = nil,                            -- set to true to mute logging
       watchers  = {},                             -- callback hooks
       -- history
-      history   = {},                             -- set to nil to disable history
+      history   = history,                        -- set to nil to disable history
       hipoint   = 0,                              -- circular buffer pointer managed by variable_set()
       hicache   = nil,                            -- local cache size, overriding global CacheSize
       -- methods
@@ -230,7 +242,8 @@ function variable:set (value)
   if history then
     local v = tonumber(value)                     -- only numeric values
     if v then
-      if value ~= self.value then                 -- only cache changes
+      local epoch = v > 1234567890                -- cheap way to identify recent epochs? (and other big numbers!)
+      if value ~= self.value and not epoch then   -- only cache changes
         local hipoint = (self.hipoint or 0) % (self.hicache or CacheSize) + 1
         local n = hipoint + hipoint
         self.hipoint = hipoint

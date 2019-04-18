@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2019.04.16",
+  VERSION       = "2019.04.18",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -56,15 +56,15 @@ ABOUT = {
 -- 2018.06.11  Added Vnumber (purely numeric six digit version number yymmdd) for @rigpapa
 -- 2018.08.30  fixed nil ctype in openLuup_images (thanks @ramwal)
 
+-- 2019.04.18  remove generic plugin_configuration functionality (no longer required)
+
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
-local vfs         = require "openLuup.virtualfilesystem"
 local ioutil      = require "openLuup.io"           -- NOT the same as luup.io or Lua's io.
 local pop3        = require "openLuup.pop3"
 
 local lfs         = require "lfs"
-local url         = require "socket.url"
 local smtp        = require "socket.smtp"             -- smtp.message() for formatting events
 
 local INTERVAL = 120
@@ -108,19 +108,6 @@ end
 local function display (line1, line2)
   if line1 then set ("DisplayLine1",  line1 or '', SID.altui) end
   if line2 then set ("DisplayLine2",  line2 or '', SID.altui) end
-end
-
--- slightly unusual parameter list, since source file may be in virtual storage
--- source is an open file handle
-local function copy_if_missing (source, destination)
-  if not lfs.attributes (destination) then
-    local f = io.open (destination, 'wb')
-    if f then
-      f: write ((source: read "*a"))    -- double parentheses to remove multiple returns from read
-      f: close ()
-    end
-  end
-  source: close ()
 end
 
 
@@ -195,105 +182,6 @@ local function calc_stats ()
 end
 
 
---------------------------------------------------
---
--- DataYours install configuration
---
--- set up parameters and a Whisper data directory
--- to start logging some system variables
-
---[[ 
-
-personal communication from @amg0 on inserting elements into VariablesToSend
-
-... GET with a url like this
-"?id=lr_ALTUI_Handler&command={8}&service={0}&variable={1}&device={2}&scene={3}&expression={4}&xml={5}&provider={6}&providerparams={7}".format(
-         w.service, w.variable, w.deviceid, w.sceneid,
-         encodeURIComponent(w.luaexpr),
-         encodeURIComponent(w.xml),
-         w.provider,
-         encodeURIComponent( JSON.stringify(w.params) ), command)
-
-some comments:
-- command is 'addWatch' or 'delWatch'
-- sceneid must be -1 for a Data Push Watch
-- expression & xml can be empty str
-- provider is the provider name ( same as passed during registration )
-- providerparams is a JSON stringified version of an array,  which contains its 0,1,2 indexes the values of the parameters that were declared as necessary by the data provider at the time of the registration
-
-the api returns 1 if the watch was added or removed, 0 if a similar watch was already registered before or if we did not remove any
-
---]]
-
-local function configure_DataYours ()
-  _log "DataYours configuration..."
-  -- install configuration files from virtual file storage
-  lfs.mkdir "whisper/"            -- default openLuup Whisper database location
-  copy_if_missing (vfs.open "storage-schemas.conf", "whisper/storage-schemas.conf")
-  copy_if_missing (vfs.open "storage-aggregation.conf", "whisper/storage-aggregation.conf")
-  copy_if_missing (vfs.open "unknown.wsp", "whisper/unknown.wsp")  -- for blank plots
-  
-  -- start logging cpu and memory from device #2 by setting AltUI VariablesToSend
-  local request = table.concat {
-      "http://127.0.0.1:3480/data_request?id=lr_ALTUI_Handler",
-      "&command=addWatch", 
-      "&service=openLuup",
-      "&variable=%s",                 -- variable to watch
-      "&device=2",
-      "&scene=-1",                    -- Data Push Watch
-      "&expression= ",                -- the blank character seems to be important for some systems
-      "&xml= ",                       -- ditto
-      "&provider=datayours",
-      "&providerparams=%s",           -- JSON parameter list
-    }
-  local memParams = url.escape (json.encode {
-      "memory.d",                     -- one day's worth of storage
-      "/data_request?id=lr_render&target={0}&title=Memory (Mb)&hideLegend=true&height=250&from=-y",
-    })
-  local cpuParams = url.escape (json.encode {
-      "cpu.d",                        -- one day's worth of storage
-      "/data_request?id=lr_render&target={{0},memory.d}&title=CPU (%) Memory (Mb) &height=250&from=-y",
-    })
-  local dayParams = url.escape (json.encode {
-      "uptime.m",                     -- one month's worth of storage
-      "/data_request?id=lr_render&target={0}&title=Uptime (days)&hideLegend=true&height=250&from=-y",
-    })
-  luup.inet.wget (request:format ("Memory_Mb",    memParams))
-  luup.inet.wget (request:format ("CpuLoad",      cpuParams))
-  luup.inet.wget (request:format ("Uptime_Days",  dayParams))
-  _log "...DataYours configured"  
-end
-
-
-local configure = {   -- This is a dispatch list of plug ids which need special configuration
-  ["8211"] = configure_DataYours,
---  ["8246"] = configure_AltUI,
-  -- more go here
-}
-
---
--- generic pre-install configuration actions...
--- ... only performed if there is no installed device of that type.
--- ...called with the plugin metadata as a parameter
---
-local function plugin_configuration (_,meta)
-  local device = (meta.devices or {}) [1] or {}
-  local plugin = meta.plugin or {}
-  local device_type = device.DeviceType
-  local present = false
-  for _,d in pairs (luup.devices) do
-    if d.device_type == device_type 
-    and d.device_num_parent == 0 then   -- LOCAL device of same type
-      present = true
-    end
-  end
-  if not present then 
-    local plugin_id = tostring (plugin.id)
-    local action = (configure [plugin_id] or function () end) 
-    action ()
-  end
-end
-
 --
 -- GENERIC ACTION HANDLER
 --
@@ -310,7 +198,7 @@ local function generic_action (serviceId, name)
   }
   
   local dispatch = {
-      plugin_configuration  = {run = plugin_configuration},
+--      plugin_configuration  = {run = plugin_configuration},
       -- add specifics here for other actions
     }
     

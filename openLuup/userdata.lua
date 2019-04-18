@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.04.04",
+  VERSION       = "2019.04.18",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -61,6 +61,7 @@ local ABOUT = {
 -- 2019.02.02   add device file manufacturer and model name (thanks @rigpapa)
 -- 2019.03.18   change default currency to GBP
 -- 2019.04.04   remove outdated preinstalled plugin metadata
+-- 2019.04.18   fix AltAppStore showing wrong version number on Plugins page
 
 
 local json    = require "openLuup.json"
@@ -457,7 +458,8 @@ local function update_plugin_versions (installed)
     local a = (d.environment or {}).ABOUT
     local IP = installed[i]
     
-    if IP and d.device_num_parent == 0 then   -- LOCAL devices only!
+    local parent = d.device_num_parent
+    if IP and (parent == 0 or parent == 2) then   -- LOCAL devices only! (incl. children of openLuup)
       
       if i and a then     -- plugins with ABOUT.VERSION
         local v1,v2,v3,prerelease = (a.VERSION or ''): match "(%d+)%D+(%d+)%D*(%d*)(%S*)"
