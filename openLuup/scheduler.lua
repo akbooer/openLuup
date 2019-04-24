@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.01.28",
+  VERSION       = "2019.04.24",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -52,6 +52,8 @@ local ABOUT = {
 -- 2018.08.04  coerce error return to string in context_switch() (thanks @rigpapa)
 
 -- 2019.01.28  add sandbox lookup table to metatable for external pretty-printing (console)
+-- 2019.04.19  fix possible type error in context_switch error message return
+-- 2019.04.24  fix job exit state so that it lingers in the job list
 
 
 local logs      = require "openLuup.logs"
@@ -130,7 +132,8 @@ local function context_switch (devNo, fct, ...)
   local function restore (ok, msg, ...) 
     current_device = old                        -- restore old device context
     if not ok then
-      _log (" ERROR: " .. tostring(msg or '?'), "openLuup.context_switch")  -- 2018.08.04 
+      msg = tostring(msg or '?')                -- 2019.04.19 make sure that string error is returned
+      _log (" ERROR: " .. msg, "openLuup.context_switch")  -- 2018.08.04 
     end
     return ok, msg, ... 
   end
@@ -303,7 +306,7 @@ local function dispatch (job, method)
   end  
   job.now = timenow()        -- 2017.05.05  update, since dispatched task may have taken a while
   job.expiry = job.now + timeout
-  if exit_state[job.status] then
+  if exit_state[status] then          -- 2019.04.24
     job.expiry = job.now + job_linger
   end
   job.status  = status
@@ -444,16 +447,18 @@ local function device_start (entry_point, devNo, name)
     local text = completion: format (label, tostring(a),tostring(b), tostring(c))
     _log (text)
     local _ = job   -- unused at present
+-- TODO: job notes for successful completion?
 --    if job.notes == '' then
 --      job.notes = text      -- use this as the startup job comments
 --    end
+--
     return state.Done, 0  
   end
   
   local jobNo = create_job ({job = startup_job}, {}, devNo)
   local job = job_list[jobNo]
-  local text = "job#%d :plugin %s"
-  job.type = text: format (jobNo, (name or ''): match "^%s*(.+)")
+  local text = "plugin: %s"
+  job.type = text: format ((name or ''): match "^%s*(.+)")
   startup_list[jobNo] = job  -- put this into the startup job list too 
   return jobNo
 end    

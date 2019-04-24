@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2019.04.04",
+  VERSION       = "2019.04.19",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -232,7 +232,9 @@ local function file_request (request)
   local status = 500
   
   -- 2018.07.15  use raw_read() for consistency in path search order
-  local response = loader.raw_read (path) or vfs.read (path)  -- 2016.06.01  also look in virtualfilesystem
+  -- 2019.04.12  remove vfs.read() here since raw_read now does an initial search of the cache?
+--  local response = loader.raw_read (path) or vfs.read (path)  -- 2016.06.01  also look in virtualfilesystem
+  local response = loader.raw_read (path)
   
   if response then 
     status = 200
@@ -318,8 +320,8 @@ local function execute (request, respond)
     local task = (task_selector [request_root] or file_task) (request, respond)
     local err, msg, jobNo = scheduler.run_job (task, {}, nil)  -- nil device number
     if jobNo and scheduler.job_list[jobNo] then
-      local info = "job#%d :HTTP request from %s: %s"
-      scheduler.job_list[jobNo].type = info: format (jobNo, tostring(request.ip), tostring(request.sock))
+      local info = "request: HTTP from %s %s"
+      scheduler.job_list[jobNo].type = info: format (tostring(request.ip), tostring(request.sock))
     end
     return err, msg, jobNo
   else

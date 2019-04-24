@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2019.03.14",
+  VERSION       = "2019.04.24",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -708,8 +708,8 @@ local function call_timer (...)
     _log (msg, "luup.call_timer")
     local e,_,j = timers.call_timer(fct, timer_type, time, days, data, recurring)      -- 2016.03.01   
     if j and scheduler.job_list[j] then
-      local text = "job#%d :timer '%s' (%s)"
-      scheduler.job_list[j].type = text: format (j, global_function_name, msg)
+      local text = "timer: '%s' (%s)"
+      scheduler.job_list[j].type = text: format (global_function_name, msg)
     end
     return e
   end
@@ -874,30 +874,15 @@ return: nothing
 
 --TODO: local function device_message (device_id, status, message, timeout, source)
 local function device_message (device_id, status, message, timeout, source)
-  -- have to find startup job with given device id...
-  local job
-  local jn
-  for job_no, info in pairs (scheduler.startup_list) do
-    if info.devNo == device_id then
-      jn = job_no
-      job = info
-      break
-    end
-  end
-  
-  if job then   
-    luup.devices[device_id].jobs[1] = {
-      id = jn,
-      status = status or 4,
-      type = source or "device_message",
-      comments = message or '?',
-    }
---    luup.devices[device_id].jobs[2] = {
---      id = jn,
---      status =  4,
---      type = source or "device_message",
---      comments = "transient",
---    }
+  if luup.devices[device_id] then
+    scheduler.run_job (
+      {job = function (_, _, job) 
+          job.type = source or "device message"
+          job.notes = message or '?'
+          devutil.new_userdata_dataversion ()        -- force a status update
+          return status, timeout or 180 
+        end},
+      {}, device_id)
   end
   
   --TODO: remove device message after timeout

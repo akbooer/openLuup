@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2019.04.18",
+  VERSION       = "2019.04.24",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -45,6 +45,7 @@ local ABOUT = {
 -- 2018.06.25  add shortSid to service object
 
 -- 2019.04.18  do not create variable history for Zwave serviceId or epoch values
+-- 2019.04.24 changed job.notes to job.type in call_action()
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -191,9 +192,19 @@ local metahistory = {}
     return v, t
   end
   
+-- old rules were:   
+--    dates_and_times = "*.*.{*Date*,*Time*,*Last*,Poll*,Configured,CommFailure}"
+--    zwave_devices = "*.ZWaveDevice1.*"
+--
+--   most of these now caught by the epoch filter in variable_set()
 local ignoreServiceHistory = {    -- these are the shortServiceIds for which we don't want history
   ZWaveDevice1  = true,
   ZWaveNetwork1 = true,
+}
+
+local ignoreVariableHistory = {   -- ditto variable names (regardless of serviceId)
+  Configured  = true,
+  CommFailure = true,
 }
 
 local variable = {}             -- variable CLASS
@@ -205,7 +216,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
   
   local history                                   -- 2019.04.18
   local shortSid  = serviceId: match "[^:]+$" or serviceId
-  if not ignoreServiceHistory[shortSid] then history = {} end
+  if not (ignoreServiceHistory[shortSid] or ignoreVariableHistory[name]) then history = {} end
   
   new_userdata_dataversion ()                     -- say structure has changed
 
@@ -486,7 +497,8 @@ local function new (devNo)
 
     local e,m,j,a = scheduler.run_job (act, arguments, devNo, target_device or devNo)
     if j and scheduler.job_list[j] then
-      scheduler.job_list[j].notes = table.concat ({"Action", serviceId or '?', action or '?'}, ' ') -- 2016.03.01
+       -- 2016.03.01, then 2019.04.24 changed job.notes to job.type
+      scheduler.job_list[j].type = table.concat ({"action: ", serviceId or '?', action or '?'}, ' ')
     end
     return e,m,j,a
   end

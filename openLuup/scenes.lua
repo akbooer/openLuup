@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2018.05.16",
+  VERSION       = "2019.04.18",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -53,6 +53,8 @@ local ABOUT = {
 -- 2018.02.19   add log messages for scene cancellation by global and local Lua code
 -- 2018.04.16   remove scene watcher callback, now redundant with scene finalizers
 -- 2018.05.16   correct next run time (thanks to @rafale77 for diagnosis and suggestions)
+
+-- 2019.04.18   syntax change to job name
 
 
 local logs      = require "openLuup.logs"
@@ -358,13 +360,13 @@ local function create (scene_json)
   -- start the timers
   local recurring = true
   local jobs = meta.jobs
-  local info = "job#%d :timer '%s' for scene [%d] %s"
+  local info = "timer: '%s' for scene [%d] %s"
   for _, t in ipairs (scene.timers or {}) do
     local _,_,j,_,due = timers.call_timer (scene_runner, t.type, t.time or t.interval, 
                           t.days_of_week or t.days_of_month, t, recurring)
     if j and scheduler.job_list[j] then
       local job = scheduler.job_list[j]
-      local text = info: format (j, t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
+      local text = info: format (t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
       job.type = text
       t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers
       jobs[#jobs+1] = j               -- save the jobs we're running

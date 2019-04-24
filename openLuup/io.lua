@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2019.03.17",
+  VERSION       = "2019.04.18",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -553,8 +553,8 @@ function server.new (config)
     do -- run the job
       local _, _, jobNo = scheduler.run_job {job = job}
       if jobNo and scheduler.job_list[jobNo] then
-        local info = "job#%d :%s new connection %s"
-        scheduler.job_list[jobNo].type = info: format (jobNo, name, tostring(sock))
+        local info = "server: %s connection %s"
+        scheduler.job_list[jobNo].type = info: format (name, tostring(sock))
       end
     end
   end  -- of new_client

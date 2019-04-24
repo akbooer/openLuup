@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2019.04.18",
+  VERSION       = "2019.04.19",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -63,6 +63,7 @@ local ABOUT = {
 -- 2018.11.21  add &id=actions request (thanks @rigpapa for pointing this out)
 
 -- 2019.04.18  remove plugin_configuration action call to openLuup (unwanted functionality)
+-- 2019.04.19  construct device job status directly from current job list
 
 
 local http          = require "openLuup.http"
@@ -381,6 +382,20 @@ end
 
 local function status_devices_table (device_list, data_version)
   local info 
+  -- 2019.04.19  build job info for devices
+  local jobs_by_device = {}    -- list of jobs indexed by device
+  for jn, j in pairs (scheduler.job_list) do
+    local devNo = j.devNo or 0
+    local d_info = jobs_by_device[devNo] or {}    -- create it if not already there
+    d_info[#d_info+1] = {
+      id = jn,
+      status = j.status,
+      type = j.type or "unknown",
+      comments = j.notes or ''
+    }
+    jobs_by_device[devNo] = d_info
+  end
+  
   local dv = data_version or 0
 --  local dev_dv
   for i,d in pairs (device_list) do 
@@ -407,7 +422,8 @@ local function status_devices_table (device_list, data_version)
         id = i, 
         status = d:status_get() or -1,      -- 2016.04.29
         tooltip = {display = "0"},
-        Jobs = d.jobs or {},                -- 2018.04.03
+--        Jobs = d.jobs or {},                -- 2018.04.03
+        Jobs = jobs_by_device[i] or {},                -- 2019.04.19
         PendingJobs = 0, 
         states = states
       }
