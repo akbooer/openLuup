@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2019.04.24",
+  VERSION       = "2019.04.25",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -45,7 +45,8 @@ local ABOUT = {
 -- 2018.06.25  add shortSid to service object
 
 -- 2019.04.18  do not create variable history for Zwave serviceId or epoch values
--- 2019.04.24 changed job.notes to job.type in call_action()
+-- 2019.04.24  changed job.notes to job.type in call_action()
+-- 2019.04.25  add touch() function to make device appear in status request, etc.
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -527,6 +528,12 @@ local function new (devNo)
     return attributes[attribute]
   end
  
+  -- touch: update the version number
+  local function touch ()
+    new_dataversion ()                      -- update system data version...
+    version = dataversion.value             -- ...and now update the device version 
+  end
+  
   -- new () starts here
   
   new_dataversion ()                                      -- say something's changed
@@ -554,6 +561,7 @@ local function new (devNo)
       version_get         = function () return version end,
       
       delete_vars         = delete_vars,    -- 2018.01.31
+      touch               = touch,          -- 2019.04.25
     }
     
   return device_list[devNo]

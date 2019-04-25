@@ -874,12 +874,12 @@ return: nothing
 
 --TODO: local function device_message (device_id, status, message, timeout, source)
 local function device_message (device_id, status, message, timeout, source)
-  if luup.devices[device_id] then
+  local device = luup.devices[device_id]
+  if device then
     scheduler.run_job (
       {job = function (_, _, job) 
           job.type = source or "device message"
           job.notes = message or '?'
-          devutil.new_userdata_dataversion ()        -- force a status update
           return status, timeout or 180 
         end},
       {}, device_id)

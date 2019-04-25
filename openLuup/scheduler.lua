@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.04.24",
+  VERSION       = "2019.04.25",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -54,6 +54,7 @@ local ABOUT = {
 -- 2019.01.28  add sandbox lookup table to metatable for external pretty-printing (console)
 -- 2019.04.19  fix possible type error in context_switch error message return
 -- 2019.04.24  fix job exit state so that it lingers in the job list
+-- 2019.04.25  change system idle latency to 100ms (from 500ms), force status update on device job termination
 
 
 local logs      = require "openLuup.logs"
@@ -308,6 +309,8 @@ local function dispatch (job, method)
   job.expiry = job.now + timeout
   if exit_state[status] then          -- 2019.04.24
     job.expiry = job.now + job_linger
+    local d = luup.devices[job.devNo]
+    if d then d:touch() end           -- 2019.04.25
   end
   job.status  = status
   job.timeout = timeout
@@ -594,7 +597,7 @@ local function start ()
     luup_callbacks ()                     -- do Luup callbacks (variable_watch, call_delay)
     
     -- it is the following call which throttles the whole round-robin scheduler if there is no work to do
-    socket_callbacks (0.5)                -- wait for incoming (but not for too long)        
+    socket_callbacks (0.1)                -- 2019.04.25        
     
   until exit_code
   _log ("exiting with code " .. tostring (exit_code))
