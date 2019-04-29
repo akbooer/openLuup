@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2018.05.25",
+  VERSION       = "2019.04.18",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -54,6 +54,8 @@ local ABOUT = {
 -- 2018.04.16   remove scene watcher callback, now redundant with scene finalizers
 -- 2018.05.16   correct next run time (thanks to @rafale77 for diagnosis and suggestions)
 -- 2018.05.25   fixed scene interval passing from scene to timer function
+
+-- 2019.04.18   syntax change to job name
 
 
 local logs      = require "openLuup.logs"
@@ -160,7 +162,7 @@ local function create (scene_json)
       t.next_run = next_time          -- ...regardless of whether or not it runs this time (thanks @rafale77)
       devutil.new_userdata_dataversion ()         -- increment version, so that display updates
     end
-    if not runs_in_current_mode (scene) then 
+    if not runs_in_current_mode (scene) then
       _log (scene.name .. " does not run in current House Mode")
       return
     end
@@ -363,19 +365,18 @@ local function create (scene_json)
   -- start the timers
   local recurring = true
   local jobs = meta.jobs
-  local info = "job#%d :timer '%s' for scene [%d] %s"
-  local time = ""
+  local info = "timer: '%s' for scene [%d] %s"
   for _, t in ipairs (scene.timers or {}) do
     if t.type == 1 then  -- 2018.05.25 Rafale77
       rtime = t.interval
     else
       rtime = t.time
     end
-    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, rtime, 
+    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, rtime,
                           t.days_of_week or t.days_of_month, t, recurring)
     if j and scheduler.job_list[j] then
       local job = scheduler.job_list[j]
-      local text = info: format (j, t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
+      local text = info: format (t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
       job.type = text
       t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers
       jobs[#jobs+1] = j               -- save the jobs we're running

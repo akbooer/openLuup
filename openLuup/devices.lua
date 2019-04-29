@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2018.06.25",
+  VERSION       = "2019.04.25",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -43,6 +43,10 @@ local ABOUT = {
 -- 2018.06.01  add shortSid to variables, for historian
 -- 2018.06.22  make history cache default for all variables
 -- 2018.06.25  add shortSid to service object
+
+-- 2019.04.18  do not create variable history for Zwave serviceId or epoch values
+-- 2019.04.24  changed job.notes to job.type in call_action()
+-- 2019.04.25  add touch() function to make device appear in status request, etc.
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -189,6 +193,20 @@ local metahistory = {}
     return v, t
   end
 
+-- old rules were:
+--    dates_and_times = "*.*.{*Date*,*Time*,*Last*,Poll*,Configured,CommFailure}"
+--    zwave_devices = "*.ZWaveDevice1.*"
+--
+--   most of these now caught by the epoch filter in variable_set()
+local ignoreServiceHistory = {    -- these are the shortServiceIds for which we don't want history
+  ZWaveDevice1  = true,
+  ZWaveNetwork1 = true,
+}
+
+local ignoreVariableHistory = {   -- ditto variable names (regardless of serviceId)
+  Configured  = true,
+  CommFailure = true,
+}
 
 local variable = {}             -- variable CLASS
 
@@ -196,7 +214,13 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
   local device = device_list[devNo] or {}
   local vars = device.variables or {}
   local varID = #vars                             -- 2018.01.31
+
+  local history                                   -- 2019.04.18
+  local shortSid  = serviceId: match "[^:]+$" or serviceId
+  if not (ignoreServiceHistory[shortSid] or ignoreVariableHistory[name]) then history = {} end
+
   new_userdata_dataversion ()                     -- say structure has changed
+
   vars[varID + 1] =                               -- 2018.01.31
   setmetatable (                                  -- 2018.05.25 add history methods
     {
@@ -209,7 +233,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       silent    = nil,                            -- set to true to mute logging
       watchers  = {},                             -- callback hooks
       -- history
-      history   = {},                             -- set to nil to disable history
+      history   = history,                        -- set to nil to disable history
       hipoint   = 0,                              -- circular buffer pointer managed by variable_set()
       hicache   = nil,                            -- local cache size, overriding global CacheSize
       -- methods
@@ -230,7 +254,8 @@ function variable:set (value)
   if history then
     local v = tonumber(value)                     -- only numeric values
     if v then
-      if value ~= self.value then                 -- only cache changes
+      local epoch = v > 1234567890                -- cheap way to identify recent epochs? (and other big numbers!)
+      if value ~= self.value and not epoch then   -- only cache changes
         local hipoint = (self.hipoint or 0) % (self.hicache or CacheSize) + 1
         local n = hipoint + hipoint
         self.hipoint = hipoint
@@ -473,7 +498,8 @@ local function new (devNo)
 
     local e,m,j,a = scheduler.run_job (act, arguments, devNo, target_device or devNo)
     if j and scheduler.job_list[j] then
-      scheduler.job_list[j].notes = table.concat ({"Action", serviceId or '?', action or '?'}, ' ') -- 2016.03.01
+       -- 2016.03.01, then 2019.04.24 changed job.notes to job.type
+      scheduler.job_list[j].type = table.concat ({"action: ", serviceId or '?', action or '?'}, ' ')
     end
     return e,m,j,a
   end
@@ -500,6 +526,12 @@ local function new (devNo)
   -- Gets the top level attribute for the device.
   local function attr_get (self, attribute)
     return attributes[attribute]
+  end
+
+  -- touch: update the version number
+  local function touch ()
+    new_dataversion ()                      -- update system data version...
+    version = dataversion.value             -- ...and now update the device version
   end
 
   -- new () starts here
@@ -529,6 +561,7 @@ local function new (devNo)
       version_get         = function () return version end,
 
       delete_vars         = delete_vars,    -- 2018.01.31
+      touch               = touch,          -- 2019.04.25
     }
 
   return device_list[devNo]

@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.04.12",
+  VERSION       = "2019.04.24",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -55,8 +55,9 @@ ABOUT = {
 -- 2019.01.29  use html tables for most console pages
 -- 2019.03.22  use xml.html5 module to construct tables, and xml.escape() rather than internal routine
 -- 2019.04.03  use "startup" as time option for historian plots
--- 2019.04.05  add latest vlue to historian cache table
+-- 2019.04.05  add latest value to historian cache table
 -- 2019.04.08  use SVG for avatar, rather than link to GitHub icon
+-- 2019.04.24  make avatar link to AltUI home page, sortable cache and jobs tables
 
 
 -- TODO: HTML pages with sorted tables?
@@ -124,16 +125,70 @@ local function sort_and_number (list)
   return list
 end
 
-local function joblist ()
-  local t = html5.table()
-  t.header {"#", "date / time", "device", "status", "run", "info", "notes"}
+ 
+local function sorted_table (pagename)
+  local Ncol = 0
+  local cache_sort_direction = {} -- sort state for cache table columns (stateful... sorry!)
+  local function column (name, key)
+    Ncol = Ncol + 1
+    key = key or Ncol       -- use either field name or column number
+    local sort = ''
+    if string.lower (key) ~= "nosort" then sort = "&sort=" .. key end
+    local href = table.concat {"/console?page=", pagename, sort}
+    return html5.a {name, href = href}
+  end
+  local function sort (info, key)
+    if key then 
+      cache_sort_direction[key] = not cache_sort_direction[key]
+    else
+      key = 1
+      cache_sort_direction = {}    -- clear the sort direction
+    end
+    cache_sort_direction[1] = nil     -- never toggle first column
+    local reverse = cache_sort_direction[key]
+    local function in_order (a,b) 
+      a, b = a[key] or tostring(a), b[key] or tostring(b)
+      if type(a) ~= type(b) then a,b = tostring(a), tostring(b) end
+      local sort
+      if reverse then sort = a > b else sort = a < b end  -- note that a > b is not the same as not (a < b)
+      return sort
+    end
+    if key then table.sort (info, in_order) end
+  end
+  local function table (attr)
+    Ncol = 0
+    return html5.table (attr)
+  end
+  return {
+    column = column,
+    sort = sort,
+    table = table,
+  }
+end
+
+local sorted_joblist = sorted_table "jobs"
+
+local function joblist (p)
+  local s = sorted_joblist
+  local t = s.table()
+  t.header {
+    s.column '#',
+    s.column "date / time",
+    s.column "device", 
+    s.column "status", 
+    s.column "run", 
+    s.column "job #", 
+    s.column "info", 
+    s.column "notes"}
   local jlist = {}
-  for _,b in pairs (scheduler.job_list) do
+  for jn, b in pairs (scheduler.job_list) do
     local status = state[b.status] or ''
     local n = b.logging.invocations
-    jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, n, b.type or '?', b.notes or ''}
+    jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, n, jn, b.type or '?', b.notes or ''}
   end
-  for _, row in ipairs (sort_and_number(jlist)) do
+  s.sort (jlist, tonumber (p.sort or 1))
+  for i, row in ipairs (jlist) do
+    row[1] = i
     t.row (row)
   end
   local div = html5.div {html5_title "Scheduled Jobs", t}
@@ -158,12 +213,12 @@ end
 
 local function startup ()
   local t = html5.table()
-  t.header {"#", "date / time", "device", "status", "info", "notes"}
+  t.header {"#", "date / time", "device", "status", "job #", "info", "notes"}
   local jlist = {}
-  for _,b in pairs (scheduler.startup_list) do
+  for jn, b in pairs (scheduler.startup_list) do
     local status = state[b.status] or ''
     if status ~= "Done" then status = red (status) end
-    jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, b.type or '?', b.notes or ''}
+    jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, jn, b.type or '?', b.notes or ''}
   end
   for _, row in ipairs (sort_and_number(jlist)) do
     t.row (row)
@@ -747,23 +802,39 @@ local function device_states ()
   return div
 end
 
+local sorted_cache = sorted_table "cache"
 
-local function cache ()
-  local t = html5.table ()
-  t: header {'#', "last access", "# hits", "size (bytes)", "filename"}
-  local i, N = 0, 0
-  for name in vfs.dir() do
-    i = i + 1
-    local v = vfs.attributes (name)
+local function cache (p)
+  local s = sorted_cache
+  local t = s.table ()
+  t: header {
+    s.column '#',
+    s.column "last access",
+    s.column "# hits",
+    s.column "size (bytes)",
+    s.column "filename"}
+  
+  local N, H = 0, 0
+  local strong = html5.strong
+  local info = {}
+  for name in vfs.dir() do 
+    local v = vfs.attributes (name) 
     local d = (v.access ~= 0) and os.date (date, v.access) or ''
-    t: row {i, d, v.hits, v.size, name}
-    N = N + v.size
+    info[#info+1] = {name, d, v.hits, v.size, name} 
   end
-  t:row { '', '', '', N/1000 .. " (kB)", html5.strong {"Total"}}
+  
+  s.sort (info, tonumber (p.sort or 1))
+  for i, row in ipairs (info) do
+    row[1] = i    -- replace primary sort key with line number
+    t.row (row)
+    H = H + row[3]
+    N = N + row[4]
+  end
+  
+  t:row { '', '', strong {H}, strong {tostring (N/1000), " (kB)"}, strong {"Total"}}
   local div = html5.div {html5_title "File System Cache", t}
   return div
 end
-
 
 local function parameters ()
   local info = luup.attr_get "openLuup"
@@ -787,8 +858,11 @@ local function about ()
   local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
   local t = html5.table ()
   for a,b in sorted (ABOUTopenLuup) do
+    b = tostring(b)
+--    if b: lower() : match "^http" then b = html5.a {href = b, b} end
+    b = b: gsub ("http%S+",  '<a href=%1 target="_blank">%1</a>')
     t.row {{a, style = "font-weight: bold"}, 
-      html5.pre {tostring(b), style = "margin-top: 0.5em; margin-bottom: 0.5em;"}}
+      html5.pre {b, style = "margin-top: 0.5em; margin-bottom: 0.5em;"}}
   end
   local div = html5.div {html5_title "About...", t}
   return div
@@ -846,10 +920,8 @@ local menu = div {class="menu", style="background:DarkGrey;",
 --              style="width:60px;height:60px;border:0;vertical-align:middle;">]]},
     div {
       class="dropdown", 
-      style="vertical-align:middle;",
-      html5.img {src="icons/openLuup.svg", alt="openLuup",  
-              style="width:60px;height:60px;border:0;vertical-align:middle;"} },
---      vfs.read "icons/openLuup.svg"},
+      style="vertical-align:middle; height:60px;",
+      a {href="/data_request?id=lr_ALTUI_Handler&command=home#", target="_blank",  vfs.read "icons/openLuup.svg"}},
     
     div {class="dropdown",
       button {class="dropbtn", "openLuup"},

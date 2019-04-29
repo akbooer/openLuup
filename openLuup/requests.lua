@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2018.11.21",
+  VERSION       = "2019.04.19",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -61,6 +61,9 @@ local ABOUT = {
 -- 2018.04.09  add archive_video request
 -- 2018.04.22  add &id=lua request (not yet done &DeviceNum=xxx - doesn't seem to work on Vera anyway)
 -- 2018.11.21  add &id=actions request (thanks @rigpapa for pointing this out)
+
+-- 2019.04.18  remove plugin_configuration action call to openLuup (unwanted functionality)
+-- 2019.04.19  construct device job status directly from current job list
 
 
 local http          = require "openLuup.http"
@@ -277,9 +280,9 @@ local function actions (_, p)
     local A = {}
     S[#S+1] = {serviceId = s, actionList = A}
 --      local implemented_actions = srv.actions
-    for _,act in spairs ((loader.service_data[s] or {}).actions or {}) do
+    for _, act in spairs ((loader.service_data[s] or {}).actions or {}) do
       local args = {}
-      for i,arg in ipairs (act.argumentList or {}) do
+      for i, arg in ipairs (act.argumentList or {}) do
           args[i] = {name = arg.name, dataType = arg.dataType}    -- TODO: dataType not in arg?
       end
 --        local star = implemented_actions[name] and '*' or ''
@@ -379,6 +382,20 @@ end
 
 local function status_devices_table (device_list, data_version)
   local info 
+  -- 2019.04.19  build job info for devices
+  local jobs_by_device = {}    -- list of jobs indexed by device
+  for jn, j in pairs (scheduler.job_list) do
+    local devNo = j.devNo or 0
+    local d_info = jobs_by_device[devNo] or {}    -- create it if not already there
+    d_info[#d_info+1] = {
+      id = jn,
+      status = j.status,
+      type = j.type or "unknown",
+      comments = j.notes or ''
+    }
+    jobs_by_device[devNo] = d_info
+  end
+  
   local dv = data_version or 0
 --  local dev_dv
   for i,d in pairs (device_list) do 
@@ -405,7 +422,8 @@ local function status_devices_table (device_list, data_version)
         id = i, 
         status = d:status_get() or -1,      -- 2016.04.29
         tooltip = {display = "0"},
-        Jobs = d.jobs or {},                -- 2018.04.03
+--        Jobs = d.jobs or {},                -- 2018.04.03
+        Jobs = jobs_by_device[i] or {},                -- 2019.04.19
         PendingJobs = 0, 
         states = states
       }
@@ -923,17 +941,11 @@ local function update_plugin (_,p)
     local arg = {metadata = json.encode (meta)}
     local dev = device_present "urn:schemas-upnp-org:device:AltAppStore:1"
     
-    -- check for pre-install device-specific configuration, failure means do NOT install
-    local status
-    status, errmsg = luup.call_action ("openLuup", "plugin_configuration", meta, 2) 
+    _, errmsg = luup.call_action (sid, act, arg, dev)       -- actual install
     
-    if status == 0 then
-      _, errmsg = luup.call_action (sid, act, arg, dev)       -- actual install
-      
-      -- NOTE: that the above action executes asynchronously and the function call
-      --       returns immediately, so you CAN'T do a luup.reload() here !!
-      --       (it's done at the end of the <job> part of the called action)
-    end
+    -- NOTE: that the above action executes asynchronously and the function call
+    --       returns immediately, so you CAN'T do a luup.reload() here !!
+    --       (it's done at the end of the <job> part of the called action)
   end
   
   if errmsg then _log (errmsg) end

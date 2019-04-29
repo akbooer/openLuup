@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2018.11.26",
+  VERSION       = "2019.04.18",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-18 AK Booer
+  Copyright 2013-19 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -25,7 +25,9 @@ local ABOUT = {
 }
     
 -- 2018.07.21  ensure Directory ends with '/'
--- 2017.11.26  enable historian mirroring to external Graphite and InfluxDB databases via UDP
+-- 2018.11.26  enable historian mirroring to external Graphite and InfluxDB databases via UDP
+
+-- 2019.04.18  remove TidyCache daemon (now done implicitly at variable creation in devices module)
 
 
 local logs    = require "openLuup.logs"
@@ -878,20 +880,6 @@ local function HistoryFinder(config)
 end
 
 
-------------
--- 
--- new variables are, by default, cached.
--- this function periodically sweeps the variables to disable any unwanted ones which may have been created.
---
-function TidyCache ()
-  _log "tidying cache..."
-  for _,pattern in pairs (tables.cache_rules.nocache) do
-    nocacheVariables (pattern)
-  end
-  luup.call_delay ("TidyCache", 600)
-  _log "...done"
-end
-
 
 ---------------------------------------------------
 --
@@ -938,7 +926,6 @@ local function start (config)
   if Graphite_UDP then _log ("mirroring archives to Graphite at " .. Graphite) end
   if InfluxDB_UDP then _log ("mirroring archives to InfluxDB at " .. InfluxDB) end
   
-  luup.call_delay ("TidyCache", 30) -- disable caching for unwanted variables (after pause for startup)
   _log ("using memory cache size (per-variable): " .. CacheSize)
 end
 
