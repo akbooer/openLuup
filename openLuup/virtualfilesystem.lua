@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.04.16",
+  VERSION       = "2019.05.01",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -23,6 +23,8 @@ local ABOUT = {
 }
 
 local html5 = require "openLuup.xml" .html5       -- for SVG icons
+local json  = require "openLuup.json"             -- for JSON device file encoding
+local xml   = require "openLuup.xml"              -- for XML device file encoding
 
 -- the loader cache is preset with these files
 
@@ -33,6 +35,38 @@ local html5 = require "openLuup.xml" .html5       -- for SVG icons
 -- device files for "openLuup", "AltAppStore", and "VeraBridge". 
 -- DataYours configuration files.
   
+-----
+-- utility functions
+--
+
+local SID = {
+    AltUI = "urn:upnp-org:serviceId:altui1",
+    VeraBridge = "urn:akbooer-com:serviceId:VeraBridge1",
+  }
+
+
+local function Display (L,T,W,H, S,V)
+  return {Left = L, Top = T, Width = W, Height = H, Service = S, Variable = V,}
+end
+
+local function Label (tag, text)
+  return {lang_tag = tag, text = tostring(text)}    -- tostring() forces serliaization of html5 elements
+end
+
+local function ControlGroup (G,C, L,T, D,Lab)
+  return {ControlGroup = tostring(G), ControlType = C, left = tostring(L), top = tostring(T), Display = D, Label=Lab}
+end
+
+local function action (S,N, R,J)
+  return {serviceId = S, name = N, run = R, job = J}
+end
+
+local function argument (N,D)
+  return {name = N, direction = D or "in"}
+end
+
+-----
+
 local openLuup_svg = (
   function (N)
     local s = html5.svg {height = N, width  = N,
@@ -49,207 +83,105 @@ local openLuup_svg = (
     return tostring(s)
   end) (60)
 
-local D_openLuup_dev = [[
-<?xml version="1.0"?>
-<root xmlns="urn:schemas-upnp-org:device-1-0">
-  <device>
-    <deviceType>openLuup</deviceType>
-    <friendlyName>openLuup</friendlyName>
-    <manufacturer>akbooer</manufacturer>
-    <staticJson>D_openLuup.json</staticJson>
-    <serviceList>
-      <service>
-        <serviceType>openLuup</serviceType>
-        <serviceId>openLuup</serviceId>
-        <SCPDURL>S_openLuup.xml</SCPDURL>
-      </service>
-    </serviceList>
-    <implementationList>
-      <implementationFile>I_openLuup.xml</implementationFile>
-    </implementationList>
-  </device>
-</root>
-]]
+local D_openLuup_dev = xml.encodeDocument {
+  root = {_attr = {xmlns="urn:schemas-upnp-org:device-1-0"},
+    device = {
+      deviceType    = "openLuup",
+      friendlyName  = "openLuup",
+      manufacturer  = "akbooer",
+      staticJson    = "D_openLuup.json",
+      serviceList = {
+        service = {
+          {serviceType = "openLuup", serviceId = "openLuup", SCPDURL = "S_openLuup.xml"}}},
+      implementationList = {
+        implementationFile = "I_openLuup.xml"}
+      }}}
 
-
-local D_openLuup_json = [[
-{
-  "flashicon": "https://avatars.githubusercontent.com/u/4962913",
-  "default_icon": "openLuup.svg",
-	"Tabs": [
-		{
-			"Label": {
-				"lang_tag": "tabname_control",
-				"text": "Control"
-			},
-			"Position": "0",
-			"TabType": "flash",
-			"ControlGroup":[
-				{
-					"id": "1",
-					"scenegroup": "1"
-				}
-			],
-			"SceneGroup":[
-				{
-					"id": "1",
-					"top": "1.5",
-					"left": "0.25",
-					"x": "1.5",
-					"y": "2"
-				}
-			],
-			"Control": [
-				{
-					"ControlGroup":"1",
-					"ControlType": "variable",
-					"top": "0",
-					"left": "0",
-					"Display": {
-						"Service": "urn:upnp-org:serviceId:altui1",
-						"Variable": "DisplayLine1",
-						"Top": 40,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				},
-				{
-					"ControlGroup":"1",
-					"ControlType": "variable",
-					"top": "1",
-					"left": "0",
-					"Display": {
-						"Service": "urn:upnp-org:serviceId:altui1",
-						"Variable": "DisplayLine2",
-						"Top": 60,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				},
-				{
-					"ControlGroup":"2",
-					"ControlType": "variable",
-					"top": "3",
-					"left": "0",
-					"Display": {
-						"Service": "openLuup",
-						"Variable": "StartTime",
-						"Top": 100,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				},
-				{
-					"ControlGroup":"2",
-					"ControlType": "variable",
-					"top": "3",
-					"left": "0",
-					"Display": {
-						"Service": "openLuup",
-						"Variable": "Version",
-						"Top": 120,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				},
-				{
-					"ControlGroup":"2",
-					"ControlType": "label",
-					"top": "4",
-					"left": "0",
-					"Label": {
-						"lang_tag": "donate",
-						"text": "<a href='console' target='_blank'>CONSOLE interface</a>"
-					},
-					"Display": {
-						"Top": 160,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				},
-				{
-					"ControlGroup":"2",
-					"ControlType": "label",
-					"top": "4",
-					"left": "0",
-					"Label": {
-						"lang_tag": "donate",
-						"text": "<a href='https:\/\/www.justgiving.com\/DataYours\/' target='_blank'>If you like openLuup, you could DONATE to Cancer Research UK right here</a>"
-					},
-					"Display": {
-						"Top": 200,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				}
-			]
-		}
-  ],
-  "eventList2": [
-    {
-      "id": 1,
-      "label": {
-        "lang_tag": "triggers_are_not_implemented",
-        "text": "Triggers not implemented, use Watch instead"
-      },
-      "serviceId": "openLuup",
-      "argumentList": []
-    }
-  ],
-  "DeviceType": "openLuup"
-}
-]]
-
-local I_openLuup_impl = [[
-<?xml version="1.0"?>
-<implementation>
-  <files>openLuup/L_openLuup.lua</files>
-  <startup>init</startup>
-  <actionList>
+local D_openLuup_json = json.encode {
+  flashicon = "https://avatars.githubusercontent.com/u/4962913",
+  default_icon = "openLuup.svg",
+  DeviceType = "openLuup",
+  Tabs = {{
+      Label = Label ("tabname_control", "Control"),
+			Position = "0",
+			TabType = "flash",
+			ControlGroup = { {id = "1",scenegroup = "1"} },
+			SceneGroup = { {id = "1", top = "1.5", left = "0.25", x = "1.5",y ="2"} },
     
-    <action>
-      <serviceId>openLuup</serviceId>
-      <name>SendToTrash</name>
-      <job>
-        SendToTrash (lul_settings)
-      </job>
-    </action>
-    
-    <action>
-      <serviceId>openLuup</serviceId>
-      <name>EmptyTrash</name>
-      <job>
-        EmptyTrash (lul_settings)
-      </job>
-    </action>
-    
-    <action>
-      <serviceId>openLuup</serviceId>
-      <name>SetHouseMode</name>
-      <run>
-        local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
-        luup.call_action (sid, "SetHouseMode", lul_settings)
-      </run>
-    </action>
+    Control = {
+      ControlGroup (1, "variable", 0,0,
+        Display (50,40, 75,20, SID.AltUI, "DisplayLine1")),
+      ControlGroup (1, "variable", 0,1,
+        Display (50,60, 75,20, SID.AltUI, "DisplayLine2")),
+      ControlGroup (2, "variable", 0,3,
+        Display (50,100, 75,20, "openLuup","StartTime")),
+      ControlGroup (2,  "variable", 0,3, 
+        Display (50,120, 75,20,  "openLuup", "Version")),
+      ControlGroup (2, "label", 0,4, 
+        Display (50,160, 75,20),
+        Label ("donate", html5.a {href="console", target="_blank", "CONSOLE interface"})),
+      ControlGroup (2, "label", 0,4,
+        Display (50,200, 75,20),
+        Label ("donate", html5.a {href="https://www.justgiving.com/DataYours/", target="_blank",
+                "If you like openLuup, you could DONATE to Cancer Research UK right here"}))},
+   }},
+  eventList2 = {
+    {id = 1, serviceId = "openLuup",argumentList = {},
+      label = Label ("triggers_are_not_implemented", "Triggers not implemented, use Watch instead")},
+      }
+  }
 
-    <action>    <!-- added by @rafale77 -->
-      <serviceId>openLuup</serviceId>
-      <name>RunScene</name>
-      <run>
-        local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
-        luup.call_action(sid, "RunScene", {SceneNum = lul_settings.SceneNum}, 0)
-      </run>
-    </action>
-  
-  </actionList>
-</implementation>
-]]
+local I_openLuup_impl = xml.encodeDocument {
+implementation = {
+  files = "openLuup/L_openLuup.lua",
+  startup = "init",
+  actionList = {
+    
+    action = {
+      action ("openLuup", "SendToTrash", nil, "SendToTrash (lul_settings)"),
+      action ("openLuup", "EmptyTrash",  nil, "EmptyTrash (lul_settings)"),
+      action ("openLuup", "SetHouseMode",
+        [[
+          local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+          luup.call_action (sid, "SetHouseMode", lul_settings)
+        ]]),
+      action ( "openLuup", "RunScene",                 -- added by @rafale77 --
+        [[
+          local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+          luup.call_action(sid, "RunScene", {SceneNum = lul_settings.SceneNum}, 0)
+        ]])
+    }}}}
+
+-- TODO: move to this service file is dependent on AltUI version post-1-May-2019 to fix name tag issue
+local xS_openLuup_svc = xml.encodeDocument {
+  scpd = {_attr= {xmlns="urn:schemas-upnp-org:service-1-0"},
+    specVersion = {major = 1, minor = 0},
+    
+    serviceStateTable = {  -- added just for fun to expose these as device status 
+      stateVariable = {
+        {name = "CpuLoad", shortCode = "cpu_load"},	
+        {name = "Memory_Mb", shortCode = "memory_mb"},	
+        {name = "Uptime_Days", shortCode = "uptime_days"}}},
+    
+    actionList = {
+
+      action = {
+        {name = "SendToTrash",
+        argumentList = {
+          argument = {
+            argument "Folder",
+            argument "MaxDays",
+            argument "MaxFiles",
+            argument "FileTypes"}}},
+    
+        {name = "EmptyTrash",
+        argumentList = {argument = argument "AreYouSure"}},
+        
+        {name = "SetHouseMode",
+        argumentList = {argument = argument "Mode"}},
+      
+        {name = "RunScene",         -- added by @rafale77 --
+        argumentList = {argument = argument "SceneNum"}}}}}}
 
 local S_openLuup_svc = [[
 <?xml version="1.0"?>
@@ -306,6 +238,7 @@ local S_openLuup_svc = [[
 -----
 --
 -- AltAppStore device files
+-- This plugin runs on Vera too, so use same device/service files as there...
 --
 
 local AltAppStore_svg = (
@@ -489,7 +422,7 @@ local S_AltAppStore_svc = [[
     <action>
       <name>update_plugin</name>
       <argumentList>
-        <argument <name>metadata</name> <direction>in</direction> </argument>
+        <argument> <name>metadata</name> <direction>in</direction> </argument>
       </argumentList>
     </action>
 	</actionList>
@@ -524,164 +457,59 @@ local VeraBridge_svg = (
   end) (60)
 
 
-local D_VeraBridge_dev = [[
-<?xml version="1.0"?>
-<root xmlns="urn:schemas-upnp-org:device-1-0">
-  <specVersion>
-    <major>1</major>
-    <minor>0</minor>
-  </specVersion>
-  <device>
-    <deviceType>VeraBridge</deviceType>
-    <friendlyName>Vera Bridge</friendlyName>
-    <manufacturer>akbooer</manufacturer>
-    <manufacturerURL></manufacturerURL>
-    <modelDescription>Vera Bridge for openLuup</modelDescription>
-    <modelName>VeraBridge</modelName>
-    <modelNumber>3</modelNumber>
-    <handleChildren>1</handleChildren>
-    <Category_Num>1</Category_Num>
-    <UDN></UDN>
-    <serviceList>
-      <service>
-        <serviceType>urn:akbooer-com:service:VeraBridge:1</serviceType>
-        <serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
-        <SCPDURL>S_VeraBridge.xml</SCPDURL>
-      </service>
-    </serviceList>
-		<staticJson>D_VeraBridge.json</staticJson>
-    <implementationList>
-      <implementationFile>I_VeraBridge.xml</implementationFile>
-    </implementationList>
-  </device>
-</root>
-]]
+local D_VeraBridge_dev = xml.encodeDocument {
+  root = {_attr = {xmlns="urn:schemas-upnp-org:device-1-0"},
+    device = {
+      Category_Num    = 1,
+      deviceType      = "VeraBridge",
+      friendlyName    = "Vera Bridge",
+      manufacturer    = "akbooer",
+      handleChildren  = 1,
+      staticJson      = "D_VeraBridge.json",
+      serviceList = {
+        service = {
+          { serviceType = "urn:akbooer-com:service:VeraBridge:1", 
+            serviceId = SID.VeraBridge, 
+            SCPDURL = "S_VeraBridge.xml"}}},
+      implementationList = {
+        implementationFile = "I_VeraBridge.xml"}
+      }}}
 
 
-local D_VeraBridge_json = [[
-{
-  "flashicon": "http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
-	"default_icon": "VeraBridge.svg",
-	"Tabs": [
-		{
-			"Label": {
-				"lang_tag": "tabname_control",
-				"text": "Control"
-			},
-			"Position": "0",
-			"TabType": "flash",
-			"ControlGroup":[
-				{
-					"id": "1",
-					"scenegroup": "1"
-				}
-			],
-			"SceneGroup":[
-				{
-					"id": "1",
-					"top": "1.5",
-					"left": "0.25",
-					"x": "1.5",
-					"y": "2"
-				}
-			],
-			"Control": [
-				{
-					"ControlGroup":"1",
-					"ControlType": "variable",
-					"top": "0",
-					"left": "0",
-					"Display": {
-						"Service": "urn:upnp-org:serviceId:altui1",
-						"Variable": "DisplayLine1",
-						"Top": 40,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				},
-				{
-					"ControlGroup":"1",
-					"ControlType": "variable",
-					"top": "1",
-					"left": "0",
-					"Display": {
-						"Service": "urn:upnp-org:serviceId:altui1",
-						"Variable": "DisplayLine2",
-						"Top": 60,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				},
-				{
-					"ControlGroup":"2",
-					"ControlType": "variable",
-					"top": "3",
-					"left": "0",
-					"Display": {
-						"Service": "urn:akbooer-com:serviceId:VeraBridge1",
-						"Variable": "Version",
-						"Top": 100,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				}
-			]
-		}
-  ],
-	"DeviceType": "VeraBridge"
-}
-]]
+local D_VeraBridge_json = json.encode {
+  flashicon = "http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
+  default_icon = "VeraBridge.svg",
+  DeviceType = "VeraBridge",
+  Tabs = {{
+      Label = Label ("tabname_control", "Control"),
+			Position = "0",
+			TabType = "flash",
+			ControlGroup = { {id = "1",scenegroup = "1"} },
+			SceneGroup = { {id = "1", top = "1.5", left = "0.25", x = "1.5",y ="2"} },
+    
+    Control = {
+      ControlGroup (1, "variable", 0,0,
+        Display (50,40, 75,20, SID.AltUI, "DisplayLine1")),
+      ControlGroup (1, "variable", 0,1,
+        Display (50,60, 75,20, SID.AltUI, "DisplayLine2")),
+      ControlGroup (2, "variable", 0,3,
+        Display (50,100, 75,20, SID.VeraBridge,"Version")),
+      }}}}
 
-local I_VeraBridge_impl = [[
-<?xml version="1.0"?>
-<implementation>
-  <files>openLuup/L_VeraBridge.lua</files>
-  <startup>init</startup>
-  <actionList>
-    
-    <action>
-  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
-  		<name>GetVeraFiles</name>
-  		<job>
-  			GetVeraFiles (lul_settings)
-  			return 4,0
-  		</job>
-    </action>
-    
-    <action>
-  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
-  		<name>GetVeraScenes</name>
-  		<job>
-  			GetVeraScenes ()
-  			return 4,0
-  		</job>
-    </action>
-    
-    <action>
-  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
-  		<name>RemoteVariableSet</name>
-  		<job>
-  			RemoteVariableSet (lul_settings)
-  			return 4,0
-  		</job>
-    </action>
-    
-    <action>
-      <!-- added here to allow scenes to access this as an action (Device 0 is not visible) -->
-  		<serviceId>urn:akbooer-com:serviceId:VeraBridge1</serviceId>
-  		<name>SetHouseMode</name>
-  		<job>
-  			SetHouseMode (lul_settings)
-  			return 4,0
-  		</job>
-    </action>
-  
-  </actionList>
-</implementation>
-]]
+
+local I_VeraBridge_impl = xml.encodeDocument {
+implementation = {
+  files = "openLuup/L_VeraBridge.lua",
+  startup = "init",
+  actionList = {
+    action = {
+      action (SID.VeraBridge, "GetVeraFiles",      nil, "GetVeraFiles (lul_settings)"),
+      action (SID.VeraBridge, "GetVeraScenes",     nil, "GetVeraScenes (lul_settings)"),
+      action (SID.VeraBridge, "RemoteVariableSet", nil, "RemoteVariableSet (lul_settings)"),
+      action (SID.VeraBridge, "SetHouseMode",      nil, "SetHouseMode (lul_settings)"),
+    }}}}
+
+
 
 local S_VeraBridge_svc = [[
 <?xml version="1.0"?>
@@ -1208,6 +1036,7 @@ local console_css = [[
     line-height:18px;
     vertical-align:middle;
     border: none;
+    border-radius: 4px;
     cursor: pointer;
   }
 

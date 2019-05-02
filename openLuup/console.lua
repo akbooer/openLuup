@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.04.24",
+  VERSION       = "2019.05.02",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -58,12 +58,14 @@ ABOUT = {
 -- 2019.04.05  add latest value to historian cache table
 -- 2019.04.08  use SVG for avatar, rather than link to GitHub icon
 -- 2019.04.24  make avatar link to AltUI home page, sortable cache and jobs tables
+-- 2019.05.01  use page=render to wrap graphics
+-- 2019.05.02  rename startup page to plugins and include cpu usage
 
 
--- TODO: HTML pages with sorted tables?
--- see: https://www.w3schools.com/w3js/w3js_sort.asp
 -- TODO: HTML pages with tabbed tables?
 -- see: http://qnimate.com/tabbed-area-using-html-and-css-only/
+-- TODO: modal pop-ups?
+-- see: https://jsfiddle.net/kumarmuthaliar/GG9Sa/1/
 
 --  WSAPI Lua implementation
 
@@ -96,11 +98,22 @@ local function todate (epoch)
   return os.date (date, epoch)
 end
 
+local function cpu_ms (cpu)
+  return {string.format ("%0.3f", cpu * 1000), style="text-align:right"}
+end
+
+local function cpu_sec (cpu)
+  return {string.format ("%0.6f", cpu), style="text-align:right"}
+end
+
 -- sorted version of the pairs iterator
 -- use like this:  for a,b in sorted (x, fct) do ... end
 -- optional second parameter is sort function cf. table.sort
 local function sorted (x, fct)
-  fct = fct or function(a, b) return tostring(a) < tostring(b) end
+  fct = fct or function(a, b) 
+    if type(a) ~= type(b) then a,b = tostring(a), tostring(b) end
+    return a < b 
+  end
   local y, i = {}, 0
   for z in pairs(x) do y[#y+1] = z end
   table.sort (y, fct) 
@@ -116,6 +129,7 @@ end
 local function html5_title (x) return html5.h4 {x} end
 local function red (x) return ('<font color="crimson">%s</font>'): format (x)  end
 local function status_number (n) if n ~= 200 then return red (n) end; return n end
+local function rhs (x) return {style="text-align:right", x} end
 
 
 -- sort table list elements by first index, then number them in sequence
@@ -126,18 +140,18 @@ local function sort_and_number (list)
 end
 
  
-local function sorted_table (pagename)
-  local Ncol = 0
+local function sorted_table (href)
+  href = href .. "&sort=" 
   local cache_sort_direction = {} -- sort state for cache table columns (stateful... sorry!)
-  local function column (name, key)
-    Ncol = Ncol + 1
-    key = key or Ncol       -- use either field name or column number
-    local sort = ''
-    if string.lower (key) ~= "nosort" then sort = "&sort=" .. key end
-    local href = table.concat {"/console?page=", pagename, sort}
-    return html5.a {name, href = href}
+  local function columns (titles)
+    local header = {}
+    for i, title in ipairs (titles) do
+      header[i] = html5.a {title, href = href .. i}
+    end
+    return header
   end
   local function sort (info, key)
+    key = tonumber(key)
     if key then 
       cache_sort_direction[key] = not cache_sort_direction[key]
     else
@@ -155,40 +169,33 @@ local function sorted_table (pagename)
     end
     if key then table.sort (info, in_order) end
   end
-  local function table (attr)
-    Ncol = 0
-    return html5.table (attr)
-  end
   return {
-    column = column,
+    columns = columns,
     sort = sort,
-    table = table,
   }
 end
 
-local sorted_joblist = sorted_table "jobs"
+local sorted_joblist = sorted_table "/console?page=jobs"
 
 local function joblist (p)
   local s = sorted_joblist
-  local t = s.table()
-  t.header {
-    s.column '#',
-    s.column "date / time",
-    s.column "device", 
-    s.column "status", 
-    s.column "run", 
-    s.column "job #", 
-    s.column "info", 
-    s.column "notes"}
+  local t = html5.table()
+--  t.header (s.columns {'#', "date / time", "device", "status", "run", "job #", "info", "notes"})
+  t.header (s.columns {'#', "date / time", "device", "status", "run", "cpu(ms)", "job #", "info", "notes"})
   local jlist = {}
-  for jn, b in pairs (scheduler.job_list) do
-    local status = state[b.status] or ''
-    local n = b.logging.invocations
-    jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, n, jn, b.type or '?', b.notes or ''}
+  for jn, j in pairs (scheduler.job_list) do
+    local status = state[j.status] or ''
+    local n = j.logging.invocations
+    jlist[#jlist+1] = {j.expiry, todate(j.expiry + 0.5), j.devNo or "system", status, n, 
+                          j.logging.cpu, -- cpu time in seconds, here
+                          jn, j.type or '?', j.notes or ''}
   end
-  s.sort (jlist, tonumber (p.sort or 1))
+  s.sort (jlist, tonumber (p.sort) or 1)
   for i, row in ipairs (jlist) do
     row[1] = i
+    row[6] = cpu_ms (row[6])
+    row[7] = {style="text-align:right", row[7]}
+--    row[6] = {style="text-align:right", row[6]}
     t.row (row)
   end
   local div = html5.div {html5_title "Scheduled Jobs", t}
@@ -197,12 +204,11 @@ end
 
 local function delaylist ()
   local t = html5.table()
-  t.header {"#", "date / time", "device", "status", "info"}
+  t.header {"#", "date / time", "device", "status", "(s)", "info"}
   local dlist = {}
-  local delays = "%4.0fs :callback %s"
   for _,b in pairs (scheduler.delay_list()) do
-    local dtype = delays: format (b.delay, b.type or '')
-    dlist[#dlist+1] = {b.time, todate(b.time), b.devNo, "Delay", dtype}
+    local delay = {style="text-align:right", math.floor (b.delay + 0.5)}
+    dlist[#dlist+1] = {b.time, todate(b.time), b.devNo, "Delay", delay, "callback: " .. (b.type or '')}
   end
   for _, row in ipairs (sort_and_number(dlist)) do
     t.row (row)
@@ -211,19 +217,41 @@ local function delaylist ()
   return div
 end
 
-local function startup ()
+local function plugins ()
+  
+  local cpu = scheduler.system_cpu()
+  local uptime = timers.timenow() - timers.loadtime
+  local percent = cpu * 100 / uptime
+  percent = ("%0.1f"): format (percent)
+  
+  local d = html5.table()
+  d.header { {"Plugin CPU usage (" .. percent .. "% system load)", colspan = 4, 
+      title = "Plugin CPU is for code run in device context only"} }
+  d.header {'#', "device", "cpu(sec)", "name"}
+  local i = 0
+  for n, dev in sorted (luup.devices) do
+    local cpu = dev.attributes["cpu(s)"]
+    if cpu then 
+      i = i + 1
+      d.row {i, n, cpu_sec(cpu), dev.description:match "%s*(.+)"} 
+    end
+  end
+
   local t = html5.table()
-  t.header {"#", "date / time", "device", "status", "job #", "info", "notes"}
+  t.header { {"Startup Jobs", colspan = 8, title = "Job CPU is total of device and system times"} }
+  t.header {"#", "date / time", "device", "status", "cpu(ms)", "job #", "info", "notes"}
   local jlist = {}
   for jn, b in pairs (scheduler.startup_list) do
     local status = state[b.status] or ''
     if status ~= "Done" then status = red (status) end
-    jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", status, jn, b.type or '?', b.notes or ''}
+    jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", 
+      status, b.logging.cpu, jn, b.type or '?', b.notes or ''}
   end
   for _, row in ipairs (sort_and_number(jlist)) do
+    row[5] = cpu_ms(row[5])
     t.row (row)
   end
-  local div = html5.div {html5_title "Startup Jobs", t}
+  local div = html5.div {html5_title "Plugins", d, t}
   return div
 end
 
@@ -574,7 +602,7 @@ local function keysort (a,b)
   return lt(1)
 end
 
-local function historian ()
+local function historian (_, req)
   
   -- find all the archived metrics
   local folder = luup.attr_get "openLuup.Historian.Directory"
@@ -612,7 +640,8 @@ local function historian ()
   t.header {"device ", "service", "#points", "value",
     {"variable (archived if checked)", title="note that the checkbox field \n is currently READONLY"} }
   
-  local link = [[<a href="/render?target=%s&from=%s">%s</a>]]
+--  local link = [[<a href="/render?target=%s&from=%s">%s</a>]]
+  local link = [[<a href="]] .. req.script_name .. [[?page=render&target=%s&from=%s">%s</a>]]
   local tick = '<input type="checkbox" readonly %s /> %s'
   local prev  -- previous device (for formatting)
   for _, x in ipairs(H) do
@@ -649,21 +678,23 @@ local function historian ()
   
   local t0 = html5.table()
   t0.header { {"Summary:", colspan = 2, title = "cache statistics since reload"} }
-  t0.row {"total # device variables", N}
-  t0.row {"total # variables with history", #H}
-  t0.row {"total # history points", T}
+  t0.row {"total # device variables", rhs (N)}
+  t0.row {"total # variables with history", rhs (#H)}
+  t0.row {"total # history points", rhs (T)}
   
   local div = html5.div {html5_title "Data Historian Cache Memory", t0, t}
   return div
 end
 
 
-local function database ()
+local function database (_, req)
   local folder = luup.attr_get "openLuup.Historian.Directory"
   
   if not folder then
     return "On-disk archiving not enabled"
   end
+  
+  local whisper_edit = lfs.attributes "cgi/whisper-edit.lua"    -- is the editor there?
   
   -- stats
   local s = hist.stats
@@ -673,7 +704,7 @@ local function database ()
   local wall_rate  = wall / tot * 1e3
   local write_rate = 60 * tot / (timers.timenow() - timers.loadtime)
   
-  local function dp1(x) return x - x % 0.1 end
+  local function dp1(x) return rhs (x - x % 0.1) end
   
   local t0 = html5.table ()
   t0.header { {"Summary: " .. folder, colspan = 2, title="disk archive statistics since reload"} }
@@ -691,6 +722,7 @@ local function database ()
         a.sortkey = {tonumber(pk), tonumber(d), s, v}
         local i = whisper.info (folder .. a.name)
         a.shortName = filename
+        a.fct = i.aggregationMethod
         a.retentions = tostring(i.retentions) -- text representation of archive retentions
         a.updates = tally[filename] or ''
         local finderName, devnum, description = hist.metrics.pkdsv2finder (pk,d,s,v)
@@ -699,7 +731,8 @@ local function database ()
         a.description = description or "-- unknown --"
         local links = {}
         if a.finderName then 
-          local link = [[<a href="/render?target=%s&from=-%s">%s</a>]]      -- use relative time format
+--          local link = [[<a href="/render?target=%s&from=-%s">%s</a>]]      -- use relative time format
+          local link = [[<a href="]] .. req.script_name .. [[?page=render&target=%s&from=-%s">%s</a>]] 
           for arch in a.retentions: gmatch "[^,]+" do
             local _, duration = arch: match "([^:]+):(.+)"                  -- rate:duration
             links[#links+1] = link: format (a.finderName, duration, arch) 
@@ -712,8 +745,19 @@ local function database ()
   
   table.sort (files, keysort)
   
+  local function link_to_editor (name)
+    local link = name
+    if whisper_edit then 
+      link = html5.a {
+        href = table.concat {"/cgi/whisper-edit.lua?target=", folder, name, ".wsp"}, 
+                                target = "_blank", name}
+    end
+    return link
+  end
+  
   local t = html5.table ()
-  t.header {'', "archives", "(kB)", "#updates", "filename (node.dev.srv.var)"}
+  t.header {'', "archives", "(kB)", "fct", "#updates", 
+    {"filename (node.dev.srv.var)", title = "hyperlink to Whisper file editor, if present"} }
   local prev
   local N,T = 0,0
   for _,f in ipairs (files) do 
@@ -721,16 +765,16 @@ local function database ()
     T = T + f.size
     local devnum = f.devnum     -- openLuup device number (if present)
     if devnum ~= prev then 
-      t.row { {html5.strong {'[', f.devnum, '] ', f.description}, colspan = 5} }
+      t.row { {html5.strong {'[', f.devnum, '] ', f.description}, colspan = 6} }
     end
     prev = devnum
-    t.row {'', f.links or f.retentions, f.size, f.updates, f.shortName}
+    t.row {'', f.links or f.retentions, f.size, f.fct, f.updates, link_to_editor (f.shortName)}
   end
   
   T = T / 1000;
-  t0.row {"total size (Mb)", T - T % 0.1}
-  t0.row {"total # files", N}
-  t0.row {"total # updates", tot}
+  t0.row {"total size (Mb)", rhs (T - T % 0.1)}
+  t0.row {"total # files", rhs (N)}
+  t0.row {"total # updates", rhs (tot)}
   
   local div = html5.div {html5_title "Data Historian Disk Database", t0, t}
   return div
@@ -802,17 +846,12 @@ local function device_states ()
   return div
 end
 
-local sorted_cache = sorted_table "cache"
+local sorted_cache = sorted_table "/console?page=cache"
 
 local function cache (p)
   local s = sorted_cache
-  local t = s.table ()
-  t: header {
-    s.column '#',
-    s.column "last access",
-    s.column "# hits",
-    s.column "size (bytes)",
-    s.column "filename"}
+  local t = html5.table ()
+  t: header (s.columns {'#', "last access", "# hits", "bytes", "filename"})
   
   local N, H = 0, 0
   local strong = html5.strong
@@ -823,15 +862,16 @@ local function cache (p)
     info[#info+1] = {name, d, v.hits, v.size, name} 
   end
   
-  s.sort (info, tonumber (p.sort or 1))
+  s.sort (info, p.sort)
   for i, row in ipairs (info) do
-    row[1] = i    -- replace primary sort key with line number
+    H = H + row[3]      -- hits accumulator
+    N = N + row[4]      -- size accumulator
+    row[1] = i          -- replace primary sort key with line number
+    row[4] = {style="text-align:right", row[4]}
     t.row (row)
-    H = H + row[3]
-    N = N + row[4]
   end
   
-  t:row { '', '', strong {H}, strong {tostring (N/1000), " (kB)"}, strong {"Total"}}
+  t:row { '', '', strong {H}, strong {math.floor (N/1000 + 0.5), " (kB)"}, strong {"Total"}}
   local div = html5.div {html5_title "File System Cache", t}
   return div
 end
@@ -852,6 +892,31 @@ local function parameters ()
   end
   local div = html5.div {html5_title "openLuup Parameters", t}
   return div
+end
+
+local function render (p, req)
+  local background = p.background or "GhostWhite"
+  local iframe = html5.iframe {
+    height = "450px", width = "96%", 
+    style= "margin-left: 2%; margin-top:30px; background-color:"..background,
+    src="/render?" .. req.query_string,
+    }
+  local div = html5.div {html5_title "Graphics", iframe}
+  return div
+end
+
+local function tabulate (info)
+  local t
+  if type(info) == "table" then
+    t = html5.table ()
+    t: header {"name", "value"}
+    for n,v in sorted (info) do
+      t: row {n, tabulate (v)}
+    end
+  else
+    t = tostring(info)
+  end
+  return t
 end
 
 local function about () 
@@ -876,7 +941,7 @@ local pages = {
   images  = images,
   jobs    = joblist,
   log     = printlog,
-  startup = startup,
+  plugins = plugins,
   watches = watchlist,
   http    = httplist,
   smtp    = smtplist,
@@ -886,23 +951,16 @@ local pages = {
   trash   = trash,
   udp     = udplist,
   cache   = cache,
+  render  = render,
   
   historian   = historian,
   parameters  = parameters,
   globals     = plugin_globals,
   states     = device_states,
   
---    userdata = function (p, _)
---      return title "Userdata", preformatted (requests.user_data (_, p))
---    end,
-  
---    status = function (p, _)
---      return title "Status", preformatted (requests.status (_, p))
---    end,
-  
---    sdata = function (p, _)
---      return title "Sdata", preformatted (requests.sdata (_, p))
---    end,
+--    userdata  = function (p) return title "Userdata", preformatted (requests.user_data (_, p)) end,
+--    status    = function (p) return title "Status",   preformatted (requests.status (_, p)) end,
+--    sdata     = function (p) return title "Sdata",    preformatted (requests.sdata (_, p)) end,
   
 }
 
@@ -915,9 +973,6 @@ local hr = html5.hr {style = "color:Sienna;"}
 
 local menu = div {class="menu", style="background:DarkGrey;",
   div {
---    div {class="dropdown",
---      [[<img src="https://avatars.githubusercontent.com/u/4962913" alt="X"  
---              style="width:60px;height:60px;border:0;vertical-align:middle;">]]},
     div {
       class="dropdown", 
       style="vertical-align:middle; height:60px;",
@@ -952,7 +1007,7 @@ local menu = div {class="menu", style="background:DarkGrey;",
         a {class="left", href="/console?page=watches", "Watches"},
         a {class="left", href="/console?page=sockets", "Sockets"},
         a {class="left", href="/console?page=sandbox", "Sandboxes"},
-        a {class="left", href="/console?page=startup", "Startup Jobs"},
+        a {class="left", href="/console?page=plugins", "Plugins"},
       }},
 
     div {class="dropdown",
@@ -998,7 +1053,7 @@ function run (wsapi_env)
       body {
         menu,
         div {class="content",
-          page (p),
+          page (p, req),
           footer {"<hr/>", pre {os.date "%c"}},
     }}}
   

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.04.25",
+  VERSION       = "2019.05.02",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -55,6 +55,8 @@ local ABOUT = {
 -- 2019.04.19  fix possible type error in context_switch error message return
 -- 2019.04.24  fix job exit state so that it lingers in the job list
 -- 2019.04.25  change system idle latency to 100ms (from 500ms), force status update on device job termination
+-- 2019.04.26  move cpu_clock() here from timers
+-- 2019.05.01  measure cpu time used by device
 
 
 local logs      = require "openLuup.logs"
@@ -66,11 +68,37 @@ local _log, _debug = logs.register (ABOUT)
 -- LOCAL aliases for timenow() and sleep() functions
 
 local timenow = socket.gettime    -- system time in seconds, with millsecond resolution
+local total_cpu = 0               -- system CPU usage in seconds
 
 -- Sleeps a certain number of milliseconds
 -- NB: doesn't use CPU cycles, but does block the whole process...  not advised!!
 local function sleep (milliseconds)
   socket.sleep ((tonumber (milliseconds) or 0)/1000)      -- wait a bit
+end
+
+
+--
+-- CPU clock()
+--
+-- The system call os.clock() is a 32-bit integer which is incremented every microsecond 
+-- and so overflows for long-running programs.  So need to count each wrap-around.
+-- The reset value may return to 0 or -22147.483648, depending on the operating system
+
+local cpu_clock
+do
+  local  prev    = 0            -- previous cpu usage
+  local  offset  = 0            -- calculated value
+  local  click   = 2^31 * 1e-6  -- overflow increment
+
+  cpu_clock = function ()
+    local this = os.clock ()
+    if this < prev then 
+      offset = offset + click
+      if this < 0 then offset = offset + click end
+    end
+    prev = this
+    return this + offset
+  end
 end
 
 
@@ -130,7 +158,17 @@ end
 local function context_switch (devNo, fct, ...)
   local old = current_device                    -- save current device context
   current_device = devNo or old
+  local cpu = cpu_clock()                       -- 2019.05.01   measure cpu time used by device
   local function restore (ok, msg, ...) 
+    local dev = luup.devices[current_device] 
+    cpu = cpu_clock() - cpu                     -- elapsed cpu
+    cpu = cpu - cpu % 1e-6                      -- truncate to microsecond resolution
+    if dev then
+      dev.attributes["cpu(s)"] = (dev.attributes["cpu(s)"] or 0) + cpu 
+    else
+      total_cpu = total_cpu + cpu   
+    end
+    --
     current_device = old                        -- restore old device context
     if not ok then
       msg = tostring(msg or '?')                -- 2019.04.19 make sure that string error is returned
@@ -291,12 +329,15 @@ end
 -- dispatch a task
 local function dispatch (job, method)
   job.logging.invocations = job.logging.invocations + 1  -- how do I run thee?  Let me count the ways.
+  local cpu = cpu_clock()
   local ok, status, timeout = context_switch (job.devNo, job.tag[method] or missing(method), 
                                                   job.target, job.arguments, job) 
+  cpu = cpu_clock() - cpu
+  job.logging.cpu = job.logging.cpu + cpu         -- 2019.04.26
   timeout = tonumber (timeout) or 0
   if ok then 
     status = status or state.Done                 -- 2018.03.21  add default exit state to jobs
-    if not valid_state[status or ''] then
+    if not valid_state[status] then
       job.notes = "invalid job state returned: " .. tostring(status)
       status = state.Aborted
     end
@@ -356,6 +397,7 @@ local function create_job (action, arguments, devNo, target_device)
       -- log info
       logging = {
         created     = timenow(),
+        cpu         = 0,          -- 2019.04.26
         invocations = 0,          -- number of times invoked
       },
       -- dispatcher
@@ -623,6 +665,7 @@ return {
     add_to_delay_list = add_to_delay_list,
     current_device    = function() return current_device end, 
     context_switch    = context_switch,
+    cpu_clock         = cpu_clock,
     delay_list        = function () return delay_list end,
     get_socket_list   = function () return socket_list end,
     device_start      = device_start,
@@ -634,6 +677,7 @@ return {
     sleep             = sleep,
     start             = start,
     stop              = stop,
+    system_cpu        = function () return total_cpu end,
     timenow           = timenow,
     watch_callback    = watch_callback,
 }
