@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.04.07",
+  VERSION       = "2019.04.30",
   DESCRIPTION   = "XML utilities (HTML5, SVG) and DOM-style parser",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -38,7 +38,7 @@ local ABOUT = {
 -- 2019.03.22  add HTML5 and SVG encoding
 -- 2019.04.03  fix svg:rect() coordinate attribute names
 -- 2019.04.06  add any unknown HTML5 tag as a new element
-
+-- 2019.04.30  add preamble parameter to xml.encode() for encodeDocument()
 
 --[[
 
@@ -238,8 +238,8 @@ end
 -- to produce an adequate XML representation of request responses which are usually sent as JSON.
 -- It should, however, work on the output of simplify() (see below)
 -- TODO: handle attributes correctly from simplify()
-local function encode (Lua, wrapper)
-  local xml = {}        -- or perhaps    {'<?xml version="1.0"?>\n'}
+local function encode (Lua, wrapper, preamble)
+  local xml = {preamble}        -- typically {'<?xml version="1.0"?>\n'}
   local function p(x)
     if type (x) ~= "table" then x = {x} end
     for _, y in ipairs (x) do xml[#xml+1] = y end
@@ -276,6 +276,10 @@ local function encode (Lua, wrapper)
   local ok, msg = pcall (value, Lua, wrapper, 0) 
   if ok then ok = table.concat (xml) end
   return ok, msg
+end
+
+local function encodeDocument (Lua)
+  return encode (Lua, nil, '<?xml version="1.0"?>\n')
 end
 
 
@@ -517,6 +521,7 @@ return {
     encode    = encode,
     simplify  = simplify,
     
+    encodeDocument  = encodeDocument,
     documentElement = documentElement,
     
     -- 2019.03.22   HTML5 and SVG

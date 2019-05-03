@@ -828,7 +828,7 @@ local function variable_watch (...)
 end
 
 --[[
--- TODO: function: device_message
+function: device_message
 
 Available in releases after Feb 2017
 
@@ -853,34 +853,21 @@ parameters:
 
 return: nothing 
 --]]
---[[
-{
-"id": 0,
-"status": 2,
-"type": "GET_LANG(system_error,System error)",
-"comments": "Device: 149. Fail to load implementation file D_InsecurityCamera1.xml"
-}
---]]
 
---d.jobs[1] = {
---id = 42,
---status = 4,
---type = "error",
---comments = "very insecure"
---}
---d.jobs[1]= nil
-
---]]
-
---TODO: local function device_message (device_id, status, message, timeout, source)
 local function device_message (device_id, status, message, timeout, source)
   local device = luup.devices[device_id]
+  local start = timers.timenow()
+  timeout = tonumber(timeout) or 10
+  if timeout == 0 then timeout = 10 end
+  message = message or '?'
+  _log (message, "luup.device_message")
   if device then
     scheduler.run_job (
       {job = function (_, _, job) 
           job.type = source or "device message"
-          job.notes = message or '?'
-          return status, timeout or 180 
+          job.notes = message
+          if timers.timenow() > start + timeout then status = devutil.state.Done end
+          return status, timeout
         end},
       {}, device_id)
   end

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2019.02.09",
+  VERSION       = "2019.04.26",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -53,6 +53,8 @@ local ABOUT = {
 
 -- 2019.02.09  in UNIXdateTime(), assume Unix epoch if argument is purely numeric (thanks @skogen75)
 --             see: http://forum.micasaverde.com/index.php/topic,99475.msg442182.html#msg442182
+-- 2019.04.26  move cpu_clock() to scheduler
+
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.)
@@ -73,7 +75,8 @@ local relative_time_format  = "([%+%-]?)" .. time_format .. "([rt]?)"
 
 -- alias for timenow
 
-local timenow = scheduler.timenow
+local timenow   = scheduler.timenow
+local cpu_clock = scheduler.cpu_clock
 
 -- circular functions in degrees
 local dr = math.pi / 180
@@ -484,27 +487,6 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   local run_timer = {interval, day_of_week, day_of_month, absolute}
   local dispatch = run_timer[timer_type or 0] or function () end
   return dispatch ()
-end
-
---
--- CPU clock()
---
--- The system call os.clock() is a 32-bit integer which is incremented every microsecond
--- and so overflows for long-running programs.  So need to count each wrap-around.
--- The reset value may return to 0 or -22147.483648, depending on the operating system
-
-local  prev    = 0            -- previous cpu usage
-local  offset  = 0            -- calculated value
-local  click   = 2^31 * 1e-6  -- overflow increment
-
-local function cpu_clock ()
-  local this = os.clock ()
-  if this < prev then
-    offset = offset + click
-    if this < 0 then offset = offset + click end
-  end
-  prev = this
-  return this + offset
 end
 
 -- see: http://lua-users.org/wiki/TimeZone

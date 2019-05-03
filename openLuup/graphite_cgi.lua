@@ -45,6 +45,7 @@ ABOUT = {
 -- 2019.03.22  abandon Google Charts in favour of simple SVG, that works offline
 -- 2019.04.03  add "startup" as valid time option (for console historian plots)
 -- 2019.04.07  add yMin, yMax, title, vtitle, options to SVG render
+-- 2019.04.26  return "No Data" SVG when target parameter absent (default Graphite behaviour)
 
 
 -- CGI implementation of Graphite API
@@ -569,22 +570,28 @@ local function svgRender (_, p)
     return t
   end
 
-  for name, tv in target (p).next() do
-    
-    local T, V = scale (tv)
-    local s = html5.svg {
+  local function new_plot ()
+    return html5.svg {
         height = p.height or "300px", 
         width = p.width or "90%",
         viewBox = table.concat ({0, -Yscale/10, Xscale, 1.1 * Yscale}, ' '),
         preserveAspectRatio = "none",
         style ="border: none; margin-left: 5%; margin-right: 5%;",
       }
-
-    if not T then
-      
-      s:text (2000, Yscale/2, {"No Data",     -- TODO: move to external style sheet
+  end
+  
+  local function no_data (s)
+    return s:text (2000, Yscale/2, {"No Data",     -- TODO: move to external style sheet
           style = "font-size:180pt; fill:Crimson; font-family:Arial; transform:scale(2,1)"} )
+  end
+  
+  for name, tv in target (p).next() do
     
+    local T, V = scale (tv)
+    local s = new_plot ()
+ 
+    if not T then
+      no_data (s)    
     else
       -- construct the data rows for plotting  
          
@@ -619,6 +626,12 @@ local function svgRender (_, p)
     end
     
     svgs[#svgs+1] = div {h4 {p.title or name, style="font-family: Arial;"}, s}
+  end
+  
+  if #svgs == 0 then          -- 2019.04.26
+    local s = new_plot ()
+    no_data (s)
+    svgs[1] = s
   end
   
 -- add the options    
