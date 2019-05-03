@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.04.10",
+  VERSION       = "2019.05.03",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -102,6 +102,7 @@ ABOUT = {
 -- 2019.03.31   abandon MinimumTime for async status and use call_delay (trying to reduce rate of hitting Vera requests)
 -- 2019.04.09   add RemoteVariableSet action (thanks @Vosmont)
 --              see: https://github.com/akbooer/openLuup/issues/16
+-- 2019.05.03   correct error and exit status on missing Vera in GetUserData()  (thanks @reneboer)
 
 
 local devNo                      -- our device number
@@ -461,6 +462,7 @@ end
 
 local function GetUserData ()
   local Vera    -- (actually, 'remote' Vera!)
+  local loadtime    -- 2019.05.03
   local Ndev, Nscn = 0, 0
   local url = "/data_request?id=user_data2&output_format=json&ns=1"   -- 2018.01.29  ignore static_data content
   local status, j = remote_request (url)
@@ -468,6 +470,7 @@ local function GetUserData ()
   if status == 0 then Vera = json.decode (j) end
   if Vera then 
     luup.log "Vera info received!"
+    loadtime = Vera.LoadTime
     local t = "users"
     if Vera.devices then
       PK_AccessPoint = Vera.PK_AccessPoint: gsub ("%c",'')      -- stray control chars removed!!
@@ -510,7 +513,7 @@ local function GetUserData ()
       end
     end
   end
-  return Ndev, Nscn, version, PK_AccessPoint, Vera.LoadTime
+  return Ndev, Nscn, version, PK_AccessPoint, loadtime
 end
 
 -- MONITOR variables
@@ -994,6 +997,8 @@ function init (lul_device)
   local Ndev, Nscn
   Ndev, Nscn, BuildVersion, PK_AccessPoint, LoadTime = GetUserData ()
   
+  local status = true
+  local status_msg = "OK"
   if PK_AccessPoint then                          -- 2018.07.29   only start up when valid PK_AccessPoint
     setVar ("PK_AccessPoint", PK_AccessPoint)     -- 2018.06.04   Expose PK_AccessPoint as device variable
     setVar ("LoadTime", LoadTime or 0)            -- 2019.03.18
@@ -1011,12 +1016,14 @@ function init (lul_device)
     end
   else
     luup.set_failure (2)                          -- say it's an authentication error
-    setVar ("DisplayLine2", "No Vera", SID.altui)
+    status = false
+    status_msg = "No Vera"
+    setVar ("DisplayLine2", status_msg, SID.altui)
   end
 
   register_AltUI_Data_Storage_Provider ()     -- register with AltUI as MIRROR data storage provider
     
-  return true, "OK", ABOUT.NAME
+  return status, status_msg, ABOUT.NAME
 end
 
 -----

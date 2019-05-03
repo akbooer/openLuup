@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2019.04.26",
+  VERSION       = "2019.05.03",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -54,7 +54,7 @@ local ABOUT = {
 -- 2019.02.09  in UNIXdateTime(), assume Unix epoch if argument is purely numeric (thanks @skogen75)
 --             see: http://forum.micasaverde.com/index.php/topic,99475.msg442182.html#msg442182
 -- 2019.04.26  move cpu_clock() to scheduler
-
+-- 2019.05.03  add missing 'day' unit (d) to interval timer
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -411,8 +411,8 @@ local function call_timer (fct, timer_type, time, days, data, recurring)
   -- Time should be a number of seconds, minutes, or hours using an optional 'h' or 'm' suffix. 
   -- Example: 30=call in 30 seconds, 5m=call in 5 minutes, 2h=call in 2 hours. 
   local function interval ()
-    local multiplier = {[''] = 1, m = 60, h = 3600}
-    local v,u = time: match "(%d+)([hm]?)"
+    local multiplier = {[''] = 1, m = 60, h = 3600, d = 24 * 3600}    -- 2019.05.03  added (d) unit
+    local v,u = time: match "(%d+)([dhm]?)"
     if u then
       local base = timenow()       -- 2017.07.14
       local increment = math.max (v * multiplier[u], 1)    -- 2017.07.14
