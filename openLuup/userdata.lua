@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.04.18",
+  VERSION       = "2019.05.03",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -62,6 +62,7 @@ local ABOUT = {
 -- 2019.03.18   change default currency to GBP
 -- 2019.04.04   remove outdated preinstalled plugin metadata
 -- 2019.04.18   fix AltAppStore showing wrong version number on Plugins page
+-- 2019.05.03   don't load device attribute cpu(s)
 
 
 local json    = require "openLuup.json"
@@ -566,7 +567,9 @@ local function load_user_data (user_data_json)
         -- set other device attributes (including category_num and subcategory_num)
         for a,v in pairs (d) do
           if type(v) ~= "table" and not dev.attributes[a] then
-            if a ~= "status" then   -- 2018.04.05 status is NOT a device ATTRIBUTE
+            -- 2018.04.05 status is NOT a device ATTRIBUTE
+            -- 2019.05.03 cpu(s) should not be created here either!
+            if not (a == "status" or a == "cpu(s)") then   
               dev:attr_set (a, v)
             end
           end

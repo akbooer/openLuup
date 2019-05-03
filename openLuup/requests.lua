@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2019.04.19",
+  VERSION       = "2019.05.03",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -64,6 +64,7 @@ local ABOUT = {
 
 -- 2019.04.18  remove plugin_configuration action call to openLuup (unwanted functionality)
 -- 2019.04.19  construct device job status directly from current job list
+-- 2019.05.03  only report failed device job status  (thanks @reneboer)
 
 
 local http          = require "openLuup.http"
@@ -385,15 +386,18 @@ local function status_devices_table (device_list, data_version)
   -- 2019.04.19  build job info for devices
   local jobs_by_device = {}    -- list of jobs indexed by device
   for jn, j in pairs (scheduler.job_list) do
-    local devNo = j.devNo or 0
-    local d_info = jobs_by_device[devNo] or {}    -- create it if not already there
-    d_info[#d_info+1] = {
-      id = jn,
-      status = j.status,
-      type = j.type or "unknown",
-      comments = j.notes or ''
-    }
-    jobs_by_device[devNo] = d_info
+    if not (j.status == scheduler.state.Done
+    or j.status == scheduler.state.Aborted) then      -- 2019.05.03  only report failed jobs
+      local devNo = j.devNo or 0
+      local d_info = jobs_by_device[devNo] or {}      -- create it if not already there
+      d_info[#d_info+1] = {
+        id = jn,
+        status = j.status,
+        type = j.type or "unknown",
+        comments = j.notes or ''
+      }
+      jobs_by_device[devNo] = d_info
+    end
   end
   
   local dv = data_version or 0

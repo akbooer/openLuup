@@ -488,16 +488,12 @@ local function device_start (entry_point, devNo, name)
     local label = ("[%s] %s device startup"): format (tostring(devNo), name or '')
     _log (label)
     local a,b,c = entry_point (devNo)       -- call the startup code 
+    b,c = tostring(b or ''), tostring(c or '')
     local completion = "%s completed: status=%s, msg=%s, name=%s"
-    local text = completion: format (label, tostring(a),tostring(b), tostring(c))
+    local text = completion: format (label, tostring(a or ''), b, c)
     _log (text)
-    local _ = job   -- unused at present
--- TODO: job notes for successful completion?
---    if job.notes == '' then
---      job.notes = text      -- use this as the startup job comments
---    end
---
-    return state.Done, 0  
+    if job.notes == '' then job.notes = b end                 -- use this as the startup job comments
+    return (a == false) and state.Error or state.Done, 0      -- 2019.05.03 reflect startup job exit status
   end
   
   local jobNo = create_job ({job = startup_job}, {}, devNo)

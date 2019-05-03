@@ -65,6 +65,7 @@ local ABOUT = {
 -- 2018.11.15  luup.attr_set ("Mode", _) calls gateway action to keep openLuup variable in sync (thanks @DesT)
 
 -- 2019.03.14  added luup.openLuup.async_request()
+-- 2019.05.03  corrected scene.room to scene.room_num in rooms.delete()
 
 
 local logs          = require "openLuup.logs"
@@ -174,7 +175,7 @@ setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatab
         end
         -- check scenes for reference to deleted room no.
         for _, s in pairs (scenes) do
-          if s.room == number then s.rename (nil, 0) end
+          if s.room_num == number then s.rename (nil, 0) end    -- 2019.05.03  corrected s.room to s.room_num
         end
       devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
       end
