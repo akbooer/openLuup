@@ -106,6 +106,17 @@ local function cpu_sec (cpu)
   return {string.format ("%0.6f", cpu), style="text-align:right"}
 end
 
+-- hms()  converts seconds to hours, minutes, seconds for display
+local function dhms (x)
+  local y = {}
+  for _, f in ipairs {60, 60, 24} do
+    y[#y+1] = x % f
+    x = math.floor (x / f)
+  end
+  x = (x == 0) and '' or x .. ','      -- zero days shows blank
+  return ("%s %02d:%02d:%06.3f"): format (x, y[3], y[2],y[1])
+end
+
 -- sorted version of the pairs iterator
 -- use like this:  for a,b in sorted (x, fct) do ... end
 -- optional second parameter is sort function cf. table.sort
@@ -225,15 +236,16 @@ local function plugins ()
   percent = ("%0.1f"): format (percent)
   
   local d = html5.table()
-  d.header { {"Plugin CPU usage (" .. percent .. "% system load)", colspan = 4, 
+  d.header { {"Plugin CPU usage (" .. percent .. "% system load)", colspan = 6, 
       title = "Plugin CPU is for code run in device context only"} }
-  d.header {'#', "device", "cpu(sec)", "name"}
+  d.header {'#', "device", "status", "hh:mm:ss", "name", "message"}
   local i = 0
   for n, dev in sorted (luup.devices) do
     local cpu = dev.attributes["cpu(s)"]
     if cpu then 
       i = i + 1
-      d.row {i, n, cpu_sec(cpu), dev.description:match "%s*(.+)"} 
+      d.row {i, n, dev.status, 
+        {dhms(cpu), style="text-align:right;"}, dev.description:match "%s*(.+)", dev.status_message or ''} 
     end
   end
 

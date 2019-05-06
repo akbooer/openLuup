@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2019.05.03",
+  VERSION       = "2019.05.06",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -564,7 +564,7 @@ function init (devNo)
     local later = timers.timenow() + INTERVAL         -- some minutes in the future
     later = INTERVAL - later % INTERVAL               -- adjust to on-the-hour (actually, two-minutes)
     luup.call_delay ("openLuup_synchronise", later)
-    msg = ("synch in %0.1f s"): format (later)
+    msg = ("sync in %0.1f s"): format (later)
     luup.log (msg)
   end
 

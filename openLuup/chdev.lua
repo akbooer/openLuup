@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.02.02",
+  VERSION       = "2019.05.04",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -54,6 +54,7 @@ local ABOUT = {
 -- 2018.07.22  create only non-blank default device variables (blank was breaking AlTUI install)
 
 -- 2019.02.02  override device file manufacturer and modelName with existing attributes (thanks @rigpapa)
+-- 2019.05.04  add status_message field to device and status_set/get()
 
 
 local logs      = require "openLuup.logs"
@@ -237,16 +238,20 @@ local function create (x)
   -- note that all the following methods should be called with device:function() syntax...
   dev.is_ready            = function () return true end          -- TODO: wait on startup sequence 
   dev.status              = -1                                   -- 2016.04.29  add device status
+  dev.status_message      = ''                                   -- 2019.05.04
   dev.supports_service    = function (self, service) return not not services[service] end
 
   function dev:status_get ()            -- 2016.04.29, 2018.04.05
-    return dev.status
+    return dev.status, dev.status_message
   end
   
-  function dev:status_set (value)     -- 2016.04.29, 2018.04.05
-    if dev.status ~= value then
-      devutil.new_userdata_dataversion ()
+  function dev:status_set (value, message)     -- 2016.04.29, 2018.04.05, 2019.05.04
+    message = message or ''
+    if dev.status ~= value or dev.status_message ~= message then
       dev.status = value
+      dev.status_message = message
+--      devutil.new_userdata_dataversion ()
+      dev: touch()                    -- 2019.05.04  TODO: test this works OK
     end
   end
 
