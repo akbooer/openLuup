@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2019.04.24",
+  VERSION       = "2019.05.06",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -28,7 +28,9 @@ local ABOUT = {
 --  
 
 -- 2016.05.10  update userdata_dataversion when top-level attribute set
--- 2016.05.15  change set_failure logic per discussion here: http://forum.micasaverde.com/index.php/topic,37672.0.html
+-- 2016.05.15  change set_failure logic per discussion 
+--  see: http://forum.micasaverde.com/index.php/topic,37672.0.html
+--  and: https://community.getvera.com/t/openluup-set-failure/192318   
 -- 2016.05.17  set_failure sets urn:micasaverde-com:serviceId:HaDevice1 / CommFailure variable in device
 -- 2016.05.26  add device number to CommFailure variables in set_failure (thanks @vosmont)
 -- 2016.06.06  add special handling of top-level "openLuup" attribute
@@ -66,6 +68,7 @@ local ABOUT = {
 
 -- 2019.03.14  added luup.openLuup.async_request()
 -- 2019.05.03  corrected scene.room to scene.room_num in rooms.delete()
+-- 2019.05.04  add status message to set_failure() and device_message()
 
 
 local logs          = require "openLuup.logs"
@@ -579,6 +582,7 @@ end
 -- function: set_failure
 -- parameters: value (int), device (string or number)
 -- 2017.04.21  but see also: http://forum.micasaverde.com/index.php/topic,27420.msg207850.html#msg207850
+-- in new forum: https://community.getvera.com/t/openluup-set-failure/192318
 -- 15 May 2017, @vosmont re. Comms variables
 -- returns:
 --
@@ -592,7 +596,10 @@ local function set_failure (status, device)
   local devNo = device or scheduler.current_device()
   local dev = devices[devNo]
   if dev then 
-    dev:status_set (map[status or 0] or -1)  -- 2016.05.15
+    local dev_status = map[status or 0] or -1  -- 2016.05.15
+    local dev_message = ''
+    if dev_status ~= -1 then dev_message = "Lua Failure" end
+    dev:status_set (dev_status)  -- 2016.05.15, 2019.05.04
     local time = 0
     if status ~= 0 then time = os.time() end
     local HaSID = "urn:micasaverde-com:serviceId:HaDevice1"
@@ -853,28 +860,35 @@ parameters:
     source (string) : This is the source module of the message. It can be anything, and is generally informational. It is recommended to use the name of the luup plugin. 
 
 return: nothing 
+
+This effects a change in the id=status response for the device:
+
+    tooltip": {
+        "display": 1,
+        "tag2": "error info"
+    },
+    "status": 2
 --]]
 
+   --TODO: implement device message
 local function device_message (device_id, status, message, timeout, source)
   local device = luup.devices[device_id]
-  local start = timers.timenow()
-  timeout = tonumber(timeout) or 10
-  if timeout == 0 then timeout = 10 end
-  message = message or '?'
-  _log (message, "luup.device_message")
-  if device then
-    scheduler.run_job (
-      {job = function (_, _, job) 
-          job.type = source or "device message"
-          job.notes = message
-          if timers.timenow() > start + timeout then status = devutil.state.Done end
-          return status, timeout
-        end},
-      {}, device_id)
+  local function clear () 
+    local s,m = device: status_get () 
+    if s == status and m == message then device: status_set (-1, '') end    -- only clear our message
   end
-  
-  --TODO: remove device message after timeout
-  
+  status = status or -1
+  message = message or ''
+  timeout = tonumber (timeout) or 30
+  source=source or ''
+  local log = "device=%s, status=%s, message=%s, timeout=%s, source=%s"
+  if device then
+    _log (log: format (device_id, status, message, timeout, source), "luup.device_message")
+    device: status_set (status, message)
+    if timeout ~= 0 then 
+      timers.call_delay (clear, timeout, '', "timeout: device_message")
+    end
+  end
 end
 
 --------------

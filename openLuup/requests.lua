@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2019.05.03",
+  VERSION       = "2019.05.06",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -384,10 +384,10 @@ end
 local function status_devices_table (device_list, data_version)
   local info 
   -- 2019.04.19  build job info for devices
+  local error_status = {[scheduler.state.Error] = true, [scheduler.state.Aborted] = true}
   local jobs_by_device = {}    -- list of jobs indexed by device
   for jn, j in pairs (scheduler.job_list) do
-    if not (j.status == scheduler.state.Done
-    or j.status == scheduler.state.Aborted) then      -- 2019.05.03  only report failed jobs
+    if error_status[j.status] then                    -- 2019.05.04  only report failed jobs
       local devNo = j.devNo or 0
       local d_info = jobs_by_device[devNo] or {}      -- create it if not already there
       d_info[#d_info+1] = {
@@ -422,12 +422,20 @@ local function status_devices_table (device_list, data_version)
         end
       end
       -- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
+      local dev_status, dev_message = d:status_get()
+      dev_status  = dev_status or -1
+      dev_message = dev_message or ''
+      local tooltip
+      if dev_status == -1 then
+        tooltip = {display = "0"}
+      else
+        tooltip = {display = "1", tag2 = dev_message}
+      end
       local status = {
         id = i, 
-        status = d:status_get() or -1,      -- 2016.04.29
-        tooltip = {display = "0"},
---        Jobs = d.jobs or {},                -- 2018.04.03
-        Jobs = jobs_by_device[i] or {},                -- 2019.04.19
+        status = dev_status,
+        tooltip = tooltip,
+        Jobs = jobs_by_device[i],                -- 2019.04.19
         PendingJobs = 0, 
         states = states
       }
@@ -451,20 +459,6 @@ local function status_scenes_table ()
   return info
 end
 
--- TODO: job messages
-
---[[
-"startup": {
-"tasks": [
-{
-"id": 0,
-"status": 2,
-"type": "GET_LANG(system_error,System error)",
-"comments": "Device: 149. Fail to load implementation file D_InsecurityCamera1.xml"
-}
-]
-}, 
---]]
 local function status_startup_table ()
   local tasks = {}
   local startup = {tasks = tasks}
@@ -521,49 +515,14 @@ end
 -- USER_DATA
 --
 
-local category_filter = {
-  {
-    Label = {
-      lang_tag = "ui7_all",
-      text = "All"},
-    categories = {},
-    id = 1},
-  {
-    Label = {
-      lang_tag = "ui7_av_devices",
-      text = "Audio/Video"},
-    categories = {"15"},
-    id = 2},
-  {
-    Label = {
-      lang_tag = "ui7_lights",
-      text = "Lights"},
-    categories = {"2","3"},
-    id = 3},
-  {
-    Label = {
-      lang_tag = "ui7_cameras",
-      text = "Cameras"},
-    categories = {"6"},
-    id = 4},
-  {
-    Label = {
-      lang_tag = "ui7_door_locks",
-      text = "Door locks"},
-    categories = {"7"},
-    id = 5},
-  {
-    Label = {
-      lang_tag = "ui7_sensors",
-      text = "Sensors"},
-    categories = {"4","12","16","17","18"},
-    id = 6},
-  {
-    Label = {
-      lang_tag = "ui7_thermostats",
-      text = "Thermostats"},
-    categories = {"5"},
-    id = 7}
+local category_filter = {      -- no idea what this is, but AltUI seems to need it
+  {Label = {id = 1, lang_tag = "ui7_all", text = "All"}, categories = {}},
+  {Label = {id = 2, lang_tag = "ui7_av_devices", text = "Audio/Video"}, categories = {"15"}},
+  {Label = {id = 3, lang_tag = "ui7_lights", text = "Lights"}, categories = {"2","3"}},
+  {Label = {id = 4, lang_tag = "ui7_cameras", text = "Cameras"}, categories = {"6"}},
+  {Label = {id = 5, lang_tag = "ui7_door_locks", text = "Door locks"}, categories = {"7"}},
+  {Label = {id = 6, lang_tag = "ui7_sensors", text = "Sensors"}, categories = {"4","12","16","17","18"}},
+  {Label = {id = 7, lang_tag = "ui7_thermostats", text = "Thermostats"}, categories = {"5"}}
 }
 
 

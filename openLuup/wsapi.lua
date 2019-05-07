@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2018.07.27",
+  VERSION       = "2019.05.06",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -61,6 +61,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 -- 2018.07.20  add the Kepler project request and response libraries
 -- 2018.07.27  export the util module with url_encode() and url_decode()
 
+-- 2019.05.06  improve CGI .lua log message
 
 --[[
 
@@ -150,7 +151,7 @@ local function build (script)
   local lua_env
   local lua_file = file: match "(.*)%.lua$"
   if lua_file then
-    _log "using REQUIRE to load .lua CGI"
+    _log ("using REQUIRE to load CGI " .. file)
     f: close ()                               -- don't need it open
     lua_file = lua_file: gsub ('/','.')       -- replace path separators with periods, for require path
     lua_env = require (lua_file)

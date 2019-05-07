@@ -364,7 +364,6 @@ end
 -- returns: job_status (number), notes (string)
 local function status (job_number, device)
   local _ = device
-  -- TODO: find out what job 'notes' are
   local info = job_list[job_number] or {}
   -- TODO: implement job number filtering
   return info.status, info.notes
@@ -382,7 +381,7 @@ local function create_job (action, arguments, devNo, target_device)
       arguments   = {},
       devNo       = devNo,              -- system jobs may have no device number
       status      = state.WaitingToStart,
-      notes       =  '',                -- TODO: find out what job 'notes' are _really_ for - think it's 'comments'?
+      notes       =  '',                -- job 'notes' are 'comments'?
       timeout     = 0,
       type        = nil,                -- used in request id=status, and possibly elsewhere
       expiry      = timenow(),          -- time to go
