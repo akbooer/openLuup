@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.05.02",
+  VERSION       = "2019.05.09",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -107,14 +107,16 @@ local function cpu_sec (cpu)
 end
 
 -- hms()  converts seconds to hours, minutes, seconds for display
-local function dhms (x)
+local function dhms (x, full)
   local y = {}
   for _, f in ipairs {60, 60, 24} do
     y[#y+1] = x % f
     x = math.floor (x / f)
   end
   x = (x == 0) and '' or x .. ','      -- zero days shows blank
-  return ("%s %02d:%02d:%06.3f"): format (x, y[3], y[2],y[1])
+  local full_dhms = ("%s %02d:%02d:%06.0f"): format (x, y[3], y[2],y[1])
+  if not full then full_dhms = full_dhms: match "^[0:,%s]*(%d.*)" end
+  return full_dhms
 end
 
 -- sorted version of the pairs iterator

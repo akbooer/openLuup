@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2019.05.06",
+  VERSION       = "2019.05.07",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -65,6 +65,7 @@ local ABOUT = {
 -- 2019.04.18  remove plugin_configuration action call to openLuup (unwanted functionality)
 -- 2019.04.19  construct device job status directly from current job list
 -- 2019.05.03  only report failed device job status  (thanks @reneboer)
+-- 2019.05.06  always include status of devices with status ~= -1
 
 
 local http          = require "openLuup.http"
@@ -403,8 +404,11 @@ local function status_devices_table (device_list, data_version)
   local dv = data_version or 0
 --  local dev_dv
   for i,d in pairs (device_list) do 
+    local dev_status, dev_message = d:status_get()
+    dev_status  = dev_status or -1
+    dev_message = dev_message or ''
 --    dev_dv = d:version_get() or 0
-    if d:version_get() > dv then
+    if d:version_get() > dv or dev_status ~= -1 then              -- TODO:  IS THIS CORRECT ? 2019.05.06
       info = info or {}         -- create table if not present
       local states = {}
       for serviceId, srv in pairs(d.services) do
@@ -422,9 +426,6 @@ local function status_devices_table (device_list, data_version)
         end
       end
       -- The lu_status URL will show for the device: <tooltip display="1" tag2="Lua Failure"/>
-      local dev_status, dev_message = d:status_get()
-      dev_status  = dev_status or -1
-      dev_message = dev_message or ''
       local tooltip
       if dev_status == -1 then
         tooltip = {display = "0"}
