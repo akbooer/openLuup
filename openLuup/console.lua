@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.05.09",
+  VERSION       = "2019.05.10",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -99,11 +99,11 @@ local function todate (epoch)
 end
 
 local function cpu_ms (cpu)
-  return {string.format ("%0.3f", cpu * 1000), style="text-align:right"}
+  return string.format ("%0.3f", cpu * 1000)
 end
 
-local function cpu_sec (cpu)
-  return {string.format ("%0.6f", cpu), style="text-align:right"}
+local function rhs (text)
+  return {text, style="text-align:right"}  -- only works in table.row/header calls
 end
 
 -- hms()  converts seconds to hours, minutes, seconds for display
@@ -114,7 +114,7 @@ local function dhms (x, full)
     x = math.floor (x / f)
   end
   x = (x == 0) and '' or x .. ','      -- zero days shows blank
-  local full_dhms = ("%s %02d:%02d:%06.0f"): format (x, y[3], y[2],y[1])
+  local full_dhms = ("%s %02d:%02d:%02.0f"): format (x, y[3], y[2],y[1])  -- for milliseconds use "%06.3f"
   if not full then full_dhms = full_dhms: match "^[0:,%s]*(%d.*)" end
   return full_dhms
 end
@@ -142,7 +142,6 @@ end
 local function html5_title (x) return html5.h4 {x} end
 local function red (x) return ('<font color="crimson">%s</font>'): format (x)  end
 local function status_number (n) if n ~= 200 then return red (n) end; return n end
-local function rhs (x) return {style="text-align:right", x} end
 
 
 -- sort table list elements by first index, then number them in sequence
@@ -156,6 +155,7 @@ end
 local function sorted_table (href)
   href = href .. "&sort=" 
   local cache_sort_direction = {} -- sort state for cache table columns (stateful... sorry!)
+  local previous_key = 1          -- ditto
   local function columns (titles)
     local header = {}
     for i, title in ipairs (titles) do
@@ -166,11 +166,16 @@ local function sorted_table (href)
   local function sort (info, key)
     key = tonumber(key)
     if key then 
-      cache_sort_direction[key] = not cache_sort_direction[key]
+      if key ~= 0 then 
+        cache_sort_direction[key] = not cache_sort_direction[key]     -- 0 retains current sort order
+      else
+        key = previous_key
+      end
     else
       key = 1
       cache_sort_direction = {}    -- clear the sort direction
     end
+    previous_key = key
     cache_sort_direction[1] = nil     -- never toggle first column
     local reverse = cache_sort_direction[key]
     local function in_order (a,b) 
@@ -188,42 +193,55 @@ local function sorted_table (href)
   }
 end
 
-local sorted_joblist = sorted_table "/console?page=jobs"
+local sorted_joblist = sorted_table "/console?page=jobs&table=scheduled"
+local sorted_expired = sorted_table "/console?page=jobs&table=expired"
 
 local function joblist (p)
+  local columns = {'#', "date / time", "device", "status", "run", "cpu(ms)", "job #", "info", "notes"}
+  local function format_rows (tbl, list)
+    for i, row in ipairs (list) do
+      row[1] = i
+      row[6] = rhs (cpu_ms (row[6]))
+      row[7] = rhs (row[7])
+      tbl.row (row)
+    end
+  end
   local s = sorted_joblist
+  local w = sorted_expired
   local t = html5.table()
---  t.header (s.columns {'#', "date / time", "device", "status", "run", "job #", "info", "notes"})
-  t.header (s.columns {'#', "date / time", "device", "status", "run", "cpu(ms)", "job #", "info", "notes"})
-  local jlist = {}
+  local x = html5.table()
+  t.header (s.columns (columns))
+  x.header (w.columns (columns))
+  local jlist, xlist = {}, {}
   for jn, j in pairs (scheduler.job_list) do
     local status = state[j.status] or ''
     local n = j.logging.invocations
-    jlist[#jlist+1] = {j.expiry, todate(j.expiry + 0.5), j.devNo or "system", status, n, 
+    local tbl = scheduler.exit_state[j.status] and xlist or jlist
+    tbl[#tbl+1] = {j.expiry, todate(j.expiry + 0.5), j.devNo or "system", status, n, 
                           j.logging.cpu, -- cpu time in seconds, here
                           jn, j.type or '?', j.notes or ''}
   end
-  s.sort (jlist, tonumber (p.sort) or 1)
-  for i, row in ipairs (jlist) do
-    row[1] = i
-    row[6] = cpu_ms (row[6])
-    row[7] = {style="text-align:right", row[7]}
---    row[6] = {style="text-align:right", row[6]}
-    t.row (row)
-  end
-  local div = html5.div {html5_title "Scheduled Jobs", t}
+  local col = tonumber (p.sort) or 1
+  s.sort (jlist, p.table == "scheduled" and col or 0)
+  w.sort (xlist, p.table == "expired"   and col or 0)
+  format_rows (t, jlist)
+--  table.sort (xlist, function (a,b) return a[1] > b[1] end)
+  format_rows (x, xlist)
+  if #xlist == 0 then x.row {{"--- none ---", colspan = 9}} end
+  local div = html5.div {html5_title "Scheduled Jobs", t, html5.br(), html5_title "Completed Jobs", x}
   return div
 end
 
 local function delaylist ()
   local t = html5.table()
-  t.header {"#", "date / time", "device", "status", "(s)", "info"}
+  t.header {"#", "date / time", "device", "status", "hh:mm:ss", "info"}
   local dlist = {}
   for _,b in pairs (scheduler.delay_list()) do
-    local delay = {style="text-align:right", math.floor (b.delay + 0.5)}
+    local delay = math.floor (b.delay + 0.5)
     dlist[#dlist+1] = {b.time, todate(b.time), b.devNo, "Delay", delay, "callback: " .. (b.type or '')}
   end
   for _, row in ipairs (sort_and_number(dlist)) do
+    row[5] = rhs (dhms(row[5]))
     t.row (row)
   end
   local div = html5.div {html5_title "Delayed Callbacks", t}
@@ -247,12 +265,12 @@ local function plugins ()
     if cpu then 
       i = i + 1
       d.row {i, n, dev.status, 
-        {dhms(cpu), style="text-align:right;"}, dev.description:match "%s*(.+)", dev.status_message or ''} 
+        rhs (dhms(cpu)), dev.description:match "%s*(.+)", dev.status_message or ''} 
     end
   end
 
   local t = html5.table()
-  t.header { {"Startup Jobs", colspan = 8, title = "Job CPU is total of device and system times"} }
+  t.header { {"Plugin CPU usage at startup", colspan = 8, title = "Job CPU is total of device and system times"} }
   t.header {"#", "date / time", "device", "status", "cpu(ms)", "job #", "info", "notes"}
   local jlist = {}
   for jn, b in pairs (scheduler.startup_list) do
@@ -262,10 +280,10 @@ local function plugins ()
       status, b.logging.cpu, jn, b.type or '?', b.notes or ''}
   end
   for _, row in ipairs (sort_and_number(jlist)) do
-    row[5] = cpu_ms(row[5])
+    row[5] = rhs (cpu_ms(row[5]))
     t.row (row)
   end
-  local div = html5.div {html5_title "Plugins", d, t}
+  local div = html5.div {html5_title "Plugins", d, html5.br (), html5_title "Startup Jobs", t}
   return div
 end
 
@@ -524,7 +542,7 @@ local function sockets ()
   local sock_drawer = scheduler.get_socket_list()    -- list is indexed by socket !!
   for sock, x in pairs (sock_drawer) do
     local sockname = table.concat {tostring(x.name), ' ', tostring(sock)}
-    cols[#cols+1] = {0, os.date(date, x.time), x.devNo or 0, sockname}
+    cols[#cols+1] = {x.time, os.date(date, x.time), x.devNo or 0, sockname}
   end
   table.sort (cols, function (a,b) return a[1] > b[1] end)
   
@@ -881,7 +899,7 @@ local function cache (p)
     H = H + row[3]      -- hits accumulator
     N = N + row[4]      -- size accumulator
     row[1] = i          -- replace primary sort key with line number
-    row[4] = {style="text-align:right", row[4]}
+    row[4] = rhs (row[4])
     t.row (row)
   end
   

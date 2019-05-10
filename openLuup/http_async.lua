@@ -3,7 +3,7 @@ module ("http_async", package.seeall)
 ABOUT = {
   NAME          = "http_async",
   VERSION       = "2019.05.10",
-  DESCRIPTION   = "Asynchronous HTTP(S) request for Vera or openLuup",
+  DESCRIPTION   = "Asynchronous HTTP(S) request for Vera and openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2018-19",
   DOCUMENTATION = "https://community.getvera.com/t/openluup-asynchronous-i-o/206267/6",
@@ -23,11 +23,12 @@ ABOUT = {
 -- There are several ways to do this, a simple call_delay() loop is used here but, in the end,
 -- an action call using a <job> tag might be preferable.
 --
---  The body of async_request() is totally unchanged from the openLuup version.
+-- The body of async_request() is totally unchanged from the openLuup version.
+-- 2019.05.10, in fact, this whole module IS now the openLuup version (as well as the Vera one)
 --
 -- In order to get this working for HTTPS requests, I've had to include the complete LuaSec https module.
 -- This is wrapped as a function and has an additional async_request method, but is otherwise
--- basically unaltered from the version at https://github.com/brunoos/luasec/blob/master/src/https.lua
+-- essentially unaltered from the version at https://github.com/brunoos/luasec/blob/master/src/https.lua
 
 -- 2019.05.07  @akbooer extracted from openLuup to convert to stand-alone module for use in Vera
 -- 2019.05.07  add pcall to protect code from error in user callback handler
