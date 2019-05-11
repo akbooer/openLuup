@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2019.04.18",
+  VERSION       = "2019.05.11",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -54,9 +54,8 @@ local ABOUT = {
 
 -- 2019.01.25  set_raw_blocksize, see: http://forum.micasaverde.com/index.php/topic,119217.0.html
 -- 2019.03.17  __index() function in client socket allows ANY valid socket call to be used
+-- 2019.05.11  add request IP to incoming server job info
 
-
--- TODO: add fully-fledged TCP module
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
@@ -325,7 +324,7 @@ end
 local function log_request (connects, ip)
   ip = ip or '?'
   local info = connects [ip] or
-          {ip = ip, count = 0, mac = "00:00:00:00:00:00"}  --TODO: real MAC address - how?
+          {ip = ip, count = 0, mac = "00:00:00:00:00:00"}  -- real MAC address - can't find a way to do it!
   info.date = os.time()
   info.count = info.count + 1
   connects [ip] = info
@@ -421,7 +420,7 @@ local udp = {
 
 local tcp = {
   
-     -- TODO: implement TCP client/server
+     -- TODO: implement TCP client (cf. wget)
      
   }
 
@@ -553,8 +552,8 @@ function server.new (config)
     do -- run the job
       local _, _, jobNo = scheduler.run_job {job = job}
       if jobNo and scheduler.job_list[jobNo] then
-        local info = "server: %s connection %s"
-        scheduler.job_list[jobNo].type = info: format (name, tostring(sock))
+        local info = "server: %s connection from %s %s"
+        scheduler.job_list[jobNo].type = info: format (name, tostring(ip), tostring(sock))  -- 2019.05.11
       end
     end
   end  -- of new_client

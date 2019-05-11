@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.05.10",
+  VERSION       = "2019.05.11",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -60,6 +60,7 @@ ABOUT = {
 -- 2019.04.24  make avatar link to AltUI home page, sortable cache and jobs tables
 -- 2019.05.01  use page=render to wrap graphics
 -- 2019.05.02  rename startup page to plugins and include cpu usage
+-- 2019.05.10  use new device:get_shortcodes() in device_states()
 
 
 -- TODO: HTML pages with tabbed tables?
@@ -79,7 +80,6 @@ local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
 local hist      = require "openLuup.historian"    -- for disk archive stats   
-local loader    = require "openLuup.loader"       -- for service data
 local timers    = require "openLuup.timers"       -- for startup time
 local whisper   = require "openLuup.whisper"
 local wsapi     = require "openLuup.wsapi"        -- for response library
@@ -106,15 +106,16 @@ local function rhs (text)
   return {text, style="text-align:right"}  -- only works in table.row/header calls
 end
 
--- hms()  converts seconds to hours, minutes, seconds for display
-local function dhms (x, full)
+-- hms()  converts seconds to hours, minutes, seconds [, milliseconds] for display
+local function dhms (x, full, milliseconds)
   local y = {}
+  local time = "%s %02d:%02d:" .. (milliseconds and "%06.3f" or "%02.0f" ) 
   for _, f in ipairs {60, 60, 24} do
     y[#y+1] = x % f
     x = math.floor (x / f)
   end
   x = (x == 0) and '' or x .. ','      -- zero days shows blank
-  local full_dhms = ("%s %02d:%02d:%02.0f"): format (x, y[3], y[2],y[1])  -- for milliseconds use "%06.3f"
+  local full_dhms = time: format (x, y[3], y[2],y[1])
   if not full then full_dhms = full_dhms: match "^[0:,%s]*(%d.*)" end
   return full_dhms
 end
@@ -197,11 +198,14 @@ local sorted_joblist = sorted_table "/console?page=jobs&table=scheduled"
 local sorted_expired = sorted_table "/console?page=jobs&table=expired"
 
 local function joblist (p)
-  local columns = {'#', "date / time", "device", "status", "run", "cpu(ms)", "job #", "info", "notes"}
+--  local columns = {'#', "date / time", "device", "status", "run", "cpu(ms)", "job #", "info", "notes"}
+  local columns = {'#', "date / time", "device", "status", "run", "hh:mm:ss.sss", "job #", "info", "notes"}
   local function format_rows (tbl, list)
+    local milli = true
     for i, row in ipairs (list) do
       row[1] = i
-      row[6] = rhs (cpu_ms (row[6]))
+--      row[6] = rhs (cpu_ms (row[6]))
+      row[6] = rhs (dhms (row[6], nil, milli))
       row[7] = rhs (row[7])
       tbl.row (row)
     end
@@ -249,7 +253,7 @@ local function delaylist ()
 end
 
 local function plugins ()
-  
+  local milli = true
   local cpu = scheduler.system_cpu()
   local uptime = timers.timenow() - timers.loadtime
   local percent = cpu * 100 / uptime
@@ -258,20 +262,21 @@ local function plugins ()
   local d = html5.table()
   d.header { {"Plugin CPU usage (" .. percent .. "% system load)", colspan = 6, 
       title = "Plugin CPU is for code run in device context only"} }
-  d.header {'#', "device", "status", "hh:mm:ss", "name", "message"}
+  d.header {'#', "device", "status", "hh:mm:ss.sss", "name", "message"}
   local i = 0
   for n, dev in sorted (luup.devices) do
     local cpu = dev.attributes["cpu(s)"]
     if cpu then 
       i = i + 1
       d.row {i, n, dev.status, 
-        rhs (dhms(cpu)), dev.description:match "%s*(.+)", dev.status_message or ''} 
+        rhs (dhms(cpu, nil, milli)), dev.description:match "%s*(.+)", dev.status_message or ''} 
     end
   end
 
   local t = html5.table()
   t.header { {"Plugin CPU usage at startup", colspan = 8, title = "Job CPU is total of device and system times"} }
-  t.header {"#", "date / time", "device", "status", "cpu(ms)", "job #", "info", "notes"}
+--  t.header {"#", "date / time", "device", "status", "cpu(ms)", "job #", "info", "notes"}
+  t.header {"#", "date / time", "device", "status", "hh:mm:ss.sss", "job #", "info", "notes"}
   local jlist = {}
   for jn, b in pairs (scheduler.startup_list) do
     local status = state[b.status] or ''
@@ -280,7 +285,7 @@ local function plugins ()
       status, b.logging.cpu, jn, b.type or '?', b.notes or ''}
   end
   for _, row in ipairs (sort_and_number(jlist)) do
-    row[5] = rhs (cpu_ms(row[5]))
+    row[5] = rhs (dhms(row[5], nil, milli))
     t.row (row)
   end
   local div = html5.div {html5_title "Plugins", d, html5.br (), html5_title "Startup Jobs", t}
@@ -839,7 +844,6 @@ local function plugin_globals ()
 end
 
 local function device_states ()
-  local sd = loader.service_data
   local ignored = {"commFailure"}
   local ignore = {}
   local maxlength = 40
@@ -849,14 +853,9 @@ local function device_states ()
   for dno,d in sorted (luup.devices, function(a,b) return a < b end) do   -- nb. not default string sort
     local info = {}
     if not d.invisible then
-      for svc, s in pairs (d.services) do
-        local known_service = sd[svc]
-        if known_service then
-          for var, v in pairs (s.variables) do
-            local short = known_service.short_codes[var]
-            if short and not ignore[short] then info[short] = v.value end
-          end
-        end
+      local states = d: get_shortcodes()
+      for n, v in pairs (states) do
+        if n and not ignore[n] then info[n] = v end
       end
       if next(info) then
         local dname = devname (dno)

@@ -251,12 +251,57 @@ local function create (x)
       dev.status = value
       dev.status_message = message
 --      devutil.new_userdata_dataversion ()
-      dev: touch()                    -- 2019.05.04  TODO: test this works OK
+      dev: touch()                    -- 2019.05.04
     end
   end
 
+  -- return the names asnd values of the variables with shortCode aliases (as appear in the status request)
+  function dev:get_shortcodes ()      -- 2019.05.10
+    local info = {}
+    local sd = loader.service_data
+    for svc, s in pairs (self.services) do
+      local known_service = sd[svc]
+      if known_service then
+        for var, v in pairs (s.variables) do
+          local short = known_service.short_codes[var]
+          if short then info[short] = v.value end
+        end
+      end
+    end
+    return info 
+  end
+      
+  local function render (self)          -- 2019.05.10
+    local name = (self.description): match "%s*(.*)"
+    local id = self.attributes.id
+    local altui = "urn:upnp-org:serviceId:altui1"      -- Variables = 'DisplayLine1' and 'DisplayLine2'
+    local vars = (self.services[altui] or {}).variables or {}
+    local line1 = (vars.DisplayLine1 or {}) .value or ''
+    local line2 = (vars.DisplayLine2 or {}) .value or ''
+    
+    local info = {}
+    local unwanted = {commFailure = true}
+    local function state (n,v) if not unwanted[n] then info[#info+1] = table.concat {n, " = ", v} end; end
+    
+    if line1 ~= '' then state ("DisplayLine1", line1) end
+    if line2 ~= '' then state ("DisplayLine2", line2) end
+    
+    local states = self:get_shortcodes ()
+    for n,v in pairs (states) do
+      local number = tonumber (v)
+      if number and number > 1234567890 then v = os.date ("%c", number) end
+      state (n, v)
+    end
 
-  return setmetatable (luup_device, {__index = dev} )   --TODO:    __metatable = "access denied"
+    local panel = [[
+    %s  #%d
+    %s
+    -----
+    ]]
+    return panel: format (name, id, table.concat (info, '\n    '))
+  end
+
+  return setmetatable (luup_device, {__index = dev, __tostring = render} )   --TODO:    __metatable = "access denied"
 end
 
 -- this create device function has the same parameter list as the luup.create_device call

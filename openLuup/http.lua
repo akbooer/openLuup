@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2019.05.10",
+  VERSION       = "2019.05.11",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -681,7 +681,6 @@ return {
     
     --methods
     add_callback_handlers = servlet.add_callback_handlers,
-    async_request = ahttp.request,          -- 2019.05.10  import from separate module
     wget = wget,
     start = start,
   }
