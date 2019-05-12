@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.05.03",
+  VERSION       = "2019.05.12",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -63,6 +63,7 @@ local ABOUT = {
 -- 2019.04.04   remove outdated preinstalled plugin metadata
 -- 2019.04.18   fix AltAppStore showing wrong version number on Plugins page
 -- 2019.05.03   don't load device attribute cpu(s)
+-- 2019.05.12   use device:state_table() in devices_table()
 
 
 local json    = require "openLuup.json"
@@ -643,15 +644,16 @@ local function devices_table (device_list)
   table.sort (devs)
   for _,dnum in ipairs (devs) do 
     local d = device_list[dnum] 
-    local states = {}
-    for i,item in ipairs(d.variables) do
-      states[i] = {
-        id = item.id, 
-        service = item.srv,
-        variable = item.name,
-        value = item.value or '',
-      }
-    end
+    local states = d: state_table()   -- 2019.05.12
+--    local states = {}
+--    for i,item in ipairs(d.variables) do
+--      states[i] = {
+--        id = item.id, 
+--        service = item.srv,
+--        variable = item.name,
+--        value = item.value or '',
+--      }
+--    end
     local curls 
     if d.serviceList then         -- add the ControlURLs
       curls = {}
@@ -667,7 +669,6 @@ local function devices_table (device_list)
     end
     
     local status = d:status_get() or -1      -- 2016.04.29
---    if status == -1 then status = nil end     -- don't report 'normal' status ???
     local tbl = {     
       ControlURLs     = curls,                              
       states          = states,

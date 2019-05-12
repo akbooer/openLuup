@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.05.11",
+  VERSION       = "2019.05.12",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -232,7 +232,8 @@ local function joblist (p)
 --  table.sort (xlist, function (a,b) return a[1] > b[1] end)
   format_rows (x, xlist)
   if #xlist == 0 then x.row {{"--- none ---", colspan = 9}} end
-  local div = html5.div {html5_title "Scheduled Jobs", t, html5.br(), html5_title "Completed Jobs", x}
+  local div = html5.div {html5_title "Scheduled Jobs", t, 
+    html5.br(), html5_title "Completed Jobs", html5.h5 {"(within last three minutes)"}, x}
   return div
 end
 
