@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.05.03",
+  VERSION       = "2019.05.11",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -103,6 +103,7 @@ ABOUT = {
 -- 2019.04.09   add RemoteVariableSet action (thanks @Vosmont)
 --              see: https://github.com/akbooer/openLuup/issues/16
 -- 2019.05.03   correct error and exit status on missing Vera in GetUserData()  (thanks @reneboer)
+-- 2019.05.11   use external http_async module
 
 
 local devNo                      -- our device number
@@ -111,6 +112,7 @@ local chdev     = require "openLuup.chdev"
 local json      = require "openLuup.json"
 local scenes    = require "openLuup.scenes"
 local userdata  = require "openLuup.userdata"
+local async     = require "openLuup.http_async"
 local url       = require "socket.url"
 local lfs       = require "lfs"
 
@@ -620,7 +622,7 @@ do
     if init == "INIT" or poll_count == 0 then DataVersion = '' end        -- .. and go for the complete list
 
     local url = uri: format ("http://", ip, RemotePort, POLL_MAXIMUM, DataVersion)
-    local ok, err = luup.openLuup.async_request (url, VeraBridge_async_callback)
+    local ok, err = async.request (url, VeraBridge_async_callback)
 
     if not ok then -- we will never be called again, unless we do something about it
       luup.log (erm: format (tostring(err)))                              -- report error...
@@ -853,7 +855,7 @@ local function generic_action (serviceId, name)
     local url = table.concat (request, '&')
 
     if logical_true(AsyncPoll) then
-      luup.openLuup.async_request (url, function() debug "RESPONSE (async)" end)
+      async.request (url, function() debug "RESPONSE (async)" end)
       debug ("REQUEST (async) " .. url)
     else
       wget (url)

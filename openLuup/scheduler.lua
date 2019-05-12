@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.05.02",
+  VERSION       = "2019.05.10",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -57,6 +57,7 @@ local ABOUT = {
 -- 2019.04.25  change system idle latency to 100ms (from 500ms), force status update on device job termination
 -- 2019.04.26  move cpu_clock() here from timers
 -- 2019.05.01  measure cpu time used by device
+-- 2019.05.10  correct expiry time handling and refine kill_job()
 
 
 local logs      = require "openLuup.logs"
@@ -349,7 +350,7 @@ local function dispatch (job, method)
   job.now = timenow()        -- 2017.05.05  update, since dispatched task may have taken a while
   job.expiry = job.now + timeout
   if exit_state[status] then          -- 2019.04.24
-    job.expiry = job.now + job_linger
+    job.expiry = job.now              -- 2019.05.10  retain actual expiry time
     local d = luup.devices[job.devNo]
     if d then d:touch() end           -- 2019.04.25
   end
@@ -468,12 +469,16 @@ end
 
 -- kill given jobNo
 local function kill_job (jobNo)
+  local kill_message = "job #%d killed by device %s"
   local job = job_list[jobNo]
   local msg
-  if job then
+  if job and not exit_state[job.status] then  -- 2019.05.10 it exists, and hasn't already finished
     job.status = state.Aborted
-    job.expiry = 0
-    msg = "killed job#" .. jobNo
+    -- 2019.05.10 record actual expiry time, and add perpetrator to job notes
+    job.expiry = timenow ()                 
+    msg = kill_message: format (jobNo, current_device or "system")
+    job.notes = msg
+    ----
   else
     msg = "no such job#" .. jobNo
   end
@@ -540,7 +545,7 @@ local function task_callbacks ()
       end
 
       job.now = timenow()        -- 2017.05.05  update, since dispatched job may have taken a while
-      if exit_state[job.status] and job.now > job.expiry then 
+      if exit_state[job.status] and job.now > job.expiry + job_linger then  -- 2019.05.10
         job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local_job_list)
       end
     end
@@ -653,6 +658,9 @@ return {
     
     -- constants
     state             = state,
+    exit_state        = exit_state,
+    run_state         = run_state,
+    wait_state        = wait_state,
     -- variables
     job_list          = job_list,
     startup_list      = startup_list,

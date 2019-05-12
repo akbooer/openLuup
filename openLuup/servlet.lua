@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2019.04.19",
+  VERSION       = "2019.05.11",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -54,6 +54,7 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2018.07.15   use raw_read() in file handler, for consistency in path search order
 
 -- 2019.04.03   ignore MinimumDelay parameter from AltUI requests (to improve responsiveness)
+-- 2019.05.11   add GET or POST method to job info in execute()
 
 
 -- TODO: use WSAPI response library in servlets
@@ -320,8 +321,9 @@ local function execute (request, respond)
     local task = (task_selector [request_root] or file_task) (request, respond)
     local err, msg, jobNo = scheduler.run_job (task, {}, nil)  -- nil device number
     if jobNo and scheduler.job_list[jobNo] then
-      local info = "request: HTTP from %s %s"
-      scheduler.job_list[jobNo].type = info: format (tostring(request.ip), tostring(request.sock))
+      local r = request
+      local info = "request: HTTP %s from %s %s"  -- 2019.05.11
+      scheduler.job_list[jobNo].type = info: format (tostring(r.method), tostring(r.ip), tostring(r.sock))
     end
     return err, msg, jobNo
   else

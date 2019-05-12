@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2019.04.18",
+  VERSION       = "2019.05.11",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -84,6 +84,7 @@ local ABOUT = {
 -- 2019.01.14   fix possible missing post_content in parameter decoding
 -- 2019.03.12   fix permanent modification of schema.TIMEOUT parameter
 -- 2019.03.14   add async_request()
+-- 2019.05.10   move async_request to external http_async module (which also works on Vera!)
 
 
 local socket    = require "socket"
@@ -99,7 +100,7 @@ local logs      = require "openLuup.logs"
 local ioutil    = require "openLuup.io"                 -- for core server functions
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local servlet   = require "openLuup.servlet"
-local scheduler = require "openLuup.scheduler"          -- for async_request() use of socket_watch
+local ahttp     = require "openLuup.http_async"         -- for async_request() 
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
@@ -414,205 +415,6 @@ local function wget (request_URI, Timeout, Username, Password)
 end
 
 
-----------------------------------------------------
---
--- ASYNCHRONOUS http.async_request()
---
---
--- much of the utility code here is lifted from the high-level routines of the socket.http module
--- but split into two parts for sending the request and then reading the response in a callback handler.
--- proxy and redirects are not supported (neither are they for ssl requests)
-
--- async_request (u, b, callback) or (u, callback) where 'u' may table or string
-  local function async_request (u, b, callback)
-    local simple_string   -- used to concatenate responses of 'simple' string-type url requests
-    local base = _G
-
-    -- create() function returns a proxy socket which mirrors all the actual socket methods
-    -- but intercepts the close() function to remove the socket from the scheduler list when done.
-      local function create_proxy_socket ()
-        local sock = socket.tcp()
-        return setmetatable ({
-            close = function (self)
-                scheduler.socket_unwatch (self)       -- immediately stop watching for incoming
-                return sock: close ()
-              end
-            },{
-            __index = function (s, f) 
-              s[f] = function (_, ...) return sock[f] (sock, ...) end
-              return s[f]  -- it's there now, so no need to recreate it in future
-            end,
-            __tostring = function () return "async-" .. tostring(sock) end,   -- cosmetic for console
-            })
-      end
-
-    local function adjusturi(reqt)
-        local u = reqt
-        -- if there is a proxy, we need the full url. otherwise, just a part.
-    --    if not reqt.proxy and not _M.PROXY then
-            u = {
-               path = socket.try(reqt.path, "invalid path 'nil'"),
-               params = reqt.params,
-               query = reqt.query,
-               fragment = reqt.fragment
-            }
-    --    end
-        return url.build(u)
-    end
-
-    local function shouldreceivebody(reqt, code)
-        if reqt.method == "HEAD" then return nil end
-        if code == 204 or code == 304 then return nil end
-        if code >= 100 and code < 200 then return nil end
-        return 1
-    end
-
-    local function adjustheaders(reqt)
-        -- default headers
-        local host = string.gsub(reqt.authority, "^.-@", "")
-        local lower = {
-            ["user-agent"] = "openLuup_USERAGENT",
-            ["host"] = host,
-            ["connection"] = "close, TE",
-            ["te"] = "trailers"
-        }
-        -- if we have authentication information, pass it along
-    --    if reqt.user and reqt.password then
-    --        lower["authorization"] = 
-    --            "Basic " ..  (mime.b64(reqt.user .. ":" .. reqt.password))
-    --    end
-        -- if we have proxy authentication information, pass it along
-    --    local proxy = reqt.proxy or _M.PROXY
-    --    if proxy then
-    --        proxy = url.parse(proxy)
-    --        if proxy.user and proxy.password then
-    --            lower["proxy-authorization"] = 
-    --                "Basic " ..  (mime.b64(proxy.user .. ":" .. proxy.password))
-    --        end
-    --    end
-        -- override with user headers
-        for i,v in base.pairs(reqt.headers or lower) do
-            lower[string.lower(i)] = v
-        end
-        return lower
-    end
-
-    -- default url parts
-    local default = {
-        host = "",
-        port = 80,
-        path ="/",
-        scheme = "http"
-    }
-
-    local function adjustrequest(reqt)
-        -- parse url if provided
-        local nreqt = reqt.url and url.parse(reqt.url, default) or {}
-        -- explicit components override url
-        for i,v in base.pairs(reqt) do nreqt[i] = v end
-        if nreqt.port == "" then nreqt.port = 80 end
-        socket.try(nreqt.host and nreqt.host ~= "", 
-            "invalid host '" .. base.tostring(nreqt.host) .. "'")
-        -- compute uri if user hasn't overriden
-        nreqt.uri = reqt.uri or adjusturi(nreqt)
-        -- adjust headers in request
-        nreqt.headers = adjustheaders(nreqt)
-        -- ajust host and port if there is a proxy
-    --    nreqt.host, nreqt.port = adjustproxy(nreqt)
-        return nreqt
-    end
-    
-    local function trequest(reqt)
-      local nreqt = adjustrequest(reqt)
-      if nreqt.proxy then
-        return nil, "proxy not supported"
-      elseif url.redirect then
-        return nil, "redirect not supported"
-      end
-    
-      local old
-      old, http.TIMEOUT = http.TIMEOUT, 75    -- replace current http module global timeout
-      local h = http.open(nreqt.host, nreqt.port, create_proxy_socket)
-      http.TIMEOUT = old                            -- restore after opening (it's the only time it's used)
- 
- -- send request line and headers
-      local ok1, err1 = h:sendrequestline(nreqt.method, nreqt.uri)
-      local ok2, err2 = h:sendheaders(nreqt.headers)
-      local ok3, err3 = 1
-      -- if there is a body, send it
-      if nreqt.source then
-          ok3, err3 = h:sendbody(nreqt.headers, nreqt.source, nreqt.step) 
-      end
-      local ok, err = ok1 and ok2 and ok3, err1 or err2 or err3
-      
-      -------------------------------------------
-      --
-      -- this handler is called when the socket receives data (or times out)
-      local function callback_handler ()
-        local code, status = h:receivestatusline()
-        -- if it is an HTTP/0.9 server, simply get the body and we are done
-        if not code then
-            h:receive09body(status, nreqt.sink, nreqt.step)
-            return 1, 200
-        end
-        local headers
-        -- ignore any 100-continue messages
-        while code == 100 do 
-            headers = h:receiveheaders()
-            code, status = h:receivestatusline()
-        end
-        headers = h:receiveheaders()
-        -- at this point we should have a honest reply from the server
-        -- we can't redirect if we already used the source, so we report the error 
-    --    if shouldredirect(nreqt, code, headers) and not nreqt.source then
-    --        h:close()
-    --        return tredirect(reqt, headers.location)
-    --    end
-        -- here we are finally done
-        if shouldreceivebody(nreqt, code) then
-            h:receivebody(headers, nreqt.sink, nreqt.step)
-        end
-        h:close()
-        -- if it was a simple request, return the string response, else just 1
-        callback (simple_string and table.concat (simple_string) or 1, code, headers, status)
-      end
-      --
-      -------------------------------------------
-      
-      -- could include nreqt.host
-      if ok then scheduler.socket_watch (h.c, callback_handler, nil, nreqt.scheme: upper()) end    -- TODO: username parameter
-      return ok, err
-
-    end
-
-    
-  -- async_request (u, b, callback) or (u, callback) where 'u' may table or string
-    
-    -- cope with optional body parameter for 'simple' string request
-    if not callback then callback, b = b, nil end
-    if type (callback) ~= "function" then return nil, "callback parameter is missing'" end
-    
-    local reqt = u
-    if type(u) == "string" then 
-      simple_string = {}
-      reqt = {
-          url = u,
-          sink = ltn12.sink.table(simple_string)
-      }
-      if b then
-          reqt.source = ltn12.source.string(b)
-          reqt.headers = {
-              ["content-length"] = string.len(b),
-              ["content-type"] = "application/x-www-form-urlencoded"
-          }
-          reqt.method = "POST"
-      end
-    end
-    
-    return trequest(reqt) -- note that this is just a (status, error return) and not the response!
-  end
-
-
 
 ----------------------------------------------------
 --
@@ -871,7 +673,6 @@ return {
     
     --methods
     add_callback_handlers = servlet.add_callback_handlers,
-    async_request = socket.protect(async_request),
     wget = wget,
     start = start,
   }

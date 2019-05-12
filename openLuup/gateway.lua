@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2018.04.14",
+  VERSION       = "2019.05.12",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2019 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2019 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -36,6 +36,9 @@ local ABOUT = {
 --              see: http://forum.micasaverde.com/index.php/topic,55598.msg343271.html#msg343271
 -- 2018.03.02   add HouseMode change delay (thanks @RHCPNG)
 -- 2018.03.05   only trigger House Mode change if new value different from old
+
+-- 2019.05.12   make RunScene action use job, rather than run tag.
+
 
 local requests    = require "openLuup.requests"
 local scenes      = require "openLuup.scenes"
@@ -326,13 +329,14 @@ Device_0.services[SID].actions =
     -- action=RunScene&SceneNum=...
     -- Run the given scene. 
     RunScene = {
-      run = function (_, p)
+--      run = function (_, p)
+      job = function (_, p)     -- 2019.05.12
         local scene_num = tonumber (p.SceneNum)
         local scene = luup.scenes[scene_num or '']
         if scene then
           scene.run ()
         end
-        return true
+--        return true
       end
     },
     

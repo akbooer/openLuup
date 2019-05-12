@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.05.04",
+  VERSION       = "2019.05.12",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -62,6 +62,8 @@ local logs      = require "openLuup.logs"
 local devutil   = require "openLuup.devices"
 local loader    = require "openLuup.loader"
 local scheduler = require "openLuup.scheduler"
+local html5     = require "openLuup.xml" .html5         -- for device HTML rendering
+local json      = require "openLuup.json"               -- for device.__tostring()
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
@@ -251,12 +253,75 @@ local function create (x)
       dev.status = value
       dev.status_message = message
 --      devutil.new_userdata_dataversion ()
-      dev: touch()                    -- 2019.05.04  TODO: test this works OK
+      dev: touch()                    -- 2019.05.04
     end
   end
 
+  -- return the names asnd values of the variables with shortCode aliases (as appear in the status request)
+  function dev:get_shortcodes ()      -- 2019.05.10
+    local info = {}
+    local sd = loader.service_data
+    for svc, s in pairs (self.services) do
+      local known_service = sd[svc]
+      if known_service then
+        for var, v in pairs (s.variables) do
+          local short = known_service.short_codes[var]
+          if short then info[short] = v.value end
+        end
+      end
+    end
+    return info 
+  end
+  
+  -- this is the basic user_data for the device variables
+  -- the id=user_data and id=status requests embellish this in different ways
+  -- used by userdata.devices_table() and requests.status_devices_table()
+  function dev:state_table ()      -- 2019.05.12
+    local states = {}
+    for i,item in ipairs(self.variables) do
+      states[i] = {
+        id = item.id, 
+        service = item.srv,
+        variable = item.name,
+        value = item.value or '',
+      }
+    end
+    return states
+  end
+  
+  function dev:render_html ()          -- 2019.05.12
+    local name = (self.description): match "%s*(.*)"
+    local id = self.attributes.id
+    local altui = "urn:upnp-org:serviceId:altui1"      -- Variables = 'DisplayLine1' and 'DisplayLine2'
+    local vars = (self.services[altui] or {}).variables or {}
+    local line1 = (vars.DisplayLine1 or {}) .value or ''
+    local line2 = (vars.DisplayLine2 or {}) .value or ''
+    
+    local info = {}
+    local unwanted = {commFailure = true}
+    local function state (n,v) if not unwanted[n] then info[#info+1] = table.concat {n, " = ", v} end; end
+    
+    local t = html5.table {}
+    t: row {"DisplayLine1", line1}
+    t: row {"DisplayLine2", line2}
+    
+    local states = self:get_shortcodes ()
+    for n,v in pairs (states) do
+      local number = tonumber (v)
+      if number and number > 1234567890 then v = os.date ("%c", number) end
+      t: row {n, v: sub(1,20)}
+    end
 
-  return setmetatable (luup_device, {__index = dev} )   --TODO:    __metatable = "access denied"
+    local panel = html5.div {style="background: LightGray; width:300px; height:200px; float:left;",
+      html5.h4 {'[', id, "] ", name} ,t }
+    return tostring(panel)
+  end
+
+  return setmetatable (luup_device, {
+      __index = dev, 
+      __tostring = function (self) return (json.encode (self: state_table())) or '?' end,
+      --TODO:    __metatable = "access denied",
+    } )
 end
 
 -- this create device function has the same parameter list as the luup.create_device call

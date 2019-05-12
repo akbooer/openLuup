@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.04.18",
+  VERSION       = "2019.05,10",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -56,6 +56,7 @@ local ABOUT = {
 -- 2018.05.25   fixed scene interval passing from scene to timer function
 
 -- 2019.04.18   syntax change to job name
+-- 2019.05.10   only create scene timers job if scene not paused!
 
 
 local logs      = require "openLuup.logs"
@@ -363,23 +364,20 @@ local function create (scene_json)
     }
 
   -- start the timers
-  local recurring = true
-  local jobs = meta.jobs
-  local info = "timer: '%s' for scene [%d] %s"
-  for _, t in ipairs (scene.timers or {}) do
-    if t.type == 1 then  -- 2018.05.25 Rafale77
-      rtime = t.interval
-    else
-      rtime = t.time
-    end
-    local _,_,j,_,due = timers.call_timer (scene_runner, t.type, rtime,
-                          t.days_of_week or t.days_of_month, t, recurring)
-    if j and scheduler.job_list[j] then
-      local job = scheduler.job_list[j]
-      local text = info: format (t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
-      job.type = text
-      t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers
-      jobs[#jobs+1] = j               -- save the jobs we're running
+  if not luup_scene.paused then      -- 2019.05.10
+    local recurring = true
+    local jobs = meta.jobs
+    local info = "timer: '%s' for scene [%d] %s"
+    for _, t in ipairs (scene.timers or {}) do
+      local _,_,j,_,due = timers.call_timer (scene_runner, t.type, t.time or t.interval,
+                            t.days_of_week or t.days_of_month, t, recurring)
+      if j and scheduler.job_list[j] then
+        local job = scheduler.job_list[j]
+        local text = info: format (t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
+        job.type = text
+        t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers
+        jobs[#jobs+1] = j               -- save the jobs we're running
+      end
     end
   end
 

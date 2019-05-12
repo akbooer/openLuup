@@ -44,6 +44,41 @@ local function ymd (date, hour, min,sec)
   end
 end
 
+
+-----------------------------------
+-- for future use...?
+--[[
+
+  -- find min and max times in tv array (interleaved times and values)
+  -- note that a time of zero means, in fact, undefined
+  local function min_max (x)
+    local min,max = os.time(),x[1]
+    for i = 1,#x, 2 do
+      local t = x[i]
+      if t > 0 then
+        if t > max then max = t end
+        if t < min then min = t end
+      end
+    end
+    return min, max
+  end  
+  
+  -- gets the timestamp of the oldest and newest datapoints in file
+  local function earliest_latest (header)
+    local archives = header.archives
+    -- search for latest in youngest archive
+    local youngest = archives[1].readall()
+    local _, late = min_max (youngest)
+--    early = os.time() - header['maxRetention']    -- instead, search for earliest in oldest archive
+    local oldest = archives[#archives].readall()
+    local early = min_max (oldest)
+    if late < early then late = early end
+    return Interval (early, late)
+  end
+--]]
+
+-----------------------------------
+
 function run (wsapi_env)
   
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
@@ -182,7 +217,7 @@ function run (wsapi_env)
       input:hover {filter:brightness(90%)}
       input[type=text] {autocomplete:off;}
     ]]}
-  local head = html5.head {html5.meta {charset="utf-8"}, style}
+  local head = html5.head {html5.meta {charset="utf-8"}, html5.title {"W-Edit"}, style}
   local html = html5.document {head, html5.div {class="content", read_form, br, write_form}}
   res:write (html)
 
