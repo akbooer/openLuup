@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.05.12",
+  VERSION       = "2019.05.16",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -61,6 +61,8 @@ ABOUT = {
 -- 2019.05.01  use page=render to wrap graphics
 -- 2019.05.02  rename startup page to plugins and include cpu usage
 -- 2019.05.10  use new device:get_shortcodes() in device_states()
+-- 2019.05.15  add number of callbacks to Delay and Watch tables
+-- 2019.05.16  split HTTP request table in system- and user-defined
 
 
 -- TODO: HTML pages with tabbed tables?
@@ -96,10 +98,6 @@ local date = "%Y-%m-%d %H:%M:%S"
 
 local function todate (epoch)
   return os.date (date, epoch)
-end
-
-local function cpu_ms (cpu)
-  return string.format ("%0.3f", cpu * 1000)
 end
 
 local function rhs (text)
@@ -239,14 +237,16 @@ end
 
 local function delaylist ()
   local t = html5.table()
-  t.header {"#", "date / time", "device", "status", "hh:mm:ss", "info"}
+  t.header {"#", "date / time", "device", "status", "#calls",  "hh:mm:ss", "info"}
   local dlist = {}
   for _,b in pairs (scheduler.delay_list()) do
     local delay = math.floor (b.delay + 0.5)
-    dlist[#dlist+1] = {b.time, todate(b.time), b.devNo, "Delay", delay, "callback: " .. (b.type or '')}
+    local calls = scheduler.delay_log[tostring(b.callback)] or 0
+    dlist[#dlist+1] = {b.time, todate(b.time), b.devNo, 
+      "Delay", calls, dhms(delay), "callback: " .. (b.type or '')}
   end
   for _, row in ipairs (sort_and_number(dlist)) do
-    row[5] = rhs (dhms(row[5]))
+    row[6] = rhs(row[6])
     t.row (row)
   end
   local div = html5.div {html5_title "Delayed Callbacks", t}
@@ -299,7 +299,8 @@ local function watchlist ()
   local function isW (w, d,s,v)
     if next (w.watchers) then
       for _, what in ipairs (w.watchers) do
-        W[#W+1] = {what.devNo, what.devNo, what.name or '?', table.concat ({d,s or '*',v or '*'}, '.')}
+        local calls = scheduler.watch_log[what.hash] or 0
+        W[#W+1] = {what.devNo, what.devNo, what.name or '?', calls, table.concat ({d,s or '*',v or '*'}, '.')}
       end
     end
   end
@@ -315,7 +316,7 @@ local function watchlist ()
   end
 
   local t = html5.table()
-  t.header {'#', "dev", "callback", "watching"}
+  t.header {'#', "dev", "callback", "#calls", "watching"}
   for _, row in ipairs (sort_and_number(W)) do
     t.row (row)
   end
@@ -409,7 +410,7 @@ end
 
 
 local function httplist ()    
-  local function requestTable (requests, title, columns)
+  local function requestTable (requests, title, columns, include_zero)
     local t = html5.table ()
     t.header { {title, colspan = 3} }
     t.header (columns)
@@ -420,17 +421,24 @@ local function httplist ()
       local call = requests[name]
       local count = call.count
       local status = call.status
-      if count and count > 0 then
-        t.row {name, count, status_number(status)}
+      if include_zero or (count and count > 0) then
+        t.row {name, count or 0, status and status_number(status) or ''}
       end
     end
     if t.length() == 0 then t.row {'', "--- none ---", ''} end
     return t
   end
   
+  local lu, lr = {}, {}     -- 2019.05.16 system- and user-defined requests
+  for n,v in pairs (http.http_handler) do
+    local tbl = n: match "^lr_" and lr or lu
+    tbl[n] = v
+  end
+  
   local div = html5.div { html5_title "HTTP Web Server", 
       connectionsTable (http.iprequests),   
-      requestTable (http.http_handler, "/data_request?", {"id=... ", "#requests  ","status"}),
+      requestTable (lu, "/data_request? (system)", {"id=lu_... ", "#requests  ","status"}),
+      requestTable (lr, "/data_request? (user-defined)", {"id=lr_... ", "#requests  ","status"}, true),
       requestTable (http.cgi_handler, "CGI requests", {"URL ", "#requests  ","status"}),
       requestTable (http.file_handler, "File requests", {"filename ", "#requests  ","status"}),
     }

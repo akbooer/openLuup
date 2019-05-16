@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2019.05.12",
+  VERSION       = "2019.05.16",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -433,7 +433,7 @@ local function displayHouseMode (Mode)
   display (nil, modeLine: format(modeName[Mode] or ''))
 end
 
-function openLuup_watcher (_, _, var, _, Mode)    -- 2018.02.20
+function housemode_watcher (_, _, var, _, Mode)    -- 2018.02.20
   if var == "HouseMode" then
     displayHouseMode (Mode)
   end
@@ -572,7 +572,7 @@ function init (devNo)
 --    luup.register_handler ("HTTP_openLuup", "openLuup")
 --    luup.register_handler ("HTTP_openLuup", "openluup")     -- lower case
     luup.devices[devNo].action_callback (generic_action)      -- catch all undefined action calls
-    luup.variable_watch ("openLuup_watcher", SID.openLuup, "HouseMode", ole)  -- 2018.02.20
+    luup.variable_watch ("housemode_watcher", SID.openLuup, "HouseMode", ole) -- 2018.02.20
     luup.register_handler ("openLuup_email", "openLuup@openLuup.local")       -- 2018.03.18  bit bucket
     luup.register_handler ("openLuup_images", "images@openLuup.local")        -- 2018.03.18  save images
     luup.register_handler ("openLuup_events", "events@openLuup.local")        -- 2018.03.18  save events

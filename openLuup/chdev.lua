@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.05.12",
+  VERSION       = "2019.05.14",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -62,7 +62,6 @@ local logs      = require "openLuup.logs"
 local devutil   = require "openLuup.devices"
 local loader    = require "openLuup.loader"
 local scheduler = require "openLuup.scheduler"
-local html5     = require "openLuup.xml" .html5         -- for device HTML rendering
 local json      = require "openLuup.json"               -- for device.__tostring()
 
 --  local _log() and _debug()
@@ -287,34 +286,6 @@ local function create (x)
       }
     end
     return states
-  end
-  
-  function dev:render_html ()          -- 2019.05.12
-    local name = (self.description): match "%s*(.*)"
-    local id = self.attributes.id
-    local altui = "urn:upnp-org:serviceId:altui1"      -- Variables = 'DisplayLine1' and 'DisplayLine2'
-    local vars = (self.services[altui] or {}).variables or {}
-    local line1 = (vars.DisplayLine1 or {}) .value or ''
-    local line2 = (vars.DisplayLine2 or {}) .value or ''
-    
-    local info = {}
-    local unwanted = {commFailure = true}
-    local function state (n,v) if not unwanted[n] then info[#info+1] = table.concat {n, " = ", v} end; end
-    
-    local t = html5.table {}
-    t: row {"DisplayLine1", line1}
-    t: row {"DisplayLine2", line2}
-    
-    local states = self:get_shortcodes ()
-    for n,v in pairs (states) do
-      local number = tonumber (v)
-      if number and number > 1234567890 then v = os.date ("%c", number) end
-      t: row {n, v: sub(1,20)}
-    end
-
-    local panel = html5.div {style="background: LightGray; width:300px; height:200px; float:left;",
-      html5.h4 {'[', id, "] ", name} ,t }
-    return tostring(panel)
   end
 
   return setmetatable (luup_device, {

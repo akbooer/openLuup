@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2019.05.06",
+  VERSION       = "2019.05.16",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -124,68 +124,67 @@ local remotes = {}
 -- ROOMS methods
 --
 
-setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatable
+do
+  local room = {}
   
-  {
-    __tostring = function ()    -- so that print (luup.rooms) works
-      local x = {}
-      local line = '  [%d] = "%s",'
-      for n in pairs(rooms) do x[#x+1] = n end                       -- get the room indices
-      table.sort (x)                                                 -- sort them
-      for i,n in ipairs(x) do x[i] = line: format (n, rooms[n]) end   -- format them 
-      return table.concat ({'{', table.concat (x, '\n'), '}'}, '\n')  -- concatentate them
-    end,
+  function room.create (name, force_number) 
+    local number
+    if force_number then
+      number = tonumber (force_number)    -- 2018.07.02  ensure room number IS a number!
+    else                -- check that room name does not already exist
+      local index = {}
+      for i,room_name in pairs (rooms) do index[room_name] = i end
+      number = index[name]
+      if not number then
+        number = (#rooms + 1)      -- next empty slot
+        _log (("creating room [%d] %s"): format (number, name or '?'))
+      end
+    end
+    rooms[number] = name
+    devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
+    return number
+  end
 
-    __index = {
+  function room.rename (number, name) 
+    number = tonumber (number)            -- 2018.07.02
+    if number and rooms[number] then
+      rooms[number] = name or '?'
+      _log (("renaming room [%d] %s"): format (number, name or '?'))
+    end
+  end
 
-    create = function (name, force_number) 
-      local number
-      if force_number then
-        number = tonumber (force_number)    -- 2018.07.02  ensure room number IS a number!
-      else                -- check that room name does not already exist
-        local index = {}
-        for i,room_name in pairs (rooms) do index[room_name] = i end
-        number = index[name]
-        if not number then
-          number = (#rooms + 1)      -- next empty slot
-          _log (("creating room [%d] %s"): format (number, name or '?'))
+  function room.delete (number) 
+    number = tonumber (number)            -- 2018.07.02
+    if number and rooms[number] then 
+      rooms[number] = nil
+       _log (("deleting room [%d]"): format (number))
+     -- check devices for reference to deleted room no.
+      for _, d in pairs (devices) do
+        if d.room_num == number then 
+          d.room_num = 0 
+          d.attributes.room = "0"        -- 2018.07.02
         end
       end
-      rooms[number] = name
-      devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
-      return number
-    end,
-
-    rename = function (number, name) 
-      number = tonumber (number)            -- 2018.07.02
-      if number and rooms[number] then
-        rooms[number] = name or '?'
-        _log (("renaming room [%d] %s"): format (number, name or '?'))
+      -- check scenes for reference to deleted room no.
+      for _, s in pairs (scenes) do
+        if s.room_num == number then s.rename (nil, 0) end    -- 2019.05.03  corrected s.room to s.room_num
       end
-    end,
+    devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
+    end
+  end
 
-    delete = function (number) 
-      number = tonumber (number)            -- 2018.07.02
-      if number and rooms[number] then 
-        rooms[number] = nil
-         _log (("deleting room [%d]"): format (number))
-       -- check devices for reference to deleted room no.
-        for _, d in pairs (devices) do
-          if d.room_num == number then 
-            d.room_num = 0 
-            d.attributes.room = "0"        -- 2018.07.02
-          end
-        end
-        -- check scenes for reference to deleted room no.
-        for _, s in pairs (scenes) do
-          if s.room_num == number then s.rename (nil, 0) end    -- 2019.05.03  corrected s.room to s.room_num
-        end
-      devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
-      end
-    end,
-    
-  }})
+  setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatable
+    { __index = room,
+      __tostring = function ()    -- so that print (luup.rooms) works
+        local x = {}
+        local line = '  [%d] = "%s",'
+        for n in pairs(rooms) do x[#x+1] = n end                       -- get the room indices
+        table.sort (x)                                                 -- sort them
+        for i,n in ipairs(x) do x[i] = line: format (n, rooms[n]) end   -- format them 
+        return table.concat ({'{', table.concat (x, '\n'), '}'}, '\n')  -- concatentate them
+      end})
 
+end  -- rooms
 
 
 -----

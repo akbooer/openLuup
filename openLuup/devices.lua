@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2019.04.25",
+  VERSION       = "2019.05.15",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -337,6 +337,7 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
     callback = fct, 
     devNo = scheduler.current_device (),    -- devNo is current device context
     name = name,
+    hash = table.concat ({tostring(fct), tostring(dev) or '*', serviceId or '*', variable or '*'}, '.'),   -- 2015.05.15
     silent = silent,                            -- avoid logging some system callbacks (eg. scene watchers)
   }
   if dev then
