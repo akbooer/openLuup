@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.05.01",
+  VERSION       = "2019.05.31",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -61,8 +61,8 @@ local function action (S,N, R,J)
   return {serviceId = S, name = N, run = R, job = J}
 end
 
-local function argument (N,D)
-  return {name = N, direction = D or "in"}
+local function argument (N,D, R)
+  return {name = N, direction = D or "in", relatedStateVariable = R}
 end
 
 -----
@@ -98,7 +98,7 @@ local D_openLuup_dev = xml.encodeDocument {
       }}}
 
 local D_openLuup_json = json.encode {
-  flashicon = "https://avatars.githubusercontent.com/u/4962913",
+  flashicon = "https://avatars.githubusercontent.com/u/4962913",  -- not used, but here for reference
   default_icon = "openLuup.svg",
   DeviceType = "openLuup",
   Tabs = {{
@@ -125,10 +125,12 @@ local D_openLuup_json = json.encode {
         Label ("donate", html5.a {href="https://www.justgiving.com/DataYours/", target="_blank",
                 "If you like openLuup, you could DONATE to Cancer Research UK right here"}))},
    }},
-  eventList2 = {
-    {id = 1, serviceId = "openLuup",argumentList = {},
-      label = Label ("triggers_are_not_implemented", "Triggers not implemented, use Watch instead")},
-      }
+--  eventList2 = {
+--    {id = 1, serviceId = "openLuup",argumentList = {},
+--      label = Label ("triggers_are_not_implemented", "Triggers not implemented, use Watch instead")},
+--    {id=2, serviceId = "openLuup", argumentList = {}, label = Label ("openLuup", "Uptime : (openLuup)"), },
+--    {id=3, serviceId = "openLuup", argumentList = {}, label = Label ("openLuup", "CPU : (openLuup)") },
+--    }
   }
 
 local I_openLuup_impl = xml.encodeDocument {
@@ -560,7 +562,43 @@ local S_VeraBridge_svc = [[
 
 -----
 
--- Default values for installed plugins
+-- Built-in device and service files
+
+local D_BinaryLight1_xml = xml.encodeDocument {
+  root = {_attr = {xmlns="urn:schemas-upnp-org:device-1-0"},
+    specVersion = {major=1, minor=0},
+    device = {
+      deviceType      = "urn:schemas-upnp-org:device:BinaryLight:1",
+      staticJson      = "D_BinaryLight1.json",
+      serviceList = {
+        service = {
+          { serviceType = "urn:schemas-upnp-org:service:SwitchPower:1",
+            serviceId = "urn:upnp-org:serviceId:SwitchPower1",
+            SCPDURL = "S_SwitchPower1.xml"},
+          { serviceType = "urn:schemas-micasaverde-com:service:EnergyMetering:1",
+            serviceId = "urn:micasaverde-com:serviceId:EnergyMetering1",
+            SCPDURL = "S_EnergyMetering1.xml"},
+          { serviceType = "urn:schemas-micasaverde-com:service:HaDevice:1",
+            serviceId = "urn:micasaverde-com:serviceId:HaDevice1",
+            SCPDURL = "S_HaDevice1.xml"}
+        }}}}}
+
+
+local S_SwitchPower1_xml = xml.encodeDocument {
+  scpd = {_attr= {xmlns="urn:schemas-upnp-org:service-1-0"},
+    specVersion = {major = 1, minor = 0},
+    serviceStateTable = {
+      stateVariable = {_attr = {sendEvents="no"},
+        {name = "Target", sendEventsAttribute = "no", dataType="boolean", defaultValue = 0},
+        {name = "Status", dataType="boolean", defaultValue = 0, shortCode = "status"}}},
+
+    actionList = {
+      action = {
+        {name = "SetTarget", argumentList = {argument = {argument ("newTargetValue", "in", "Target")}}},
+        {name = "GetTarget", argumentList = {argument = {argument ("RetTargetValue", "out", "Target")}}},
+        {name = "GetStatus", argumentList = {argument = {argument ("ResultStatus", "out", "Status")}}},
+  }}}}
+
 
 -----
 
@@ -1058,6 +1096,49 @@ local unknown_wsp = [[
           0,                      0
 ]]
 
+-- console menu structure
+local classic_console_menus_json = [==[
+{
+  "comment":"JSON to define CLASSIC console menu structure",
+  "menus":[
+    ["openLuup",  ["About", "Parameters", "Historian", "hr", "Globals", "States"] ],
+    ["Files",     ["Backups", "Images", "Database", "File Cache", "Trash"] ],
+    ["Scheduler", ["Running", "Delays", "Watches", "Sockets", "Sandboxes", "Plugins"] ],
+    ["Servers",   ["HTTP", "SMTP", "POP3", "UDP"] ],
+    ["Logs",      ["Log",  "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "Startup Log"] ]
+  ]
+}
+]==]
+
+local default_console_menus_json = [==[
+{
+  "comment":"JSON to define standard console menu structure",
+  "menus":[
+    ["openLuup",  ["About", "System", "Historian", "hr", "Utilities", "Scheduler","Servers"] ],
+    ["Files",     ["Backups", "Images", "Trash"] ],
+    ["Scheduler", ["Running", "Completed", "Startup", "Plugins", "Delays", "Watches"] ],
+    ["Servers",   ["HTTP", "SMTP", "POP3", "UDP", "hr", "Sockets", "File Cache"] ],
+    ["Logs",      ["Log",  "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "Startup Log"] ]
+  ]
+}
+]==]
+
+local altui_console_menus_json = [==[
+{
+  "comment":"JSON to define AltUI-style console menu structure",
+  "menus":[
+    ["openLuup",  ["About","System","Historian","Scheduler","Servers"] ],
+    ["Devices"],
+    ["Scenes"],
+    ["Tables", ["Table Rooms","Table Plugins", "Table Devices", "Table Triggers", "Table Scenes"] ],
+    ["Utilities", ["Lua Startup","Lua Shutdown", "Lua Code Test",
+                                  "hr", "Backups", "Images", "Trash"] ],
+    ["Logs",      ["Log",  "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "Startup Log"] ]
+  ]
+}
+]==]
+
+
 --
 -- Style sheets for console web pages
 --
@@ -1073,6 +1154,23 @@ local console_css = [[
   .menu { position:absolute; top:0px; width:100%; height:60px; }
   .content { width:100%; height:100%; overflow:scroll; padding:4px; }
 
+  .button {
+    background-color: Peru;
+    color: white;
+    padding: 12px;
+    font-size: 16px;
+    line-height:18px;
+    vertical-align:middle;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .button:hover {
+    background-color: SaddleBrown;
+  }
+
   .dropbtn {
     background-color: Sienna;
     color: white;
@@ -1083,6 +1181,7 @@ local console_css = [[
     border: none;
     border-radius: 4px;
     cursor: pointer;
+    text-decoration: none;
   }
 
   .dropdown {
@@ -1125,6 +1224,8 @@ local console_css = [[
   tr:nth-child(even) {background: LightGray;}
   tr:nth-child(odd)  {background: Silver;}
 
+  a.nodec { text-decoration: none; } a.nodec:hover { text-decoration: underline; }
+
 ]]
 
 local graphite_css = [[
@@ -1143,6 +1244,7 @@ local manifest = {
     ["D_openLuup.json"] = D_openLuup_json,
     ["I_openLuup.xml"]  = I_openLuup_impl,
     ["S_openLuup.xml"]  = S_openLuup_svc,
+    ["LICENSE"] = ABOUT.LICENSE,
 
     ["icons/AltAppStore.svg"] = AltAppStore_svg,
     ["D_AltAppStore.xml"]  = D_AltAppStore_dev,
@@ -1155,6 +1257,13 @@ local manifest = {
     ["D_VeraBridge.json"] = D_VeraBridge_json,
     ["I_VeraBridge.xml"]  = I_VeraBridge_impl,
     ["S_VeraBridge.xml"]  = S_VeraBridge_svc,
+
+    ["built-in/default_console_menus.json"] = default_console_menus_json,
+    ["built-in/classic_console_menus.json"] = classic_console_menus_json,
+    ["built-in/altui_console_menus.json"]   = altui_console_menus_json,
+
+    ["built-in/D_BinaryLight1.xml"] = D_BinaryLight1_xml,
+    ["built-in/S_SwitchPower1.xml"] = S_SwitchPower1_xml,
 
     ["D_ZWay.xml"]  = D_ZWay_xml,
     ["D_ZWay.json"] = D_ZWay_json,
@@ -1196,10 +1305,12 @@ return {
 
   attributes = function (filename)
     local y = manifest[filename]
-    local h = hits[filename] or {n = 0, access = 0}
-    local mode, size = type(y), 0
-    if mode == "string" then mode, size = "file", #y end
-    return {mode = mode, size = size, permissions = "rw-rw-rw-", access = h.access, hits = h.n}
+    if y then
+      local h = hits[filename] or {n = 0, access = 0}
+      local mode, size = type(y), 0
+      if mode == "string" then mode, size = "file", #y end
+      return {mode = mode, size = size, permissions = "rw-rw-rw-", access = h.access, hits = h.n}
+    end
   end,
 
   open = function (filename, mode)

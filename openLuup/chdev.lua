@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.05.12",
+  VERSION       = "2019.06.02",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -55,6 +55,8 @@ local ABOUT = {
 
 -- 2019.02.02  override device file manufacturer and modelName with existing attributes (thanks @rigpapa)
 -- 2019.05.04  add status_message field to device and status_set/get()
+-- 2019.06.02  chdev.create() sets device category from device type, if necessary (thanks @reneboer)
+--             ALSO, allow missing serviceId in variable definitions to set attribute (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -62,7 +64,6 @@ local logs      = require "openLuup.logs"
 local devutil   = require "openLuup.devices"
 local loader    = require "openLuup.loader"
 local scheduler = require "openLuup.scheduler"
-local html5     = require "openLuup.xml" .html5         -- for device HTML rendering
 local json      = require "openLuup.json"               -- for device.__tostring()
 
 --  local _log() and _debug()
@@ -94,7 +95,8 @@ end) ()
 local function varlist_to_table (statevariables)
   -- syntax is: "serviceId,variable=value" separated by new lines
   local vars = {}
-  for srv, var, val in statevariables: gmatch "%s*([^,]+),([^=]+)=(%C*)" do
+  for srv, var, val in statevariables: gmatch "%s*([^,]*),([^=]+)=(%C*)" do   -- 2019.06.02 allow missing serviceId
+    if srv == '' then srv = nil end
     vars[#vars+1] = {service = srv, variable = var, value = val}
   end
   return vars
@@ -160,7 +162,11 @@ local function create (x)
   -- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
   if type(x.statevariables) == "table" then
     for _,v in ipairs(x.statevariables) do
-      dev:variable_set (v.service, v.variable, v.value)
+      if v.service then                                   -- 2019.06.02
+        dev:variable_set (v.service, v.variable, v.value)
+      else
+        dev:attr_set (v.variable, v.value)
+      end
     end
   end
 
@@ -175,12 +181,15 @@ local function create (x)
     end
   end
 
+  local device_type = d.device_type or ''
+  local cat_num = tonumber (x.category_num or d.category_num or loader.cat_by_dev[device_type])   -- 2019.06.02
+
   -- set known attributes
   dev:attr_set {
     id              = x.devNo,                                          -- device id
     altid           = x.internal_id and tostring(x.internal_id) or '',  -- altid (called id in luup.devices, confusing, yes?)
-    category_num    = tonumber (x.category_num or d.category_num) or 0,     -- 2017.05.10, 2018-05-12
-    device_type     = d.device_type or '',
+    category_num    = cat_num or 0,                      -- 2017.05.10, 2018.05.12, 2019.06.02
+    device_type     = device_type,
     device_file     = x.upnp_file,
     device_json     = d.json_file,
     disabled        = tonumber (x.disabled) or 0,
@@ -270,9 +279,9 @@ local function create (x)
         end
       end
     end
-    return info 
+    return info
   end
-  
+
   -- this is the basic user_data for the device variables
   -- the id=user_data and id=status requests embellish this in different ways
   -- used by userdata.devices_table() and requests.status_devices_table()
@@ -280,7 +289,7 @@ local function create (x)
     local states = {}
     for i,item in ipairs(self.variables) do
       states[i] = {
-        id = item.id, 
+        id = item.id,
         service = item.srv,
         variable = item.name,
         value = item.value or '',
@@ -288,37 +297,9 @@ local function create (x)
     end
     return states
   end
-  
-  function dev:render_html ()          -- 2019.05.12
-    local name = (self.description): match "%s*(.*)"
-    local id = self.attributes.id
-    local altui = "urn:upnp-org:serviceId:altui1"      -- Variables = 'DisplayLine1' and 'DisplayLine2'
-    local vars = (self.services[altui] or {}).variables or {}
-    local line1 = (vars.DisplayLine1 or {}) .value or ''
-    local line2 = (vars.DisplayLine2 or {}) .value or ''
-    
-    local info = {}
-    local unwanted = {commFailure = true}
-    local function state (n,v) if not unwanted[n] then info[#info+1] = table.concat {n, " = ", v} end; end
-    
-    local t = html5.table {}
-    t: row {"DisplayLine1", line1}
-    t: row {"DisplayLine2", line2}
-    
-    local states = self:get_shortcodes ()
-    for n,v in pairs (states) do
-      local number = tonumber (v)
-      if number and number > 1234567890 then v = os.date ("%c", number) end
-      t: row {n, v: sub(1,20)}
-    end
-
-    local panel = html5.div {style="background: LightGray; width:300px; height:200px; float:left;",
-      html5.h4 {'[', id, "] ", name} ,t }
-    return tostring(panel)
-  end
 
   return setmetatable (luup_device, {
-      __index = dev, 
+      __index = dev,
       __tostring = function (self) return (json.encode (self: state_table())) or '?' end,
       --TODO:    __metatable = "access denied",
     } )

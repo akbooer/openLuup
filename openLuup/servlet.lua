@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2019.05.11",
+  VERSION       = "2019.05.15",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -55,6 +55,7 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 
 -- 2019.04.03   ignore MinimumDelay parameter from AltUI requests (to improve responsiveness)
 -- 2019.05.11   add GET or POST method to job info in execute()
+-- 2019.05.14   add Cache-Control header, don't chunk small file responses
 
 
 -- TODO: use WSAPI response library in servlets
@@ -214,6 +215,10 @@ end
 local file_handler = {}     -- table of requested files
 
 local function file_request (request)
+  local cache_control = {                 -- 2019.05.14  max-age indexed by filetype
+    png = 3600, svg = 3600, css = 3600, ico = 3600, xml = 3600,
+  }
+  
   local path = request.URL.path or ''
   if request.path_list.is_directory then 
     path = path .. "index.html"                     -- look for index.html in given directory
@@ -229,25 +234,32 @@ local function file_request (request)
   end
   
   local content_type = mime_file_type (path)
-  local content_length
-  local status = 500
+  local status = 500  
+  local response_headers = {}
   
   -- 2018.07.15  use raw_read() for consistency in path search order
-  -- 2019.04.12  remove vfs.read() here since raw_read now does an initial search of the cache?
---  local response = loader.raw_read (path) or vfs.read (path)  -- 2016.06.01  also look in virtualfilesystem
+  -- 2019.04.12  remove vfs.read() here since raw_read now does an initial search of the cache
   local response = loader.raw_read (path)
   
   if response then 
     status = 200
+    local ftype = file_type (path)
+    local max_age = cache_control[ftype] or 0
+    response_headers ["Cache-Control"] = "max-age=" .. max_age    -- 2019.05.14
+    response_headers ["Content-Type"]  = content_type
     
     -- @explorer:  2016.04.14, Workaround for SONOS not liking chunked MP3 and some headers.       
-    if file_type (path) == "mp3" then       -- 2016.04.28  @akbooer, change this to apply to ALL .mp3 files
-      content_length = #response            -- specifying Content-Length disables chunked sending
+    if ftype == "mp3"        -- 2016.04.28  @akbooer, change this to apply to ALL .mp3 files, fix 2019.0514
+    or #response < 16000 
+    then
+      response_headers ["Content-Length"] = #response    
     end
   
   else
     status = 404
     response = "file not found:" .. path  
+    response_headers ["Content-Type"]   = mimetype ["txt"]
+    response_headers ["Content-Length"] = #response    
   end
  
   if status ~= 200 then 
@@ -259,11 +271,6 @@ local function file_request (request)
   stats.status = status
   stats.count = stats.count + 1
   file_handler[path] = stats
-  
-  local response_headers = {
-      ["Content-Length"] = content_length,
-      ["Content-Type"]   = content_type,
-    }
   
   return status, response_headers, make_iterator(response)
 end

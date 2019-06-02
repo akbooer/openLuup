@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.05.10",
+  VERSION       = "2019.05.15",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -58,6 +58,7 @@ local ABOUT = {
 -- 2019.04.26  move cpu_clock() here from timers
 -- 2019.05.01  measure cpu time used by device
 -- 2019.05.10  correct expiry time handling and refine kill_job()
+-- 2019.05.15  log the number of callbacks for call_delay() and variable_watch()
 
 
 local logs      = require "openLuup.logs"
@@ -112,6 +113,9 @@ local exit_code     -- set to Unix process exit code to stop scheduler
 local delay_list = {}                 -- list of delay callbacks
 local watch_list = {}                 -- list of watch callbacks
 local socket_list = {}                -- table of socket watch callbacks (for incoming data) 
+
+local watch_log = {}                  -- hashed table of variable watch invocations (for console)
+local delay_log = {}                  -- ditto for delay callbacks
 
 -- adds a function to the delay list
 -- note optional final parameters which define:
@@ -595,15 +599,18 @@ local function luup_callbacks ()
     for _, callback in ipairs (old_watch_list) do
       for _, watcher in ipairs (callback.watchers) do   -- single variable may have multiple watchers
         local var = callback.var
+        local user_callback = watcher.callback
         if not watcher.silent then
-          _log (("%s.%s.%s %s"): format(var.dev, var.srv, var.name, tostring (watcher.callback)), 
+          _log (("%s.%s.%s %s"): format(var.dev, var.srv, var.name, tostring (user_callback)), 
                   "luup.watch_callback") 
         end
-        local ok, msg = context_switch (watcher.devNo, watcher.callback, 
-          var.dev, var.srv, var.name, var.old, var.value, var.time)   -- 2018.06.06 add extra time parameter 
+        local ok, msg = context_switch (watcher.devNo, user_callback, 
+          var.dev, var.srv, var.name, var.old, var.value, var.time)     -- 2018.06.06 add extra time parameter 
+        local hash = watcher.hash
+        watch_log[hash] = (watch_log[hash] or 0) + 1    -- 2019.05.15 count the calls to this watcher
         if not ok then
           _log (("%s.%s.%s ERROR %s %s"): format(var.dev or '?', var.srv, var.name, 
-                                              msg or '?', tostring (watcher.callback))) 
+                                              msg or '?', tostring (user_callback))) 
         end
       end
     end
@@ -616,7 +623,9 @@ local function luup_callbacks ()
   for _, schedule in ipairs (old_list) do 
     if schedule.time <= now then 
       local ok, msg = context_switch (schedule.devNo, schedule.callback, schedule.parameter) 
-      if not ok then _log (tostring(schedule.callback) .. " ERROR: " .. (msg or '?'), "luup.delay_callback") end
+      local hash = tostring (schedule.callback)
+      if not ok then _log (hash .. " ERROR: " .. (msg or '?'), "luup.delay_callback") end
+      delay_log[hash] = (delay_log[hash] or 0) + 1        -- 2019.05.15 count the calls to this routine
       now = timenow()        -- 2017.05.05  update, since dispatched task may have taken a while
     else
       delay_list[#delay_list+1] = schedule   -- carry forward into new list      
@@ -664,6 +673,8 @@ return {
     -- variables
     job_list          = job_list,
     startup_list      = startup_list,
+    delay_log         = delay_log,        -- for console logging
+    watch_log         = watch_log,        -- ditto
     --methods
     add_to_delay_list = add_to_delay_list,
     current_device    = function() return current_device end, 

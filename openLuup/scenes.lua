@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.05,10",
+  VERSION       = "2019.05.23",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -57,6 +57,8 @@ local ABOUT = {
 
 -- 2019.04.18   syntax change to job name
 -- 2019.05.10   only create scene timers job if scene not paused!
+-- 2019.05.15   reinstate scene_watcher to use device states to indicate scene active
+-- 2019.05.23   re-enable triggers in anticipation of "variable updated" events
 
 
 local logs      = require "openLuup.logs"
@@ -86,13 +88,16 @@ Apr 2016 - AltUI now provides workflow too.
 
 --]]
 
-local trigger_warning = {   -- template points to openLuup notification message
-  device = 2,
-  enabled = 1,
-  lua = '',
-  name = "*** WARNING ***",
-  template = "1",
-}
+--local trigger_warning = {   -- template points to openLuup notification message
+--  device = 2,
+--  enabled = 1,
+--  lua = '',
+--  name = "*** WARNING ***",
+--  template = "1",
+--}
+
+-- scene-wide variables
+local watched_devices = {}      -- table of watched devices indexed by device number
 
 ---
 --- utilities
@@ -138,12 +143,60 @@ local function runs_in_current_mode (scene)
   return (modeStatus == "0") or modeStatus:match (currentMode)
 end
 
+-- called when watched device variable changes
+local function scene_watcher (devNo, service, variable, value_old, value_new)
+  local device = luup.devices[devNo]
+  if device then
+    _log ("device #" .. devNo, "luup.scenes.watch")
+  local _,_,_,_ = service, variable, value_old, value_new   -- unused at present
+    -- for each affected scene
+    -- get expected state
+    -- compare with current state
+    -- set running flag as necessary
+  end
+end
 
+-- start_watching_devices(),  possibly add new devices to watched list
+local function start_watching_devices(dlist)
+  for devNo in pairs(dlist) do
+    if not watched_devices[devNo] then    -- need to start watching this device
+      watched_devices[devNo] = devNo
+      -- start device watch
+      local silent = true
+      local device = luup.devices[devNo]
+      if device then
+        devutil.variable_watch (device, scene_watcher, nil, nil, "scene_watcher", silent)
+      end
+    end
+  end
+end
+
+-- called when trigger device variable changes
+local function trigger_watcher (devNo, service, variable, value_old, value_new)
+  local _,_,_,_,_ = devNo, service, variable, value_old, value_new   --TODO: trigger_watcher
+end
+
+-- start_watching_triggers(),  possibly add new triggers to watched list
+local function start_watching_triggers(dlist)
+  local _ = dlist   --TODO: start_watching_triggers
+end
 
 -- scene.create() - returns compiled scene object given json string containing group / timers / lua / ...
 local function create (scene_json)
   local scene, lua_code, luup_scene, user_finalizer, final_delay
   local prolog, epilog
+
+  -- get_actioned_devices()  returns a table of devices used by a scene
+  local function get_actioned_devices()      -- 2019.05.15
+    local devs = {}
+    for _, group in ipairs (scene.groups) do
+      for _, a in ipairs (group.actions) do
+        local devNo = tonumber (a.device)
+        if devNo then devs[devNo] = devNo end     -- use table, rather than list, to avoid duplicates
+      end
+    end
+    return devs
+  end
 
   local function scene_finisher (started)                               -- called at end of scene
     if scene.last_run == started then
@@ -253,12 +306,6 @@ local function create (scene_json)
     end
   end
 
-  -- called if SOMEBODY changes ANY device variable in ANY service used in this scene's actions
---  local function scene_watcher (...)
---    luup.log ("SCENE_WATCHER: " .. json.encode {
---              {scene=scene.id, name=scene.name}, ...})
---  end
-
   local function scene_rename (name, room)
     scene.name = name or scene.name
     scene.room = room or scene.room
@@ -290,14 +337,15 @@ local function create (scene_json)
     local n = #triggers
     for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
       local t = triggers[i]
-      if t.device == 2 or not luup.devices[t.device] then
+--      if t.device == 2 or not luup.devices[t.device] then
+      if not luup.devices[t.device] then
         table.remove (triggers, i)
       end
     end
     -- 2017.08.08
-    if #triggers ~= 0 then    -- insert warning that these triggers are not active
-      table.insert(triggers, 1, trigger_warning)
-    end
+--    if #triggers ~= 0 then    -- insert warning that these triggers are not active
+--      table.insert(triggers, 1, trigger_warning)
+--    end
   end
 
   --create ()
@@ -328,6 +376,9 @@ local function create (scene_json)
     -- also notification_only = device_no,  which hides the scene ???
 --]]
 
+  -----
+--  scn.triggers = {}     -- TODO: REMOVE
+  -----
   scene = scn   -- there may be other data there than that which is possibly modified below...
 
   scene.Timestamp   = scn.Timestamp or os.time()   -- creation time stamp
@@ -339,6 +390,7 @@ local function create (scene_json)
   scene.room        = tonumber (scn.room) or 0       -- TODO: ensure room number valid
   scene.timers      = scn.timers or {}
   scene.triggers    = scn.triggers or {}             -- 2016.05.19
+  scene.triggers_operator = "OR"                     -- 2019.05.24  no such thing as AND for events
 
   verify()   -- check that non-existent devices are not referenced
 
@@ -352,6 +404,7 @@ local function create (scene_json)
     stop        = scene_stopper,
     user_table  = user_table,
     verify      = verify,
+    actioned    = get_actioned_devices,
   }
 
   luup_scene = {
@@ -380,6 +433,10 @@ local function create (scene_json)
       end
     end
   end
+
+  -- start watching the actioned devices
+  local actioned = get_actioned_devices()           -- 2019.05.15
+  start_watching_devices (actioned)
 
   devutil.new_userdata_dataversion ()               -- 2017.07.19
 

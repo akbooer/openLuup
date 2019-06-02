@@ -1,3 +1,5 @@
+local VERSION = "2019.04.18"
+
 -- mimetypes
 -- 2016/04/14
 -- thanks to @explorer for suggesting a separate file
