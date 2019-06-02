@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.05.12",
+  VERSION       = "2019.05.31",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -64,6 +64,7 @@ local ABOUT = {
 -- 2019.04.18   fix AltAppStore showing wrong version number on Plugins page
 -- 2019.05.03   don't load device attribute cpu(s)
 -- 2019.05.12   use device:state_table() in devices_table()
+-- 2019.05.31   update openLuup help URL to new Vera community forum
 
 
 local json    = require "openLuup.json"
@@ -199,7 +200,7 @@ local preinstalled = {
       AllowMultiple   = "0",
       Title           = "openLuup",
       Icon            = "https://avatars.githubusercontent.com/u/4962913",
-      Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
+      Instructions    = "https://community.getvera.com/c/plugins-and-plugin-development/openluup",
       AutoUpdate      = "0",
       VersionMajor    = '',
       VersionMinor    = "baseline.",

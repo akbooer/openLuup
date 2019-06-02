@@ -510,7 +510,6 @@ local function new (devNo)
   -- returns: nothing
   --
   -- Sets the top level attribute(s) for the device to value(s). 
-  -- TODO: at the moment, attr_set does _not_ update the dataversion - is this right?
   local function attr_set (self, attribute, value)
     if type (attribute) ~= "table" then attribute = {[attribute] = value} end
     for name, value in pairs (attribute) do 

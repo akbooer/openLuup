@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.05.14",
+  VERSION       = "2019.06.02",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -55,6 +55,8 @@ local ABOUT = {
 
 -- 2019.02.02  override device file manufacturer and modelName with existing attributes (thanks @rigpapa)
 -- 2019.05.04  add status_message field to device and status_set/get()
+-- 2019.06.02  chdev.create() sets device category from device type, if necessary (thanks @reneboer)
+--             ALSO, allow missing serviceId in variable definitions to set attribute (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -93,7 +95,8 @@ end) ()
 local function varlist_to_table (statevariables) 
   -- syntax is: "serviceId,variable=value" separated by new lines
   local vars = {}
-  for srv, var, val in statevariables: gmatch "%s*([^,]+),([^=]+)=(%C*)" do
+  for srv, var, val in statevariables: gmatch "%s*([^,]*),([^=]+)=(%C*)" do   -- 2019.06.02 allow missing serviceId
+    if srv == '' then srv = nil end
     vars[#vars+1] = {service = srv, variable = var, value = val}
   end
   return vars
@@ -159,7 +162,11 @@ local function create (x)
   -- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
   if type(x.statevariables) == "table" then
     for _,v in ipairs(x.statevariables) do
-      dev:variable_set (v.service, v.variable, v.value)
+      if v.service then                                   -- 2019.06.02
+        dev:variable_set (v.service, v.variable, v.value)
+      else
+        dev:attr_set (v.variable, v.value)
+      end
     end
   end
 
@@ -174,12 +181,15 @@ local function create (x)
     end
   end
   
+  local device_type = d.device_type or ''
+  local cat_num = tonumber (x.category_num or d.category_num or loader.cat_by_dev[device_type])   -- 2019.06.02
+  
   -- set known attributes
   dev:attr_set {
     id              = x.devNo,                                          -- device id
     altid           = x.internal_id and tostring(x.internal_id) or '',  -- altid (called id in luup.devices, confusing, yes?)
-    category_num    = tonumber (x.category_num or d.category_num) or 0,     -- 2017.05.10, 2018-05-12
-    device_type     = d.device_type or '',
+    category_num    = cat_num or 0,                      -- 2017.05.10, 2018.05.12, 2019.06.02
+    device_type     = device_type,
     device_file     = x.upnp_file,
     device_json     = d.json_file,
     disabled        = tonumber (x.disabled) or 0,
