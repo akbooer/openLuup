@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.05.23",
+  VERSION       = "2019.06.06",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -146,7 +146,7 @@ end
 local function scene_watcher (devNo, service, variable, value_old, value_new)
   local device = luup.devices[devNo]
   if device then
-    _log ("device #" .. devNo, "luup.scenes.watch")
+--    _log ("device #" .. devNo, "luup.scenes.watch")
   local _,_,_,_ = service, variable, value_old, value_new   -- unused at present
     -- for each affected scene
     -- get expected state
@@ -371,9 +371,6 @@ local function create (scene_json)
     -- also notification_only = device_no,  which hides the scene ???
 --]]
 
-  -----
---  scn.triggers = {}     -- TODO: REMOVE
-  -----
   scene = scn   -- there may be other data there than that which is possibly modified below...
   
   scene.Timestamp   = scn.Timestamp or os.time()   -- creation time stamp

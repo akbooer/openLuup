@@ -251,6 +251,15 @@ do -- log rotate and possible rename
   logs.rotate (config.Logfile or {})
   _log "init phase completed"
 end
+  
+do -- ensure some extra folders exist
+   -- note that the ownership/permissions may be system depending on how openLuup is started
+  lfs.mkdir "events"
+  lfs.mkdir "images"
+  lfs.mkdir "trash"
+  lfs.mkdir "mail"
+  lfs.mkdir "www"
+end
 
 do -- TODO: tidy up obsolete files
 --  os.remove "openLuup/server.lua"

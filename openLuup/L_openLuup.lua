@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2019.06.02",
+  VERSION       = "2019.06.07",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -603,13 +603,6 @@ function init (devNo)
         _log (dsp .. (err or '')) 
       end
     end
-  end
-  
-  do -- ensure some extra folders exist
-    lfs.mkdir "events"
-    lfs.mkdir "images"
-    lfs.mkdir "trash"
-    lfs.mkdir "mail"
   end
   
   set ("StartTime", luup.attr_get "openLuup.Status.StartTime")        -- 2018.05.02

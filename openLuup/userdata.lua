@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.05.31",
+  VERSION       = "2019.06.06",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -538,6 +538,8 @@ local function load_user_data (user_data_json)
         end
         -- 2017.01.18 create openLuup HouseMode variable
         ol:variable_set ("openLuup", "HouseMode", luup.attr_get "Mode")  
+        -- 2019.06.06 add the bookmark attribute
+        ol: attr_set ("bookmark", d.bookmark)
       
       else
         local dev = chdev.create {      -- the variation in naming within luup is appalling
