@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "whisper-edit",
-  VERSION       = "2019.05.03",
+  VERSION       = "2019.06.07",
   DESCRIPTION   = "Whisper database editor script cgi/whisper-edit.lua",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -13,12 +13,13 @@ ABOUT = {
 
 -- Whisper file editor, using storage finder and WSAPI request and response libraries
 
--- based on 2016.07.06 whisper-editor
+-- 2016.07.06  based on original whisper-editor
+-- 2019.06.07  use w3.css style sheets
+
 
 local whisper   = require "openLuup.whisper"
 local wsapi     = require "openLuup.wsapi"        -- for request library
 local html5     = require "openLuup.xml" .html5
-local vfs       = require "openLuup.virtualfilesystem"
 
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
@@ -30,11 +31,11 @@ local pagename = "w-edit"
 
 -----------------------------------
 
-local input = html5.input
-local br = html5.br {}
+local input, label = html5.input, html5.label
+local button_class = "w3-button w3-border w3-margin w3-round-large "
   
 local function row (time, value)
-  return {os.date ("%Y-%m-%d %H:%M:%S", time), {style="background:LightGray", input {name=time, value=value}}}
+  return {os.date ("%Y-%m-%d %H:%M:%S", time), input {name=time, value=value}}
 end  
 
 local function ymd (date, hour, min,sec)
@@ -101,11 +102,11 @@ function run (wsapi_env)
   -- get the requested data
   
   local I, V, T
-  local data = whisper.fetch (target, ymd(from, 0,0,0), ymd(to, 23,59,59))
-  if data then
+  local tv = whisper.fetch (target, ymd(from, 0,0,0), ymd(to, 23,59,59))
+  if tv then
     local n = 0
     I, V, T = {}, {}, {}            -- I is index table
-    for _, v,t in data:ipairs () do
+    for _, v,t in tv:ipairs () do
       if v then                     -- only show non-nil data
         n = n + 1
         T[n] = t
@@ -142,83 +143,81 @@ function run (wsapi_env)
 
   -- build the common items on the return page
   
-  local t = html5.table {style="margin:20px;"}
-  t: header {
-    {"Target: ", title="full file path"}, 
-    input {type="text", name="target", style="width:30em;", value=target}}
-  t: row {
-    {"from:  ", title="from start of this day"}, 
-    input {type="date", name="from", value=from}}
-  t: row {
-    {"until: ", title="until end of this day"},
-    input {type="date", name="until", value=to}}
-  local read_form = html5.fieldset {style = "width:350px;",
-    html5.legend {"Database Query"},
-    html5.form {
-      action=req.script_name, method="get",
+  local read_form = html5.div {class = "w3-card w3-margin w3-small",
+    html5.div {class = "w3-container w3-grey",
+      html5.h4 {"Database Query"}},
+    html5.form {class = "w3-container w3-margin-top",
+      action=req.script_name, 
+      method="get",
       input {type="hidden", name="page", value=pagename},
-      t,
-      input {type="Submit", value="Read", style="background:HoneyDew", title="get data to edit"},
---      br,
+      label {"target: ", title="full file path"}, 
+      input {class = "w3-input", type="text", name="target", value=target},
+      label {"from:  ", title="from start of this day"}, 
+      input {class = "w3-input", type="date", name="from", value=from},
+      label {"until: ", title="until end of this day"},
+      input {class = "w3-input", type="date", name="until", value=to},
+      html5.div {class = "w3-right-align",
+        input {class = button_class .. "w3-pale-green",
+          type="Submit", value="Read", title="get data to edit"}
+        },
     },
   }
 
   -- if there is any data, then build an editable table
 
-  local w = ''      -- default to blank space
+  local data = ''      -- default to blank space
   if V then
-    w = html5.table {style = "margin:20px;"}
-    w: header {"date / time", "value"}
+    data = html5.table {class = "w3-table"}
+    data: header {"date / time", "value"}
     for i,v in ipairs (V) do
-      w: row (row (T[i], v))
+      data: row (row (T[i], v))
     end
   end
   
   local info = whisper.info (target)
-  local s = {{"aggregation:", title="function for combining samples between archives"}}
+  local aggregation = {}
   for _, method in ipairs (whisper.aggregationTypeToMethod) do
     local checked
     if method == info.aggregationMethod then checked = '1' end
-    s[#s+1] = input {type="radio", name="aggregation", value=method, checked=checked, ' '..method..' '}
+    aggregation[#aggregation+1] = 
+      input {type="radio", name="aggregation", value=method, checked=checked, ' '..method..' '}
   end
   
-  local x = html5.table {style = "margin:20px;"}
-  x: header {
-    {"Archives: ",title="sample rate:time span, ..., for each resolution archive"},
-    {colspan=5, tostring(info.retentions)}}
-  x: row (s)
   local xff = ("%0.2f"):format (info.xFilesFactor)
-  x: row {{"xFilesFactor:", title = "xff (0-1) if you don't know what this is, don't change it"}, 
-    {colspan = 5, input {name="xFilesFactor", autocomplete="off", value = xff}}}
   
-  local write_form = html5.fieldset {style = "width:350px;",
-    html5.legend {"Database Update"},
-    html5.form {
-      x,
-      action=req.script_name, method="post",
-      input {type="hidden", name="page", value=pagename},
-      input {type="hidden", name = "from", value = from},  
-      input {type="hidden", name = "until", value = to},  
-      input {type="hidden", name = "target", value = target},  
-      input {type="Submit", value="Commit", title="write changes back to file"},
-      input {type="Reset", title="clear changes to table"},
-      br, br, html5.div {style="display: table;", w}
+  local write_form = html5.div {class = "w3-card w3-margin w3-small",
+    html5.div {class = "w3-container w3-grey",
+      html5.h4 {"Database Update"}},
+    html5.form {class = "w3-container w3-margin-top",
+      action=req.script_name, 
+      method="post",
+      input {type="hidden", name = "page",    value = pagename},
+      input {type="hidden", name = "from",    value = from},  
+      input {type="hidden", name = "until",   value = to},  
+      input {type="hidden", name = "target",  value = target},  
+      label {"archives: ",title="sample rate:time span, ..., for each resolution archive"},
+      input {class = "w3-input", readonly=1, value = tostring(info.retentions)},
+      label {"aggregation:", title="function for combining samples between archives"},
+      html5.div {class = "w3-white w3-padding w3-border-bottom", html5.div (aggregation) },
+      label {"xFilesFactor:", title = "xff (0-1) if you don't know what this is, don't change it"}, 
+      input {class = "w3-input", name="xFilesFactor", autocomplete="off", value = xff},
+      html5.div {class = "w3-right-align",
+        input {class = button_class .. "w3-pale-yellow", 
+          type="Reset", title="clear changes to table"},
+        input {class = button_class .. "w3-pale-red", 
+          type="Submit", value="Commit", title="write changes back to file"},
+      },
+      html5.div {class = "w3-panel w3-border w3-hover-border-red", data},
     }}
    
-  
-  local style = html5.style {
-    vfs.read "openLuup_console.css", [[
-      input[type=submit] 
-        {font-size:12pt; width:6em; height:2em; border-radius: 4px; background:LavenderBlush; 
-         margin:10px; border:none; cursor:pointer; float:right}
-      input[type=reset]  
-        {font-size:12pt; width:6em; height:2em; border-radius: 4px; background:LightYellow;
-         margin:10px; border:none; cursor:pointer; float:right}
-      input:hover {filter:brightness(90%)}
-      input[type=text] {autocomplete:off;}
-    ]]}
-  local head = html5.head {html5.meta {charset="utf-8"}, html5.title {"W-Edit"}, style}
-  local html = html5.document {head, html5.div {class="content", read_form, br, write_form}}
+  local meta =  [[
+  <meta charset="utf-8" name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+]]
+ 
+  local html = html5.document {class="w3-light-grey", 
+    html5.head {html5.title {"W-Edit"}, meta}, 
+    html5.div {class = "w3-panel w3-cell", read_form, write_form}}
   res:write (html)
 
   return res:finish()

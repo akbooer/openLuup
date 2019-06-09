@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.04.07",
+  VERSION       = "2019.06.06",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -46,6 +46,7 @@ ABOUT = {
 -- 2019.04.03  add "startup" as valid time option (for console historian plots)
 -- 2019.04.07  add yMin, yMax, title, vtitle, options to SVG render
 -- 2019.04.26  return "No Data" SVG when target parameter absent (default Graphite behaviour)
+-- 2019.06.06  remove reference to external CSS
 
 
 -- CGI implementation of Graphite API
@@ -84,7 +85,7 @@ I've written a finder specifically for the dataMine database, to replace the exi
 local url       = require "socket.url"
 local luup      = require "openLuup.luup"
 local json      = require "openLuup.json"
-local vfs       = require "openLuup.virtualfilesystem"    -- for Graphite CSS
+--local vfs       = require "openLuup.virtualfilesystem"    -- for Graphite CSS
 local historian = require "openLuup.historian"
 local timers    = require "openLuup.timers"
 
@@ -639,8 +640,12 @@ local function svgRender (_, p)
   local doc = html5.document {
     head {'<meta charset="utf-8">',
       title {"Graphics"},
-      style {vfs.read "openLuup_graphite.css"}},
-    body (svgs)}
+      style {[[
+  .bar {cursor: crosshair; }
+  .bar:hover, .bar:focus {fill: DarkGray; }
+  rect {fill:Grey; stroke-width:3px; stroke:Grey; }
+]]},  -- was LightSteelBlue
+    body (svgs)}}
   cpu = timers.cpu_clock () - cpu
 
 --  local render = "render: CPU = %.3f mS for %dx%d=%d points"

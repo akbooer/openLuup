@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.06.02",
+  VERSION       = "2019.06.06",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -232,7 +232,8 @@ local function create (x)
       room_num            = tonumber(a.room),         -- 2018.07.02
       subcategory_num     = tonumber(a.subcategory_num),
       udn                 = a.local_udn,
-      user                = a.username or '',
+      user                = a.username or '',  
+      bookmark            = 0,                      -- openLuup private value
     }
 
   -- fill out extra data in the proto-device

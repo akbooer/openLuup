@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.05.30",
+  VERSION       = "2019.06.07",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -65,10 +65,8 @@ ABOUT = {
 -- 2019.05.16  split HTTP request table in system- and user-defined
 -- 2019.05.25  split Database tables into known and unknown devices
 -- 2019.05.27  tabbed pages and new layout
+-- 2019.06.04  use CCS Framework W3.css, lightweight with no JavaScript libraries.  Perfect match!
 
-
--- TODO: modal pop-ups?
--- see: https://jsfiddle.net/kumarmuthaliar/GG9Sa/1/
 
 --  WSAPI Lua implementation
 
@@ -90,24 +88,35 @@ local json      = require "openLuup.json"         -- for console_menus.json
 local xml       = require "openLuup.xml"          -- for xml.escape(), and...
 local html5     = xml.html5                       -- html5 and svg libraries
 
+-- get local copy of w3.css if we haven't got one already
+-- so that we can work offline if required
+if not loader.raw_read "w3.css" then 
+  local https = require "ssl.https"
+  local ltn12 = require "ltn12"
+  local css = io.open ("www/w3.css", "wb")
+  https.request{ 
+    url = "https://www.w3schools.com/w3css/4/w3.css", 
+    sink = ltn12.sink.file (css),
+  }
+end
+
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
+local script  -- name of this CGI script
+local function selfref (...) return table.concat {script, '?', ...} end   -- for use in hrefs
+
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
-local date = "%Y-%m-%d %H:%M:%S"
 
-
-local function todate (epoch)
-  return os.date (date, epoch)
-end
+local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
 
 
 -- formats a value nicely
 local function nice (x, maxlength)
-  maxlength = maxlength or 40
+  maxlength = maxlength or 50
   local s = tostring (x)
   local number = tonumber(s)
-  if number and number > 1234567890 then s = os.date (date, number) end
+  if number and number > 1234567890 then s = todate (number) end
   if #s > maxlength then s = s: sub(1, maxlength) .. "..." end
   return s
 end
@@ -194,13 +203,13 @@ local function page_wrapper (title, ...) return html5.div {html5_title (title), 
 
 -- make a simple HTML table from data
 local function create_table_from_data (columns, data, formatter)
-  local tbl = html5.table {}
+  local tbl = html5.table {class="w3-small"}
   tbl.header (columns)
   for i,row in ipairs (data) do 
     if formatter then formatter (row, i) end  -- pass the formatter both current row and row number
     tbl.row (row) 
   end
-  if #data == 0 then tbl.row {{"--- none ---", colspan = #columns}} end
+  if #data == 0 then tbl.row {"--- none ---"} end
   return tbl
 end
 
@@ -212,14 +221,13 @@ local function sort_and_number (list)
 end
 
  
-local function sorted_table (href)
-  href = href .. "&sort=" 
+local function sorted_table ()
   local cache_sort_direction = {} -- sort state for cache table columns (stateful... sorry!)
   local previous_key = 1          -- ditto
   local function columns (titles)
     local header = {}
     for i, title in ipairs (titles) do
-      header[i] = html5.a {title, href = href .. i}
+      header[i] = html5.a {title, href = selfref ("sort=", i)}
     end
     return header
   end
@@ -253,8 +261,23 @@ local function sorted_table (href)
   }
 end
 
-local sorted_joblist = sorted_table "/console?page=scheduled"
-local sorted_expired = sorted_table "/console?page=expired"
+-- text display
+
+local ace = {
+  root = "www/ace-builds/src-noconflict",
+  }
+
+ace.present = lfs.attributes (ace.root)
+
+function ace.editor (text, language)
+  return html5.div {class = "", html5.pre {text}}
+end
+--
+-- Pages
+--
+
+local sorted_joblist = sorted_table ()
+local sorted_expired = sorted_table ()
 
 local pages = {}
 
@@ -285,7 +308,7 @@ local function jobs_tables (p, running, title)
       row[6] = rhs (dhms (row[6], nil, milli))
       row[7] = rhs (row[7])
     end)
-  return page_wrapper(title, tbl)
+  return html5.div {class = "w3-responsive", page_wrapper(title, tbl) }	-- may be wide, let's scroll sideways
 end
 
 pages.running   = function (p) return jobs_tables (p, true,  "Jobs Currently Running") end
@@ -311,7 +334,7 @@ function pages.plugins ()
   local uptime = timers.timenow() - timers.loadtime
   local percent = cpu * 100 / uptime
   percent = ("%0.1f"): format (percent)
-  local tbl = html5.table {}
+  local tbl = html5.table {class = "w3-small"}
   tbl.header (columns)
   for _, row in ipairs(data) do
     row[4] = rhs (dhms(row[4], nil, milli))
@@ -334,7 +357,7 @@ function pages.startup ()
   table.sort (jlist, function (a,b) return a[2] < b[2] end)
   -----
   local milli = true
-  local tbl = html5.table {}
+  local tbl = html5.table {class = "w3-small"}
   tbl.header (columns)
   for i, row in ipairs (jlist) do
     row[1] = i
@@ -410,15 +433,15 @@ function pages.parameters ()
       end
     end
   end
-  local tbl = create_table_from_data (columns, data)
+  local tbl = create_table_from_data (nil, data)
   return page_wrapper("openLuup Parameters (from Lua Startup)", tbl)
 end
 
 -- system parameters
 function pages.top_level ()
   local unwanted = {ShutdownCode = true, StartupCode = true}
-  local t = html5.table ()
-  t.header {"attribute", "value"}
+  local t = html5.table {class = "w3-small"}
+--  t.header {"attribute", "value"}
   local attributes = userdata.attributes
   for n,v in sorted (attributes) do
     if type(v) ~= "table" and not unwanted[n] then t.row {n, nice(v) } end
@@ -450,7 +473,7 @@ function pages.globals ()
       end
     end
   end 
-  local tbl = create_table_from_data (columns, data)
+  local tbl = create_table_from_data (nil, data)
   return page_wrapper("Plugin Globals", tbl)
 end
 
@@ -477,12 +500,12 @@ function pages.states ()
       end
     end
   end
-  local tbl = create_table_from_data (columns, data)
+  local tbl = create_table_from_data (nil, data)
   return page_wrapper("Device States (defined by service file short_names)", tbl)
 end
 
 
--- backups table
+-- backups
 function pages.backups ()
   local columns = {"yyyy-mm-dd", "(kB)", "filename"}
   local dir = luup.attr_get "openLuup.Backup.Directory" or "backup/"
@@ -497,7 +520,10 @@ function pages.backups ()
     data[#data+1] = {f.date, f.size, hyperlink} 
   end
   local tbl = create_table_from_data (columns, data)
-  return page_wrapper("Backup directory: " .. dir, tbl)
+  local backup = html5.div {
+    html5.a {class="w3-button w3-round w3-light-green", href = "cgi-bin/cmh/backup.sh?", target="_blank",
+                "Backup Now"}}
+  return page_wrapper("Backup directory: " .. dir, backup, tbl)
 end
 
 -- sandboxes
@@ -512,9 +538,9 @@ function pages.sandboxes ()               -- 2018.04.07
       local y = {}
       for k,v in pairs (x) do y[#y+1] = {k, tostring(v)} end
       table.sort (y, function (a,b) return a[1] < b[1] end)
-      local t = html5.table()
+      local t = html5.table {class="w3-small w3-hoverable w3-card"}
       t.header {{title, colspan = 2}}
-      t.header {"name","type"}
+--      t.header {"name","type"}
       for _, row in ipairs(y) do
         t.row (row)
       end
@@ -567,7 +593,7 @@ pages.startup_log = pages.log
 
 -- generic connections table for all servers
 local function connectionsTable (iprequests)
-  local t = html5.table ()
+  local t = html5.table {class = "w3-small w3-card"}
   t.header { {"Received connections:", colspan=3} }
   t.header {"IP address", "#connects", "date / time"}
   for ip, req in pairs (iprequests) do
@@ -580,7 +606,7 @@ end
 
 function pages.http ()    
   local function requestTable (requests, title, columns, include_zero)
-    local t = html5.table ()
+    local t = html5.table {class = "w3-small w3-card"}
     t.header { {title, colspan = 3} }
     t.header (columns)
     local calls = {}
@@ -604,7 +630,7 @@ function pages.http ()
     tbl[n] = v
   end
   
-  local div = html5.div {
+  return html5.div {
       html5_title "HTTP Web server (port 3480)",
       connectionsTable (http.iprequests),   
       requestTable (lu, "/data_request? (system)", {"id=lu_... ", "#requests  ","status"}),
@@ -612,14 +638,13 @@ function pages.http ()
       requestTable (http.cgi_handler, "CGI requests", {"URL ", "#requests  ","status"}),
       requestTable (http.file_handler, "File requests", {"filename ", "#requests  ","status"}),
     }
-  return div
 end
 
 function pages.smtp ()
   local none = "--- none ---"
   
   local function sortedTable (title, info, ok)
-    local t = html5.table ()
+    local t = html5.table {class = "w3-small w3-card"}
     t.header { {title, colspan = 3} }
     t.header {"Address", "#messages", "for device"}
     local index = {}
@@ -636,7 +661,7 @@ function pages.smtp ()
     return t
   end
   
-  local t = html5.table ()
+  local t = html5.table {class = "w3-small w3-card"}
   t.header {{ "Blocked senders:", colspan=2 }}
   t.header {"eMail address","#attempts"}
   for email in pairs (smtp.blocked) do
@@ -644,14 +669,12 @@ function pages.smtp ()
   end
   if t.length() == 0 then t.row {'', none, ''} end
   
-  local div = html5.div {
+  return html5.div {
     html5_title "SMTP eMail server",
     connectionsTable (smtp.iprequests),
     sortedTable ("Registered email sender IPs:", smtp.destinations, function(x) return not x:match "@" end),
     sortedTable ("Registered destination mailboxes:", smtp.destinations, function(x) return x:match "@" end),
     t }
-  
-  return div
 end
 
 function pages.pop3 ()
@@ -662,13 +685,13 @@ function pages.pop3 ()
     local mbx = pop3.mailbox.open (folder)
     local total, bytes = mbx: status()
     
-    local t = html5.table()
+    local t = html5.table {class = "w3-small w3-card w3-hoverable"}
     t.header { {header: format (name, total, bytes/1e3), colspan = 3 } }
     t.header {'#', "date / time", "size (bytes)"}
     
     local list = {}
     for _, size, _, timestamp in mbx:scan() do
-      list[#list+1] = {t = timestamp, d = os.date (date, timestamp), s = size}
+      list[#list+1] = {t = timestamp, d = todate (timestamp), s = size}
     end
     table.sort (list, function (a,b) return a.t > b.t end)  -- newest first
     for i,x in ipairs (list) do 
@@ -679,15 +702,13 @@ function pages.pop3 ()
     T[#T+1] = t
   end
   
-  local div = html5.div {
+  return html5.div {
     html5_title "POP3 eMail client server",
     connectionsTable (ioutil.udp.iprequests), T}
-  
-  return div
 end
 
 function pages.udp ()
-  local t0 = html5.table ()
+  local t0 = html5.table {class = "w3-small w3-card"}
   t0.header { {"Registered listeners:", colspan = 3} }
   t0.header {"port", "#datagrams", "for device"}
   local list = {}
@@ -701,7 +722,7 @@ function pages.udp ()
   end
   if t0.length() == 0 then t0.row {'', "--- none ---", ''} end 
   
-  local t = html5.table()
+  local t = html5.table {class = "w3-small w3-card"}
   t.header { {"Opened for write:", colspan = 2} }
   t.header {"ip:port", "by device"}
   list = {}
@@ -715,12 +736,10 @@ function pages.udp ()
   end
   if t.length() == 0 then t.row {"--- none ---", ''} end 
   
-  local div = html5.div {
+  return html5.div {
     html5_title "UDP datagram ports",
     connectionsTable (ioutil.udp.iprequests), 
     t0, t}
-  
-  return div
 end
 
 
@@ -729,7 +748,7 @@ function pages.sockets ()
   local sock_drawer = scheduler.get_socket_list()    -- list is indexed by socket !!
   for sock, x in pairs (sock_drawer) do
     local sockname = table.concat {tostring(x.name), ' ', tostring(sock)}
-    data[#data+1] = {x.time, os.date(date, x.time), x.devNo or 0, sockname}
+    data[#data+1] = {x.time, todate (x.time), x.devNo or 0, sockname}
   end
   -----
   local columns = {"#", "date / time", "device", "socket"}
@@ -740,29 +759,48 @@ function pages.sockets ()
 end
 
 
-function pages.images ()
+function pages.images (p)
   local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
   local data = {}
   for i,f in ipairs (files) do 
-    data[#data+1] = {i, html5.a {href="/images/" .. f.name, target="image", f.name}}
+    data[#data+1] = {i, html5.a {href=selfref ("image=",i), f.name}}
   end
-  local div = html5.div {
+  local src = (files[tonumber(p.image)] or {}) .name
+  if src then src = "images/" .. src end
+  local index = create_table_from_data ({'#', "filename"}, data)
+  local div = html5.div
+  return div {
       html5_title "Image files in images/ folder",
-      create_table_from_data ({'#', "filename"}, data), 
-      html5.article {[[<iframe name="image" width="50%" >]]},
-    }
-  return div
+      div {class = "w3-row",
+      -- TODO: IMAGES
+        div {class = "w3-container w3-quarter", index} ,
+        div {class = "w3-container w3-rest", 
+          html5.img {style="object-fit: contain;", width="70%", src=src}},
+      }}
 end
 
-function pages.trash ()
+
+function pages.trash (p)
+  -- empty?
+  if (p.AreYouSure or '') :lower() :match "yes" then    -- empty the trash
+    luup.call_action ("openLuup", "EmptyTrash", {AreYouSure = "yes"}, 2)
+    local continue = html5.a {class="w3-button w3-round w3-green",
+      href = selfref "page=trash", "Continue..."}
+    return page_wrapper ("Trash folder being emptied", continue)
+  end
+  -- list files...
   local files = get_matching_files_from ("trash/", '^[^%.]+%.[^%.]+$')     -- *.*
   local data = {}
   for i,f in ipairs (files) do 
     data[#data+1] = {i, f.name, f.size}
   end
   local tbl = create_table_from_data ({'#', "filename", "size"}, data)
-  return page_wrapper ("Files pending delete in trash/ folder", tbl)
+  local empty = html5.a {class="w3-button w3-round w3-red",
+    onclick = "return confirm('Empty Trash: Are you sure?')", 
+    href = selfref "page=trash&AreYouSure=yes", "Empty Trash"}
+  return page_wrapper ("Files pending delete in trash/ folder", empty, tbl)
 end
+
 
 -- compares corresponding elements of array
 local function keysort (a,b) 
@@ -798,7 +836,7 @@ end
 
 function pages.summary ()
   local H, N, T = scan_cache()
-  local t0 = html5.table()
+  local t0 = html5.table {class = "w3-small"}
   t0.header { {"Cache statistics:", colspan = 2} }
   t0.row {"total # device variables", rhs (N)}
   t0.row {"total # variables with history", rhs (#H)}
@@ -865,7 +903,7 @@ function pages.cache (_, req)
   for i, v in ipairs (H) do H[i] = {v=v, sortkey = {v.dev, v.shortSid, v.name}} end   -- add the keysort key!
   table.sort (H, keysort)
       
-  local t = html5.table()
+  local t = html5.table {class = "w3-small"}
   t.header {"device ", "service", "#points", "value",
     {"variable (archived if checked)", title="note that the checkbox field \n is currently READONLY"} }
   
@@ -961,8 +999,8 @@ local function database_tables (_, req)
     return link
   end
   
-  local t = html5.table ()
-  local t2 = html5.table ()
+  local t = html5.table {class = "w3-small"}
+  local t2 = html5.table {class = "w3-small"}
   t.header {'', "archives", "(kB)", "fct", "#updates", 
     {"filename (node.dev.srv.var)", title = "hyperlink to Whisper file editor, if present"} }
   t2.header {'', "archives", "(kB)", "fct", '', 
@@ -996,11 +1034,11 @@ end
 
 -- file cache
 
-local sorted_cache = sorted_table "/console?page=file_cache"
+local sorted_cache = sorted_table ()
 
 function pages.file_cache (p)
   local s = sorted_cache
-  local t = html5.table ()
+  local t = html5.table {class = "w3-small w3-hoverable"}
   t: header (s.columns {'#', "last access", "# hits", "bytes", "filename"})
   
   local N, H = 0, 0
@@ -1008,7 +1046,7 @@ function pages.file_cache (p)
   local info = {}
   for name in vfs.dir() do 
     local v = vfs.attributes (name) 
-    local d = (v.access ~= 0) and os.date (date, v.access) or ''
+    local d = (v.access ~= 0) and todate (v.access) or ''
     info[#info+1] = {name, d, v.hits, v.size, name} 
   end
   
@@ -1017,6 +1055,7 @@ function pages.file_cache (p)
     H = H + row[3]      -- hits accumulator
     N = N + row[4]      -- size accumulator
     row[1] = i          -- replace primary sort key with line number
+    row[3] = rhs (row[3])
     row[4] = rhs (row[4])
     t.row (row)
   end
@@ -1038,12 +1077,17 @@ end
 
 -- create new persistent numeric variable
 local function sticky_number (default) return sticky (default, true) end
+local sticky_variable = sticky_number ()
+
+-- create persistent values for all pages
+local sticky_page      = sticky "about"
+local sticky_room     = sticky "All"
+local sticky_device   = sticky_number (2)
+local sticky_scene    = sticky_number (1)
 
 --
 -- Devices
 --
-
-local sticky_device = sticky_number (2)      -- create persistent device number
 
 -- generic device page
 local function device_page (p, fct)
@@ -1063,7 +1107,7 @@ end
 
 function pages.control (p)
   return device_page (p, function (d, title)
-    local t = html5.table {}
+    local t = html5.table {class = "w3-small"}
     local line1, line2 = get_display_variables (d)
     local states = d:get_shortcodes ()
     for n,v in sorted (states) do t.row {n, nice(v)} end
@@ -1074,17 +1118,14 @@ end
 
 function pages.attributes (p)
   return device_page (p, function (d, title)
-    local t = html5.table {}
-    t.header {"attribute", "value"}
-    for n,v in sorted (d.attributes) do t.row {n, nice(v) } end
-    return title .. " - attributes", t
+    local attr = {}
+    for n,v in sorted (d.attributes) do attr[#attr+1] = {n, nice(v)} end
+    return title .. " - attributes", create_table_from_data (nil, attr)
   end)
 end
 
 
-local sorted_variables = sorted_table "/console?page=variables"
-
-local sticky_variable = sticky_number ()
+local sorted_variables = sorted_table ()
 
 function pages.cache_history (p)
   return device_page (p, function (d, title)
@@ -1103,12 +1144,12 @@ end
 function pages.variables (p)
   return device_page (p, function (d, title)
     local s = sorted_variables
-    local t = html5.table {}
+    local t = html5.table {class = "w3-small"}
     t.header (s.columns {"id", "service", '', "variable", "value"})
     local info = {}
     for n,v in pairs (d.variables) do
       local history =  v.history and #v.history > 2 and 
-                          html5.a {href = "/console?page=cache_history&variable="..n, "history"} or ''
+                          html5.a {href = selfref ("page=cache_history&variable=", n), "history"} or ''
       info[#info+1] = {v.id, v.srv, history, v.name, nice(v.value) }
     end
     s.sort (info, p.sort)
@@ -1123,7 +1164,7 @@ end
 function pages.actions (p)
   return device_page (p, function (d, title)
     local sd = loader.service_data
-    local t = html5.table {}
+    local t = html5.table {class = "w3-small"}
     t.header {"serviceId", "action", "arguments"}
     for s,srv in sorted (d.services) do
       local service_actions = (sd[s] or {}) .actions
@@ -1145,80 +1186,107 @@ function pages.actions (p)
   end)
 end
 
+function pages.events (p)
+  return device_page (p, function (d, title)
+      local e = {}
+      local columns = {"id", "event / variable : (serviceId)"}
+      local json_file = d.attributes.device_json
+      local static_data = loader.static_data[json_file] or {}
+      local eventList2 = static_data.eventList2
+      if eventList2 then
+        for i, event in ipairs (eventList2) do
+            e[#e+1] = {event.id, event.label.text}
+        end
+      end
+    return title .. " - generated events", create_table_from_data (columns, e)
+  end)
+end
+
 function pages.user_data (p)
   return device_page (p, function (d, title)
     local j, err
     local dtable = userdata.devices_table {[sticky_device()] = d}
     j, err = json.encode (dtable)
-    return title .. " - JSON user_data", html5.pre {j or err}
+    return title .. " - JSON user_data", 
+    html5.div {class = "w3-panel w3-border", html5.pre {j or err} }
   end)
 end
 
-local function panel_wrapper (...)
-  return html5.div {
-    style="background:White; flex: 1 1 0; min-width:200px; max-width:300px; height:80px; float:left; border:1px solid Silver; margin:5px; border-radius: 4px; font-size:9pt", ...}
-end
-
 local function rooms_selector ()
-  local div = html5.div
-  local st = "margin:8px;"
-  local rooms = {
-    style=[[ 
-    display: flex; flex:20%; flex-flow:column nowrap; 
-    align-content: space-around; align-items:center;
-    float: left;
-    width: 15%;
-    background: Silver;
-    padding: 20px;
-    margin: 8px;
-    ]],
-    div {"All", style = st}, div{"Favourites", style = st}, div{"No Room", style = st}}
-  for _,r in pairs (luup.rooms) do
-    rooms[#rooms+1] = div {r, style = st}
+  local current_room = sticky_room()
+  local function room_button (x)
+    local colour = x == current_room and "w3-grey" or "w3-light-gray"
+    return html5.a {class = "w3-bar-item w3-button " .. colour, href = selfref ("room=", x), x }
   end
-  return html5.nav (rooms)
+  local rooms = html5.div {
+--    class="w3-bar-block w3-col w3-grey", style="width:12em;",
+    class="w3-bar-block w3-col w3-border w3-border-grey", style="width:12em;",
+    room_button "All", room_button "Favourites", room_button "No Room"}
+  for _,r in pairs (luup.rooms) do
+    rooms[#rooms+1] = room_button (r)
+  end
+  return rooms
 end
 
-function pages.devices ()
+-- returns a function to decide whether given room number is in selected set
+local function room_wanted ()
+  local room = sticky_room ()
+  local room_index = {["No Room"] = 0}
+  for n, r in pairs (luup.rooms) do room_index[r] = n end
+  local all_rooms = room == "All"
+  local favourite_room = room == "Favourites"
+  local room_number = room_index[room]
+  return function (d)
+    return all_rooms or d.room_num == room_number
+  end
+end
+
+local function panel_wrapper (...)
+  return html5.div {class = "w3-small w3-margin-left w3-margin-bottom",
+    style="width:240px; height:80px; float:left; border:1px solid Silver; border-radius:4px; display:inline-block; ", ...}
+end
+
+function pages.devices (p)
   local static_data = loader.static_data
    
   local function device_panel (self)          -- 2019.05.12
-    local name = (self.description): match "%s*(.*)"
     local id = self.attributes.id
     local line1, line2 = get_display_variables (self)
     
-    local t = html5.div {html5.span {line1}, html5.br {}, html5.span {line2}, style="margin:3px;" }
-
-    local json_file = self.attributes.device_json or ''
+    local json_file = self.attributes.device_json or ''   -- such a shame to have to use the JSON file!
     local icon = (static_data[json_file] or {}) .default_icon or ''
     if icon ~= '' and not icon: lower() : match "^http" then icon = "/icons/" .. icon end
-    local img = html5.img {src = icon, alt="no icon", style = "width:48px; height:48px; float:left; clear:left;"}
+    local img = html5.img {src = icon, alt="no icon", style = "width:48px; height:48px;"}
+    img = html5.a {href=selfref ("page=device&device=", id), img} -- ********
     
-    img = html5.a {href="/console?page=device&device=" .. id, img} -- ********
+    local div, span = html5.div, html5.span
    local panel = panel_wrapper (
-      html5.div {style="background:Silver; border-bottom:2px solid silver; margin:0; padding:6px;", '[', id, "] ", name},
-      html5.div {style ="padding:2px; font-size:10pt;", img, t })
+        div {style="background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;", devname (id)},
+        div {div {style = "clear:none;",
+          div {style="float: left; clear: none; margin:2px;", img}, 
+          div {style="float: left; clear: right;", span {line1, html5.br{}, line2 } } } } )
     return panel
   end
   
   -- devices   
-  local devs = {class="content", style="display: flex; flex:80%; flex-flow:row wrap; width:80%;" }
+--  local devs = {class="content", style="margin-left:12em; display: flex; flex:90%; flex-flow:row wrap; width:80%;" }
+--  local devs = {class="content", style="margin-left:12em; " }
+  local devs = html5.div {class="w3-rest", style="text-align:justified; " }
+  local wanted = room_wanted()        -- get function to filter by room
   for _, d in pairs (luup.devices) do
-    devs[#devs+1] = device_panel (d)
+    if wanted(d) or d.attributes.bookmark == '1' then   -- TODO: favourites
+      devs[#devs+1] = device_panel (d)
+    end
   end
 
-  local room_nav = rooms_selector ()
-  local section = html5.section (devs)
-  local ddiv = html5.div {room_nav, section}
+  local room_nav = rooms_selector (p)
+  local ddiv = html5.div {room_nav, html5.div {class="w3-rest", devs} }
   return ddiv
 end
 
 --
 -- ["Scene"] = {"header", "triggers", "timers", "lua", "group_actions", "json"},
-
 --
-
-local sticky_scene = sticky_number (1)      -- create persistent scene number
 
 -- generic scene page
 local function scene_page (p, fct)
@@ -1276,39 +1344,43 @@ function pages.json (p)
   end)
 end
 
-function pages.scenes ()
---[[
-{
-	 description = "test",
-	 hidden = false,
-	 page = 0,
-	 paused = false,
-	 remote = 0,
-	 room_num = 0,
-	 running = true
-}]]
-    
+function pages.scenes (p)
   local function scene_panel (self)
     local utab = self: user_table()
     local id = utab.id
-    local next_run = ''   -- TODO: next_run, tricky need to search timers
+    local earliest_time
+    for _,timer in ipairs (utab.timers or {}) do
+      local next_run = timer.next_run 
+      if next_run and timer.enabled == 1 then
+        earliest_time = math.min (earliest_time or next_run,  next_run)
+      end
+    end
+    local next_run = earliest_time and "◷ " .. nice (earliest_time) or ''
     local last_run = utab.last_run
-    last_run = last_run and "Last: " .. nice (last_run) or ''
-    local t = html5.div {html5.span {next_run}, html5.br {}, html5.span {last_run}, style="margin:3px;" }
+    last_run = last_run and "&#x2713; " .. nice (last_run) or ''
+    local t = html5.div {html5.span {style="font-size: 8pt;",
+        last_run, html5.br{}, next_run}, style="margin:3px;" }
     
-    local img = html5.a {href="/console?page=scene&scene=" .. id, "scene"} -- ********
+    local img = html5.a {href= selfref("page=scene&scene=", id), "scene"} -- ********
+    local div = html5.div
     local panel = panel_wrapper (
-      html5.div {style="background:Silver; border-bottom:2px solid silver; margin:0; padding:6px;", scene_name(id)},
-      html5.div {style ="padding:2px; font-size:10pt;", img,  t })
+      div {style="background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;", scene_name(id)},
+      div {div {style = "clear:none;",
+        div {style="float: left; clear: none; margin:2px;", img}, 
+        div {style="float: right; padding-right:8px;", html5.span {last_run, html5.br{}, next_run } } } } )
     return panel
   end
   
   -- scenes   
-  local scenes = {class="content", style="display: flex; flex:80%; flex-flow:row wrap; width:80%;" }
+  local wanted = room_wanted()        -- get function to filter by room
+  local scenes = {class="content", style="margin-left:12em; " }
   for _,s in pairs (luup.scenes) do
-    scenes[#scenes+1] = scene_panel (s)
+    local u = s: user_table()
+    if wanted(s) or u.favorite then   -- TODO: favourites
+      scenes[#scenes+1] = scene_panel (s)
+    end
   end
-  local room_nav = rooms_selector ()
+  local room_nav = rooms_selector (p)
   local section = html5.section (scenes)
   return html5.div {room_nav, section}
 end
@@ -1340,7 +1412,7 @@ function pages.graphics (p, req)
   return iframe
 end
 
-function pages.table_rooms ()
+function pages.rooms_table ()
   local t = html5.table {}
   t.header {"id", "name"}
   for n, v in sorted (luup.rooms) do
@@ -1349,7 +1421,7 @@ function pages.table_rooms ()
   return page_wrapper ("Rooms Table", t)
 end
 
-function pages.table_devices ()
+function pages.devices_table ()
   local t = html5.table {}
   t.header {"id", "name"}
   for n, v in sorted (luup.devices) do
@@ -1358,7 +1430,7 @@ function pages.table_devices ()
   return page_wrapper ("Devices Table", t)
 end
 
-function pages.table_scenes ()
+function pages.scenes_table ()
 --[[
 {
 	 description = "test",
@@ -1375,8 +1447,8 @@ function pages.table_scenes ()
   return page_wrapper ("Scenes Table", t)
 end
 
-function pages.table_plugins ()
-  local t = html5.table {}
+function pages.plugins_table ()
+  local t = html5.table {class = "w3-table w3-bordered"}
   t.header {'', "Name","Version", "Auto", "Files", "Actions", "Update", "Unistall"}
   local IP2 = userdata.attributes.InstalledPlugins2 or userdata.default_plugins
   for _, p in ipairs (IP2) do
@@ -1390,7 +1462,6 @@ function pages.table_plugins ()
     for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
     table.sort (files)
     table.insert (files, 1, "Files")
---    local select = {style = "width:18em;" }
     local select = {style = "width:18em;", onchange="location = this.value;" }
     for _, f in ipairs (files) do select[#select+1] = html5.option {value=f, f} end
     files = html5.form {html5.select (select)}
@@ -1402,48 +1473,49 @@ end
 
 function pages.about () 
   local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
-  local t = html5.table ()
+  local t = html5.table {class = "w3-table-all w3-cell"}
   for a,b in sorted (ABOUTopenLuup) do
-    b = tostring(b)
-    b = b: gsub ("http%S+",  '<a href=%1 target="_blank">%1</a>')
-    t.row {{a, style = "font-weight: bold"}, 
-      html5.pre {b, style = "margin-top: 0.5em; margin-bottom: 0.5em;"}}
+    b = tostring(b): gsub ("http%S+",  '<a href=%1 target="_blank">%1</a>')
+    t.row { {a, style = "font-weight: bold"},  html5.pre {style="line-height: 1;", b}}
   end
   return t
 end  
+
+function pages.reload ()
+  luup.log "Reload requested by openLuup console"
+  local _,_, jno = scheduler.run_job {job = luup.reload}
+  luup.log ("Shutdown job = " .. (jno or '?'))
+  return page_wrapper "Please wait a moment while system reloads"
+end
+
+  
 -- switch dynamically between different menu styles
-local user_json = luup.attr_get "openLuup.Historian.Console.Menu"
+local user_json = luup.attr_get "openLuup.Console.Menu"
 local menu_json = sticky (user_json or "default_console_menus.json")
 
-local home_page   -- forward reference
-
-function pages.current () return home_page () end
-function pages.classic () return home_page "classic_console_menus.json" end
-function pages.default () return home_page "default_console_menus.json" end
-function pages.altui   () return home_page "altui_console_menus.json"   end
-function pages.user    () return home_page (user_json) end
+function pages.current () return pages.home () end
+function pages.classic () return pages.home "classic_console_menus.json" end
+function pages.default () return pages.home "default_console_menus.json" end
+function pages.altui   () return pages.home "altui_console_menus.json"   end
+function pages.user    () return pages.home (user_json) end
 
 
 -------------------------------------------
 
 
-local a, body, div, footer, head, style, span, title = 
-  html5.a, html5.body, html5.div, html5.footer, html5.head, html5.style, html5.span, html5.title
-
-local button, pre = html5.button, html5.pre
-local hr = html5.hr {style = "color:Sienna;"}
+local a, div = html5.a, html5.div
  
 local page_groups = {
     ["Historian"] = {"summary", "cache", "database", "orphans"},
-    ["System"]    = {"parameters", "top_level", "globals", "states", "sandboxes"},
-    ["Device"]    = {"control", "attributes", "variables", "actions", "user_data"},
+    ["System"]    = {"parameters", "top_level", "globals", "states", "sandboxes", "RELOAD"},
+    ["Device"]    = {"control", "attributes", "variables", "actions", "events", "user_data"},
     ["Scene"]     = {"header", "triggers", "timers", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
     ["Servers"]   = {"http", "smtp", "pop3", "udp", "sockets", "file_cache"},
     ["Utilities"] = {"backups", "images", "trash"},
     ["Menu Style"]= {"current", "classic", "default", "altui", "user"},
-    ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_code_test"},
-    ["Tables"]    = {"table_rooms", "table_plugins", "table_devices", "table_triggers", "table_scenes"},
+    ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_code_test", "lua_test(2)", "lua_test(3)"},
+    ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "triggers_table", "scenes_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
   }
 
@@ -1464,9 +1536,17 @@ end
 
 -- make a page link button
 local function make_button(name, current)
+  local confirm
   local short = short_name(name)
-  local link = {class = "button", href="console?page=" .. short, short_name_index[short]}
-  if short == current then link.style = "background-color: Sienna;" end
+  local colour = "w3-amber"
+  if short == "reload" then 
+    colour = "w3-red"
+    confirm = "return confirm('System Reload: Are you sure?')"
+  elseif short == current then 
+    colour = "w3-grey"
+  end
+  local link = {class="w3-button w3-round " .. colour, href=selfref ("page=", short), 
+                  onclick=confirm, short_name_index[short]}
   return html5.a (link)
 end
 
@@ -1477,7 +1557,7 @@ local function map_menu_tree (fct)
   for _, menu in ipairs (console.menus or {}) do fct (menu) end
 end
 
-function home_page (menu_page)
+function pages.home (menu_page)
   local menu = menu_json (menu_page)      -- set the menu structure, if changed
   
   -- create a list of all the page groups referenced by current menu structure
@@ -1497,17 +1577,15 @@ function home_page (menu_page)
   end)
 
   local index = {}
-  local hr, br = html5.gr{}, html5.br{}
   for group, pages in sorted (group_names) do
-    local pnames = {make_button (group, short_name(group))}    -- highlight the group name button
+    local pnames = div {class = "w3-padding", make_button (group, short_name(group))}    -- highlight the group name button
     for _, page in ipairs (pages) do
       pnames[#pnames+1] = make_button (page)
     end
-    pnames.style = "padding:18px;"
-    index[#index+1] = div (pnames)
+    index[#index+1] = pnames
   end
   
-  local div = html5.div {menu, html5.div {br, hr, br, html5.h3 {"Page Index"}, br, div(index)} }
+  local div = html5.div {html5.h4 {"Page Index"}, div(index)} 
   return div
 end
 
@@ -1518,7 +1596,7 @@ local function page_nav (current, previous)
   -- want to be able to use group name as a page... 
   local Current = current: gsub ("^.", function(x) return x:upper() end)    -- restore the leading capital
   local page_group = page_groups[Current]  or {}                            -- get the group, if it exists
-  current = page_group[1] or current                                        -- use the first page in the group
+  current = sticky_page (page_group[1])                                     -- use the first page in the group
   -----
   
   local tabs = {}
@@ -1528,36 +1606,45 @@ local function page_nav (current, previous)
       tabs[#tabs+1] = make_button (name, current) 
     end
   end
-  local br = html5.br {} 
-  if #tabs > 0 then tabs[#tabs+1] = br end
-  return div { style="margin-top:5px;",
-    span {style = [[background-color: Silver; border: none; border-radius: 4px; vertical-align:middle;
-          padding: 8px; font-size: 16px; line-height:18px; ]],
-      a {class="nodec", href = "/console?page=" .. previous, "&lArr;"}, " / ",     -- left arrow
-      a {class="nodec", href = "/console?page=current", "Home"},     " / ",        --TODO: make a better home page!
-      pagename}, 
-    div {br, html5.h3 {group or pagename}, br, div (tabs) }},
-    current     -- return a possibly modified page name
+  local messages = div (make_button ("Messages &#x25BC ")) 
+--    html5.span {class="w3-badge w3-red w3-display-topright",1}}
+  messages.onclick="ShowHide('messages')" 
+  return div {class="w3-container w3-row w3-margin-top",
+   html5.span {class = "w3-container w3-cell w3-cell-middle w3-round w3-border w3-border-grey",
+        a {class="nodec", href = selfref ("page=", previous), "&lArr;"}, " / ",     -- left arrow
+        a {class="nodec", href = selfref "page=current", "Home"},     " / ", 
+        pagename}, 
+    div {class="w3-container w3-cell", messages},
+    div {class = "w3-panel w3-border w3-hide", id="messages",  "hello"},
+    div {html5.h3 {group or pagename}, div (tabs) }},
+    current     -- return a possibly modified page 
 end
-  
+
+
 -- dynamically build HTML menu from table structure {name, {items}, page}
-local function make_all_menus ()
-  local menus = { div {                     -- add the icon!
-      class="dropdown", 
-      style="vertical-align:middle; height:60px;",
-      a {href="/data_request?id=lr_ALTUI_Handler&command=home#", target="_blank",  vfs.read "icons/openLuup.svg"}
-    }}
+local function dynamic_menu ()
+  local icon = a {class = "w3-dropdown-hover w3-grey",
+        href="/data_request?id=lr_ALTUI_Handler&command=home#", target="_blank",  
+        html5.img {height=42, alt="openLuup", src="icons/openLuup.svg", class="w3-button"} }
+  local menus = div {class = "w3-bar w3-grey", icon}
   map_menu_tree (function (menu)
     local name = menu[1]
-    local href = "/console?page="
-    local dropdown = {class="dropdown"}
+    local dropdown = {class="w3-dropdown-hover"}
     if #menu == 1 then      -- it's just a simple button to a page
-      dropdown[1] = a {class="dropbtn", href=href .. short_name(name), name}
+      dropdown[1] = a {class="w3-button w3-margin-small", href=selfref ("page=", short_name(name)), name}
     else
-      dropdown[1] = button {class="dropbtn", name}
-      local dropdown_content = {class="dropdown-content"}
-      for i, item in ipairs (menu[2] or {}) do
-        dropdown_content[i] = item == "hr" and hr or a {class="left", href=href..short_name(item), item}
+      dropdown[1] = div {class="w3-button w3-margin-small", name}
+      local dropdown_content = 
+        {class="w3-dropdown-content w3-bar-block w3-border-grey w3-light-grey w3-card-4"}
+      local border = ''
+      for _, item in ipairs (menu[2] or {}) do
+        if item == "hr" then 
+          border = " w3-border-top"                   -- give next item a line above...
+        else
+          dropdown_content[#dropdown_content+1] = 
+            a {class="w3-bar-item w3-button" .. border, href=selfref ("page=", short_name(item)), item}
+          border = ''
+        end
       end
       dropdown[2] = div (dropdown_content)
     end
@@ -1566,48 +1653,69 @@ local function make_all_menus ()
   return menus
 end
 
---local dynamic_menu = div {class="menu", style="background:DarkGrey;",
---                      div (make_all_menus (loader.raw_read (menu_json ())))}
-
 
 ----------------------------------------
 -- run()
 --
 
-local current, previous = "about" , "about"     -- current and previous pages
-
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
 
   local req = wsapi.request.new (wsapi_env)
+  script = req.script_name      -- save to use in links
   local p = req.GET 
-  local page = p.page or current
-  if page ~= current then current, previous = page, current end
+  
+  local previous = sticky_page ()
+  local current  = sticky_page (p.page)
+  
+  sticky_room (p.room)
+--  sticky_device (p.device)
+--  sticky_scene (p.scene)
+--  sticky_variable = (p.variable)
   
   local navigation, actual_page = page_nav (current, previous)
   local dispatch = pages[actual_page] or function () end
   local sheet = dispatch (p, req)
-  local formatted_page = div {navigation, html5.br{}, sheet}
-
-  local dynamic_menu = div {class="menu", style="background:DarkGrey;",
-                      div (make_all_menus ())}
+  local formatted_page = div {class = "w3-container", navigation, sheet}
   
   local html = html5.document { 
-      head {'<meta charset="utf-8">',
-        title {"Console"},
-        style {vfs.read "openLuup_console.css"}},
     
-      body {
---        menu,
-        dynamic_menu,
-        div {class="content",  style="margin:5px;",
-          span {formatted_page},
-          footer {"<hr/>", pre {os.date "%c"}, style="clear: both;"},
-    }}}
+    html5.title {script: match "(%w+)$"},
+[[
+  <meta charset="utf-8" name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="w3.css">
+]],
+
+    html5.style {
+[[  
+  pre {line-height: 1.1; font-size:10pt;}
+  a.nodec { text-decoration: none; } a.nodec:hover { text-decoration: underline; }
+  th,td {width:1px; white-space:nowrap; padding: 0 16px 0 16px;}
+  table {table-layout: fixed; margin-top:20px}
+]]},
+
+    html5.script {
+[[
+function ShowHide(id) {
+  var x = document.getElementById(id);
+  if (x.className.indexOf("w3-show") == -1) {
+    x.className += " w3-show";
+  } else {
+    x.className = x.className.replace(" w3-show", "");
+  }
+}]]},
+
+    html5.body {class = "w3-light-grey",
+      dynamic_menu (),
+      div {
+        formatted_page,
+        div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", html5.p {os.date "%c"}},
+      }}}
   
   local res = wsapi.response.new ()
   res: write (html)  
   return res: finish()
 end
+
 
 -----

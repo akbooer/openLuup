@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.05.31",
+  VERSION       = "2019.06.06",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -1101,11 +1101,11 @@ local classic_console_menus_json = [==[
 {
   "comment":"JSON to define CLASSIC console menu structure",
   "menus":[
-    ["openLuup",  ["About", "Parameters", "Historian", "hr", "Globals", "States"] ],
+    ["openLuup",  ["About", "hr", "Parameters", "Historian", "hr", "Globals", "States"] ],
     ["Files",     ["Backups", "Images", "Database", "File Cache", "Trash"] ],
     ["Scheduler", ["Running", "Delays", "Watches", "Sockets", "Sandboxes", "Plugins"] ],
     ["Servers",   ["HTTP", "SMTP", "POP3", "UDP"] ],
-    ["Logs",      ["Log",  "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "Startup Log"] ]
+    ["Logs",      ["Log", "hr", "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "hr", "Startup Log"] ]
   ]
 }
 ]==]
@@ -1114,11 +1114,11 @@ local default_console_menus_json = [==[
 {
   "comment":"JSON to define standard console menu structure",
   "menus":[
-    ["openLuup",  ["About", "System", "Historian", "hr", "Utilities", "Scheduler","Servers"] ],
+    ["openLuup",  ["About", "hr", "System", "Historian", "hr", "Utilities", "Scheduler","Servers"] ],
     ["Files",     ["Backups", "Images", "Trash"] ],
     ["Scheduler", ["Running", "Completed", "Startup", "Plugins", "Delays", "Watches"] ],
     ["Servers",   ["HTTP", "SMTP", "POP3", "UDP", "hr", "Sockets", "File Cache"] ],
-    ["Logs",      ["Log",  "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "Startup Log"] ]
+    ["Logs",      ["Log", "hr", "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "hr", "Startup Log"] ]
   ]
 }
 ]==]
@@ -1127,112 +1127,16 @@ local altui_console_menus_json = [==[
 {
   "comment":"JSON to define AltUI-style console menu structure",
   "menus":[
-    ["openLuup",  ["About","System","Historian","Scheduler","Servers"] ],
+    ["openLuup",  ["About", "hr", "System", "Historian", "Scheduler", "Servers"] ],
     ["Devices"],
     ["Scenes"],
-    ["Tables", ["Table Rooms","Table Plugins", "Table Devices", "Table Triggers", "Table Scenes"] ],
+    ["Tables", ["Rooms Table","Plugins Table", "Devices Table", "Scenes Table", "Triggers Table"] ],
     ["Utilities", ["Lua Startup","Lua Shutdown", "Lua Code Test",
-                                  "hr", "Backups", "Images", "Trash"] ],
-    ["Logs",      ["Log",  "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "Startup Log"] ]
+                       "hr", "Backups", "Images", "Trash"] ],
+    ["Logs",      ["Log", "hr", "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "hr", "Startup Log"] ]
   ]
 }
 ]==]
-
-
---
--- Style sheets for console web pages
---
-
-local console_css = [[
-
-  /* Style sheets for console web pages */
-
-  *    { box-sizing:border-box; margin:0px; padding:0px; }
-  html { width:100%; height:100%; overflow:hidden; border:none 0px; }
-  body { font-family:Arial; background:LightGray; width:100%; height:100%; overflow:hidden; padding-top:60px; }
-
-  .menu { position:absolute; top:0px; width:100%; height:60px; }
-  .content { width:100%; height:100%; overflow:scroll; padding:4px; }
-
-  .button {
-    background-color: Peru;
-    color: white;
-    padding: 12px;
-    font-size: 16px;
-    line-height:18px;
-    vertical-align:middle;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    text-decoration: none;
-  }
-
-  .button:hover {
-    background-color: SaddleBrown;
-  }
-
-  .dropbtn {
-    background-color: Sienna;
-    color: white;
-    padding: 16px;
-    font-size: 16px;
-    line-height:18px;
-    vertical-align:middle;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    text-decoration: none;
-  }
-
-  .dropdown {
-    position: relative;
-    display: inline-block;
-  }
-
-  .dropdown-content {
-    display: none;
-    position: absolute;
-    background-color: Sienna;
-    min-width: 160px;
-    border-top:1px solid Gray;
-    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
-  }
-
-  .dropdown-content a {
-    color: white;
-    padding: 12px 16px;
-    text-decoration: none;
-    display: block;
-  }
-
-  .dropdown-content a:hover {background-color: SaddleBrown}
-
-  .dropdown:hover .dropdown-content {
-    display: block;
-  }
-
-  .dropdown:hover .dropbtn {
-    background-color: SaddleBrown;
-  }
-
-  pre {margin-top: 20px;}
-  footer {margin-top: 20px; margin-bottom: 20px; }
-
-  table {table-layout:fixed; font-size:10pt; font-family: "Arial", "Helvetica", "sans-serif"; margin-top:20px}
-  th,td {width:1px; white-space:nowrap; padding: 0 15px 0 15px;}
-  th {background: DarkGray; color:Black;}
-  tr:nth-child(even) {background: LightGray;}
-  tr:nth-child(odd)  {background: Silver;}
-
-  a.nodec { text-decoration: none; } a.nodec:hover { text-decoration: underline; }
-
-]]
-
-local graphite_css = [[
-  .bar {cursor: crosshair; }
-  .bar:hover, .bar:focus {fill: DarkGray; }
-  rect {fill:LightSteelBlue; stroke-width:3px; stroke:LightSteelBlue; }
-]]
 
 
 -----
@@ -1275,8 +1179,6 @@ local manifest = {
     ["I_Dummy.xml"]             = I_Dummy_xml,
 
     ["index.html"]            = index_html,
-    ["openLuup_console.css"]  = console_css,
-    ["openLuup_graphite.css"]  = graphite_css,
 
     ["openLuup_reload"]       = openLuup_reload,
     ["openLuup_reload.bat"]   = openLuup_reload_bat,
