@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.06.06",
+  VERSION       = "2019.06.09",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -58,6 +58,7 @@ local ABOUT = {
 -- 2019.05.10   only create scene timers job if scene not paused!
 -- 2019.05.15   reinstate scene_watcher to use device states to indicate scene active
 -- 2019.05.23   re-enable triggers in anticipation of "variable updated" events
+-- 2019.06.10   add new openLuup structure (preserved over AltUI edits)
 
 
 local logs      = require "openLuup.logs"
@@ -383,6 +384,8 @@ local function create (scene_json)
   scene.timers      = scn.timers or {}
   scene.triggers    = scn.triggers or {}             -- 2016.05.19
   scene.triggers_operator = "OR"                     -- 2019.05.24  no such thing as AND for events
+  
+  scene.openLuup    = {}                           -- 2019.06.10 new private structure
   
   verify()   -- check that non-existent devices are not referenced
   

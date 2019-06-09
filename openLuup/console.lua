@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.06.07",
+  VERSION       = "2019.06.09",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -100,7 +100,26 @@ if not loader.raw_read "w3.css" then
   }
 end
 
+--
 
+local unicode = {
+  double_vertical_bar = "&#x23F8;",
+  black_right_pointing_triangle ="&#x25B6",
+  clock_three = "&#x25F7;",     -- actually, WHITE CIRCLE WITH UPPER RIGHT QUADRANT
+  black_star  = "&#x2605;",
+  white_star  = "&#x2606;",
+  check_mark  = "&#x2713;",     -- &#x2714; ?
+  cross_mark  = "&#x2718;",
+  pencil      = "&#x270e;",
+  power       = "&#x23FB;",     -- NB. not yet commonly implemented.
+}
+
+local SID = {
+  altui = "urn:upnp-org:serviceId:altui1",              -- 'DisplayLine1' and 'DisplayLine2'
+  ha    = "urn:micasaverde-com:serviceId:HaDevice1", 		-- 'BatteryLevel'
+}
+
+--
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
 local script  -- name of this CGI script
@@ -110,15 +129,18 @@ local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", 
 
 local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
 
+local function truncate (s, maxlength)
+  maxlength = maxlength or 24
+  if #s > maxlength then s = s: sub(1, maxlength) .. "..." end
+  return s
+end
 
 -- formats a value nicely
 local function nice (x, maxlength)
-  maxlength = maxlength or 50
   local s = tostring (x)
   local number = tonumber(s)
   if number and number > 1234567890 then s = todate (number) end
-  if #s > maxlength then s = s: sub(1, maxlength) .. "..." end
-  return s
+  return truncate (s, maxlength or 50)
 end
 
 local function dev_or_scene_name (d, tbl)
@@ -272,6 +294,31 @@ ace.present = lfs.attributes (ace.root)
 function ace.editor (text, language)
   return html5.div {class = "", html5.pre {text}}
 end
+
+--
+-- Actions (without changing current page)
+--
+local actions = {}
+
+
+function actions.bookmark (p)
+  local dev = luup.devices[tonumber (p.dev)]
+  if dev then
+    local a = dev.attributes
+    a.bookmark = (a.bookmark ~= '1') and '1' or '0'
+  end
+  local scn = luup.scenes[tonumber (p.scn)]
+  if scn then
+    local a = scn.user_table ()
+    a.favorite = not a.favorite
+  end
+end
+
+function actions.run_scene (p)
+  local scene = luup.scenes[tonumber (p.scn)]
+  if scene then scene.run () end    -- TODO: run this asynchronously?
+end
+
 --
 -- Pages
 --
@@ -593,21 +640,21 @@ pages.startup_log = pages.log
 
 -- generic connections table for all servers
 local function connectionsTable (iprequests)
-  local t = html5.table {class = "w3-small w3-card"}
-  t.header { {"Received connections:", colspan=3} }
+  local t = html5.table {}
+--  t.header { {"Received connections:", colspan=3} }
   t.header {"IP address", "#connects", "date / time"}
   for ip, req in pairs (iprequests) do
     t.row {ip, req.count, todate(req.date)}
   end
   if t.length() == 0 then t.row {'', "--- none ---", ''} end
-  return t
+  return html5.div {class = "w3-small w3-card w3-padding w3-cell", html5.h5 {"Received connections:"}, t}
 end
 
 
 function pages.http ()    
   local function requestTable (requests, title, columns, include_zero)
-    local t = html5.table {class = "w3-small w3-card"}
-    t.header { {title, colspan = 3} }
+  local t = html5.table {class = "w3-small w3-card w3-padding"}
+--    t.header { {title, colspan = 3} }
     t.header (columns)
     local calls = {}
     for name in pairs (requests) do calls[#calls+1] = name end
@@ -621,7 +668,8 @@ function pages.http ()
       end
     end
     if t.length() == 0 then t.row {'', "--- none ---", ''} end
-    return t
+--    return t
+    return html5.div {class = "w3-small w3-card w3-padding w3-cell", html5.h5 {title}, t}
   end
   
   local lu, lr = {}, {}     -- 2019.05.16 system- and user-defined requests
@@ -644,7 +692,7 @@ function pages.smtp ()
   local none = "--- none ---"
   
   local function sortedTable (title, info, ok)
-    local t = html5.table {class = "w3-small w3-card"}
+    local t = html5.table {class = "w3-small w3-card w3-padding"}
     t.header { {title, colspan = 3} }
     t.header {"Address", "#messages", "for device"}
     local index = {}
@@ -661,7 +709,7 @@ function pages.smtp ()
     return t
   end
   
-  local t = html5.table {class = "w3-small w3-card"}
+  local t = html5.table {class = "w3-small w3-card w3-padding"}
   t.header {{ "Blocked senders:", colspan=2 }}
   t.header {"eMail address","#attempts"}
   for email in pairs (smtp.blocked) do
@@ -685,7 +733,7 @@ function pages.pop3 ()
     local mbx = pop3.mailbox.open (folder)
     local total, bytes = mbx: status()
     
-    local t = html5.table {class = "w3-small w3-card w3-hoverable"}
+    local t = html5.table {class = "w3-small w3-card w3-padding"}
     t.header { {header: format (name, total, bytes/1e3), colspan = 3 } }
     t.header {'#', "date / time", "size (bytes)"}
     
@@ -708,7 +756,7 @@ function pages.pop3 ()
 end
 
 function pages.udp ()
-  local t0 = html5.table {class = "w3-small w3-card"}
+  local t0 = html5.table {class = "w3-small w3-card w3-padding"}
   t0.header { {"Registered listeners:", colspan = 3} }
   t0.header {"port", "#datagrams", "for device"}
   local list = {}
@@ -722,7 +770,7 @@ function pages.udp ()
   end
   if t0.length() == 0 then t0.row {'', "--- none ---", ''} end 
   
-  local t = html5.table {class = "w3-small w3-card"}
+  local t = html5.table {class = "w3-small w3-card w3-padding"}
   t.header { {"Opened for write:", colspan = 2} }
   t.header {"ip:port", "by device"}
   list = {}
@@ -772,7 +820,6 @@ function pages.images (p)
   return div {
       html5_title "Image files in images/ folder",
       div {class = "w3-row",
-      -- TODO: IMAGES
         div {class = "w3-container w3-quarter", index} ,
         div {class = "w3-container w3-rest", 
           html5.img {style="object-fit: contain;", width="70%", src=src}},
@@ -1091,15 +1138,15 @@ local sticky_scene    = sticky_number (1)
 
 -- generic device page
 local function device_page (p, fct)
-  local d = luup.devices[sticky_device(p.device)]
-  local title = devname(sticky_device()) 
+  local devNo = sticky_device()
+  local d = luup.devices[devNo]
+  local title = devname(devNo) 
   fct = d and fct or function (_, t) return t .. " - no such device" end
   return page_wrapper (fct (d, title))   -- call back with actual device    
 end
 
 local function get_display_variables (d)
-  local altui = "urn:upnp-org:serviceId:altui1"      -- Variables = 'DisplayLine1' and 'DisplayLine2'
-  local vars = (d.services[altui] or {}).variables or {}
+  local vars = (d.services[SID.altui] or {}).variables or {}
   local line1 = (vars.DisplayLine1 or {}) .value or ''
   local line2 = (vars.DisplayLine2 or {}) .value or ''
   return line1, line2
@@ -1194,7 +1241,7 @@ function pages.events (p)
       local static_data = loader.static_data[json_file] or {}
       local eventList2 = static_data.eventList2
       if eventList2 then
-        for i, event in ipairs (eventList2) do
+        for _, event in ipairs (eventList2) do
             e[#e+1] = {event.id, event.label.text}
         end
       end
@@ -1234,20 +1281,17 @@ local function room_wanted ()
   local room_index = {["No Room"] = 0}
   for n, r in pairs (luup.rooms) do room_index[r] = n end
   local all_rooms = room == "All"
-  local favourite_room = room == "Favourites"
   local room_number = room_index[room]
   return function (d)
     return all_rooms or d.room_num == room_number
   end
 end
 
-local function panel_wrapper (...)
-  return html5.div {class = "w3-small w3-margin-left w3-margin-bottom",
-    style="width:240px; height:80px; float:left; border:1px solid Silver; border-radius:4px; display:inline-block; ", ...}
-end
-
 function pages.devices (p)
   local static_data = loader.static_data
+  local function panel_wrapper (...)
+    return html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card dev-panel", ...}
+  end
    
   local function device_panel (self)          -- 2019.05.12
     local id = self.attributes.id
@@ -1259,22 +1303,29 @@ function pages.devices (p)
     local img = html5.img {src = icon, alt="no icon", style = "width:48px; height:48px;"}
     img = html5.a {href=selfref ("page=device&device=", id), img} -- ********
     
+    local flag = unicode.white_star
+    if self.attributes.bookmark == "1" then flag = unicode.black_star end
+    local bookmark = html5.a {class = "nodec", href=selfref("action=bookmark&dev=", id), flag}
+    
+    local battery = (((self.services[SID.ha] or {}) .variables or {}) .BatteryLevel or {}) .value
+    battery = battery and (battery .. '%') or ''
+    
     local div, span = html5.div, html5.span
-   local panel = panel_wrapper (
-        div {style="background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;", devname (id)},
-        div {div {style = "clear:none;",
-          div {style="float: left; clear: none; margin:2px;", img}, 
-          div {style="float: left; clear: right;", span {line1, html5.br{}, line2 } } } } )
+    local panel = panel_wrapper (
+      div {class="top-panel", 
+        bookmark, ' ', truncate (devname (id)), span{style="float: right;", battery }},
+      div {div {style = "clear:none;",
+        div {style="float: left; clear: none; margin:2px;", img}, 
+        div {style="float: left; clear: right;", span {line1, html5.br{}, line2 } } } } )
     return panel
   end
   
   -- devices   
---  local devs = {class="content", style="margin-left:12em; display: flex; flex:90%; flex-flow:row wrap; width:80%;" }
---  local devs = {class="content", style="margin-left:12em; " }
-  local devs = html5.div {class="w3-rest", style="text-align:justified; " }
+  local devs = html5.div {class="w3-rest" }
   local wanted = room_wanted()        -- get function to filter by room
+  local bookmarks = sticky_room() == "Favourites"
   for _, d in pairs (luup.devices) do
-    if wanted(d) or d.attributes.bookmark == '1' then   -- TODO: favourites
+    if wanted(d) or (bookmarks and d.attributes.bookmark == '1') then
       devs[#devs+1] = device_panel (d)
     end
   end
@@ -1290,7 +1341,7 @@ end
 
 -- generic scene page
 local function scene_page (p, fct)
-  local i = sticky_scene(p.scene)
+  local i = sticky_scene()
   local s = luup.scenes[i]
   local title = scene_name (i) 
   fct = s and fct or function (_, t) return t .. " - no such scene" end
@@ -1345,6 +1396,10 @@ function pages.json (p)
 end
 
 function pages.scenes (p)
+
+  local function panel_wrapper (...)
+    return html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel", ...}
+  end
   local function scene_panel (self)
     local utab = self: user_table()
     local id = utab.id
@@ -1355,18 +1410,26 @@ function pages.scenes (p)
         earliest_time = math.min (earliest_time or next_run,  next_run)
       end
     end
-    local next_run = earliest_time and "◷ " .. nice (earliest_time) or ''
+    local next_run = earliest_time and table.concat {unicode.clock_three, ' ', nice (earliest_time) or ''}
     local last_run = utab.last_run
-    last_run = last_run and "&#x2713; " .. nice (last_run) or ''
-    local t = html5.div {html5.span {style="font-size: 8pt;",
-        last_run, html5.br{}, next_run}, style="margin:3px;" }
+    last_run = last_run and table.concat {unicode.check_mark, ' ', nice (last_run)} or ''
     
-    local img = html5.a {href= selfref("page=scene&scene=", id), "scene"} -- ********
+    local run = self.paused 
+            and 
+              html5.span {class = "w3-xxlarge w3-text-grey", "&nbsp;", unicode.double_vertical_bar} -- pause
+            or
+              html5.a {class= "w3-xxlarge w3-hover-border w3-text-blue nodec", 
+                href= selfref("action=run_scene&scn=", id), 
+                 "&nbsp;", unicode.black_right_pointing_triangle}
+    local edit = html5.a {href= selfref("page=scene&scene=", id), "edit" }-- ********
     local div = html5.div
+    local flag = utab.favorite and unicode.black_star or unicode.white_star
+    local bookmark = html5.a {class="nodec", href=selfref("action=bookmark&scn=", id), flag}
     local panel = panel_wrapper (
-      div {style="background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;", scene_name(id)},
+      div {class="top-panel", 
+        bookmark, ' ', truncate (scene_name(id)) }, 
       div {div {style = "clear:none;",
-        div {style="float: left; clear: none; margin:2px;", img}, 
+        div {style="float: left; clear: none; margin:2px;", run, html5.br{}, edit}, 
         div {style="float: right; padding-right:8px;", html5.span {last_run, html5.br{}, next_run } } } } )
     return panel
   end
@@ -1374,9 +1437,10 @@ function pages.scenes (p)
   -- scenes   
   local wanted = room_wanted()        -- get function to filter by room
   local scenes = {class="content", style="margin-left:12em; " }
+  local bookmarks = sticky_room() == "Favourites"
   for _,s in pairs (luup.scenes) do
     local u = s: user_table()
-    if wanted(s) or u.favorite then   -- TODO: favourites
+    if wanted(s) or (bookmarks and u.favorite) then
       scenes[#scenes+1] = scene_panel (s)
     end
   end
@@ -1413,7 +1477,7 @@ function pages.graphics (p, req)
 end
 
 function pages.rooms_table ()
-  local t = html5.table {}
+  local t = html5.table {class = "w3-small"}
   t.header {"id", "name"}
   for n, v in sorted (luup.rooms) do
     t.row {n,v}
@@ -1422,7 +1486,7 @@ function pages.rooms_table ()
 end
 
 function pages.devices_table ()
-  local t = html5.table {}
+  local t = html5.table {class = "w3-small"}
   t.header {"id", "name"}
   for n, v in sorted (luup.devices) do
     t.row {n,v.description}
@@ -1448,7 +1512,7 @@ function pages.scenes_table ()
 end
 
 function pages.plugins_table ()
-  local t = html5.table {class = "w3-table w3-bordered"}
+  local t = html5.table {class = "w3-bordered"}
   t.header {'', "Name","Version", "Auto", "Files", "Actions", "Update", "Unistall"}
   local IP2 = userdata.attributes.InstalledPlugins2 or userdata.default_plugins
   for _, p in ipairs (IP2) do
@@ -1456,13 +1520,13 @@ function pages.plugins_table ()
     local src = p.Icon or ''
     local mios_plugin = src: match "^plugins/icons/"
     if mios_plugin then src = "http://apps.mios.com/" .. src end
-    local icon = html5.img {src=src, alt="no icon", height=35, width=35}
+    local icon = html5.img {src=src, alt="no icon", height=35, width=35} 
     local version = table.concat ({p.VersionMajor, p.VersionMinor}, '.')
     local files = {}
     for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
     table.sort (files)
     table.insert (files, 1, "Files")
-    local select = {style = "width:18em;", onchange="location = this.value;" }
+    local select = {style="width:12em;", onchange="location = this.value;" }
     for _, f in ipairs (files) do select[#select+1] = html5.option {value=f, f} end
     files = html5.form {html5.select (select)}
     local help = html5.a {href=p.Instructions or '', target="_blank", "help"}
@@ -1578,14 +1642,15 @@ function pages.home (menu_page)
 
   local index = {}
   for group, pages in sorted (group_names) do
-    local pnames = div {class = "w3-padding", make_button (group, short_name(group))}    -- highlight the group name button
+    local pnames = div {class = "w3-bar w3-padding", 
+      make_button (group, short_name(group))}    -- highlight the group name button
     for _, page in ipairs (pages) do
       pnames[#pnames+1] = make_button (page)
     end
     index[#index+1] = pnames
   end
   
-  local div = html5.div {html5.h4 {"Page Index"}, div(index)} 
+  local div = html5.div {html5.h4 {"Page Index"}, html5.p {menu}, div(index)} 
   return div
 end
 
@@ -1660,6 +1725,7 @@ end
 
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
+  local function noop() end
 
   local req = wsapi.request.new (wsapi_env)
   script = req.script_name      -- save to use in links
@@ -1669,13 +1735,13 @@ function run (wsapi_env)
   local current  = sticky_page (p.page)
   
   sticky_room (p.room)
---  sticky_device (p.device)
---  sticky_scene (p.scene)
+  sticky_device (p.device)
+  sticky_scene (p.scene)
 --  sticky_variable = (p.variable)
   
   local navigation, actual_page = page_nav (current, previous)
-  local dispatch = pages[actual_page] or function () end
-  local sheet = dispatch (p, req)
+  do (actions[p.action] or noop) (p, req) end                   -- do any action
+  local sheet = (pages[actual_page] or noop) (p, req)
   local formatted_page = div {class = "w3-container", navigation, sheet}
   
   local html = html5.document { 
@@ -1689,10 +1755,14 @@ function run (wsapi_env)
     html5.style {
 [[  
   pre {line-height: 1.1; font-size:10pt;}
-  a.nodec { text-decoration: none; } a.nodec:hover { text-decoration: underline; }
+  a.nodec { text-decoration: none; } 
   th,td {width:1px; white-space:nowrap; padding: 0 16px 0 16px;}
   table {table-layout: fixed; margin-top:20px}
+  .dev-panel {width:240px; height: 80px; float:left; }
+  .scn-panel {width:240px; height:100px; float:left; }
+  .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
 ]]},
+--  a.nodec:hover { text-decoration: underline; }
 
     html5.script {
 [[

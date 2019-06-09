@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2019.06.02",
+  VERSION       = "2019.06.09",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -59,7 +59,6 @@ local ABOUT = {
 
 -- 2019.04.12  change cached_read() to use virtualfilesystem explicitly (to register cache hits)
 -- 2019.04.14  do not cache service or implementation .xml files 
--- 2019.05.23  replace device.json-supplied file eventList2 with our own device status events
 -- 2019.05.29  find_file() also looks in built-in/ for 'last chance' files
 -- 2019.06.02  export cat_by_dev table for chdev to set device category (thanks @reneboer)
 
@@ -538,7 +537,6 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   end
   d.device_type = non_blank (d.device_type) or device_type      --  file overrides parameter
   -- read service files, if referenced, and save service_data
-  local device_states = {}
   if d.service_list then
     for _,x in ipairs (d.service_list) do
       local stype = x.serviceType 
@@ -550,11 +548,6 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
         local sid = x.serviceId
         if sid then
           service_data[sid] = service_data[stype]             -- point the serviceId to the same
-        end
-        -- short_codes[var_name] = short_name
-        -- 2019.05.24  construct device states from short codes (for new eventList2)
-        for var_name, short_name in pairs (service_data[sid].short_codes or {}) do
-          device_states[short_name] = {srv = sid, name = var_name}
         end
       end
     end
@@ -568,17 +561,6 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
     if json then
       json.device_json = file       -- insert possibly missing info (for ALTUI icons - thanks @amg0!)
     end
-    -- 2019.05.23 remove device-supplied eventlist2 and replace with our own
-    --     {id=3, serviceId = "openLuup", argumentList = {}, label = Label ("openLuup", "CPU : (openLuup)") },
-    -- Label {lang_tag = tag, text = tostring(text)}    -- tostring() forces serliaization of html5 elements
-    local ev2 = {}
-    local info = "%s / %s : (%s)"
-    for state, var in pairs (device_states) do
-      local i = #ev2+1
-      ev2[i] = {id=i, serviceId = var.srv, label = {lang_tag = "openLuup", text = info:format (state, var.name, var.srv)}}
-    end
-    json.eventList2 = ev2
-    ----
     static_data [file] = json  
   end
 
