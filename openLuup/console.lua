@@ -3,9 +3,9 @@
 module(..., package.seeall)
 
 
-ABOUT = {
+ABOUT = { 
   NAME          = "console.lua",
-  VERSION       = "2019.06.09",
+  VERSION       = "2019.06.14",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -100,6 +100,12 @@ if not loader.raw_read "w3.css" then
   }
 end
 
+local options = luup.attr_get "openLuup.Console" or {}   -- get configuration parameters
+--[[
+      Menu ="",           -- add menu JSON definition file here
+      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.3/ace.js",
+      EditorTheme = "eclipse",
+]]
 --
 
 local unicode = {
@@ -119,10 +125,33 @@ local SID = {
   ha    = "urn:micasaverde-com:serviceId:HaDevice1", 		-- 'BatteryLevel'
 }
 
---
+
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
 local script  -- name of this CGI script
+
+-- create new persistent variable
+local function sticky (default, numeric)
+  local x = default
+  return function (new_value)
+    if numeric then new_value = tonumber (new_value) end
+    x = new_value or x       -- update the value if one given
+    return x
+  end
+end
+
+-- create new persistent numeric variable
+local function sticky_number (default) return sticky (default, true) end
+local sticky_variable = sticky_number ()
+
+-- create persistent values for all pages
+local sticky_page     = sticky "about"
+local sticky_room     = sticky "All Rooms"
+local sticky_device   = sticky_number (2)
+local sticky_scene    = sticky_number (1)
+local sticky_dev_sort = sticky "Sort by Name"   -- device sort by id / name
+local sticky_scn_sort = sticky "All Scenes"
+
 local function selfref (...) return table.concat {script, '?', ...} end   -- for use in hrefs
 
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
@@ -217,7 +246,7 @@ end
 
 -----------------------------
 
-local function html5_title (x) return html5.h4 {x} end
+local function html5_title (...) return html5.h4 {...} end
 local function red (x) return ('<font color="crimson">%s</font>'): format (x)  end
 local function status_number (n) if n ~= 200 then return red (n) end; return n end
 local function page_wrapper (title, ...) return html5.div {html5_title (title), ...} end
@@ -283,18 +312,6 @@ local function sorted_table ()
   }
 end
 
--- text display
-
-local ace = {
-  root = "www/ace-builds/src-noconflict",
-  }
-
-ace.present = lfs.attributes (ace.root)
-
-function ace.editor (text, language)
-  return html5.div {class = "", html5.pre {text}}
-end
-
 --
 -- Actions (without changing current page)
 --
@@ -317,6 +334,16 @@ end
 function actions.run_scene (p)
   local scene = luup.scenes[tonumber (p.scn)]
   if scene then scene.run () end    -- TODO: run this asynchronously?
+end
+
+function actions.sort (p) 
+  local order = p.order
+  if order then sticky_dev_sort(order) end
+end
+
+function actions.scene_sort (p)
+  local order = p.order
+  if order then sticky_scn_sort (order) end
 end
 
 --
@@ -486,9 +513,10 @@ end
 
 -- system parameters
 function pages.top_level ()
-  local unwanted = {ShutdownCode = true, StartupCode = true}
+  local ignore = {"ShutdownCode", "StartupCode", "LuaTestCode", "LuaTestCode2", "LuaTestCode3"}
+  local unwanted = {}
+  for _, x in pairs (ignore) do unwanted[x] = true; end
   local t = html5.table {class = "w3-small"}
---  t.header {"attribute", "value"}
   local attributes = userdata.attributes
   for n,v in sorted (attributes) do
     if type(v) ~= "table" and not unwanted[n] then t.row {n, nice(v) } end
@@ -669,7 +697,7 @@ function pages.http ()
     end
     if t.length() == 0 then t.row {'', "--- none ---", ''} end
 --    return t
-    return html5.div {class = "w3-small w3-card w3-padding w3-cell", html5.h5 {title}, t}
+    return html5.div {class = "w3-small w3-padding", html5.h5 {title}, t}
   end
   
   local lu, lr = {}, {}     -- 2019.05.16 system- and user-defined requests
@@ -1112,26 +1140,6 @@ function pages.file_cache (p)
   return div
 end
 
--- create new persistent variable
-local function sticky (default, numeric)
-  local x = default
-  return function (new_value)
-    if numeric then new_value = tonumber (new_value) end
-    x = new_value or x       -- update the value if one given
-    return x
-  end
-end
-
--- create new persistent numeric variable
-local function sticky_number (default) return sticky (default, true) end
-local sticky_variable = sticky_number ()
-
--- create persistent values for all pages
-local sticky_page      = sticky "about"
-local sticky_room     = sticky "All"
-local sticky_device   = sticky_number (2)
-local sticky_scene    = sticky_number (1)
-
 --
 -- Devices
 --
@@ -1259,20 +1267,36 @@ function pages.user_data (p)
   end)
 end
 
+local function filter_menu (items, current_item, request)
+  local menu = html5.div {class = "w3-margin-bottom  w3-border w3-border-grey"}
+  for i, name in ipairs (items) do
+    local colour = (name == current_item) and "w3-grey" or "w3-light-gray"
+    menu[i] = html5.a {class = "w3-bar-item w3-button "..colour, href = selfref (request, name), name }
+  end
+  return html5.div {class="w3-bar-block w3-col", style="width:12em;", menu}
+end
+
+local function scene_filter ()
+  local current_sorting = sticky_scn_sort ()
+  return filter_menu ({"All Scenes", "Runnable", "Paused"}, current_sorting, "action=scene_sort&order=")
+end
+
+local function sort_filter ()
+  local current_sorting = sticky_dev_sort()
+  return filter_menu ({"Sort by Name", "Sort by Id"}, current_sorting, "action=sort&order=")
+end
+
 local function rooms_selector ()
   local current_room = sticky_room()
-  local function room_button (x)
-    local colour = x == current_room and "w3-grey" or "w3-light-gray"
-    return html5.a {class = "w3-bar-item w3-button " .. colour, href = selfref ("room=", x), x }
-  end
-  local rooms = html5.div {
---    class="w3-bar-block w3-col w3-grey", style="width:12em;",
-    class="w3-bar-block w3-col w3-border w3-border-grey", style="width:12em;",
-    room_button "All", room_button "Favourites", room_button "No Room"}
-  for _,r in pairs (luup.rooms) do
-    rooms[#rooms+1] = room_button (r)
-  end
-  return rooms
+  local rooms = {"All Rooms", "Favourites", "No Room"}
+  for _,r in pairs (luup.rooms) do rooms[#rooms+1] = r end
+  return filter_menu (rooms, current_room, "room=")
+end
+
+local function sidebar (p, ...)
+  local sidebar_menu = html5.div {class="w3-bar-block w3-col", style="width:12em;"}
+  for i, fct in ipairs {...} do sidebar_menu[i] = fct() end
+  return sidebar_menu
 end
 
 -- returns a function to decide whether given room number is in selected set
@@ -1280,7 +1304,7 @@ local function room_wanted ()
   local room = sticky_room ()
   local room_index = {["No Room"] = 0}
   for n, r in pairs (luup.rooms) do room_index[r] = n end
-  local all_rooms = room == "All"
+  local all_rooms = room == "All Rooms"
   local room_number = room_index[room]
   return function (d)
     return all_rooms or d.room_num == room_number
@@ -1324,13 +1348,25 @@ function pages.devices (p)
   local devs = html5.div {class="w3-rest" }
   local wanted = room_wanted()        -- get function to filter by room
   local bookmarks = sticky_room() == "Favourites"
-  for _, d in pairs (luup.devices) do
+  
+  local function sorted (tbl)
+    local x = {}
+    local sortkey = sticky_dev_sort ()
+    for id, item in pairs (tbl) do 
+      x[#x+1] = {item = item, key={["Sort by Name"] = item.description, ["Sort by Id"] = id}} 
+    end
+    table.sort (x, function (a,b) return a.key[sortkey] < b.key[sortkey] end)
+    return x
+  end
+  
+  for _, x in pairs (sorted(luup.devices)) do
+    local d = x.item
     if wanted(d) or (bookmarks and d.attributes.bookmark == '1') then
       devs[#devs+1] = device_panel (d)
     end
   end
 
-  local room_nav = rooms_selector (p)
+  local room_nav = sidebar (p, rooms_selector, sort_filter)
   local ddiv = html5.div {room_nav, html5.div {class="w3-rest", devs} }
   return ddiv
 end
@@ -1416,12 +1452,13 @@ function pages.scenes (p)
     
     local run = self.paused 
             and 
-              html5.span {class = "w3-xxlarge w3-text-grey", "&nbsp;", unicode.double_vertical_bar} -- pause
+              html5.span {class = "w3-xxlarge w3-text-grey", title="scene is paused",
+                "&nbsp;", unicode.double_vertical_bar} -- pause
             or
-              html5.a {class= "w3-xxlarge w3-hover-border w3-text-blue nodec", 
+              html5.a {class= "w3-xxlarge w3-hover-border w3-text-blue nodec", title="run scene",
                 href= selfref("action=run_scene&scn=", id), 
                  "&nbsp;", unicode.black_right_pointing_triangle}
-    local edit = html5.a {href= selfref("page=scene&scene=", id), "edit" }-- ********
+    local edit = html5.a {href= selfref("page=scene&scene=", id), "edit", title="view/edit scene" }-- ********
     local div = html5.div
     local flag = utab.favorite and unicode.black_star or unicode.white_star
     local bookmark = html5.a {class="nodec", href=selfref("action=bookmark&scn=", id), flag}
@@ -1434,37 +1471,121 @@ function pages.scenes (p)
     return panel
   end
   
+  local function sorted (tbl, key, choices)
+    local x = {}
+    local sortkey = key
+    -- TODO: build choices from menu names
+    for id, item in pairs (tbl) do 
+      x[#x+1] = {item = item, key={["Sort by Name"] = item.description, ["Sort by Id"] = id}} 
+    end
+    table.sort (x, function (a,b) return a.key[sortkey] < b.key[sortkey] end)
+    return x
+  end
+  
+  local function filtered (s)
+    local f = sticky_scn_sort()
+    return f == "All Scenes" or (f == "Paused") and s.paused or (f ~= "Paused") and not s.paused
+  end
+  
   -- scenes   
   local wanted = room_wanted()        -- get function to filter by room
-  local scenes = {class="content", style="margin-left:12em; " }
+  local scenes = {style="margin-left:12em; " }
   local bookmarks = sticky_room() == "Favourites"
+  
   for _,s in pairs (luup.scenes) do
     local u = s: user_table()
-    if wanted(s) or (bookmarks and u.favorite) then
+    if (wanted(s) or (bookmarks and u.favorite)) and filtered(s) then
       scenes[#scenes+1] = scene_panel (s)
     end
   end
-  local room_nav = rooms_selector (p)
+  local room_nav = sidebar (p, rooms_selector, scene_filter)
   local section = html5.section (scenes)
   return html5.div {room_nav, section}
 end
 
-function pages.lua_startup ()
-  local code = userdata.attributes.StartupCode or ''
-  return page_wrapper ("Lua Startup Code", html5.pre {code})
+  
+-- text editor
+
+local function code_editor (code, height, language)
+  code = code or ''
+  height = (height or "500") .. "px;"
+  language = language or "lua"
+  local submit_button = html5.input {class="w3-button w3-round w3-green w3-margin", value="Submit"}
+  if options.Ace_URL ~= '' then
+    submit_button.onclick = "EditorSubmit()"
+    local page = html5.div {id="editor", class="w3-border", style = "width: 100%; height:"..height, code }
+    local form = html5.form {action= selfref (), method="post", enctype="multipart/form-data",
+      html5.input {type="hidden", name="lua_code", id="lua_code"}, submit_button}
+    local ace = html5.script {src = options.Ace_URL, type="text/javascript", charset="utf-8", ''}
+    local script = html5.script {
+    'var editor = ace.edit("editor");',
+    'editor.setTheme("ace/theme/', options.EditorTheme, '");',
+    'editor.session.setMode("ace/mode/', language,'");',
+    'editor.session.setOptions({tabSize: 2});',            -- also mode: "ace/mode/javascript",
+    [[function EditorSubmit() {
+      var element = document.getElementById("lua_code");
+      element.value = ace.edit("editor").getSession().getValue();
+      element.form.submit();}
+    ]]}
+    return ace, page, form, script
+  
+  else
+    submit_button.type = "submit"
+    local form = html5.form {action= selfref (), method="post", enctype="multipart/form-data",
+      html5.div {
+        html5.textarea {name="lua_code", id="lua_code", 
+        style = "width: 100%; resize: none; height:" .. height .. 
+        "font-family:Monaco, Menlo, Ubuntu Mono, Consolas, source-code-pro, monospace; font-size:9pt; line-height: 1.3;", code}},submit_button}
+    
+    return form
+  end
 end
 
-function pages.lua_shutdown ()
-  local code = userdata.attributes.ShutdownCode or ''
-  return page_wrapper ("Lua Shutdown Code", html5.pre {code})
+-- get the code, perhaps updated by the POST request
+local function lua_code (req, codename)
+  local code = req.POST.lua_code or userdata.attributes[codename]   -- use new version if this was a POST request
+  userdata.attributes[codename] = code                              -- update to possibly new value
+  return code
 end
 
-local Lua_Test_Code = ''
-
-function pages.lua_code_test ()
-  local code = Lua_Test_Code or ''
-  return page_wrapper ("Lua Test Code", html5.pre {code})
+local function lua_edit (req, codename, height)
+  return html5.div {code_editor (lua_code (req, codename), height)}
 end
+
+function pages.lua_startup   (_, req) return page_wrapper ("Lua Startup Code",  lua_edit (req, "StartupCode"))  end
+function pages.lua_shutdown  (_, req) return page_wrapper ("Lua Shutdown Code", lua_edit (req, "ShutdownCode")) end
+
+local function lua_exec (req, codename, title)
+  local P = {}
+  local function prt (...)
+    local x = {...}
+    for i = 1, select('#', ...) do P[#P+1] = tostring(x[i]); P[#P+1] = ' \t' end
+    P[#P] = '\n'
+  end
+  -- run the code if it's posted
+  if req.POST.lua_code then 
+    local code = lua_code (req, codename)
+    local ok, err = loader.compile_and_run (code, codename, prt)
+    if not ok then prt ("ERROR: " .. err) end
+  end
+  local printed = table.concat (P)
+  local _, nlines = printed:gsub ('\n','\n')
+  --
+  local form =  html5.div { class = "w3-col w3-half",
+    html5_title {title or codename},  code_editor (lua_code (req, codename), 500) }  
+  local output = html5.div {class="w3-half", style="padding-left:16px;", 
+    html5_title {"Console Output: (", nlines, " lines)" }, 
+    html5.textarea {readonly=1, 
+      style = "resize: none; height:500px; width:100%;" .. 
+      "font-family:Monaco, Menlo, Ubuntu Mono, Consolas, source-code-pro, monospace; font-size:10pt; line-height: 1.3;",      class="w3-border", printed}
+    }
+  return html5.div {class="w3-row", form, output}
+end
+
+pages["lua_test"]   = function (_, req) return lua_exec (req, "LuaTestCode",  "Lua Test Code")    end
+pages["lua_test2"]  = function (_, req) return lua_exec (req, "LuaTestCode2", "Lua Test Code #2") end
+pages["lua_test3"]  = function (_, req) return lua_exec (req, "LuaTestCode3", "Lua Test Code #3") end
+pages.lua_code = pages.lua_test
 
 function pages.graphics (p, req)
   local background = p.background or "GhostWhite"
@@ -1526,9 +1647,9 @@ function pages.plugins_table ()
     for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
     table.sort (files)
     table.insert (files, 1, "Files")
-    local select = {style="width:12em;", onchange="location = this.value;" }
-    for _, f in ipairs (files) do select[#select+1] = html5.option {value=f, f} end
-    files = html5.form {html5.select (select)}
+    local choice = {style="width:12em;", onchange="location = this.value;" }
+    for _, f in ipairs (files) do choice[#choice+1] = html5.option {value=f, f} end
+    files = html5.form {html5.select (choice)}
     local help = html5.a {href=p.Instructions or '', target="_blank", "help"}
     t.row {icon, p.Title, version, p.AutoUpdate, files, help, '',''} 
   end
@@ -1537,7 +1658,7 @@ end
 
 function pages.about () 
   local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
-  local t = html5.table {class = "w3-table-all w3-cell"}
+  local t = html5.table {class = "w3-table-all w3-cell w3-card"}
   for a,b in sorted (ABOUTopenLuup) do
     b = tostring(b): gsub ("http%S+",  '<a href=%1 target="_blank">%1</a>')
     t.row { {a, style = "font-weight: bold"},  html5.pre {style="line-height: 1;", b}}
@@ -1554,7 +1675,7 @@ end
 
   
 -- switch dynamically between different menu styles
-local user_json = luup.attr_get "openLuup.Console.Menu"
+local user_json = options.Menu ~= '' and options.Menu
 local menu_json = sticky (user_json or "default_console_menus.json")
 
 function pages.current () return pages.home () end
@@ -1578,7 +1699,7 @@ local page_groups = {
     ["Servers"]   = {"http", "smtp", "pop3", "udp", "sockets", "file_cache"},
     ["Utilities"] = {"backups", "images", "trash"},
     ["Menu Style"]= {"current", "classic", "default", "altui", "user"},
-    ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_code_test", "lua_test(2)", "lua_test(3)"},
+    ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3"},
     ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "triggers_table", "scenes_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
   }
@@ -1671,8 +1792,7 @@ local function page_nav (current, previous)
       tabs[#tabs+1] = make_button (name, current) 
     end
   end
-  local messages = div (make_button ("Messages &#x25BC ")) 
---    html5.span {class="w3-badge w3-red w3-display-topright",1}}
+  local messages = div (make_button ("Messages &#x25BC; ")) 
   messages.onclick="ShowHide('messages')" 
   return div {class="w3-container w3-row w3-margin-top",
    html5.span {class = "w3-container w3-cell w3-cell-middle w3-round w3-border w3-border-grey",
