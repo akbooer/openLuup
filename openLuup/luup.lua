@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2019.05.16",
+  VERSION       = "2019.06.10",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -1074,7 +1074,6 @@ return {
     
     openLuup = {   -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate not a Vera (for plugin developers)
       -- openLuup-specific API extensions go here...
-      async_request = http.async_request,
     },
     
     hw_key              = "--hardware key--",

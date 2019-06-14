@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.06.06",
+  VERSION       = "2019.06.11",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -180,6 +180,10 @@ luup.log "startup code completed"
 -- openLuup specials
 
   ShutdownCode = '',
+  
+  LuaTestCode  = '',    -- 2019.06.11
+  LuaTestCode2 = '',
+  LuaTestCode3 = '',
 
 }
 
