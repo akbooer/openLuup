@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2019.06.02",
+  VERSION       = "2019.06.12",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -59,9 +59,9 @@ local ABOUT = {
 
 -- 2019.04.12  change cached_read() to use virtualfilesystem explicitly (to register cache hits)
 -- 2019.04.14  do not cache service or implementation .xml files 
--- 2019.05.23  replace device.json-supplied file eventList2 with our own device status events
 -- 2019.05.29  find_file() also looks in built-in/ for 'last chance' files
 -- 2019.06.02  export cat_by_dev table for chdev to set device category (thanks @reneboer)
+-- 2019.06.12  move compile_and_run here from loader (to be used also by console)
 
 
 ------------------
@@ -174,6 +174,56 @@ end
 
 
 --  utilities
+
+-- 2019.06.11 add pretty() to shared environment:
+
+
+-- pretty (), 
+-- pretty-print for Lua
+-- 2014.06.26   @akbooer
+-- 2015.11.29   use names for global variables (ie. don't expand _G or system libraries)
+--              use fully qualified path names for circular references
+--              improve formatting of isolated nils in otherwise contiguous numeric arrays
+--              improve formatting of nested tables
+-- 2016.01.09   fix for {a = false}
+-- 2016.02.26   use rawget to investigate array numeric indices, preload enc[_G] = _G only
+-- 2016.03.10   fix for {nil,nil, 3,nil,5}
+-- TODO:        fix for out of order discontiguous numeric indices {nil,nil,3, [42]=42, nil,nil,nil,7,8,9}
+
+function shared_environment.pretty (Lua)    -- 2014 - 2016.03.10   @akbooer
+  local con, tab, enc = table.concat, '  ', {[_G] = "_G"}                -- don't expand global environment
+  local function ctrl(y) return ("\\%03d"): format (y:byte ()) end       -- deal with escapes, etc.
+  local function str_obj(x) return '"' .. x:gsub ("[\001-\031]", ctrl) .. '"' end
+  local function brk_idx(x) return '[' .. tostring(x) .. ']' end
+  local function str_idx(x) return x:match "^[%a_][%w_]*$" or brk_idx(str_obj (x)) end
+  local function nl (d,x) if x then return '\n'..tab:rep (d),'\n'..tab:rep (d-1) else return '','' end end
+  local function val (x, depth, name) 
+    if enc[x] then return enc[x] end                                    -- previously encoded
+    local t = type(x)
+    if t ~= "table" then return (({string = str_obj})[t] or tostring) (x) end
+    enc[x] = name                                                       -- start encoding this table
+    local idx, its, y = {}, {}, {rawget (x,1) or rawget (x,2) and true}
+    for i in pairs(x) do                                                -- fix isolated nil numeric indices
+      y[i] = true; if (type(i) == "number") and rawget(x,i+2) then y[i+1] = true end
+    end
+    for i in ipairs(y) do                                               -- contiguous numeric indices
+      y[i] = nil; its[i] = val (rawget(x,i), depth+1, con {name,'[',i,']'}) 
+    end
+    if #its > 0 then its = {con (its, ',')} end                         -- collapse to single line
+    for i in pairs(y) do 
+      if (rawget(x,i) ~= nil) then idx[#idx+1] = i end                  -- list and sort remaining non-nil indices
+    end
+    table.sort (idx, function (a,b) return tostring(a) < tostring(b) end)
+    for _,j in ipairs (idx) do                                          -- remaining indices
+      local fmt_idx = (({string = str_idx})[type(j)] or brk_idx) (j)
+      its[#its+1] = fmt_idx .." = ".. val (x[j], depth+1, name..'.'..fmt_idx) 
+    end
+    enc[x] = nil                                                        -- finish encoding this table
+    local nl1, nl2 = nl(depth, #idx > 1)                                -- indent multiline tables 
+    return con {'{', nl1, con {con (its, ','..nl1) }, nl2, '}'}         -- put it all together
+  end
+  return val(Lua, 1, '_') 
+end 
 
 
 -- 2018.11.21  return search path and file descriptor
@@ -517,6 +567,20 @@ local function compile_lua (source_code, name, old)
   return env, error_msg
 end
 
+-- what it says...
+local function compile_and_run (lua, name, print_function)
+  print_function = print_function or function () end      -- print function for the compiled code to use
+  local startup_env = shared_environment    -- shared with scenes
+  local source = table.concat {"function ", name, " (print) ", lua, '\n', "end" }
+  local ok, code, err 
+  code, err = compile_lua (source, name, startup_env) -- load, compile, instantiate
+  if code then 
+    ok, err = scheduler.context_switch (nil, code[name], print_function)  -- no device context
+    code[name] = nil      -- remove it from the name space
+  end
+  return ok, err
+end
+
 
 -- the definition of a device with UPnP xml files is a complete mess.  
 -- The functional definition is sprayed over a variety of files with various inter-dependencies.
@@ -538,7 +602,6 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   end
   d.device_type = non_blank (d.device_type) or device_type      --  file overrides parameter
   -- read service files, if referenced, and save service_data
-  local device_states = {}
   if d.service_list then
     for _,x in ipairs (d.service_list) do
       local stype = x.serviceType 
@@ -550,11 +613,6 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
         local sid = x.serviceId
         if sid then
           service_data[sid] = service_data[stype]             -- point the serviceId to the same
-        end
-        -- short_codes[var_name] = short_name
-        -- 2019.05.24  construct device states from short codes (for new eventList2)
-        for var_name, short_name in pairs (service_data[sid].short_codes or {}) do
-          device_states[short_name] = {srv = sid, name = var_name}
         end
       end
     end
@@ -568,17 +626,6 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
     if json then
       json.device_json = file       -- insert possibly missing info (for ALTUI icons - thanks @amg0!)
     end
-    -- 2019.05.23 remove device-supplied eventlist2 and replace with our own
-    --     {id=3, serviceId = "openLuup", argumentList = {}, label = Label ("openLuup", "CPU : (openLuup)") },
-    -- Label {lang_tag = tag, text = tostring(text)}    -- tostring() forces serliaization of html5 elements
-    local ev2 = {}
-    local info = "%s / %s : (%s)"
-    for state, var in pairs (device_states) do
-      local i = #ev2+1
-      ev2[i] = {id=i, serviceId = var.srv, label = {lang_tag = "openLuup", text = info:format (state, var.name, var.srv)}}
-    end
-    json.eventList2 = ev2
-    ----
     static_data [file] = json  
   end
 
@@ -674,6 +721,7 @@ return {
   -- methods
   assemble_device     = assemble_device_from_files,
   compile_lua         = compile_lua,
+  compile_and_run     = compile_and_run,
   find_file           = find_file,
   new_environment     = new_environment,
   parse_service_xml   = parse_service_xml,

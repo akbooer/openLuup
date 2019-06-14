@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2019.03.14",
+  VERSION       = "2019.06.14",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -53,6 +53,8 @@ local ABOUT = {
 -- 2018.06.14  rename openLuup.Databases to openLuup.DataStorageProvider
 
 -- 2019.03.14  change openLuup parameter comment style
+-- 2019.06.12  move compile_and_run to loader (to be used also by console)
+-- 2019.06.14  add Console options
 
 
 local logs  = require "openLuup.logs"
@@ -78,23 +80,6 @@ local json          = require "openLuup.json"
 local historian     = require "openLuup.historian"
 
 local mime  = require "mime"
-
--- what it says...
-local function compile_and_run (lua, name)
-  _log ("running " .. name)
-  local startup_env = loader.shared_environment    -- shared with scenes
-  local source = table.concat {"function ", name, " () ", lua, '\n', "end" }
-  local code, error_msg =
-  loader.compile_lua (source, name, startup_env) -- load, compile, instantiate
-  if not code then
-    _log (error_msg, name)
-  else
-    local ok, err = scheduler.context_switch (nil, code[name])  -- no device context
-    if not ok then _log ("ERROR: " .. err, name) end
-    code[name] = nil      -- remove it from the name space
-  end
-end
-
 
 -- heartbeat monitor for memory usage and checkpointing
 local chkpt = 1
@@ -142,6 +127,11 @@ do -- set attributes, possibly decoding if required
     Backup = {
       Compress = "LZAP",
       Directory = "backup/",
+    },
+    Console = {
+      Menu = "",           -- add user-defined menu JSON definition file here
+      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.3/ace.js",
+      EditorTheme = "eclipse",
     },
     DataStorageProvider = {
       ["-- Influx"]   = "172.16.42.129:8089",
@@ -229,14 +219,17 @@ do -- STARTUP
         code = compress.lzap.decode (code, codec)         -- uncompress the file
       end
 
-      local ok = true
+      local ok, err
       local json_code = code: match "^%s*{"               -- what sort of code is this?
       if json_code then
         ok = userdata.load (code)
         code = userdata.attributes ["StartupCode"] or ''  -- substitute the Startup Lua
       end
-      compile_and_run (code, "_openLuup_STARTUP_")        -- the given file or the code in user_data
-    else
+      local name = "_openLuup_STARTUP_"
+      _log ("running " .. name)
+      ok, err = loader.compile_and_run (code, name)        -- the given file or the code in user_data
+      if not ok then _log ("ERROR: " .. err) end
+   else
       _log "no init data"
     end
   else
@@ -251,7 +244,7 @@ do -- log rotate and possible rename
   logs.rotate (config.Logfile or {})
   _log "init phase completed"
 end
-  
+
 do -- ensure some extra folders exist
    -- note that the ownership/permissions may be system depending on how openLuup is started
   lfs.mkdir "events"

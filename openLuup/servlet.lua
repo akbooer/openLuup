@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2019.05.15",
+  VERSION       = "2019.06.11",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -56,6 +56,7 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2019.04.03   ignore MinimumDelay parameter from AltUI requests (to improve responsiveness)
 -- 2019.05.11   add GET or POST method to job info in execute()
 -- 2019.05.14   add Cache-Control header, don't chunk small file responses
+-- 2019.06.11   move cache_control definition to server_tables module
 
 
 -- TODO: use WSAPI response library in servlets
@@ -215,9 +216,7 @@ end
 local file_handler = {}     -- table of requested files
 
 local function file_request (request)
-  local cache_control = {                 -- 2019.05.14  max-age indexed by filetype
-    png = 3600, svg = 3600, css = 3600, ico = 3600, xml = 3600,
-  }
+  local cache_control = tables.cache_control                 -- 2019.05.14  max-age indexed by filetype
   
   local path = request.URL.path or ''
   if request.path_list.is_directory then 

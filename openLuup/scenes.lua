@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.06.06",
+  VERSION       = "2019.06.10",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -59,6 +59,7 @@ local ABOUT = {
 -- 2019.05.10   only create scene timers job if scene not paused!
 -- 2019.05.15   reinstate scene_watcher to use device states to indicate scene active
 -- 2019.05.23   re-enable triggers in anticipation of "variable updated" events
+-- 2019.06.10   add new openLuup structure (preserved over AltUI edits)
 
 
 local logs      = require "openLuup.logs"
@@ -88,13 +89,13 @@ Apr 2016 - AltUI now provides workflow too.
 
 --]]
 
---local trigger_warning = {   -- template points to openLuup notification message
---  device = 2,
---  enabled = 1,
---  lua = '',
---  name = "*** WARNING ***",
---  template = "1",
---}
+local trigger_warning = {   -- template points to openLuup notification message
+  device = 2,
+  enabled = 1,
+  lua = '',
+  name = "*** WARNING ***",
+  template = "1",
+}
 
 -- scene-wide variables
 local watched_devices = {}      -- table of watched devices indexed by device number
@@ -337,15 +338,15 @@ local function create (scene_json)
     local n = #triggers
     for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
       local t = triggers[i]
---      if t.device == 2 or not luup.devices[t.device] then
-      if not luup.devices[t.device] then
+      t.enabled = 0         -- 2019.06.10  disable all triggers
+      if t.device == 2 or not luup.devices[t.device] then
         table.remove (triggers, i)
       end
     end
     -- 2017.08.08
---    if #triggers ~= 0 then    -- insert warning that these triggers are not active
---      table.insert(triggers, 1, trigger_warning)
---    end
+    if #triggers ~= 0 then    -- insert warning that these triggers are not active
+      table.insert(triggers, 1, trigger_warning)
+    end
   end
 
   --create ()
@@ -388,6 +389,8 @@ local function create (scene_json)
   scene.timers      = scn.timers or {}
   scene.triggers    = scn.triggers or {}             -- 2016.05.19
   scene.triggers_operator = "OR"                     -- 2019.05.24  no such thing as AND for events
+
+  scene.openLuup    = {}                              -- 2019.06.10 new private structure
 
   verify()   -- check that non-existent devices are not referenced
 

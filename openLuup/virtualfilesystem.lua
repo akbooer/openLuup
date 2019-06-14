@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.06.06",
+  VERSION       = "2019.06.10",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -125,12 +125,10 @@ local D_openLuup_json = json.encode {
         Label ("donate", html5.a {href="https://www.justgiving.com/DataYours/", target="_blank",
                 "If you like openLuup, you could DONATE to Cancer Research UK right here"}))},
    }},
---  eventList2 = {
---    {id = 1, serviceId = "openLuup",argumentList = {},
---      label = Label ("triggers_are_not_implemented", "Triggers not implemented, use Watch instead")},
---    {id=2, serviceId = "openLuup", argumentList = {}, label = Label ("openLuup", "Uptime : (openLuup)"), },
---    {id=3, serviceId = "openLuup", argumentList = {}, label = Label ("openLuup", "CPU : (openLuup)") },
---    }
+  eventList2 = {
+    {id = 1, serviceId = "openLuup",argumentList = {},
+      label = Label ("triggers_are_not_implemented", "Triggers not implemented, use Watch instead")},
+    }
   }
 
 local I_openLuup_impl = xml.encodeDocument {
@@ -1114,7 +1112,7 @@ local default_console_menus_json = [==[
 {
   "comment":"JSON to define standard console menu structure",
   "menus":[
-    ["openLuup",  ["About", "hr", "System", "Historian", "hr", "Utilities", "Scheduler","Servers"] ],
+    ["openLuup",  ["About", "hr", "System", "Historian", "Lua Code", "hr", "Utilities", "Scheduler","Servers"] ],
     ["Files",     ["Backups", "Images", "Trash"] ],
     ["Scheduler", ["Running", "Completed", "Startup", "Plugins", "Delays", "Watches"] ],
     ["Servers",   ["HTTP", "SMTP", "POP3", "UDP", "hr", "Sockets", "File Cache"] ],
@@ -1131,7 +1129,7 @@ local altui_console_menus_json = [==[
     ["Devices"],
     ["Scenes"],
     ["Tables", ["Rooms Table","Plugins Table", "Devices Table", "Scenes Table", "Triggers Table"] ],
-    ["Utilities", ["Lua Startup","Lua Shutdown", "Lua Code Test",
+    ["Utilities", ["Lua Startup","Lua Shutdown", "Lua Test",
                        "hr", "Backups", "Images", "Trash"] ],
     ["Logs",      ["Log", "hr", "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "hr", "Startup Log"] ]
   ]
