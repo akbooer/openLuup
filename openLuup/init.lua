@@ -103,7 +103,6 @@ end
 do -- change search paths for Lua require
   local cmh_lu = ";../cmh-lu/?.lua;files/?.lua;openLuup/?.lua"
   package.path = package.path .. cmh_lu       -- add /etc/cmh-lu/ to search path
---  loader.icon_redirect ''                   -- remove all prefix paths for icons
 end
 
 do -- Devices 1 and 2 are the Vera standard ones (but #2, _SceneController, replaced by openLuup)

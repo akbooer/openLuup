@@ -3,9 +3,9 @@
 module(..., package.seeall)
 
 
-ABOUT = { 
+ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.06.14",
+  VERSION       = "2019.06.17",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -124,7 +124,6 @@ local SID = {
   altui = "urn:upnp-org:serviceId:altui1",              -- 'DisplayLine1' and 'DisplayLine2'
   ha    = "urn:micasaverde-com:serviceId:HaDevice1", 		-- 'BatteryLevel'
 }
-
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
@@ -344,6 +343,17 @@ end
 function actions.scene_sort (p)
   local order = p.order
   if order then sticky_scn_sort (order) end
+end
+
+function actions.create_device (_,req)
+  local q = req.POST
+  if q.d_file then
+    local devNo = luup.create_device (nil, '', q.name, q.d_file, q.i_file)
+    if devNo then     -- change page
+      sticky_device (devNo)
+      return sticky_page "device"
+    end
+  end
 end
 
 --
@@ -1288,8 +1298,12 @@ end
 
 local function rooms_selector ()
   local current_room = sticky_room()
-  local rooms = {"All Rooms", "Favourites", "No Room"}
+  local rooms = {}
   for _,r in pairs (luup.rooms) do rooms[#rooms+1] = r end
+  table.sort (rooms)
+  table.insert (rooms, 1, "No Room")    -- note reverse order
+  table.insert (rooms, 1, "Favourites")
+  table.insert (rooms, 1, "All Rooms")
   return filter_menu (rooms, current_room, "room=")
 end
 
@@ -1409,6 +1423,16 @@ function pages.timers (p)
     return title .. " - scene timers", pre
   end)
 end
+
+function pages.history (p)
+  return scene_page (p, function (scene, title)
+    local h = {}
+    for i,v in ipairs (scene: user_table() .openLuup.history) do h[i] = {nice(v)} end
+    table.sort (h, function (a,b) return a[1] > b[1] end)
+    local t = create_table_from_data  ({"date/time"}, h)
+    return title .. " - scene history", t
+  end)
+end
   
 function pages.lua (p)
   return scene_page (p, function (scene, title)
@@ -1432,12 +1456,10 @@ function pages.json (p)
 end
 
 function pages.scenes (p)
-
-  local function panel_wrapper (...)
-    return html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel", ...}
-  end
   local function scene_panel (self)
     local utab = self: user_table()
+    
+    --TODO: move scene next run code to scenes modules
     local id = utab.id
     local earliest_time
     for _,timer in ipairs (utab.timers or {}) do
@@ -1450,24 +1472,34 @@ function pages.scenes (p)
     local last_run = utab.last_run
     last_run = last_run and table.concat {unicode.check_mark, ' ', nice (last_run)} or ''
     
+    local div = html5.div
     local run = self.paused 
             and 
-              html5.span {class = "w3-xxlarge w3-text-grey", title="scene is paused",
-                "&nbsp;", unicode.double_vertical_bar} -- pause
+                html5.img {width=48, height=48, 
+                  title="scene is paused", src="icons/pause-circle.svg"} 
             or
-              html5.a {class= "w3-xxlarge w3-hover-border w3-text-blue nodec", title="run scene",
-                href= selfref("action=run_scene&scn=", id), 
-                 "&nbsp;", unicode.black_right_pointing_triangle}
-    local edit = html5.a {href= selfref("page=scene&scene=", id), "edit", title="view/edit scene" }-- ********
-    local div = html5.div
+                html5.a {href= selfref("action=run_scene&scn=", id), 
+                  html5.img {width=48, height=48, title="run scene", src="icons/play-circle.svg"} }
+    
+    local edit_clone_history = div {
+      html5.a {href= selfref("page=scene&scene=", id), title="view/edit scene",
+        html5.img {width=18, height=18, src="icons/edit.svg"} },
+      html5.a {href= selfref("action=clone&scene=", id), title="clone scene",
+        html5.img {width=18, height=18, src="icons/clone.svg"} },
+      html5.a {href= selfref("page=history&scene=", id), title="scene history",
+        html5.img {width=18, height=18, src="icons/calendar-alt-regular.svg"} } }
     local flag = utab.favorite and unicode.black_star or unicode.white_star
     local bookmark = html5.a {class="nodec", href=selfref("action=bookmark&scn=", id), flag}
-    local panel = panel_wrapper (
-      div {class="top-panel", 
-        bookmark, ' ', truncate (scene_name(id)) }, 
-      div {div {style = "clear:none;",
-        div {style="float: left; clear: none; margin:2px;", run, html5.br{}, edit}, 
-        div {style="float: right; padding-right:8px;", html5.span {last_run, html5.br{}, next_run } } } } )
+    local br = html5.br {}
+    
+    local panel = html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel",
+      div {class="top-panel", bookmark, ' ', truncate (scene_name(id)) }, 
+--      div {class="w3-padding-small w3-border-bottom", bookmark, ' ', truncate (scene_name(id)) }, 
+      div {class = "w3-display-container", style ="height:70px",
+        div {class="w3-padding-small w3-display-left", run } , 
+        div {class="w3-padding-small w3-display-topright", last_run, br, next_run } ,
+        div {class="w3-padding-small w3-display-bottommiddle", edit_clone_history } 
+        }  } 
     return panel
   end
   
@@ -1569,7 +1601,7 @@ local function lua_exec (req, codename, title)
     if not ok then prt ("ERROR: " .. err) end
   end
   local printed = table.concat (P)
-  local _, nlines = printed:gsub ('\n','\n')
+  local _, nlines = printed:gsub ('\n',{})
   --
   local form =  html5.div { class = "w3-col w3-half",
     html5_title {title or codename},  code_editor (lua_code (req, codename), 500) }  
@@ -1598,6 +1630,8 @@ function pages.graphics (p, req)
 end
 
 function pages.rooms_table ()
+--  local create = html5.a {class="w3-button w3-round w3-red", 
+--    href = selfref "page=create_room", "+ Create", title="create new room"}
   local t = html5.table {class = "w3-small"}
   t.header {"id", "name"}
   for n, v in sorted (luup.rooms) do
@@ -1606,13 +1640,37 @@ function pages.rooms_table ()
   return page_wrapper ("Rooms Table", t)
 end
 
+function pages.create_device ()
+  local function options (label_text, name, pattern)
+    local label = html5.label {label_text}
+    local select = html5.select {class="w3-select", name=name,
+      html5.option {value='', "select " ..label_text, disabled=1, selected=1}}
+    for file in loader.dir (pattern) do
+      select[#select+1] = html5.option {value=file, file}
+    end
+    return html5.div {label, select}
+  end
+
+  local form = html5.form {class = "w3-container w3-form w3-third", 
+      action = selfref "action=create_device", method="post", enctype="multipart/form-data",
+      html5.label {"Device name"},
+      html5.input {class="w3-input", type="text", name="name"},
+      options ("Device file", "d_file", "^D_.-%.xml$"),
+      options ("Implementation file", "i_file", "^I_.-%.xml$"),
+      html5.input {class="w3-button w3-round w3-green w3-margin", type="submit", value="Create Device"},
+    }
+  return html5.div {class="w3.card", form}
+end
+
 function pages.devices_table ()
+  local create = html5.a {class="w3-button w3-round w3-green", 
+    href = selfref "page=create_device", "+ Create", title="create new device"}
   local t = html5.table {class = "w3-small"}
   t.header {"id", "name"}
   for n, v in sorted (luup.devices) do
     t.row {n,v.description}
   end
-  return page_wrapper ("Devices Table", t)
+  return page_wrapper ("Devices Table", create, t)
 end
 
 function pages.scenes_table ()
@@ -1624,12 +1682,14 @@ function pages.scenes_table ()
 	 room_num = 0,
 	 running = true
 }]]
+  local create = html5.a {class="w3-button w3-round w3-red", 
+    href = selfref "page=create_scene", "+ Create", title="create new scene"}
   local s = {}
   for n,x in pairs (luup.scenes) do
     s[#s+1] = {n,  x.description, luup.rooms[x.room_num] or "no room", tostring (x.paused)}
   end
   local t = create_table_from_data ({"id", "name", "room", "paused"}, s)
-  return page_wrapper ("Scenes Table", t)
+  return page_wrapper ("Scenes Table", create, t)
 end
 
 function pages.plugins_table ()
@@ -1646,8 +1706,8 @@ function pages.plugins_table ()
     local files = {}
     for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
     table.sort (files)
-    table.insert (files, 1, "Files")
-    local choice = {style="width:12em;", onchange="location = this.value;" }
+    local choice = {style="width:12em;", onchange="location = this.value;", 
+      html5.option {value='', "Files", disabled=1, selected=1}}
     for _, f in ipairs (files) do choice[#choice+1] = html5.option {value=f, f} end
     files = html5.form {html5.select (choice)}
     local help = html5.a {href=p.Instructions or '', target="_blank", "help"}
@@ -1691,16 +1751,17 @@ function pages.user    () return pages.home (user_json) end
 local a, div = html5.a, html5.div
  
 local page_groups = {
+    ["House Mode"]= {"home", "away", "night", "vacation"},
     ["Historian"] = {"summary", "cache", "database", "orphans"},
     ["System"]    = {"parameters", "top_level", "globals", "states", "sandboxes", "RELOAD"},
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "user_data"},
-    ["Scene"]     = {"header", "triggers", "timers", "lua", "group_actions", "json"},
+    ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
     ["Servers"]   = {"http", "smtp", "pop3", "udp", "sockets", "file_cache"},
     ["Utilities"] = {"backups", "images", "trash"},
     ["Menu Style"]= {"current", "classic", "default", "altui", "user"},
     ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3"},
-    ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "triggers_table", "scenes_table"},
+    ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "scenes_table", "triggers_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
   }
 
@@ -1859,8 +1920,10 @@ function run (wsapi_env)
   sticky_scene (p.scene)
 --  sticky_variable = (p.variable)
   
+  current = (actions[p.action] or noop) (p, req) or current   -- action may change page
+  
   local navigation, actual_page = page_nav (current, previous)
-  do (actions[p.action] or noop) (p, req) end                   -- do any action
+
   local sheet = (pages[actual_page] or noop) (p, req)
   local formatted_page = div {class = "w3-container", navigation, sheet}
   
@@ -1879,8 +1942,9 @@ function run (wsapi_env)
   th,td {width:1px; white-space:nowrap; padding: 0 16px 0 16px;}
   table {table-layout: fixed; margin-top:20px}
   .dev-panel {width:240px; height: 80px; float:left; }
-  .scn-panel {width:240px; height:100px; float:left; }
+  .scn-panel {width:240px; float:left; }
   .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
+  .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
 ]]},
 --  a.nodec:hover { text-decoration: underline; }
 
