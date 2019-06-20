@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.04.30",
+  VERSION       = "2019.06.20",
   DESCRIPTION   = "XML utilities (HTML5, SVG) and DOM-style parser",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -39,6 +39,8 @@ local ABOUT = {
 -- 2019.04.03  fix svg:rect() coordinate attribute names
 -- 2019.04.06  add any unknown HTML5 tag as a new element
 -- 2019.04.30  add preamble parameter to xml.encode() for encodeDocument()
+-- 2019.06.20  close some special tags with '>' rather than '/>'
+
 
 --[[
 
@@ -317,6 +319,9 @@ end
 -- named items are attributes, list is contents (possibly other elements)
 -- element()
 --
+
+local no_slash = {option = 1}   -- list of exceptions to closing '/'
+
 local function element (name, contents)
     
   local self = {}
@@ -345,7 +350,8 @@ local function element (name, contents)
       if type (n) == "string" then p {' ', n, '="', v, '"'} end
     end
     if #self == 0 then
-      p '/>'
+      if not no_slash[name] then p '/' end    -- 2019.06.20
+      p '>'
     else
       p '>'
       for _,v in ipairs (self) do

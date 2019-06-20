@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.06.17",
+  VERSION       = "2019.06.18",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -88,6 +88,8 @@ ALTUI also provides a great editor interface with the blockly module.
 Apr 2016 - AltUI now provides workflow too.
 
 --]]
+
+local HISTORY_LENGTH = 20   -- number of points in scene history cache
 
 local trigger_warning = {   -- template points to openLuup notification message
   device = 2,
@@ -266,7 +268,7 @@ local function create (scene_json)
     
     do -- 2019.06.17 scene history
       local so = scene.openLuup
-      local i = so.hipoint % so.hicache + 1
+      local i = so.hipoint % HISTORY_LENGTH + 1
       so.history[i] = scene.last_run
       so.hipoint = i
     end --
@@ -397,7 +399,6 @@ local function create (scene_json)
   scene.openLuup    = {                               -- 2019.06.10 new private structure
     history = {},                   -- cache
     hipoint = 0,                    -- pointer
-    hicache = 10,                   -- and local cache size
   }
 
   verify()   -- check that non-existent devices are not referenced

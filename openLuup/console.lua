@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.06.17",
+  VERSION       = "2019.06.20",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -88,6 +88,8 @@ local json      = require "openLuup.json"         -- for console_menus.json
 local xml       = require "openLuup.xml"          -- for xml.escape(), and...
 local html5     = xml.html5                       -- html5 and svg libraries
 
+local service_data  = loader.service_data
+
 -- get local copy of w3.css if we haven't got one already
 -- so that we can work offline if required
 if not loader.raw_read "w3.css" then 
@@ -121,13 +123,26 @@ local unicode = {
 }
 
 local SID = {
-  altui = "urn:upnp-org:serviceId:altui1",              -- 'DisplayLine1' and 'DisplayLine2'
-  ha    = "urn:micasaverde-com:serviceId:HaDevice1", 		-- 'BatteryLevel'
+  altui   = "urn:upnp-org:serviceId:altui1",              -- 'DisplayLine1' and 'DisplayLine2'
+  ha      = "urn:micasaverde-com:serviceId:HaDevice1", 		-- 'BatteryLevel'
+  switch  = "urn:upnp-org:serviceId:SwitchPower1",        -- on/off control
+  dimming = "urn:upnp-org:serviceId:Dimming1",            -- slider control
 }
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
 local script  -- name of this CGI script
+
+-- look for user-defined device panels
+-- named U_xxx.lua, derived from trailing word of device type:
+-- urn:schemas-micasaverde-com:device:TemperatureSensor:1, would be U_TemperatureSensor.lua
+local user_defined = {}
+for f in loader.dir "^U_.-%.lua$" do
+  local name = f: match "^U_(.-)%.lua$"
+  local ok, user = pcall (require, "U_" .. name)
+  if ok then user_defined[name] = user end
+end
+local pretty = require "pretty"
 
 -- create new persistent variable
 local function sticky (default, numeric)
@@ -174,7 +189,7 @@ end
 local function dev_or_scene_name (d, tbl)
   d = tonumber(d) or 0
   local name = (tbl[d] or {}).description or 'system'
-  name = name: match "^%s*(.+)"
+  name = name: match "^%s*(.+)" or "???"
   local number = table.concat {'[', d, '] '}
   return number .. name
 end
@@ -241,6 +256,23 @@ local function get_matching_files_from (folder, pattern)
     end)
   table.sort (files, function (a,b) return a.date > b.date end)       -- sort newest to oldest
   return files
+end
+
+
+local function get_device_icon (d)
+  local img  
+  -- user-defined icon
+  local dtype = (d.attributes.device_type or ''): match "(%w+):?%d*$"   -- pick the last word
+  local user = user_defined[dtype] or {}
+  if user.icon then 
+    img = user.icon(d.attributes.id) 
+  else
+    local icon = d:get_icon ()
+    if icon ~= '' and not icon: lower() : match "^http" then icon = "/icons/" .. icon end
+    img = html5.img {src = icon, alt="no icon", style = "width:50px; height:50px;"}
+  end
+
+  return html5.a {href=selfref ("page=device&device=", d.attributes.id), img}
 end
 
 -----------------------------
@@ -356,7 +388,31 @@ function actions.create_device (_,req)
   end
 end
 
---
+function actions.slider (_, req)
+  local q = req.params        -- works for GET or POST
+  local devNo = tonumber(q.dev)
+--  print ("Slider", devNo, q.slider)
+  local dev = luup.devices[devNo]
+  if dev then 
+    -- need to use luup.call_action() so that bridged device actions are handled by VeraBridge
+    local a,b,j = luup.call_action (SID.dimming, "SetLoadLevelTarget", {newLoadlevelTarget=q.slider}, devNo) 
+--    print ("Slider job", a,b,j)
+  end
+end
+
+function actions.switch (_, req)
+  local q = req.params        -- works for GET or POST
+  local devNo = tonumber(q.dev)
+  local target = q.switch == "on" and 0 or 1
+--  print ("Switch", devNo, q.switch, target)
+  local dev = luup.devices[devNo]
+  if dev then 
+    -- need to use luup.call_action() so that bridged device actions are handled by VeraBridge
+    local a,b,j = luup.call_action (SID.switch, "SetTarget", {newTargetValue=target}, devNo) 
+--    print ("Switch job", a,b,j)
+  end
+end
+
 -- Pages
 --
 
@@ -650,9 +706,7 @@ function pages.sandboxes ()               -- 2018.04.07
   return div
 end
 
-
 --------------------------------
-
 
 function pages.log (p)
   local page = p.page or ''  
@@ -1010,17 +1064,6 @@ function pages.cache (_, req)
     local h = #v.history / 2
     local dname = devname(v.dev)
     if dname ~= prev then 
-      --
---[[
-
-<form action="/action_page.php" name="foo" method="get" onChange="foo.submit()">
-  Points:
-  <input type="range" name="points" min="0" max="100">
-  <input type="submit">
-</form>
-
---]]
-      --
       t.row { {dname, colspan = 5, style = "font-weight: bold"} }
     end
     prev = dname
@@ -1154,6 +1197,72 @@ end
 -- Devices
 --
 
+local function get_display_variables (d)
+  local vars = (d.services[SID.altui] or {}).variables or {}
+  local line1 = (vars.DisplayLine1 or {}) .value or ''
+  local line2 = (vars.DisplayLine2 or {}) .value or ''
+  return line1, line2
+end
+
+local function device_controls (d)
+  local switch, slider = '',''
+  local srv = d.services[SID.switch]
+  if srv then    -- we need an on/off switch
+    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
+--    switch = html5.input {type="checkbox", checked=Target, name="switch", }
+    switch = html5.form {
+      action=selfref (), method="get", 
+        html5.input {name="action", value="switch", hidden=1},
+        html5.input {name="dev", value=d.attributes.id, hidden=1},
+        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
+--        html5.label {class="switch",
+--        html5.input {type="checkbox", checked=Target, name="switch", onchange="this.form.submit();"},
+--        html5.span  {class="slider round"} }
+      }
+  end
+  srv = d.services[SID.dimming]
+  if srv then    -- we need a slider
+    local LoadLevelTarget = (srv.variables.LoadLevelTarget or {}).value or 0
+    slider = html5.form {
+      oninput="LoadLevelTarget.value = slider.valueAsNumber + ' %'",
+      action=selfref (), method="post", 
+        html5.input {name="action", value="slider", hidden=1},
+        html5.input {name="dev", value=d.attributes.id, hidden=1},
+        html5.output {name="LoadLevelTarget", ["for"]="slider", value=LoadLevelTarget, LoadLevelTarget .. '%'},
+        html5.input {type="range", name="slider", onchange="this.form.submit();",
+          value=LoadLevelTarget, min=0, max=100, step=1},
+      }
+  end
+  return switch, slider
+end
+
+local function device_panel (self)          -- 2019.05.12
+  local id = self.attributes.id
+  local line1, line2 = get_display_variables (self)
+  local img = get_device_icon (self)
+  
+  local flag = unicode.white_star
+  if self.attributes.bookmark == "1" then flag = unicode.black_star end
+  local bookmark = html5.a {class = "nodec", href=selfref("action=bookmark&dev=", id), flag}
+  
+  local battery = (((self.services[SID.ha] or {}) .variables or {}) .BatteryLevel or {}) .value
+  battery = battery and (battery .. '%') or ''
+  
+  local switch, slider = device_controls(self)
+  local div, span = html5.div, html5.span
+  local panel = html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card dev-panel", 
+    div {class="top-panel", 
+      bookmark, ' ', truncate (devname (id)), span{style="float: right;", battery }},
+    div {class = "w3-row", style="height:54px; padding:2px;", 
+      div {class="w3-col", style="width:50px;", img} , 
+      div {class="w3-padding-small w3-rest w3-display-container", style="height:50px;",
+        line1, html5.br{}, line2,
+        div {class="w3-display-topright", switch},
+        div {class="w3-display-bottommiddle", slider},
+        } } }
+  return panel
+end
+
 -- generic device page
 local function device_page (p, fct)
   local devNo = sticky_device()
@@ -1163,29 +1272,38 @@ local function device_page (p, fct)
   return page_wrapper (fct (d, title))   -- call back with actual device    
 end
 
-local function get_display_variables (d)
-  local vars = (d.services[SID.altui] or {}).variables or {}
-  local line1 = (vars.DisplayLine1 or {}) .value or ''
-  local line2 = (vars.DisplayLine2 or {}) .value or ''
-  return line1, line2
-end
-
 function pages.control (p)
   return device_page (p, function (d, title)
+    local dtype = (d.attributes.device_type or ''): match "(%w+):?%d*$"   -- pick the last word
+    local user = user_defined[dtype] or {}
     local t = html5.table {class = "w3-small"}
-    local line1, line2 = get_display_variables (d)
+    local s
+    if user.control then s = html5.div {class="w3-rest", user.control (d.attributes.id)} end
     local states = d:get_shortcodes ()
     for n,v in sorted (states) do t.row {n, nice(v)} end
-    local br = html5.br {}
-    return title .. " - status and control", br, line1, br, line2, br, t
+    return title .. " - status and control", 
+      html5.div {class="w3-row", 
+        html5.div{class="w3-col", style="width:350px;", device_panel(d), t}, s}
   end)
 end
 
-function pages.attributes (p)
+function pages.attributes (p, req)
   return device_page (p, function (d, title)
-    local attr = {}
-    for n,v in sorted (d.attributes) do attr[#attr+1] = {n, nice(v)} end
-    return title .. " - attributes", create_table_from_data (nil, attr)
+    local q = req.POST
+    local a = q.attribute
+    local v = q.value
+    if a and v and d.attributes[a] then d:attr_set (a, v) end -- only change existing attribute
+    --
+    local attr = html5.div{class = "w3-container"}
+    for n,v in sorted (d.attributes) do 
+      attr[#attr+1] = html5.form{
+        class = "w3-form w3-padding-small", method="post", style="float:left", action=selfref (),
+        html5.label {html5.b{n}}, 
+        html5.input {hidden=1, name="attribute", value=n},
+        html5.input {class="w3-input w3-round w3-border",type="text", size=28, 
+          name="value", value = nice(v, 99), autocomplete="off", onchange="this.form.submit()"} }
+    end
+    return title .. " - attributes", attr
   end)
 end
 
@@ -1212,10 +1330,16 @@ function pages.variables (p)
     local t = html5.table {class = "w3-small"}
     t.header (s.columns {"id", "service", '', "variable", "value"})
     local info = {}
+    local history, graph = ' ', ' '
     for n,v in pairs (d.variables) do
-      local history =  v.history and #v.history > 2 and 
-                          html5.a {href = selfref ("page=cache_history&variable=", n), "history"} or ''
-      info[#info+1] = {v.id, v.srv, history, v.name, nice(v.value) }
+      if v.history and #v.history > 2 then 
+        history = html5.a {href=selfref ("page=cache_history&variable=", n), title="history", 
+                html5.img {width="18px;", height="18px;", alt="history", src="/icons/calendar-alt-regular.svg"}} 
+        graph = html5.a {href=selfref ("page=graphics&variable=", n), title="graph", 
+                html5.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
+      end
+      local actions = html5.div {history, graph}
+      info[#info+1] = {v.id, v.srv, actions, v.name, nice(v.value) }
     end
     s.sort (info, p.sort)
     for _, row in ipairs (info) do 
@@ -1228,11 +1352,10 @@ end
 
 function pages.actions (p)
   return device_page (p, function (d, title)
-    local sd = loader.service_data
     local t = html5.table {class = "w3-small"}
     t.header {"serviceId", "action", "arguments"}
     for s,srv in sorted (d.services) do
-      local service_actions = (sd[s] or {}) .actions
+      local service_actions = (service_data[s] or {}) .actions
       local action_index = {}         -- service actions indexed by name
       for _, act in ipairs (service_actions or {}) do
         action_index[act.name] = act.argumentList or {}
@@ -1326,37 +1449,6 @@ local function room_wanted ()
 end
 
 function pages.devices (p)
-  local static_data = loader.static_data
-  local function panel_wrapper (...)
-    return html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card dev-panel", ...}
-  end
-   
-  local function device_panel (self)          -- 2019.05.12
-    local id = self.attributes.id
-    local line1, line2 = get_display_variables (self)
-    
-    local json_file = self.attributes.device_json or ''   -- such a shame to have to use the JSON file!
-    local icon = (static_data[json_file] or {}) .default_icon or ''
-    if icon ~= '' and not icon: lower() : match "^http" then icon = "/icons/" .. icon end
-    local img = html5.img {src = icon, alt="no icon", style = "width:48px; height:48px;"}
-    img = html5.a {href=selfref ("page=device&device=", id), img} -- ********
-    
-    local flag = unicode.white_star
-    if self.attributes.bookmark == "1" then flag = unicode.black_star end
-    local bookmark = html5.a {class = "nodec", href=selfref("action=bookmark&dev=", id), flag}
-    
-    local battery = (((self.services[SID.ha] or {}) .variables or {}) .BatteryLevel or {}) .value
-    battery = battery and (battery .. '%') or ''
-    
-    local div, span = html5.div, html5.span
-    local panel = panel_wrapper (
-      div {class="top-panel", 
-        bookmark, ' ', truncate (devname (id)), span{style="float: right;", battery }},
-      div {div {style = "clear:none;",
-        div {style="float: left; clear: none; margin:2px;", img}, 
-        div {style="float: left; clear: right;", span {line1, html5.br{}, line2 } } } } )
-    return panel
-  end
   
   -- devices   
   local devs = html5.div {class="w3-rest" }
@@ -1459,7 +1551,7 @@ function pages.scenes (p)
   local function scene_panel (self)
     local utab = self: user_table()
     
-    --TODO: move scene next run code to scenes modules
+    --TODO: move scene next run code to scenes module
     local id = utab.id
     local earliest_time
     for _,timer in ipairs (utab.timers or {}) do
@@ -1481,7 +1573,7 @@ function pages.scenes (p)
                 html5.a {href= selfref("action=run_scene&scn=", id), 
                   html5.img {width=48, height=48, title="run scene", src="icons/play-circle.svg"} }
     
-    local edit_clone_history = div {
+    local edit_clone_history = div {class="w3-wide",
       html5.a {href= selfref("page=scene&scene=", id), title="view/edit scene",
         html5.img {width=18, height=18, src="icons/edit.svg"} },
       html5.a {href= selfref("action=clone&scene=", id), title="clone scene",
@@ -1641,24 +1733,25 @@ function pages.rooms_table ()
 end
 
 function pages.create_device ()
-  local function options (label_text, name, pattern)
+  local function options (label_text, name, pattern, value)
+    local listname = name .. "_options"
     local label = html5.label {label_text}
-    local select = html5.select {class="w3-select", name=name,
-      html5.option {value='', "select " ..label_text, disabled=1, selected=1}}
+    local input = html5.input {list=listname, name=name, value=value, class="w3-input"}
+    local datalist = html5.datalist {id= listname}
     for file in loader.dir (pattern) do
-      select[#select+1] = html5.option {value=file, file}
+      datalist[#datalist+1] = html5.option {value=file}
     end
-    return html5.div {label, select}
+    return html5.div {label, input, datalist}
   end
 
   local form = html5.form {class = "w3-container w3-form w3-third", 
-      action = selfref "action=create_device", method="post", enctype="multipart/form-data",
-      html5.label {"Device name"},
-      html5.input {class="w3-input", type="text", name="name"},
-      options ("Device file", "d_file", "^D_.-%.xml$"),
-      options ("Implementation file", "i_file", "^I_.-%.xml$"),
-      html5.input {class="w3-button w3-round w3-green w3-margin", type="submit", value="Create Device"},
-    }
+    action = selfref "action=create_device", method="post", enctype="multipart/form-data",
+    html5.label {"Device name"},
+    html5.input {class="w3-input", type="text", name="name", autocomplete="off", },
+    options ("Device file", "d_file", "^D_.-%.xml$", "D_"),
+    options ("Implementation file", "i_file", "^I_.-%.xml$", "I_"),
+    html5.input {class="w3-button w3-round w3-green w3-margin", type="submit", value="Create Device"},
+  }
   return html5.div {class="w3.card", form}
 end
 
@@ -1682,7 +1775,7 @@ function pages.scenes_table ()
 	 room_num = 0,
 	 running = true
 }]]
-  local create = html5.a {class="w3-button w3-round w3-red", 
+  local create = html5.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_scene", "+ Create", title="create new scene"}
   local s = {}
   for n,x in pairs (luup.scenes) do
@@ -1733,6 +1826,7 @@ function pages.reload ()
   return page_wrapper "Please wait a moment while system reloads"
 end
 
+pages.reload_luup_engine = pages.reload    -- alias for top-level menu
   
 -- switch dynamically between different menu styles
 local user_json = options.Menu ~= '' and options.Menu
@@ -1904,6 +1998,8 @@ end
 -- run()
 --
 
+local current, previous = "about", "about"
+
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
   local function noop() end
@@ -1912,8 +2008,8 @@ function run (wsapi_env)
   script = req.script_name      -- save to use in links
   local p = req.GET 
   
-  local previous = sticky_page ()
-  local current  = sticky_page (p.page)
+  if p.page and p.page ~= current then previous = current end
+  current = sticky_page (p.page)
   
   sticky_room (p.room)
   sticky_device (p.device)
@@ -1941,12 +2037,74 @@ function run (wsapi_env)
   a.nodec { text-decoration: none; } 
   th,td {width:1px; white-space:nowrap; padding: 0 16px 0 16px;}
   table {table-layout: fixed; margin-top:20px}
-  .dev-panel {width:240px; height: 80px; float:left; }
+  .dev-panel {width:240px; float:left; }
   .scn-panel {width:240px; float:left; }
   .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
   .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
+
+// from https://www.w3schools.com/howto/howto_css_switch.asp
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  height: 34px;
+}
+
+.switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 26px;
+  width: 26px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #2196F3;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .slider:before {
+  -webkit-transform: translateX(26px);
+  -ms-transform: translateX(26px);
+  transform: translateX(26px);
+}
+
+/* Rounded sliders */
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
 ]]},
---  a.nodec:hover { text-decoration: underline; }
 
     html5.script {
 [[

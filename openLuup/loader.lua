@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2019.06.16",
+  VERSION       = "2019.06.18",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -233,9 +233,11 @@ local paths = {"openLuup/", "./", "../cmh-lu/" , "files/", "www/"}
 local function dir (pattern)
   local fname = {}
   for _, path in ipairs(paths) do
-    for file in lfs.dir (path) do
-      if not pattern or file: match (pattern) then
-        fname[file] = true    -- overwrite duplicates
+    if lfs.attributes (path) then     -- lfs.dir() thows an error if path doesn't exist
+      for file in lfs.dir (path) do
+        if not pattern or file: match (pattern) then
+          fname[file] = true    -- overwrite duplicates
+        end
       end
     end
     for filepath in vfs.dir() do
