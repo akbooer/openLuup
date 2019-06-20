@@ -142,7 +142,6 @@ for f in loader.dir "^U_.-%.lua$" do
   local ok, user = pcall (require, "U_" .. name)
   if ok then user_defined[name] = user end
 end
-local pretty = require "pretty"
 
 -- create new persistent variable
 local function sticky (default, numeric)
