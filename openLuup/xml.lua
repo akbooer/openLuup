@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.06.20",
+  VERSION       = "2019.06.22",
   DESCRIPTION   = "XML utilities (HTML5, SVG) and DOM-style parser",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -40,6 +40,7 @@ local ABOUT = {
 -- 2019.04.06  add any unknown HTML5 tag as a new element
 -- 2019.04.30  add preamble parameter to xml.encode() for encodeDocument()
 -- 2019.06.20  close some special tags with '>' rather than '/>'
+-- 2019.06.22  allow html5.element contents to be a simple string
 
 
 --[[
@@ -320,10 +321,11 @@ end
 -- element()
 --
 
-local no_slash = {option = 1}   -- list of exceptions to closing '/'
+local no_slash = {option = 1, meta = 1, link = 1}   -- list of exceptions to closing '/'
 
 local function element (name, contents)
-    
+  if type (contents) == "string" then contents = {contents} end   -- 2019.06.22
+  
   local self = {}
   for n,v in pairs (contents or {}) do self[n] = v end    -- shallow copy of contents
     

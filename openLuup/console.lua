@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.06.20",
+  VERSION       = "2019.06.22",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -74,6 +74,7 @@ local lfs       = require "lfs"                   -- for backup file listing, an
 local vfs       = require "openLuup.virtualfilesystem"
 local luup      = require "openLuup.luup"         -- not automatically in scope for CGIs
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
+local requests  = require "openLuup.requests"     -- for plugin updates, etc...
 local userdata  = require "openLuup.userdata"     -- for device user_data
 local http      = require "openLuup.http"
 local smtp      = require "openLuup.smtp"
@@ -86,7 +87,7 @@ local wsapi     = require "openLuup.wsapi"        -- for response library
 local loader    = require "openLuup.loader"       -- for static data (devices page)
 local json      = require "openLuup.json"         -- for console_menus.json
 local xml       = require "openLuup.xml"          -- for xml.escape(), and...
-local html5     = xml.html5                       -- html5 and svg libraries
+local html5     = xml.html5                       -- ...html5 and svg libraries
 
 local service_data  = loader.service_data
 
@@ -377,8 +378,10 @@ function actions.scene_sort (p)
 end
 
 function actions.create_device (_,req)
-  local q = req.POST
-  if q.d_file then
+  local q = req.params
+  local name = q.name or ''
+  if not name:match "%w" then name = "_New_Device_" end
+  if q.name ~= '' and q.d_file and q.i_file then
     local devNo = luup.create_device (nil, '', q.name, q.d_file, q.i_file)
     if devNo then     -- change page
       sticky_device (devNo)
@@ -402,13 +405,34 @@ end
 function actions.switch (_, req)
   local q = req.params        -- works for GET or POST
   local devNo = tonumber(q.dev)
-  local target = q.switch == "on" and 0 or 1
+--  local target = q.switch == "on" and 1 or 0
 --  print ("Switch", devNo, q.switch, target)
   local dev = luup.devices[devNo]
   if dev then 
+    local v = luup.variable_get (SID.switch, "Target", devNo)
+    local target = v == '1' and '0' or '1'    -- toggle action
     -- need to use luup.call_action() so that bridged device actions are handled by VeraBridge
     local a,b,j = luup.call_action (SID.switch, "SetTarget", {newTargetValue=target}, devNo) 
 --    print ("Switch job", a,b,j)
+  end
+end
+
+-- action=update_plugin&plugin=openLuup&update=version
+function actions.update_plugin (_, req)
+  local q = req.params
+  local response = requests.update_plugin (_, {Plugin=q.plugin, Version=q.version})
+  -- TODO: save status return to messages
+end
+
+-- action=call_action (_, req)
+function actions.call_action (_, req)
+  local q = req.POST    -- it must be a post in order to loop through the params
+  if q then
+    local act, srv, dev = q.act, q.srv, q.dev
+    q.act, q.srv, q.dev = nil, nil, nil         -- remove these form the request and use the rest of the parameter list
+    -- action returns: error, message, jobNo, arrguments
+--    print ("ACTION", act, srv, dev)
+    local e,m,j,a = luup.call_action  (srv, act, q, tonumber (dev))
   end
 end
 
@@ -1207,16 +1231,14 @@ local function device_controls (d)
   local switch, slider = '',''
   local srv = d.services[SID.switch]
   if srv then    -- we need an on/off switch
-    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
---    switch = html5.input {type="checkbox", checked=Target, name="switch", }
+--    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
     switch = html5.form {
-      action=selfref (), method="get", 
+      action=selfref (), method="post", 
         html5.input {name="action", value="switch", hidden=1},
         html5.input {name="dev", value=d.attributes.id, hidden=1},
-        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
---        html5.label {class="switch",
---        html5.input {type="checkbox", checked=Target, name="switch", onchange="this.form.submit();"},
---        html5.span  {class="slider round"} }
+        html5.input {type="image", class="w3-hover-opacity",
+          src="/icons/power-off-solid.svg", alt='on/off', height=24, width=24}
+--        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
       }
   end
   srv = d.services[SID.dimming]
@@ -1256,7 +1278,7 @@ local function device_panel (self)          -- 2019.05.12
       div {class="w3-col", style="width:50px;", img} , 
       div {class="w3-padding-small w3-rest w3-display-container", style="height:50px;",
         line1, html5.br{}, line2,
-        div {class="w3-display-topright", switch},
+        div {class="w3-display-topright w3-padding-small", switch},
         div {class="w3-display-bottommiddle", slider},
         } } }
   return panel
@@ -1351,8 +1373,8 @@ end
 
 function pages.actions (p)
   return device_page (p, function (d, title)
-    local t = html5.table {class = "w3-small"}
-    t.header {"serviceId", "action", "arguments"}
+    local devNo = d.attributes.id
+    local t = html5.div {class = "w3-container"}
     for s,srv in sorted (d.services) do
       local service_actions = (service_data[s] or {}) .actions
       local action_index = {}         -- service actions indexed by name
@@ -1360,16 +1382,29 @@ function pages.actions (p)
         action_index[act.name] = act.argumentList or {}
       end
       for a in sorted (srv.actions) do
-        t.row {s, a}
+        local args = html5.div {class="w3-rest"}
+        local form = html5.form {method="post", action=selfref (),
+          html5.input {hidden=1, name="action", value="call_action"},
+          html5.input {hidden=1, name="dev", value=devNo},
+          html5.input {hidden=1, name="srv", value=s},
+          html5.div{class = "w3-third", -- w3-padding-small",
+            html5.input {class="w3-button w3-round w3-blue", type="submit", name="act", title=s, value=a} },
+            args}
+        t[#t+1] = html5.div {class="w3-container w3-padding w3-border-top", form}
         local action_arguments = action_index[a]
         if action_arguments then
           for _, v in ipairs (action_arguments) do
-            if (v.direction or ''): match "in" then t.row {'','', v.name} end
+            if (v.direction or ''): match "in" then 
+              args[#args+1] = html5.div {class="w3-row-padding w3-padding-small", -- w3-round",
+                html5.div {class="w3-quarter",html5.label {v.name}},
+                html5.div {class="w3-rest", 
+                  html5.input {style="width:100%", class="w3-border-0", type="text", name = v.name} } }
+            end
           end
         end
       end
     end
-    return title .. " - implemented actions", t
+    return title .. " - implemented actions", html5.div {class="w3-half", t}
   end)
 end
 
@@ -1629,13 +1664,14 @@ end
   
 -- text editor
 
-local function code_editor (code, height, language)
+local function code_editor (code, height, language, readonly)
   code = code or ''
   height = (height or "500") .. "px;"
   language = language or "lua"
   local submit_button = html5.input {class="w3-button w3-round w3-green w3-margin", value="Submit"}
   if options.Ace_URL ~= '' then
     submit_button.onclick = "EditorSubmit()"
+    if readonly then submit_button = nil end
     local page = html5.div {id="editor", class="w3-border", style = "width: 100%; height:"..height, code }
     local form = html5.form {action= selfref (), method="post", enctype="multipart/form-data",
       html5.input {type="hidden", name="lua_code", id="lua_code"}, submit_button}
@@ -1654,6 +1690,7 @@ local function code_editor (code, height, language)
   
   else
     submit_button.type = "submit"
+    if readonly then submit_button = nil end
     local form = html5.form {action= selfref (), method="post", enctype="multipart/form-data",
       html5.div {
         html5.textarea {name="lua_code", id="lua_code", 
@@ -1709,6 +1746,16 @@ pages["lua_test"]   = function (_, req) return lua_exec (req, "LuaTestCode",  "L
 pages["lua_test2"]  = function (_, req) return lua_exec (req, "LuaTestCode2", "Lua Test Code #2") end
 pages["lua_test3"]  = function (_, req) return lua_exec (req, "LuaTestCode3", "Lua Test Code #3") end
 pages.lua_code = pages.lua_test
+
+function pages.viewer (_, req)
+  local text, language
+  local file = req.params.file or ''
+  language = file: match "%w+$" or ''
+  text = loader.raw_read (file) or ''
+  local readonly = true
+  local div = html5.div {code_editor (text, 500, language, readonly)}
+  return page_wrapper (file,  div)
+end
 
 function pages.graphics (p, req)
   local background = p.background or "GhostWhite"
@@ -1786,7 +1833,7 @@ end
 
 function pages.plugins_table ()
   local t = html5.table {class = "w3-bordered"}
-  t.header {'', "Name","Version", "Auto", "Files", "Actions", "Update", "Unistall"}
+  t.header {'', "Name","Version", "Auto", "Files", "Actions", "Update", '', "Unistall"}
   local IP2 = userdata.attributes.InstalledPlugins2 or userdata.default_plugins
   for _, p in ipairs (IP2) do
     -- http://apps.mios.com/plugin.php?id=8246
@@ -1798,12 +1845,27 @@ function pages.plugins_table ()
     local files = {}
     for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
     table.sort (files)
-    local choice = {style="width:12em;", onchange="location = this.value;", 
+--    local choice = {style="width:12em;", onchange="location = this.value;", 
+    local choice = {style="width:12em;", name="file", onchange="this.form.submit()", 
       html5.option {value='', "Files", disabled=1, selected=1}}
     for _, f in ipairs (files) do choice[#choice+1] = html5.option {value=f, f} end
-    files = html5.form {html5.select (choice)}
-    local help = html5.a {href=p.Instructions or '', target="_blank", "help"}
-    t.row {icon, p.Title, version, p.AutoUpdate, files, help, '',''} 
+    files = html5.form {action=selfref(), 
+      html5.input {hidden=1, name="page", value="viewer"},
+      html5.select (choice)}
+    local help = html5.a {href=p.Instructions or '', target="_blank", title="help",
+      html5.img {src="/icons/question-circle-solid.svg", alt="help", height=24, width=24} }
+    local info = html5.a {target="_blank", title="info",
+      href=table.concat {"http://github.com/",p.Repository.source or '',"#readme"}, 
+      html5.img {src="/icons/info-circle-solid.svg", alt="info", height=24, width=24} }
+    local update = html5.form {
+      action = selfref(), method="post",
+      html5.input {hidden=1, name="action", value="update_plugin"},
+      html5.input {hidden=1, name="plugin", value=p.id},
+      html5.div {class="w3-display-container",
+      html5.input {type = "text", autocomplete="off", name="version", value=''},
+      html5.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
+        title="update", alt='', height=28, width=28} } }
+    t.row {icon, p.Title, version, p.AutoUpdate, files, html5.span{help, info}, update, ''} 
   end
   return page_wrapper ("Plugins", t)
 end
@@ -1873,19 +1935,22 @@ local function short_name(name)
   return short
 end
 
+local function confirm (name)
+  return name:lower():match "reload" and "return confirm('System Reload: Are you sure?')" or nil
+end
+
 -- make a page link button
 local function make_button(name, current)
-  local confirm
   local short = short_name(name)
   local colour = "w3-amber"
-  if short == "reload" then 
+  local onclick = confirm(short)
+  if onclick then 
     colour = "w3-red"
-    confirm = "return confirm('System Reload: Are you sure?')"
   elseif short == current then 
     colour = "w3-grey"
   end
   local link = {class="w3-button w3-round " .. colour, href=selfref ("page=", short), 
-                  onclick=confirm, short_name_index[short]}
+                  onclick=onclick, short_name_index[short]}
   return html5.a (link)
 end
 
@@ -1980,8 +2045,9 @@ local function dynamic_menu ()
         if item == "hr" then 
           border = " w3-border-top"                   -- give next item a line above...
         else
+          local onclick = confirm (item)            -- check for confirm box on reload
           dropdown_content[#dropdown_content+1] = 
-            a {class="w3-bar-item w3-button" .. border, href=selfref ("page=", short_name(item)), item}
+            a {class="w3-bar-item w3-button" .. border, href=selfref ("page=", short_name(item)), onclick = onclick, item}
           border = ''
         end
       end
@@ -2005,7 +2071,7 @@ function run (wsapi_env)
 
   local req = wsapi.request.new (wsapi_env)
   script = req.script_name      -- save to use in links
-  local p = req.GET 
+  local p = req.params 
   
   if p.page and p.page ~= current then previous = current end
   current = sticky_page (p.page)
@@ -2025,10 +2091,8 @@ function run (wsapi_env)
   local html = html5.document { 
     
     html5.title {script: match "(%w+)$"},
-[[
-  <meta charset="utf-8" name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="w3.css">
-]],
+    html5.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
+    html5.link {rel="stylesheet", href="w3.css"},
 
     html5.style {
 [[  
@@ -2040,69 +2104,6 @@ function run (wsapi_env)
   .scn-panel {width:240px; float:left; }
   .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
   .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
-
-// from https://www.w3schools.com/howto/howto_css_switch.asp
-
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 60px;
-  height: 34px;
-}
-
-.switch input { 
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #ccc;
-  -webkit-transition: .4s;
-  transition: .4s;
-}
-
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 26px;
-  width: 26px;
-  left: 4px;
-  bottom: 4px;
-  background-color: white;
-  -webkit-transition: .4s;
-  transition: .4s;
-}
-
-input:checked + .slider {
-  background-color: #2196F3;
-}
-
-input:focus + .slider {
-  box-shadow: 0 0 1px #2196F3;
-}
-
-input:checked + .slider:before {
-  -webkit-transform: translateX(26px);
-  -ms-transform: translateX(26px);
-  transform: translateX(26px);
-}
-
-/* Rounded sliders */
-.slider.round {
-  border-radius: 34px;
-}
-
-.slider.round:before {
-  border-radius: 50%;
-}
-
 ]]},
 
     html5.script {
