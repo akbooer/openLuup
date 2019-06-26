@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2019.06.12",
+  VERSION       = "2019.06.18",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -62,6 +62,7 @@ local ABOUT = {
 -- 2019.05.29  find_file() also looks in built-in/ for 'last chance' files
 -- 2019.06.02  export cat_by_dev table for chdev to set device category (thanks @reneboer)
 -- 2019.06.12  move compile_and_run here from loader (to be used also by console)
+-- 2019.06.16  add loader.dir() to walk search path
 
 
 ------------------
@@ -104,11 +105,11 @@ local shared_environment  = new_environment "openLuup_startup_and_scenes"
 
 ------------------
 
+local lfs = require "lfs"
 local json = require "openLuup.json"
 local vfs  = require "openLuup.virtualfilesystem"
 local scheduler = require "openLuup.scheduler"  -- for context_switch()
 local xml = require "openLuup.xml"
-
 
 local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
 
@@ -225,6 +226,35 @@ function shared_environment.pretty (Lua)    -- 2014 - 2016.03.10   @akbooer
   return val(Lua, 1, '_') 
 end 
 
+
+-- 2019.06.16  dir() walks search path, with optional filename pattern
+local paths = {"openLuup/", "./", "../cmh-lu/" , "files/", "www/"}
+
+local function dir (pattern)
+  local fname = {}
+  for _, path in ipairs(paths) do
+    if lfs.attributes (path) then     -- lfs.dir() thows an error if path doesn't exist
+      for file in lfs.dir (path) do
+        if not pattern or file: match (pattern) then
+          fname[file] = true    -- overwrite duplicates
+        end
+      end
+    end
+    for filepath in vfs.dir() do
+      local file = filepath: match "[^/]+$"       -- remove any leading directory tree
+      if not pattern or file: match (pattern) then
+        fname[file] = true    -- overwrite duplicates
+      end
+    end
+  end
+  local files = {}
+  for f in pairs (fname) do
+      files[#files+1] = f
+  end
+  table.sort (files)
+  local j = 0
+  return function () j = j+1; return files[j] end
+end
 
 -- 2018.11.21  return search path and file descriptor
 local function open_file (filename)
@@ -722,6 +752,7 @@ return {
   assemble_device     = assemble_device_from_files,
   compile_lua         = compile_lua,
   compile_and_run     = compile_and_run,
+  dir                 = dir,              -- walk the search path
   find_file           = find_file,
   new_environment     = new_environment,
   parse_service_xml   = parse_service_xml,

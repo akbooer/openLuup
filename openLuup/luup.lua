@@ -661,7 +661,7 @@ local function call_action (service, action, arguments, device)
     return 401, "Invalid service/action/device", 0, {}
   end
   
-  -- action returns: error, message, jobNo, arrguments
+  -- action returns: error, message, jobNo, arguments
   local e,m,j,a
   
   if devNo == 0 then

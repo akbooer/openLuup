@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.06.10",
+  VERSION       = "2019.06.18",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -60,6 +60,7 @@ local ABOUT = {
 -- 2019.05.15   reinstate scene_watcher to use device states to indicate scene active
 -- 2019.05.23   re-enable triggers in anticipation of "variable updated" events
 -- 2019.06.10   add new openLuup structure (preserved over AltUI edits)
+-- 2019.06.17   add scene history
 
 
 local logs      = require "openLuup.logs"
@@ -88,6 +89,8 @@ ALTUI also provides a great editor interface with the blockly module.
 Apr 2016 - AltUI now provides workflow too.
 
 --]]
+
+local HISTORY_LENGTH = 20   -- number of points in scene history cache
 
 local trigger_warning = {   -- template points to openLuup notification message
   device = 2,
@@ -267,6 +270,14 @@ local function create (scene_json)
 
     final_delay = tonumber(del) or 30
     scene.last_run = os.time()                -- scene run time
+
+    do -- 2019.06.17 scene history
+      local so = scene.openLuup
+      local i = so.hipoint % HISTORY_LENGTH + 1
+      so.history[i] = scene.last_run
+      so.hipoint = i
+    end --
+
     luup_scene.running = true
     devutil.new_userdata_dataversion ()               -- 2016.11.01
     local runner = "command"
@@ -390,7 +401,10 @@ local function create (scene_json)
   scene.triggers    = scn.triggers or {}             -- 2016.05.19
   scene.triggers_operator = "OR"                     -- 2019.05.24  no such thing as AND for events
 
-  scene.openLuup    = {}                              -- 2019.06.10 new private structure
+  scene.openLuup    = {                               -- 2019.06.10 new private structure
+    history = {},                   -- cache
+    hipoint = 0,                    -- pointer
+  }
 
   verify()   -- check that non-existent devices are not referenced
 

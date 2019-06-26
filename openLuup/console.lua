@@ -3,9 +3,9 @@
 module(..., package.seeall)
 
 
-ABOUT = { 
+ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.06.14",
+  VERSION       = "2019.06.22",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -74,6 +74,7 @@ local lfs       = require "lfs"                   -- for backup file listing, an
 local vfs       = require "openLuup.virtualfilesystem"
 local luup      = require "openLuup.luup"         -- not automatically in scope for CGIs
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
+local requests  = require "openLuup.requests"     -- for plugin updates, etc...
 local userdata  = require "openLuup.userdata"     -- for device user_data
 local http      = require "openLuup.http"
 local smtp      = require "openLuup.smtp"
@@ -86,7 +87,9 @@ local wsapi     = require "openLuup.wsapi"        -- for response library
 local loader    = require "openLuup.loader"       -- for static data (devices page)
 local json      = require "openLuup.json"         -- for console_menus.json
 local xml       = require "openLuup.xml"          -- for xml.escape(), and...
-local html5     = xml.html5                       -- html5 and svg libraries
+local html5     = xml.html5                       -- ...html5 and svg libraries
+
+local service_data  = loader.service_data
 
 -- get local copy of w3.css if we haven't got one already
 -- so that we can work offline if required
@@ -121,14 +124,25 @@ local unicode = {
 }
 
 local SID = {
-  altui = "urn:upnp-org:serviceId:altui1",              -- 'DisplayLine1' and 'DisplayLine2'
-  ha    = "urn:micasaverde-com:serviceId:HaDevice1", 		-- 'BatteryLevel'
+  altui   = "urn:upnp-org:serviceId:altui1",              -- 'DisplayLine1' and 'DisplayLine2'
+  ha      = "urn:micasaverde-com:serviceId:HaDevice1", 		-- 'BatteryLevel'
+  switch  = "urn:upnp-org:serviceId:SwitchPower1",        -- on/off control
+  dimming = "urn:upnp-org:serviceId:Dimming1",            -- slider control
 }
-
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
 local script  -- name of this CGI script
+
+-- look for user-defined device panels
+-- named U_xxx.lua, derived from trailing word of device type:
+-- urn:schemas-micasaverde-com:device:TemperatureSensor:1, would be U_TemperatureSensor.lua
+local user_defined = {}
+for f in loader.dir "^U_.-%.lua$" do
+  local name = f: match "^U_(.-)%.lua$"
+  local ok, user = pcall (require, "U_" .. name)
+  if ok then user_defined[name] = user end
+end
 
 -- create new persistent variable
 local function sticky (default, numeric)
@@ -175,7 +189,7 @@ end
 local function dev_or_scene_name (d, tbl)
   d = tonumber(d) or 0
   local name = (tbl[d] or {}).description or 'system'
-  name = name: match "^%s*(.+)"
+  name = name: match "^%s*(.+)" or "???"
   local number = table.concat {'[', d, '] '}
   return number .. name
 end
@@ -242,6 +256,23 @@ local function get_matching_files_from (folder, pattern)
     end)
   table.sort (files, function (a,b) return a.date > b.date end)       -- sort newest to oldest
   return files
+end
+
+
+local function get_device_icon (d)
+  local img  
+  -- user-defined icon
+  local dtype = (d.attributes.device_type or ''): match "(%w+):?%d*$"   -- pick the last word
+  local user = user_defined[dtype] or {}
+  if user.icon then 
+    img = user.icon(d.attributes.id) 
+  else
+    local icon = d:get_icon ()
+    if icon ~= '' and not icon: lower() : match "^http" then icon = "/icons/" .. icon end
+    img = html5.img {src = icon, alt="no icon", style = "width:50px; height:50px;"}
+  end
+
+  return html5.a {href=selfref ("page=device&device=", d.attributes.id), img}
 end
 
 -----------------------------
@@ -346,7 +377,65 @@ function actions.scene_sort (p)
   if order then sticky_scn_sort (order) end
 end
 
---
+function actions.create_device (_,req)
+  local q = req.params
+  local name = q.name or ''
+  if not name:match "%w" then name = "_New_Device_" end
+  if q.name ~= '' and q.d_file and q.i_file then
+    local devNo = luup.create_device (nil, '', q.name, q.d_file, q.i_file)
+    if devNo then     -- change page
+      sticky_device (devNo)
+      return sticky_page "device"
+    end
+  end
+end
+
+function actions.slider (_, req)
+  local q = req.params        -- works for GET or POST
+  local devNo = tonumber(q.dev)
+--  print ("Slider", devNo, q.slider)
+  local dev = luup.devices[devNo]
+  if dev then 
+    -- need to use luup.call_action() so that bridged device actions are handled by VeraBridge
+    local a,b,j = luup.call_action (SID.dimming, "SetLoadLevelTarget", {newLoadlevelTarget=q.slider}, devNo) 
+--    print ("Slider job", a,b,j)
+  end
+end
+
+function actions.switch (_, req)
+  local q = req.params        -- works for GET or POST
+  local devNo = tonumber(q.dev)
+--  local target = q.switch == "on" and 1 or 0
+--  print ("Switch", devNo, q.switch, target)
+  local dev = luup.devices[devNo]
+  if dev then 
+    local v = luup.variable_get (SID.switch, "Target", devNo)
+    local target = v == '1' and '0' or '1'    -- toggle action
+    -- need to use luup.call_action() so that bridged device actions are handled by VeraBridge
+    local a,b,j = luup.call_action (SID.switch, "SetTarget", {newTargetValue=target}, devNo) 
+--    print ("Switch job", a,b,j)
+  end
+end
+
+-- action=update_plugin&plugin=openLuup&update=version
+function actions.update_plugin (_, req)
+  local q = req.params
+  local response = requests.update_plugin (_, {Plugin=q.plugin, Version=q.version})
+  -- TODO: save status return to messages
+end
+
+-- action=call_action (_, req)
+function actions.call_action (_, req)
+  local q = req.POST    -- it must be a post in order to loop through the params
+  if q then
+    local act, srv, dev = q.act, q.srv, q.dev
+    q.act, q.srv, q.dev = nil, nil, nil         -- remove these form the request and use the rest of the parameter list
+    -- action returns: error, message, jobNo, arrguments
+--    print ("ACTION", act, srv, dev)
+    local e,m,j,a = luup.call_action  (srv, act, q, tonumber (dev))
+  end
+end
+
 -- Pages
 --
 
@@ -640,9 +729,7 @@ function pages.sandboxes ()               -- 2018.04.07
   return div
 end
 
-
 --------------------------------
-
 
 function pages.log (p)
   local page = p.page or ''  
@@ -1000,17 +1087,6 @@ function pages.cache (_, req)
     local h = #v.history / 2
     local dname = devname(v.dev)
     if dname ~= prev then 
-      --
---[[
-
-<form action="/action_page.php" name="foo" method="get" onChange="foo.submit()">
-  Points:
-  <input type="range" name="points" min="0" max="100">
-  <input type="submit">
-</form>
-
---]]
-      --
       t.row { {dname, colspan = 5, style = "font-weight: bold"} }
     end
     prev = dname
@@ -1144,6 +1220,70 @@ end
 -- Devices
 --
 
+local function get_display_variables (d)
+  local vars = (d.services[SID.altui] or {}).variables or {}
+  local line1 = (vars.DisplayLine1 or {}) .value or ''
+  local line2 = (vars.DisplayLine2 or {}) .value or ''
+  return line1, line2
+end
+
+local function device_controls (d)
+  local switch, slider = '',''
+  local srv = d.services[SID.switch]
+  if srv then    -- we need an on/off switch
+--    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
+    switch = html5.form {
+      action=selfref (), method="post", 
+        html5.input {name="action", value="switch", hidden=1},
+        html5.input {name="dev", value=d.attributes.id, hidden=1},
+        html5.input {type="image", class="w3-hover-opacity",
+          src="/icons/power-off-solid.svg", alt='on/off', height=24, width=24}
+--        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
+      }
+  end
+  srv = d.services[SID.dimming]
+  if srv then    -- we need a slider
+    local LoadLevelTarget = (srv.variables.LoadLevelTarget or {}).value or 0
+    slider = html5.form {
+      oninput="LoadLevelTarget.value = slider.valueAsNumber + ' %'",
+      action=selfref (), method="post", 
+        html5.input {name="action", value="slider", hidden=1},
+        html5.input {name="dev", value=d.attributes.id, hidden=1},
+        html5.output {name="LoadLevelTarget", ["for"]="slider", value=LoadLevelTarget, LoadLevelTarget .. '%'},
+        html5.input {type="range", name="slider", onchange="this.form.submit();",
+          value=LoadLevelTarget, min=0, max=100, step=1},
+      }
+  end
+  return switch, slider
+end
+
+local function device_panel (self)          -- 2019.05.12
+  local id = self.attributes.id
+  local line1, line2 = get_display_variables (self)
+  local img = get_device_icon (self)
+  
+  local flag = unicode.white_star
+  if self.attributes.bookmark == "1" then flag = unicode.black_star end
+  local bookmark = html5.a {class = "nodec", href=selfref("action=bookmark&dev=", id), flag}
+  
+  local battery = (((self.services[SID.ha] or {}) .variables or {}) .BatteryLevel or {}) .value
+  battery = battery and (battery .. '%') or ''
+  
+  local switch, slider = device_controls(self)
+  local div, span = html5.div, html5.span
+  local panel = html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card dev-panel", 
+    div {class="top-panel", 
+      bookmark, ' ', truncate (devname (id)), span{style="float: right;", battery }},
+    div {class = "w3-row", style="height:54px; padding:2px;", 
+      div {class="w3-col", style="width:50px;", img} , 
+      div {class="w3-padding-small w3-rest w3-display-container", style="height:50px;",
+        line1, html5.br{}, line2,
+        div {class="w3-display-topright w3-padding-small", switch},
+        div {class="w3-display-bottommiddle", slider},
+        } } }
+  return panel
+end
+
 -- generic device page
 local function device_page (p, fct)
   local devNo = sticky_device()
@@ -1153,29 +1293,38 @@ local function device_page (p, fct)
   return page_wrapper (fct (d, title))   -- call back with actual device    
 end
 
-local function get_display_variables (d)
-  local vars = (d.services[SID.altui] or {}).variables or {}
-  local line1 = (vars.DisplayLine1 or {}) .value or ''
-  local line2 = (vars.DisplayLine2 or {}) .value or ''
-  return line1, line2
-end
-
 function pages.control (p)
   return device_page (p, function (d, title)
+    local dtype = (d.attributes.device_type or ''): match "(%w+):?%d*$"   -- pick the last word
+    local user = user_defined[dtype] or {}
     local t = html5.table {class = "w3-small"}
-    local line1, line2 = get_display_variables (d)
+    local s
+    if user.control then s = html5.div {class="w3-rest", user.control (d.attributes.id)} end
     local states = d:get_shortcodes ()
     for n,v in sorted (states) do t.row {n, nice(v)} end
-    local br = html5.br {}
-    return title .. " - status and control", br, line1, br, line2, br, t
+    return title .. " - status and control", 
+      html5.div {class="w3-row", 
+        html5.div{class="w3-col", style="width:350px;", device_panel(d), t}, s}
   end)
 end
 
-function pages.attributes (p)
+function pages.attributes (p, req)
   return device_page (p, function (d, title)
-    local attr = {}
-    for n,v in sorted (d.attributes) do attr[#attr+1] = {n, nice(v)} end
-    return title .. " - attributes", create_table_from_data (nil, attr)
+    local q = req.POST
+    local a = q.attribute
+    local v = q.value
+    if a and v and d.attributes[a] then d:attr_set (a, v) end -- only change existing attribute
+    --
+    local attr = html5.div{class = "w3-container"}
+    for n,v in sorted (d.attributes) do 
+      attr[#attr+1] = html5.form{
+        class = "w3-form w3-padding-small", method="post", style="float:left", action=selfref (),
+        html5.label {html5.b{n}}, 
+        html5.input {hidden=1, name="attribute", value=n},
+        html5.input {class="w3-input w3-round w3-border",type="text", size=28, 
+          name="value", value = nice(v, 99), autocomplete="off", onchange="this.form.submit()"} }
+    end
+    return title .. " - attributes", attr
   end)
 end
 
@@ -1202,10 +1351,16 @@ function pages.variables (p)
     local t = html5.table {class = "w3-small"}
     t.header (s.columns {"id", "service", '', "variable", "value"})
     local info = {}
+    local history, graph = ' ', ' '
     for n,v in pairs (d.variables) do
-      local history =  v.history and #v.history > 2 and 
-                          html5.a {href = selfref ("page=cache_history&variable=", n), "history"} or ''
-      info[#info+1] = {v.id, v.srv, history, v.name, nice(v.value) }
+      if v.history and #v.history > 2 then 
+        history = html5.a {href=selfref ("page=cache_history&variable=", n), title="history", 
+                html5.img {width="18px;", height="18px;", alt="history", src="/icons/calendar-alt-regular.svg"}} 
+        graph = html5.a {href=selfref ("page=graphics&variable=", n), title="graph", 
+                html5.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
+      end
+      local actions = html5.div {history, graph}
+      info[#info+1] = {v.id, v.srv, actions, v.name, nice(v.value) }
     end
     s.sort (info, p.sort)
     for _, row in ipairs (info) do 
@@ -1218,26 +1373,38 @@ end
 
 function pages.actions (p)
   return device_page (p, function (d, title)
-    local sd = loader.service_data
-    local t = html5.table {class = "w3-small"}
-    t.header {"serviceId", "action", "arguments"}
+    local devNo = d.attributes.id
+    local t = html5.div {class = "w3-container"}
     for s,srv in sorted (d.services) do
-      local service_actions = (sd[s] or {}) .actions
+      local service_actions = (service_data[s] or {}) .actions
       local action_index = {}         -- service actions indexed by name
       for _, act in ipairs (service_actions or {}) do
         action_index[act.name] = act.argumentList or {}
       end
       for a in sorted (srv.actions) do
-        t.row {s, a}
+        local args = html5.div {class="w3-rest"}
+        local form = html5.form {method="post", action=selfref (),
+          html5.input {hidden=1, name="action", value="call_action"},
+          html5.input {hidden=1, name="dev", value=devNo},
+          html5.input {hidden=1, name="srv", value=s},
+          html5.div{class = "w3-third", -- w3-padding-small",
+            html5.input {class="w3-button w3-round w3-blue", type="submit", name="act", title=s, value=a} },
+            args}
+        t[#t+1] = html5.div {class="w3-container w3-padding w3-border-top", form}
         local action_arguments = action_index[a]
         if action_arguments then
           for _, v in ipairs (action_arguments) do
-            if (v.direction or ''): match "in" then t.row {'','', v.name} end
+            if (v.direction or ''): match "in" then 
+              args[#args+1] = html5.div {class="w3-row-padding w3-padding-small", -- w3-round",
+                html5.div {class="w3-quarter",html5.label {v.name}},
+                html5.div {class="w3-rest", 
+                  html5.input {style="width:100%", class="w3-border-0", type="text", name = v.name} } }
+            end
           end
         end
       end
     end
-    return title .. " - implemented actions", t
+    return title .. " - implemented actions", html5.div {class="w3-half", t}
   end)
 end
 
@@ -1288,8 +1455,12 @@ end
 
 local function rooms_selector ()
   local current_room = sticky_room()
-  local rooms = {"All Rooms", "Favourites", "No Room"}
+  local rooms = {}
   for _,r in pairs (luup.rooms) do rooms[#rooms+1] = r end
+  table.sort (rooms)
+  table.insert (rooms, 1, "No Room")    -- note reverse order
+  table.insert (rooms, 1, "Favourites")
+  table.insert (rooms, 1, "All Rooms")
   return filter_menu (rooms, current_room, "room=")
 end
 
@@ -1312,37 +1483,6 @@ local function room_wanted ()
 end
 
 function pages.devices (p)
-  local static_data = loader.static_data
-  local function panel_wrapper (...)
-    return html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card dev-panel", ...}
-  end
-   
-  local function device_panel (self)          -- 2019.05.12
-    local id = self.attributes.id
-    local line1, line2 = get_display_variables (self)
-    
-    local json_file = self.attributes.device_json or ''   -- such a shame to have to use the JSON file!
-    local icon = (static_data[json_file] or {}) .default_icon or ''
-    if icon ~= '' and not icon: lower() : match "^http" then icon = "/icons/" .. icon end
-    local img = html5.img {src = icon, alt="no icon", style = "width:48px; height:48px;"}
-    img = html5.a {href=selfref ("page=device&device=", id), img} -- ********
-    
-    local flag = unicode.white_star
-    if self.attributes.bookmark == "1" then flag = unicode.black_star end
-    local bookmark = html5.a {class = "nodec", href=selfref("action=bookmark&dev=", id), flag}
-    
-    local battery = (((self.services[SID.ha] or {}) .variables or {}) .BatteryLevel or {}) .value
-    battery = battery and (battery .. '%') or ''
-    
-    local div, span = html5.div, html5.span
-    local panel = panel_wrapper (
-      div {class="top-panel", 
-        bookmark, ' ', truncate (devname (id)), span{style="float: right;", battery }},
-      div {div {style = "clear:none;",
-        div {style="float: left; clear: none; margin:2px;", img}, 
-        div {style="float: left; clear: right;", span {line1, html5.br{}, line2 } } } } )
-    return panel
-  end
   
   -- devices   
   local devs = html5.div {class="w3-rest" }
@@ -1409,6 +1549,16 @@ function pages.timers (p)
     return title .. " - scene timers", pre
   end)
 end
+
+function pages.history (p)
+  return scene_page (p, function (scene, title)
+    local h = {}
+    for i,v in ipairs (scene: user_table() .openLuup.history) do h[i] = {nice(v)} end
+    table.sort (h, function (a,b) return a[1] > b[1] end)
+    local t = create_table_from_data  ({"date/time"}, h)
+    return title .. " - scene history", t
+  end)
+end
   
 function pages.lua (p)
   return scene_page (p, function (scene, title)
@@ -1432,12 +1582,10 @@ function pages.json (p)
 end
 
 function pages.scenes (p)
-
-  local function panel_wrapper (...)
-    return html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel", ...}
-  end
   local function scene_panel (self)
     local utab = self: user_table()
+    
+    --TODO: move scene next run code to scenes module
     local id = utab.id
     local earliest_time
     for _,timer in ipairs (utab.timers or {}) do
@@ -1450,24 +1598,34 @@ function pages.scenes (p)
     local last_run = utab.last_run
     last_run = last_run and table.concat {unicode.check_mark, ' ', nice (last_run)} or ''
     
+    local div = html5.div
     local run = self.paused 
             and 
-              html5.span {class = "w3-xxlarge w3-text-grey", title="scene is paused",
-                "&nbsp;", unicode.double_vertical_bar} -- pause
+                html5.img {width=48, height=48, 
+                  title="scene is paused", src="icons/pause-circle.svg"} 
             or
-              html5.a {class= "w3-xxlarge w3-hover-border w3-text-blue nodec", title="run scene",
-                href= selfref("action=run_scene&scn=", id), 
-                 "&nbsp;", unicode.black_right_pointing_triangle}
-    local edit = html5.a {href= selfref("page=scene&scene=", id), "edit", title="view/edit scene" }-- ********
-    local div = html5.div
+                html5.a {href= selfref("action=run_scene&scn=", id), 
+                  html5.img {width=48, height=48, title="run scene", src="icons/play-circle.svg"} }
+    
+    local edit_clone_history = div {class="w3-wide",
+      html5.a {href= selfref("page=scene&scene=", id), title="view/edit scene",
+        html5.img {width=18, height=18, src="icons/edit.svg"} },
+      html5.a {href= selfref("action=clone&scene=", id), title="clone scene",
+        html5.img {width=18, height=18, src="icons/clone.svg"} },
+      html5.a {href= selfref("page=history&scene=", id), title="scene history",
+        html5.img {width=18, height=18, src="icons/calendar-alt-regular.svg"} } }
     local flag = utab.favorite and unicode.black_star or unicode.white_star
     local bookmark = html5.a {class="nodec", href=selfref("action=bookmark&scn=", id), flag}
-    local panel = panel_wrapper (
-      div {class="top-panel", 
-        bookmark, ' ', truncate (scene_name(id)) }, 
-      div {div {style = "clear:none;",
-        div {style="float: left; clear: none; margin:2px;", run, html5.br{}, edit}, 
-        div {style="float: right; padding-right:8px;", html5.span {last_run, html5.br{}, next_run } } } } )
+    local br = html5.br {}
+    
+    local panel = html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel",
+      div {class="top-panel", bookmark, ' ', truncate (scene_name(id)) }, 
+--      div {class="w3-padding-small w3-border-bottom", bookmark, ' ', truncate (scene_name(id)) }, 
+      div {class = "w3-display-container", style ="height:70px",
+        div {class="w3-padding-small w3-display-left", run } , 
+        div {class="w3-padding-small w3-display-topright", last_run, br, next_run } ,
+        div {class="w3-padding-small w3-display-bottommiddle", edit_clone_history } 
+        }  } 
     return panel
   end
   
@@ -1506,13 +1664,14 @@ end
   
 -- text editor
 
-local function code_editor (code, height, language)
+local function code_editor (code, height, language, readonly)
   code = code or ''
   height = (height or "500") .. "px;"
   language = language or "lua"
   local submit_button = html5.input {class="w3-button w3-round w3-green w3-margin", value="Submit"}
   if options.Ace_URL ~= '' then
     submit_button.onclick = "EditorSubmit()"
+    if readonly then submit_button = nil end
     local page = html5.div {id="editor", class="w3-border", style = "width: 100%; height:"..height, code }
     local form = html5.form {action= selfref (), method="post", enctype="multipart/form-data",
       html5.input {type="hidden", name="lua_code", id="lua_code"}, submit_button}
@@ -1531,6 +1690,7 @@ local function code_editor (code, height, language)
   
   else
     submit_button.type = "submit"
+    if readonly then submit_button = nil end
     local form = html5.form {action= selfref (), method="post", enctype="multipart/form-data",
       html5.div {
         html5.textarea {name="lua_code", id="lua_code", 
@@ -1569,7 +1729,7 @@ local function lua_exec (req, codename, title)
     if not ok then prt ("ERROR: " .. err) end
   end
   local printed = table.concat (P)
-  local _, nlines = printed:gsub ('\n','\n')
+  local _, nlines = printed:gsub ('\n',{})
   --
   local form =  html5.div { class = "w3-col w3-half",
     html5_title {title or codename},  code_editor (lua_code (req, codename), 500) }  
@@ -1587,6 +1747,16 @@ pages["lua_test2"]  = function (_, req) return lua_exec (req, "LuaTestCode2", "L
 pages["lua_test3"]  = function (_, req) return lua_exec (req, "LuaTestCode3", "Lua Test Code #3") end
 pages.lua_code = pages.lua_test
 
+function pages.viewer (_, req)
+  local text, language
+  local file = req.params.file or ''
+  language = file: match "%w+$" or ''
+  text = loader.raw_read (file) or ''
+  local readonly = true
+  local div = html5.div {code_editor (text, 500, language, readonly)}
+  return page_wrapper (file,  div)
+end
+
 function pages.graphics (p, req)
   local background = p.background or "GhostWhite"
   local iframe = html5.iframe {
@@ -1598,6 +1768,8 @@ function pages.graphics (p, req)
 end
 
 function pages.rooms_table ()
+--  local create = html5.a {class="w3-button w3-round w3-red", 
+--    href = selfref "page=create_room", "+ Create", title="create new room"}
   local t = html5.table {class = "w3-small"}
   t.header {"id", "name"}
   for n, v in sorted (luup.rooms) do
@@ -1606,13 +1778,38 @@ function pages.rooms_table ()
   return page_wrapper ("Rooms Table", t)
 end
 
+function pages.create_device ()
+  local function options (label_text, name, pattern, value)
+    local listname = name .. "_options"
+    local label = html5.label {label_text}
+    local input = html5.input {list=listname, name=name, value=value, class="w3-input"}
+    local datalist = html5.datalist {id= listname}
+    for file in loader.dir (pattern) do
+      datalist[#datalist+1] = html5.option {value=file}
+    end
+    return html5.div {label, input, datalist}
+  end
+
+  local form = html5.form {class = "w3-container w3-form w3-third", 
+    action = selfref "action=create_device", method="post", enctype="multipart/form-data",
+    html5.label {"Device name"},
+    html5.input {class="w3-input", type="text", name="name", autocomplete="off", },
+    options ("Device file", "d_file", "^D_.-%.xml$", "D_"),
+    options ("Implementation file", "i_file", "^I_.-%.xml$", "I_"),
+    html5.input {class="w3-button w3-round w3-green w3-margin", type="submit", value="Create Device"},
+  }
+  return html5.div {class="w3.card", form}
+end
+
 function pages.devices_table ()
+  local create = html5.a {class="w3-button w3-round w3-green", 
+    href = selfref "page=create_device", "+ Create", title="create new device"}
   local t = html5.table {class = "w3-small"}
   t.header {"id", "name"}
   for n, v in sorted (luup.devices) do
     t.row {n,v.description}
   end
-  return page_wrapper ("Devices Table", t)
+  return page_wrapper ("Devices Table", create, t)
 end
 
 function pages.scenes_table ()
@@ -1624,17 +1821,19 @@ function pages.scenes_table ()
 	 room_num = 0,
 	 running = true
 }]]
+  local create = html5.a {class="w3-button w3-round w3-green", 
+    href = selfref "page=create_scene", "+ Create", title="create new scene"}
   local s = {}
   for n,x in pairs (luup.scenes) do
     s[#s+1] = {n,  x.description, luup.rooms[x.room_num] or "no room", tostring (x.paused)}
   end
   local t = create_table_from_data ({"id", "name", "room", "paused"}, s)
-  return page_wrapper ("Scenes Table", t)
+  return page_wrapper ("Scenes Table", create, t)
 end
 
 function pages.plugins_table ()
   local t = html5.table {class = "w3-bordered"}
-  t.header {'', "Name","Version", "Auto", "Files", "Actions", "Update", "Unistall"}
+  t.header {'', "Name","Version", "Auto", "Files", "Actions", "Update", '', "Unistall"}
   local IP2 = userdata.attributes.InstalledPlugins2 or userdata.default_plugins
   for _, p in ipairs (IP2) do
     -- http://apps.mios.com/plugin.php?id=8246
@@ -1646,12 +1845,27 @@ function pages.plugins_table ()
     local files = {}
     for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
     table.sort (files)
-    table.insert (files, 1, "Files")
-    local choice = {style="width:12em;", onchange="location = this.value;" }
+--    local choice = {style="width:12em;", onchange="location = this.value;", 
+    local choice = {style="width:12em;", name="file", onchange="this.form.submit()", 
+      html5.option {value='', "Files", disabled=1, selected=1}}
     for _, f in ipairs (files) do choice[#choice+1] = html5.option {value=f, f} end
-    files = html5.form {html5.select (choice)}
-    local help = html5.a {href=p.Instructions or '', target="_blank", "help"}
-    t.row {icon, p.Title, version, p.AutoUpdate, files, help, '',''} 
+    files = html5.form {action=selfref(), 
+      html5.input {hidden=1, name="page", value="viewer"},
+      html5.select (choice)}
+    local help = html5.a {href=p.Instructions or '', target="_blank", title="help",
+      html5.img {src="/icons/question-circle-solid.svg", alt="help", height=24, width=24} }
+    local info = html5.a {target="_blank", title="info",
+      href=table.concat {"http://github.com/",p.Repository.source or '',"#readme"}, 
+      html5.img {src="/icons/info-circle-solid.svg", alt="info", height=24, width=24} }
+    local update = html5.form {
+      action = selfref(), method="post",
+      html5.input {hidden=1, name="action", value="update_plugin"},
+      html5.input {hidden=1, name="plugin", value=p.id},
+      html5.div {class="w3-display-container",
+      html5.input {type = "text", autocomplete="off", name="version", value=''},
+      html5.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
+        title="update", alt='', height=28, width=28} } }
+    t.row {icon, p.Title, version, p.AutoUpdate, files, html5.span{help, info}, update, ''} 
   end
   return page_wrapper ("Plugins", t)
 end
@@ -1673,6 +1887,7 @@ function pages.reload ()
   return page_wrapper "Please wait a moment while system reloads"
 end
 
+pages.reload_luup_engine = pages.reload    -- alias for top-level menu
   
 -- switch dynamically between different menu styles
 local user_json = options.Menu ~= '' and options.Menu
@@ -1691,16 +1906,17 @@ function pages.user    () return pages.home (user_json) end
 local a, div = html5.a, html5.div
  
 local page_groups = {
+    ["House Mode"]= {"home", "away", "night", "vacation"},
     ["Historian"] = {"summary", "cache", "database", "orphans"},
     ["System"]    = {"parameters", "top_level", "globals", "states", "sandboxes", "RELOAD"},
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "user_data"},
-    ["Scene"]     = {"header", "triggers", "timers", "lua", "group_actions", "json"},
+    ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
     ["Servers"]   = {"http", "smtp", "pop3", "udp", "sockets", "file_cache"},
     ["Utilities"] = {"backups", "images", "trash"},
     ["Menu Style"]= {"current", "classic", "default", "altui", "user"},
     ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3"},
-    ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "triggers_table", "scenes_table"},
+    ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "scenes_table", "triggers_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
   }
 
@@ -1719,19 +1935,22 @@ local function short_name(name)
   return short
 end
 
+local function confirm (name)
+  return name:lower():match "reload" and "return confirm('System Reload: Are you sure?')" or nil
+end
+
 -- make a page link button
 local function make_button(name, current)
-  local confirm
   local short = short_name(name)
   local colour = "w3-amber"
-  if short == "reload" then 
+  local onclick = confirm(short)
+  if onclick then 
     colour = "w3-red"
-    confirm = "return confirm('System Reload: Are you sure?')"
   elseif short == current then 
     colour = "w3-grey"
   end
   local link = {class="w3-button w3-round " .. colour, href=selfref ("page=", short), 
-                  onclick=confirm, short_name_index[short]}
+                  onclick=onclick, short_name_index[short]}
   return html5.a (link)
 end
 
@@ -1826,8 +2045,9 @@ local function dynamic_menu ()
         if item == "hr" then 
           border = " w3-border-top"                   -- give next item a line above...
         else
+          local onclick = confirm (item)            -- check for confirm box on reload
           dropdown_content[#dropdown_content+1] = 
-            a {class="w3-bar-item w3-button" .. border, href=selfref ("page=", short_name(item)), item}
+            a {class="w3-bar-item w3-button" .. border, href=selfref ("page=", short_name(item)), onclick = onclick, item}
           border = ''
         end
       end
@@ -1843,34 +2063,36 @@ end
 -- run()
 --
 
+local current, previous = "about", "about"
+
 function run (wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
   local function noop() end
 
   local req = wsapi.request.new (wsapi_env)
   script = req.script_name      -- save to use in links
-  local p = req.GET 
+  local p = req.params 
   
-  local previous = sticky_page ()
-  local current  = sticky_page (p.page)
+  if p.page and p.page ~= current then previous = current end
+  current = sticky_page (p.page)
   
   sticky_room (p.room)
   sticky_device (p.device)
   sticky_scene (p.scene)
 --  sticky_variable = (p.variable)
   
+  current = (actions[p.action] or noop) (p, req) or current   -- action may change page
+  
   local navigation, actual_page = page_nav (current, previous)
-  do (actions[p.action] or noop) (p, req) end                   -- do any action
+
   local sheet = (pages[actual_page] or noop) (p, req)
   local formatted_page = div {class = "w3-container", navigation, sheet}
   
   local html = html5.document { 
     
     html5.title {script: match "(%w+)$"},
-[[
-  <meta charset="utf-8" name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="w3.css">
-]],
+    html5.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
+    html5.link {rel="stylesheet", href="w3.css"},
 
     html5.style {
 [[  
@@ -1878,11 +2100,11 @@ function run (wsapi_env)
   a.nodec { text-decoration: none; } 
   th,td {width:1px; white-space:nowrap; padding: 0 16px 0 16px;}
   table {table-layout: fixed; margin-top:20px}
-  .dev-panel {width:240px; height: 80px; float:left; }
-  .scn-panel {width:240px; height:100px; float:left; }
+  .dev-panel {width:240px; float:left; }
+  .scn-panel {width:240px; float:left; }
   .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
+  .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
 ]]},
---  a.nodec:hover { text-decoration: underline; }
 
     html5.script {
 [[

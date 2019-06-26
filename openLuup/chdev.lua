@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.06.06",
+  VERSION       = "2019.06.19",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -57,6 +57,7 @@ local ABOUT = {
 -- 2019.05.04  add status_message field to device and status_set/get()
 -- 2019.06.02  chdev.create() sets device category from device type, if necessary (thanks @reneboer)
 --             ALSO, allow missing serviceId in variable definitions to set attribute (thanks @rigpapa)
+-- 2019.06.19  add dev:get_icon() to return dynamic icon name (for console)
 
 
 local logs      = require "openLuup.logs"
@@ -218,8 +219,8 @@ local function create (x)
 -- Note: that all the entries in dev.attributes already have the right type, so no need for coercions...
   local luup_device =     -- this is the information that appears in the luup.devices table
     {
-      category_num        = tonumber(a.category_num),
-      description         = a.name,
+      category_num        = a.category_num,
+      description         = a.name or '???',
       device_num_parent   = a.id_parent,
       device_type         = a.device_type,
       embedded            = false,                  -- if embedded, it doesn't have its own room
@@ -232,7 +233,7 @@ local function create (x)
       room_num            = tonumber(a.room),         -- 2018.07.02
       subcategory_num     = tonumber(a.subcategory_num),
       udn                 = a.local_udn,
-      user                = a.username or '',  
+      user                = a.username or '',
       bookmark            = 0,                      -- openLuup private value
     }
 
@@ -297,6 +298,55 @@ local function create (x)
       }
     end
     return states
+  end
+
+  -----------------------------
+  -- dynamic icons
+
+  local op = {}
+  op.noop  = function () end
+  op["=="] = function (a,b) return a == b end
+  op["!="] = function (a,b) return a ~= b end
+  op["<="] = function (a,b) return a <= b end
+  op[">="] = function (a,b) return a >= b end
+  op["<"]  = function (a,b) return a <  b end
+  op[">"]  = function (a,b) return a >  b end
+
+  local function is_true (d, c)
+    local srv = d.services[c.service]
+    if not srv then return end
+    local var = srv.variables[c.variable]
+    if not var then return end
+    local val = type(c.value) == "number" and tonumber (var.value) or var.value
+    local fct = op[c.operator] or function() end
+    return fct (val, c.value)
+  end
+
+  function dev: get_icon ()
+    local icon = "zwave_default.png"
+    local json_file = self.attributes.device_json
+    local sd = loader.static_data[json_file]
+    if not sd then return icon end        -- can't find static data
+
+    icon = sd.default_icon or icon
+    local si = sd.state_icons
+    if not si then return icon end        -- use default device icon
+
+    local cn, scn = self.category_num, self.subcategory_num
+    for _, set in ipairs (si) do
+      -- each set is {conditions = {}...}, img = '...'} and all need to be met
+      local met = true
+      for _, c in ipairs (set.conditions or {}) do
+        local cat = (not c.category_num or c.category_num == cn) and
+                    (not c.subcategory_num or c.subcategory_num == scn)
+        met = met and cat and is_true (self, c)
+      end
+      if met then
+        icon = set.img or icon
+        break
+      end
+    end
+    return icon
   end
 
   return setmetatable (luup_device, {
