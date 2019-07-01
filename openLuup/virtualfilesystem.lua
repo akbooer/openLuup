@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.06.10",
+  VERSION       = "2019.07.01",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -22,9 +22,9 @@ local ABOUT = {
 ]]
 }
 
-local html5 = require "openLuup.xml" .html5       -- for SVG icons
 local json  = require "openLuup.json"             -- for JSON device file encoding
 local xml   = require "openLuup.xml"              -- for XML device file encoding
+local xhtml = xml.html5                           -- for SVG icons
 
 -- the loader cache is preset with these files
 
@@ -69,7 +69,7 @@ end
 
 local openLuup_svg = (
   function (N)
-    local s = html5.svg {height = N, width  = N,
+    local s = xhtml.svg {height = N, width  = N,
       viewBox= table.concat ({0, 0,12, 12}, ' '),
       xmlns="http://www.w3.org/2000/svg" ,
       style="border: 0; margin: 0; background-color:#F0F0F0;" }
@@ -82,6 +82,20 @@ local openLuup_svg = (
       g0:rect (5,0,  2,12)
     return tostring(s)
   end) (60)
+
+--local x = xhtml
+--local D_openLuup_dev = xml.encodeXMLDocument {
+--  x.root {xmlns = "urn:schemas-upnp-org:device-1-0",
+--    x.device {
+--      x.deviceType    "openLuup",
+--      x.friendlyName  "openLuup",
+--      x.manufacturer  "akbooer",
+--      x.staticJson    "D_openLuup.json",
+--      x.serviceList {
+--        x.service {x.serviceType "openLuup", x.serviceId "openLuup", x.SCPDURL "S_openLuup.xml"}}},
+--      x.implementationList {
+--        x.implementationFile "I_openLuup.xml"
+--      }}}
 
 local D_openLuup_dev = xml.encodeDocument {
   root = {_attr = {xmlns="urn:schemas-upnp-org:device-1-0"},
@@ -119,10 +133,10 @@ local D_openLuup_json = json.encode {
         Display (50,120, 75,20,  "openLuup", "Version")),
       ControlGroup (2, "label", 0,4, 
         Display (50,160, 75,20),
-        Label ("donate", html5.a {href="console", target="_blank", "CONSOLE interface"})),
+        Label ("donate", xhtml.a {href="console", target="_blank", "CONSOLE interface"})),
       ControlGroup (2, "label", 0,4,
         Display (50,200, 75,20),
-        Label ("donate", html5.a {href="https://www.justgiving.com/DataYours/", target="_blank",
+        Label ("donate", xhtml.a {href="https://www.justgiving.com/DataYours/", target="_blank",
                 "If you like openLuup, you could DONATE to Cancer Research UK right here"}))},
    }},
   eventList2 = {
@@ -243,7 +257,7 @@ local S_openLuup_svc = [[
 
 local AltAppStore_svg = (
   function (N)
-    local s = html5.svg {height = N, width  = N,
+    local s = xhtml.svg {height = N, width  = N,
       viewBox= table.concat ({-24,-24, 48,48}, ' '),
       xmlns="http://www.w3.org/2000/svg" ,
       style="border: 0; margin: 0; background-color:White;" }
@@ -440,7 +454,7 @@ local VeraBridge_svg = (
     local background = "White"
     local Grey = "#504035"  -- was "#404040"
     local mystyle = "fill:%s; stroke-width:%s; stroke:%s;"
-    local s = html5.svg {height = N, width  = N,
+    local s = xhtml.svg {height = N, width  = N,
       viewBox= table.concat ({-24,-24, 48,48}, ' '),
       xmlns="http://www.w3.org/2000/svg" ,
       style="border: 1; margin: 0; background-color:" .. background }
@@ -1200,7 +1214,7 @@ local manifest = {
 
 do -- add font-awesome icon SVGs
   local name = "icons/%s.svg"
-  local svg  = html5.svg {xmlns="http://www.w3.org/2000/svg", fill="grey"}
+  local svg  = xhtml.svg {xmlns="http://www.w3.org/2000/svg", fill="grey"}
   for n,v in pairs (fa) do
     svg[1] = v
     manifest [name: format(n)] = tostring(svg)

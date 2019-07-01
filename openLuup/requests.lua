@@ -714,7 +714,12 @@ end
 
 -- eg:  /data_request?id=action&output_format=json&DeviceNum=0&serviceId=urn:micasaverde-com:serviceId:HomeAutomationGateway1&action=SetHouseMode&Mode=2
 -- with response:
---{"u:SetHouseModeResponse": {"OK": "OK"}}
+--   {"u:SetHouseModeResponse": {"OK": "OK"}}
+-- or, in XML
+--   <?xml version="1.0"?>
+--   <u:SetHouseModeResponse xmlns:u="urn:schemas-micasaverde-com:service:UnknownService:1">
+--     <OK>OK</OK>
+--   </u:SetHouseModeResponse>
 
 local function action (_,p,f)
   -- notice that the argument list is the full HTTP query including DeviceNum, serviceId, and action

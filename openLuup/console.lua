@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.06.22",
+  VERSION       = "2019.06.30",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -87,9 +87,7 @@ local wsapi     = require "openLuup.wsapi"        -- for response library
 local loader    = require "openLuup.loader"       -- for static data (devices page)
 local json      = require "openLuup.json"         -- for console_menus.json
 local xml       = require "openLuup.xml"          -- for xml.escape(), and...
-local html5     = xml.html5                       -- ...html5 and svg libraries
-
-local service_data  = loader.service_data
+local xhtml     = xml.xhtml                       -- ...html and svg libraries
 
 -- get local copy of w3.css if we haven't got one already
 -- so that we can work offline if required
@@ -110,6 +108,8 @@ local options = luup.attr_get "openLuup.Console" or {}   -- get configuration pa
       EditorTheme = "eclipse",
 ]]
 --
+
+local service_data  = loader.service_data
 
 local unicode = {
   double_vertical_bar = "&#x23F8;",
@@ -132,7 +132,7 @@ local SID = {
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
-local script  -- name of this CGI script
+local script_name  -- name of this CGI script
 
 -- look for user-defined device panels
 -- named U_xxx.lua, derived from trailing word of device type:
@@ -166,7 +166,7 @@ local sticky_scene    = sticky_number (1)
 local sticky_dev_sort = sticky "Sort by Name"   -- device sort by id / name
 local sticky_scn_sort = sticky "All Scenes"
 
-local function selfref (...) return table.concat {script, '?', ...} end   -- for use in hrefs
+local function selfref (...) return table.concat {script_name, '?', ...} end   -- for use in hrefs
 
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
 
@@ -269,23 +269,23 @@ local function get_device_icon (d)
   else
     local icon = d:get_icon ()
     if icon ~= '' and not icon: lower() : match "^http" then icon = "/icons/" .. icon end
-    img = html5.img {src = icon, alt="no icon", style = "width:50px; height:50px;"}
+    img = xhtml.img {src = icon, alt="no icon", style = "width:50px; height:50px;"}
   end
 
-  return html5.a {href=selfref ("page=device&device=", d.attributes.id), img}
+  return xhtml.a {href=selfref ("page=device&device=", d.attributes.id), img}
 end
 
 -----------------------------
 
-local function html5_title (...) return html5.h4 {...} end
-local function red (x) return ('<font color="crimson">%s</font>'): format (x)  end
+local function html5_title (...) return xhtml.h4 {...} end
+local function red (x) return xhtml.span {class = "w3-red", x}  end
 local function status_number (n) if n ~= 200 then return red (n) end; return n end
-local function page_wrapper (title, ...) return html5.div {html5_title (title), ...} end
+local function page_wrapper (title, ...) return xhtml.div {html5_title (title), ...} end
 
 
 -- make a simple HTML table from data
 local function create_table_from_data (columns, data, formatter)
-  local tbl = html5.table {class="w3-small"}
+  local tbl = xhtml.table {class="w3-small"}
   tbl.header (columns)
   for i,row in ipairs (data) do 
     if formatter then formatter (row, i) end  -- pass the formatter both current row and row number
@@ -309,7 +309,7 @@ local function sorted_table ()
   local function columns (titles)
     local header = {}
     for i, title in ipairs (titles) do
-      header[i] = html5.a {title, href = selfref ("sort=", i)}
+      header[i] = xhtml.a {title, href = selfref ("sort=", i)}
     end
     return header
   end
@@ -393,35 +393,32 @@ end
 function actions.slider (_, req)
   local q = req.params        -- works for GET or POST
   local devNo = tonumber(q.dev)
---  print ("Slider", devNo, q.slider)
   local dev = luup.devices[devNo]
   if dev then 
     -- need to use luup.call_action() so that bridged device actions are handled by VeraBridge
     local a,b,j = luup.call_action (SID.dimming, "SetLoadLevelTarget", {newLoadlevelTarget=q.slider}, devNo) 
---    print ("Slider job", a,b,j)
+    local _={a,b,j}   -- TODO: status return to messages?
   end
 end
 
 function actions.switch (_, req)
   local q = req.params        -- works for GET or POST
   local devNo = tonumber(q.dev)
---  local target = q.switch == "on" and 1 or 0
---  print ("Switch", devNo, q.switch, target)
   local dev = luup.devices[devNo]
   if dev then 
     local v = luup.variable_get (SID.switch, "Target", devNo)
     local target = v == '1' and '0' or '1'    -- toggle action
     -- need to use luup.call_action() so that bridged device actions are handled by VeraBridge
     local a,b,j = luup.call_action (SID.switch, "SetTarget", {newTargetValue=target}, devNo) 
---    print ("Switch job", a,b,j)
+    local _={a,b,j}   -- TODO: status return to messages?
   end
 end
 
 -- action=update_plugin&plugin=openLuup&update=version
 function actions.update_plugin (_, req)
   local q = req.params
-  local response = requests.update_plugin (_, {Plugin=q.plugin, Version=q.version})
-  -- TODO: save status return to messages
+  requests.update_plugin (_, {Plugin=q.plugin, Version=q.version})
+  -- actual update is asynchronous,to return is not useful
 end
 
 -- action=call_action (_, req)
@@ -433,6 +430,7 @@ function actions.call_action (_, req)
     -- action returns: error, message, jobNo, arrguments
 --    print ("ACTION", act, srv, dev)
     local e,m,j,a = luup.call_action  (srv, act, q, tonumber (dev))
+    local _ = {e,m,j,a}   -- TODO: write status return to message?
   end
 end
 
@@ -471,7 +469,7 @@ local function jobs_tables (p, running, title)
       row[6] = rhs (dhms (row[6], nil, milli))
       row[7] = rhs (row[7])
     end)
-  return html5.div {class = "w3-responsive", page_wrapper(title, tbl) }	-- may be wide, let's scroll sideways
+  return xhtml.div {class = "w3-responsive", page_wrapper(title, tbl) }	-- may be wide, let's scroll sideways
 end
 
 pages.running   = function (p) return jobs_tables (p, true,  "Jobs Currently Running") end
@@ -497,7 +495,7 @@ function pages.plugins ()
   local uptime = timers.timenow() - timers.loadtime
   local percent = cpu * 100 / uptime
   percent = ("%0.1f"): format (percent)
-  local tbl = html5.table {class = "w3-small"}
+  local tbl = xhtml.table {class = "w3-small"}
   tbl.header (columns)
   for _, row in ipairs(data) do
     row[4] = rhs (dhms(row[4], nil, milli))
@@ -520,7 +518,7 @@ function pages.startup ()
   table.sort (jlist, function (a,b) return a[2] < b[2] end)
   -----
   local milli = true
-  local tbl = html5.table {class = "w3-small"}
+  local tbl = xhtml.table {class = "w3-small"}
   tbl.header (columns)
   for i, row in ipairs (jlist) do
     row[1] = i
@@ -605,7 +603,7 @@ function pages.top_level ()
   local ignore = {"ShutdownCode", "StartupCode", "LuaTestCode", "LuaTestCode2", "LuaTestCode3"}
   local unwanted = {}
   for _, x in pairs (ignore) do unwanted[x] = true; end
-  local t = html5.table {class = "w3-small"}
+  local t = xhtml.table {class = "w3-small"}
   local attributes = userdata.attributes
   for n,v in sorted (attributes) do
     if type(v) ~= "table" and not unwanted[n] then t.row {n, nice(v) } end
@@ -630,7 +628,7 @@ function pages.globals ()
       end
       if next(x) then
         local dname = devname (dno)
-        data[#data+1] = {{html5.strong {dname}, colspan = #columns}}
+        data[#data+1] = {{xhtml.strong {dname}, colspan = #columns}}
         for n,v in sorted (x) do
           data[#data+1] = {'', n, tostring(v)}
         end
@@ -657,7 +655,7 @@ function pages.states ()
       end
       if next(info) then
         local dname = devname (dno)
-        data[#data+1] = {{html5.strong {dname}, colspan = #columns}}
+        data[#data+1] = {{xhtml.strong {dname}, colspan = #columns}}
         for n,v in sorted (info) do
           data[#data+1] = {'', n, nice (v)}
         end
@@ -677,15 +675,15 @@ function pages.backups ()
   local files = get_matching_files_from (dir, pattern)
   local data = {}
   for _,f in ipairs (files) do 
-    local hyperlink = html5.a {
+    local hyperlink = xhtml.a {
       href = "cgi-bin/cmh/backup.sh?retrieve="..f.name, 
       download = f.name: gsub (".lzap$",'') .. ".json",
       f.name}
     data[#data+1] = {f.date, f.size, hyperlink} 
   end
   local tbl = create_table_from_data (columns, data)
-  local backup = html5.div {
-    html5.a {class="w3-button w3-round w3-light-green", href = "cgi-bin/cmh/backup.sh?", target="_blank",
+  local backup = xhtml.div {
+    xhtml.a {class="w3-button w3-round w3-light-green", href = "cgi-bin/cmh/backup.sh?", target="_blank",
                 "Backup Now"}}
   return page_wrapper("Backup directory: " .. dir, backup, tbl)
 end
@@ -702,7 +700,7 @@ function pages.sandboxes ()               -- 2018.04.07
       local y = {}
       for k,v in pairs (x) do y[#y+1] = {k, tostring(v)} end
       table.sort (y, function (a,b) return a[1] < b[1] end)
-      local t = html5.table {class="w3-small w3-hoverable w3-card"}
+      local t = xhtml.table {class="w3-small w3-hoverable w3-card w3-padding"}
       t.header {{title, colspan = 2}}
 --      t.header {"name","type"}
       for _, row in ipairs(y) do
@@ -710,7 +708,7 @@ function pages.sandboxes ()               -- 2018.04.07
       end
       return t
     end
-    local T = html5.div {}
+    local T = xhtml.div {}
     for d, idx in pairs (lookup) do
       T[#T+1] = sorted(idx, boxmsg: format (d, devname(d)))
     end
@@ -718,11 +716,11 @@ function pages.sandboxes ()               -- 2018.04.07
     return T
   end
   
-  local div = html5.div {html5_title "Sandboxed system tables (by plugin)"}
+  local div = xhtml.div {html5_title "Sandboxed system tables (by plugin)"}
   for n,v in pairs (_G) do
     local meta = ((type(v) == "table") and getmetatable(v)) or {}
     if meta.__newindex and meta.__tostring and meta.lookup then   -- not foolproof, but good enough?
-      div[#div+1] = html5.p { n, ".sandbox"} 
+      div[#div+1] = xhtml.p { n, ".sandbox"} 
       div[#div+1] = format(v)
     end
   end
@@ -745,7 +743,7 @@ function pages.log (p)
   if f then
     local x = f:read "*a"
     f: close()
-    pre = html5.pre {xml.escape (x)}
+    pre = xhtml.pre {xml.escape (x)}
   end
   return page_wrapper(name, pre)
 end
@@ -755,20 +753,20 @@ pages.startup_log = pages.log
 
 -- generic connections table for all servers
 local function connectionsTable (iprequests)
-  local t = html5.table {}
+  local t = xhtml.table {}
 --  t.header { {"Received connections:", colspan=3} }
   t.header {"IP address", "#connects", "date / time"}
   for ip, req in pairs (iprequests) do
     t.row {ip, req.count, todate(req.date)}
   end
   if t.length() == 0 then t.row {'', "--- none ---", ''} end
-  return html5.div {class = "w3-small w3-card w3-padding w3-cell", html5.h5 {"Received connections:"}, t}
+  return xhtml.div {class = "w3-small w3-card w3-padding w3-cell", xhtml.h5 {"Received connections:"}, t}
 end
 
 
 function pages.http ()    
   local function requestTable (requests, title, columns, include_zero)
-  local t = html5.table {class = "w3-small w3-card w3-padding"}
+  local t = xhtml.table {class = "w3-small w3-card w3-padding"}
 --    t.header { {title, colspan = 3} }
     t.header (columns)
     local calls = {}
@@ -784,7 +782,7 @@ function pages.http ()
     end
     if t.length() == 0 then t.row {'', "--- none ---", ''} end
 --    return t
-    return html5.div {class = "w3-small w3-padding", html5.h5 {title}, t}
+    return xhtml.div {class = "w3-small w3-padding", xhtml.h5 {title}, t}
   end
   
   local lu, lr = {}, {}     -- 2019.05.16 system- and user-defined requests
@@ -793,7 +791,7 @@ function pages.http ()
     tbl[n] = v
   end
   
-  return html5.div {
+  return xhtml.div {
       html5_title "HTTP Web server (port 3480)",
       connectionsTable (http.iprequests),   
       requestTable (lu, "/data_request? (system)", {"id=lu_... ", "#requests  ","status"}),
@@ -807,7 +805,7 @@ function pages.smtp ()
   local none = "--- none ---"
   
   local function sortedTable (title, info, ok)
-    local t = html5.table {class = "w3-small w3-card w3-padding"}
+    local t = xhtml.table {class = "w3-small w3-card w3-padding"}
     t.header { {title, colspan = 3} }
     t.header {"Address", "#messages", "for device"}
     local index = {}
@@ -824,7 +822,7 @@ function pages.smtp ()
     return t
   end
   
-  local t = html5.table {class = "w3-small w3-card w3-padding"}
+  local t = xhtml.table {class = "w3-small w3-card w3-padding"}
   t.header {{ "Blocked senders:", colspan=2 }}
   t.header {"eMail address","#attempts"}
   for email in pairs (smtp.blocked) do
@@ -832,7 +830,7 @@ function pages.smtp ()
   end
   if t.length() == 0 then t.row {'', none, ''} end
   
-  return html5.div {
+  return xhtml.div {
     html5_title "SMTP eMail server",
     connectionsTable (smtp.iprequests),
     sortedTable ("Registered email sender IPs:", smtp.destinations, function(x) return not x:match "@" end),
@@ -841,14 +839,14 @@ function pages.smtp ()
 end
 
 function pages.pop3 ()
-  local T = html5.div {}
+  local T = xhtml.div {}
   local header = "Mailbox '%s': %d messages, %0.1f (kB)"
   local accounts = pop3.accounts    
   for name, folder in pairs (accounts) do
     local mbx = pop3.mailbox.open (folder)
     local total, bytes = mbx: status()
     
-    local t = html5.table {class = "w3-small w3-card w3-padding"}
+    local t = xhtml.table {class = "w3-small w3-card w3-padding"}
     t.header { {header: format (name, total, bytes/1e3), colspan = 3 } }
     t.header {'#', "date / time", "size (bytes)"}
     
@@ -865,13 +863,13 @@ function pages.pop3 ()
     T[#T+1] = t
   end
   
-  return html5.div {
+  return xhtml.div {
     html5_title "POP3 eMail client server",
     connectionsTable (ioutil.udp.iprequests), T}
 end
 
 function pages.udp ()
-  local t0 = html5.table {class = "w3-small w3-card w3-padding"}
+  local t0 = xhtml.table {class = "w3-small w3-card w3-padding"}
   t0.header { {"Registered listeners:", colspan = 3} }
   t0.header {"port", "#datagrams", "for device"}
   local list = {}
@@ -885,7 +883,7 @@ function pages.udp ()
   end
   if t0.length() == 0 then t0.row {'', "--- none ---", ''} end 
   
-  local t = html5.table {class = "w3-small w3-card w3-padding"}
+  local t = xhtml.table {class = "w3-small w3-card w3-padding"}
   t.header { {"Opened for write:", colspan = 2} }
   t.header {"ip:port", "by device"}
   list = {}
@@ -899,7 +897,7 @@ function pages.udp ()
   end
   if t.length() == 0 then t.row {"--- none ---", ''} end 
   
-  return html5.div {
+  return xhtml.div {
     html5_title "UDP datagram ports",
     connectionsTable (ioutil.udp.iprequests), 
     t0, t}
@@ -926,18 +924,18 @@ function pages.images (p)
   local files = get_matching_files_from ("images/", '^[^%.]+%.[^%.]+$')     -- *.*
   local data = {}
   for i,f in ipairs (files) do 
-    data[#data+1] = {i, html5.a {href=selfref ("image=",i), f.name}}
+    data[#data+1] = {i, xhtml.a {href=selfref ("image=",i), f.name}}
   end
   local src = (files[tonumber(p.image)] or {}) .name
   if src then src = "images/" .. src end
   local index = create_table_from_data ({'#', "filename"}, data)
-  local div = html5.div
+  local div = xhtml.div
   return div {
       html5_title "Image files in images/ folder",
       div {class = "w3-row",
         div {class = "w3-container w3-quarter", index} ,
         div {class = "w3-container w3-rest", 
-          html5.img {style="object-fit: contain;", width="70%", src=src}},
+          xhtml.img {style="object-fit: contain;", width="70%", src=src}},
       }}
 end
 
@@ -946,7 +944,7 @@ function pages.trash (p)
   -- empty?
   if (p.AreYouSure or '') :lower() :match "yes" then    -- empty the trash
     luup.call_action ("openLuup", "EmptyTrash", {AreYouSure = "yes"}, 2)
-    local continue = html5.a {class="w3-button w3-round w3-green",
+    local continue = xhtml.a {class="w3-button w3-round w3-green",
       href = selfref "page=trash", "Continue..."}
     return page_wrapper ("Trash folder being emptied", continue)
   end
@@ -957,7 +955,7 @@ function pages.trash (p)
     data[#data+1] = {i, f.name, f.size}
   end
   local tbl = create_table_from_data ({'#', "filename", "size"}, data)
-  local empty = html5.a {class="w3-button w3-round w3-red",
+  local empty = xhtml.a {class="w3-button w3-round w3-red",
     onclick = "return confirm('Empty Trash: Are you sure?')", 
     href = selfref "page=trash&AreYouSure=yes", "Empty Trash"}
   return page_wrapper ("Files pending delete in trash/ folder", empty, tbl)
@@ -998,7 +996,7 @@ end
 
 function pages.summary ()
   local H, N, T = scan_cache()
-  local t0 = html5.table {class = "w3-small"}
+  local t0 = xhtml.table {class = "w3-small"}
   t0.header { {"Cache statistics:", colspan = 2} }
   t0.row {"total # device variables", rhs (N)}
   t0.row {"total # variables with history", rhs (#H)}
@@ -1040,7 +1038,7 @@ function pages.summary ()
     t0.row {"total # updates", rhs (tot)}
   end
 
-  local div = html5.div {html5_title "Data Historian statistics summary", t0}
+  local div = xhtml.div {html5_title "Data Historian statistics summary", t0}
   return div
 end
 
@@ -1065,12 +1063,10 @@ function pages.cache (_, req)
   for i, v in ipairs (H) do H[i] = {v=v, sortkey = {v.dev, v.shortSid, v.name}} end   -- add the keysort key!
   table.sort (H, keysort)
       
-  local t = html5.table {class = "w3-small"}
+  local t = xhtml.table {class = "w3-small"}
   t.header {"device ", "service", "#points", "value",
     {"variable (archived if checked)", title="note that the checkbox field \n is currently READONLY"} }
   
-  local link = [[<a href="]] .. req.script_name .. [[?page=graphics&target=%s&from=%s">%s</a>]]
-  local tick = '<input type="checkbox" readonly %s /> %s'
   local prev  -- previous device (for formatting)
   for _, x in ipairs(H) do
     local v = x.v
@@ -1081,20 +1077,23 @@ function pages.cache (_, req)
       local _,start = v:oldest()      -- get earliest entry in the cache (if any)
       if start then
         local from = timers.util.epoch2ISOdate (start + 1)    -- ensure we're AFTER the start... 
-        vname = link: format (finderName, from, vname)        -- ...and use fixed time format
+        local link = "page=graphics&target=%s&from=%s"
+        vname = xhtml.a {href= selfref (link: format (finderName, from, vname)), vname}
       end
     end
     local h = #v.history / 2
     local dname = devname(v.dev)
     if dname ~= prev then 
-      t.row { {dname, colspan = 5, style = "font-weight: bold"} }
+      t.row { {xhtml.b {dname}, colspan = 5} }
     end
     prev = dname
-    local check = archived and "checked" or ''
-    t.row {'', v.srv: match "[^:]+$" or v.srv, h, v.value, tick: format (check, vname)}
+    local check = archived and 1 or nil
+    local tick = xhtml.input {type="checkbox", readonly=1, checked = check} 
+    local short_service_name = v.srv: match "[^:]+$" or v.srv
+    t.row {'', short_service_name, h, v.value, xhtml.span {tick, ' ', vname}}
   end
   
-  local div = html5.div {html5_title "Data Historian in-memory Cache", t}
+  local div = xhtml.div {html5_title "Data Historian in-memory Cache", t}
   return div
 end
 
@@ -1127,12 +1126,12 @@ local function database_tables (_, req)
         a.description = description or "-- unknown --"
         local links = {}
         if a.finderName then 
-          local link = [[<a href="]] .. req.script_name .. [[?page=graphics&target=%s&from=-%s">%s</a>]]  -- relative time
+          local link = "page=graphics&target=%s&from=-%s"  -- relative time
           for arch in a.retentions: gmatch "[^,]+" do
             local _, duration = arch: match "([^:]+):(.+)"                  -- rate:duration
-            links[#links+1] = link: format (a.finderName, duration, arch) 
+            links[#links+1] = xhtml.a {href = selfref (link: format (a.finderName, duration)), arch}
           end
-          a.links = table.concat (links, ', ')
+          a.links = xhtml.span (links)
         end
         return a
       end
@@ -1143,15 +1142,15 @@ local function database_tables (_, req)
   local function link_to_editor (name)
     local link = name
     if whisper_edit then 
-      link = html5.a {
+      link = xhtml.a {
         href = table.concat {"/cgi/whisper-edit.lua?target=", folder, name, ".wsp"}, 
                                 target = "_blank", name}
     end
     return link
   end
   
-  local t = html5.table {class = "w3-small"}
-  local t2 = html5.table {class = "w3-small"}
+  local t = xhtml.table {class = "w3-small"}
+  local t2 = xhtml.table {class = "w3-small"}
   t.header {'', "archives", "(kB)", "fct", "#updates", 
     {"filename (node.dev.srv.var)", title = "hyperlink to Whisper file editor, if present"} }
   t2.header {'', "archives", "(kB)", "fct", '', 
@@ -1163,7 +1162,7 @@ local function database_tables (_, req)
     if devnum == '' then
       tbl = t2
     elseif devnum ~= prev then 
-      t.row { {html5.strong {'[', f.devnum, '] ', f.description}, colspan = 6} }
+      t.row { {xhtml.strong {'[', f.devnum, '] ', f.description}, colspan = 6} }
     end
     prev = devnum
     tbl.row {'', f.links or f.retentions, f.size, f.fct, f.updates, link_to_editor (f.shortName)}
@@ -1189,11 +1188,11 @@ local sorted_cache = sorted_table ()
 
 function pages.file_cache (p)
   local s = sorted_cache
-  local t = html5.table {class = "w3-small w3-hoverable"}
+  local t = xhtml.table {class = "w3-small w3-hoverable"}
   t: header (s.columns {'#', "last access", "# hits", "bytes", "filename"})
   
   local N, H = 0, 0
-  local strong = html5.strong
+  local strong = xhtml.strong
   local info = {}
   for name in vfs.dir() do 
     local v = vfs.attributes (name) 
@@ -1212,7 +1211,7 @@ function pages.file_cache (p)
   end
   
   t:row { '', '', strong {H}, strong {math.floor (N/1000 + 0.5), " (kB)"}, strong {"Total"}}
-  local div = html5.div {html5_title "File Server Cache", t}
+  local div = xhtml.div {html5_title "File Server Cache", t}
   return div
 end
 
@@ -1232,11 +1231,11 @@ local function device_controls (d)
   local srv = d.services[SID.switch]
   if srv then    -- we need an on/off switch
 --    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
-    switch = html5.form {
+    switch = xhtml.form {
       action=selfref (), method="post", 
-        html5.input {name="action", value="switch", hidden=1},
-        html5.input {name="dev", value=d.attributes.id, hidden=1},
-        html5.input {type="image", class="w3-hover-opacity",
+        xhtml.input {name="action", value="switch", hidden=1},
+        xhtml.input {name="dev", value=d.attributes.id, hidden=1},
+        xhtml.input {type="image", class="w3-hover-opacity",
           src="/icons/power-off-solid.svg", alt='on/off', height=24, width=24}
 --        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
       }
@@ -1244,13 +1243,13 @@ local function device_controls (d)
   srv = d.services[SID.dimming]
   if srv then    -- we need a slider
     local LoadLevelTarget = (srv.variables.LoadLevelTarget or {}).value or 0
-    slider = html5.form {
+    slider = xhtml.form {
       oninput="LoadLevelTarget.value = slider.valueAsNumber + ' %'",
       action=selfref (), method="post", 
-        html5.input {name="action", value="slider", hidden=1},
-        html5.input {name="dev", value=d.attributes.id, hidden=1},
-        html5.output {name="LoadLevelTarget", ["for"]="slider", value=LoadLevelTarget, LoadLevelTarget .. '%'},
-        html5.input {type="range", name="slider", onchange="this.form.submit();",
+        xhtml.input {name="action", value="slider", hidden=1},
+        xhtml.input {name="dev", value=d.attributes.id, hidden=1},
+        xhtml.output {name="LoadLevelTarget", ["for"]="slider", value=LoadLevelTarget, LoadLevelTarget .. '%'},
+        xhtml.input {type="range", name="slider", onchange="this.form.submit();",
           value=LoadLevelTarget, min=0, max=100, step=1},
       }
   end
@@ -1264,20 +1263,20 @@ local function device_panel (self)          -- 2019.05.12
   
   local flag = unicode.white_star
   if self.attributes.bookmark == "1" then flag = unicode.black_star end
-  local bookmark = html5.a {class = "nodec", href=selfref("action=bookmark&dev=", id), flag}
+  local bookmark = xhtml.a {class = "nodec", href=selfref("action=bookmark&dev=", id), flag}
   
   local battery = (((self.services[SID.ha] or {}) .variables or {}) .BatteryLevel or {}) .value
   battery = battery and (battery .. '%') or ''
   
   local switch, slider = device_controls(self)
-  local div, span = html5.div, html5.span
-  local panel = html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card dev-panel", 
+  local div, span = xhtml.div, xhtml.span
+  local panel = xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card dev-panel", 
     div {class="top-panel", 
       bookmark, ' ', truncate (devname (id)), span{style="float: right;", battery }},
     div {class = "w3-row", style="height:54px; padding:2px;", 
       div {class="w3-col", style="width:50px;", img} , 
       div {class="w3-padding-small w3-rest w3-display-container", style="height:50px;",
-        line1, html5.br{}, line2,
+        line1, xhtml.br{}, line2,
         div {class="w3-display-topright w3-padding-small", switch},
         div {class="w3-display-bottommiddle", slider},
         } } }
@@ -1297,31 +1296,31 @@ function pages.control (p)
   return device_page (p, function (d, title)
     local dtype = (d.attributes.device_type or ''): match "(%w+):?%d*$"   -- pick the last word
     local user = user_defined[dtype] or {}
-    local t = html5.table {class = "w3-small"}
+    local t = xhtml.table {class = "w3-small"}
     local s
-    if user.control then s = html5.div {class="w3-rest", user.control (d.attributes.id)} end
+    if user.control then s = xhtml.div {class="w3-rest", user.control (d.attributes.id)} end
     local states = d:get_shortcodes ()
     for n,v in sorted (states) do t.row {n, nice(v)} end
     return title .. " - status and control", 
-      html5.div {class="w3-row", 
-        html5.div{class="w3-col", style="width:350px;", device_panel(d), t}, s}
+      xhtml.div {class="w3-row", 
+        xhtml.div{class="w3-col", style="width:350px;", device_panel(d), t}, s}
   end)
 end
 
 function pages.attributes (p, req)
   return device_page (p, function (d, title)
     local q = req.POST
-    local a = q.attribute
-    local v = q.value
-    if a and v and d.attributes[a] then d:attr_set (a, v) end -- only change existing attribute
+    local name = q.attribute
+    local value = q.value
+    if name and value and d.attributes[name] then d:attr_set (name, value) end -- only change existing attribute
     --
-    local attr = html5.div{class = "w3-container"}
+    local attr = xhtml.div{class = "w3-container"}
     for n,v in sorted (d.attributes) do 
-      attr[#attr+1] = html5.form{
+      attr[#attr+1] = xhtml.form{
         class = "w3-form w3-padding-small", method="post", style="float:left", action=selfref (),
-        html5.label {html5.b{n}}, 
-        html5.input {hidden=1, name="attribute", value=n},
-        html5.input {class="w3-input w3-round w3-border",type="text", size=28, 
+        xhtml.label {xhtml.b{n}}, 
+        xhtml.input {hidden=1, name="attribute", value=n},
+        xhtml.input {class="w3-input w3-round w3-border",type="text", size=28, 
           name="value", value = nice(v, 99), autocomplete="off", onchange="this.form.submit()"} }
     end
     return title .. " - attributes", attr
@@ -1348,18 +1347,18 @@ end
 function pages.variables (p)
   return device_page (p, function (d, title)
     local s = sorted_variables
-    local t = html5.table {class = "w3-small"}
+    local t = xhtml.table {class = "w3-small"}
     t.header (s.columns {"id", "service", '', "variable", "value"})
     local info = {}
     local history, graph = ' ', ' '
     for n,v in pairs (d.variables) do
       if v.history and #v.history > 2 then 
-        history = html5.a {href=selfref ("page=cache_history&variable=", n), title="history", 
-                html5.img {width="18px;", height="18px;", alt="history", src="/icons/calendar-alt-regular.svg"}} 
-        graph = html5.a {href=selfref ("page=graphics&variable=", n), title="graph", 
-                html5.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
+        history = xhtml.a {href=selfref ("page=cache_history&variable=", n), title="history", 
+                xhtml.img {width="18px;", height="18px;", alt="history", src="/icons/calendar-alt-regular.svg"}} 
+        graph = xhtml.a {href=selfref ("page=graphics&variable=", n), title="graph", 
+                xhtml.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
       end
-      local actions = html5.div {history, graph}
+      local actions = xhtml.div {history, graph}
       info[#info+1] = {v.id, v.srv, actions, v.name, nice(v.value) }
     end
     s.sort (info, p.sort)
@@ -1374,7 +1373,7 @@ end
 function pages.actions (p)
   return device_page (p, function (d, title)
     local devNo = d.attributes.id
-    local t = html5.div {class = "w3-container"}
+    local t = xhtml.div {class = "w3-container "}
     for s,srv in sorted (d.services) do
       local service_actions = (service_data[s] or {}) .actions
       local action_index = {}         -- service actions indexed by name
@@ -1382,29 +1381,28 @@ function pages.actions (p)
         action_index[act.name] = act.argumentList or {}
       end
       for a in sorted (srv.actions) do
-        local args = html5.div {class="w3-rest"}
-        local form = html5.form {method="post", action=selfref (),
-          html5.input {hidden=1, name="action", value="call_action"},
-          html5.input {hidden=1, name="dev", value=devNo},
-          html5.input {hidden=1, name="srv", value=s},
-          html5.div{class = "w3-third", -- w3-padding-small",
-            html5.input {class="w3-button w3-round w3-blue", type="submit", name="act", title=s, value=a} },
+        local args = xhtml.div {class="w3-container w3-cell"}
+        local form = xhtml.form {method="post", action=selfref (),
+          xhtml.input {hidden=1, name="action", value="call_action"},
+          xhtml.input {hidden=1, name="dev", value=devNo},
+          xhtml.input {hidden=1, name="srv", value=s},
+          xhtml.div{class = "w3-container w3-cell", style="width:200px;",
+            xhtml.input {class="w3-button w3-round w3-blue", type="submit", name="act", title=s, value=a} },
             args}
-        t[#t+1] = html5.div {class="w3-container w3-padding w3-border-top", form}
+        t[#t+1] = xhtml.div {class="w3-cell-row w3-border-top w3-padding", form}
         local action_arguments = action_index[a]
         if action_arguments then
           for _, v in ipairs (action_arguments) do
             if (v.direction or ''): match "in" then 
-              args[#args+1] = html5.div {class="w3-row-padding w3-padding-small", -- w3-round",
-                html5.div {class="w3-quarter",html5.label {v.name}},
-                html5.div {class="w3-rest", 
-                  html5.input {style="width:100%", class="w3-border-0", type="text", name = v.name} } }
+              args[#args+1] = xhtml.div {
+                xhtml.label {class= "w3-small", v.name},
+                xhtml.input {class="w3-input", type="text", size= 40, name = v.name} }
             end
           end
         end
       end
     end
-    return title .. " - implemented actions", html5.div {class="w3-half", t}
+    return title .. " - implemented actions", t
   end)
 end
 
@@ -1430,17 +1428,17 @@ function pages.user_data (p)
     local dtable = userdata.devices_table {[sticky_device()] = d}
     j, err = json.encode (dtable)
     return title .. " - JSON user_data", 
-    html5.div {class = "w3-panel w3-border", html5.pre {j or err} }
+    xhtml.div {class = "w3-panel w3-border", xhtml.pre {j or err} }
   end)
 end
 
 local function filter_menu (items, current_item, request)
-  local menu = html5.div {class = "w3-margin-bottom  w3-border w3-border-grey"}
+  local menu = xhtml.div {class = "w3-margin-bottom  w3-border w3-border-grey"}
   for i, name in ipairs (items) do
     local colour = (name == current_item) and "w3-grey" or "w3-light-gray"
-    menu[i] = html5.a {class = "w3-bar-item w3-button "..colour, href = selfref (request, name), name }
+    menu[i] = xhtml.a {class = "w3-bar-item w3-button "..colour, href = selfref (request, name), name }
   end
-  return html5.div {class="w3-bar-block w3-col", style="width:12em;", menu}
+  return xhtml.div {class="w3-bar-block w3-col", style="width:12em;", menu}
 end
 
 local function scene_filter ()
@@ -1465,7 +1463,7 @@ local function rooms_selector ()
 end
 
 local function sidebar (p, ...)
-  local sidebar_menu = html5.div {class="w3-bar-block w3-col", style="width:12em;"}
+  local sidebar_menu = xhtml.div {class="w3-bar-block w3-col", style="width:12em;"}
   for i, fct in ipairs {...} do sidebar_menu[i] = fct() end
   return sidebar_menu
 end
@@ -1485,7 +1483,7 @@ end
 function pages.devices (p)
   
   -- devices   
-  local devs = html5.div {class="w3-rest" }
+  local devs = xhtml.div {class="w3-rest" }
   local wanted = room_wanted()        -- get function to filter by room
   local bookmarks = sticky_room() == "Favourites"
   
@@ -1507,7 +1505,7 @@ function pages.devices (p)
   end
 
   local room_nav = sidebar (p, rooms_selector, sort_filter)
-  local ddiv = html5.div {room_nav, html5.div {class="w3-rest", devs} }
+  local ddiv = xhtml.div {room_nav, xhtml.div {class="w3-rest", devs} }
   return ddiv
 end
 
@@ -1523,6 +1521,52 @@ local function scene_page (p, fct)
   fct = s and fct or function (_, t) return t .. " - no such scene" end
   return page_wrapper (fct (s, title))   -- call back with actual scene    
 end
+local function scene_panel (self)
+  local utab = self: user_table()
+  
+  --TODO: move scene next run code to scenes module
+  local id = utab.id
+  local earliest_time
+  for _,timer in ipairs (utab.timers or {}) do
+    local next_run = timer.next_run 
+    if next_run and timer.enabled == 1 then
+      earliest_time = math.min (earliest_time or next_run,  next_run)
+    end
+  end
+  local next_run = earliest_time and table.concat {unicode.clock_three, ' ', nice (earliest_time) or ''}
+  local last_run = utab.last_run
+  last_run = last_run and table.concat {unicode.check_mark, ' ', nice (last_run)} or ''
+  
+  local div = xhtml.div
+  local run = self.paused 
+          and 
+              xhtml.img {width=48, height=48, 
+                title="scene is paused", src="icons/pause-circle.svg"} 
+          or
+              xhtml.a {href= selfref("action=run_scene&scn=", id), 
+                xhtml.img {width=48, height=48, title="run scene", src="icons/play-circle.svg"} }
+  
+  local edit_clone_history = div {class="w3-wide",
+    xhtml.a {href= selfref("page=scene&scene=", id), title="view/edit scene",
+      xhtml.img {width=18, height=18, src="icons/edit.svg"} },
+    xhtml.a {href= selfref("action=clone&scene=", id), title="clone scene",
+      xhtml.img {width=18, height=18, src="icons/clone.svg"} },
+    xhtml.a {href= selfref("page=history&scene=", id), title="scene history",
+      xhtml.img {width=18, height=18, src="icons/calendar-alt-regular.svg"} } }
+  local flag = utab.favorite and unicode.black_star or unicode.white_star
+  local bookmark = xhtml.a {class="nodec", href=selfref("action=bookmark&scn=", id), flag}
+  local br = xhtml.br {}
+  
+  local panel = xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel",
+    div {class="top-panel", bookmark, ' ', truncate (scene_name(id)) }, 
+--      div {class="w3-padding-small w3-border-bottom", bookmark, ' ', truncate (scene_name(id)) }, 
+    div {class = "w3-display-container", style ="height:70px",
+      div {class="w3-padding-small w3-display-left", run } , 
+      div {class="w3-padding-small w3-display-topright", last_run, br, next_run } ,
+      div {class="w3-padding-small w3-display-bottommiddle", edit_clone_history } 
+      }  } 
+  return panel
+end
 
 function pages.header (p)
   return scene_page (p, function (scene, title)
@@ -1532,20 +1576,24 @@ function pages.header (p)
       {"room", luup.rooms[scene.room_num] or "no room"},
       {"modes", scene: user_table() .modeStatus} }
     local t = create_table_from_data ({"field", "value"}, info)
-    return title .. " - scene header", t
+    
+    return title .. " - scene header", 
+      xhtml.div {class="w3-row", 
+        xhtml.div{class="w3-col", style="width:350px;", scene_panel(scene), t} }
+--    return title .. " - scene header", t
   end)
 end
 
 function pages.triggers (p)
   return scene_page (p, function (scene, title)
-    local pre = html5.pre {json.encode (scene:user_table() .triggers)}
+    local pre = xhtml.pre {json.encode (scene:user_table() .triggers)}
     return title .. " - scene triggers", pre
   end)
 end
 
 function pages.timers (p)
   return scene_page (p, function (scene, title)
-    local pre = html5.pre {json.encode (scene:user_table() .timers)}
+    local pre = xhtml.pre {json.encode (scene:user_table() .timers)}
     return title .. " - scene timers", pre
   end)
 end
@@ -1562,72 +1610,26 @@ end
   
 function pages.lua (p)
   return scene_page (p, function (scene, title)
-    local pre = html5.pre {scene:user_table() .lua}
+    local pre = xhtml.pre {scene:user_table() .lua}
     return title .. " - scene Lua", pre
   end)
 end
  
 function pages.group_actions (p)
   return scene_page (p, function (scene, title)
-    local pre = html5.pre {json.encode (scene:user_table() .groups)}
+    local pre = xhtml.pre {json.encode (scene:user_table() .groups)}
     return title .. " - actions (in delay groups)", pre
   end)
 end
  
 function pages.json (p)
   return scene_page (p, function (scene, title)
-    local pre = html5.pre {tostring (scene)}
+    local pre = xhtml.pre {tostring (scene)}
     return title .. " - JSON scene definition", pre
   end)
 end
 
 function pages.scenes (p)
-  local function scene_panel (self)
-    local utab = self: user_table()
-    
-    --TODO: move scene next run code to scenes module
-    local id = utab.id
-    local earliest_time
-    for _,timer in ipairs (utab.timers or {}) do
-      local next_run = timer.next_run 
-      if next_run and timer.enabled == 1 then
-        earliest_time = math.min (earliest_time or next_run,  next_run)
-      end
-    end
-    local next_run = earliest_time and table.concat {unicode.clock_three, ' ', nice (earliest_time) or ''}
-    local last_run = utab.last_run
-    last_run = last_run and table.concat {unicode.check_mark, ' ', nice (last_run)} or ''
-    
-    local div = html5.div
-    local run = self.paused 
-            and 
-                html5.img {width=48, height=48, 
-                  title="scene is paused", src="icons/pause-circle.svg"} 
-            or
-                html5.a {href= selfref("action=run_scene&scn=", id), 
-                  html5.img {width=48, height=48, title="run scene", src="icons/play-circle.svg"} }
-    
-    local edit_clone_history = div {class="w3-wide",
-      html5.a {href= selfref("page=scene&scene=", id), title="view/edit scene",
-        html5.img {width=18, height=18, src="icons/edit.svg"} },
-      html5.a {href= selfref("action=clone&scene=", id), title="clone scene",
-        html5.img {width=18, height=18, src="icons/clone.svg"} },
-      html5.a {href= selfref("page=history&scene=", id), title="scene history",
-        html5.img {width=18, height=18, src="icons/calendar-alt-regular.svg"} } }
-    local flag = utab.favorite and unicode.black_star or unicode.white_star
-    local bookmark = html5.a {class="nodec", href=selfref("action=bookmark&scn=", id), flag}
-    local br = html5.br {}
-    
-    local panel = html5.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel",
-      div {class="top-panel", bookmark, ' ', truncate (scene_name(id)) }, 
---      div {class="w3-padding-small w3-border-bottom", bookmark, ' ', truncate (scene_name(id)) }, 
-      div {class = "w3-display-container", style ="height:70px",
-        div {class="w3-padding-small w3-display-left", run } , 
-        div {class="w3-padding-small w3-display-topright", last_run, br, next_run } ,
-        div {class="w3-padding-small w3-display-bottommiddle", edit_clone_history } 
-        }  } 
-    return panel
-  end
   
   local function sorted (tbl, key, choices)
     local x = {}
@@ -1657,30 +1659,30 @@ function pages.scenes (p)
     end
   end
   local room_nav = sidebar (p, rooms_selector, scene_filter)
-  local section = html5.section (scenes)
-  return html5.div {room_nav, section}
+  local section = xhtml.section (scenes)
+  return xhtml.div {room_nav, section}
 end
 
   
 -- text editor
 
 local function code_editor (code, height, language, readonly)
-  code = code or ''
+  code = xml.escape (code or '')
   height = (height or "500") .. "px;"
   language = language or "lua"
-  local submit_button = html5.input {class="w3-button w3-round w3-green w3-margin", value="Submit"}
+  local submit_button = xhtml.input {class="w3-button w3-round w3-green w3-margin", value="Submit"}
   if options.Ace_URL ~= '' then
     submit_button.onclick = "EditorSubmit()"
     if readonly then submit_button = nil end
-    local page = html5.div {id="editor", class="w3-border", style = "width: 100%; height:"..height, code }
-    local form = html5.form {action= selfref (), method="post", enctype="multipart/form-data",
-      html5.input {type="hidden", name="lua_code", id="lua_code"}, submit_button}
-    local ace = html5.script {src = options.Ace_URL, type="text/javascript", charset="utf-8", ''}
-    local script = html5.script {
+    local page = xhtml.div {id="editor", class="w3-border", style = "width: 100%; height:"..height, code }
+    local form = xhtml.form {action= selfref (), method="post", enctype="multipart/form-data",
+      xhtml.input {type="hidden", name="lua_code", id="lua_code"}, submit_button}
+    local ace = xhtml.script {src = options.Ace_URL, type="text/javascript", charset="utf-8", ''}
+    local script = xhtml.script {
     'var editor = ace.edit("editor");',
     'editor.setTheme("ace/theme/', options.EditorTheme, '");',
-    'editor.session.setMode("ace/mode/', language,'");',
-    'editor.session.setOptions({tabSize: 2});',            -- also mode: "ace/mode/javascript",
+    'editor.session.setMode("ace/mode/', language,'");',            -- also mode: "ace/mode/javascript",
+    'editor.session.setOptions({tabSize: 2, readOnly: '.. tostring(not not readonly) .. '});',
     [[function EditorSubmit() {
       var element = document.getElementById("lua_code");
       element.value = ace.edit("editor").getSession().getValue();
@@ -1691,9 +1693,9 @@ local function code_editor (code, height, language, readonly)
   else
     submit_button.type = "submit"
     if readonly then submit_button = nil end
-    local form = html5.form {action= selfref (), method="post", enctype="multipart/form-data",
-      html5.div {
-        html5.textarea {name="lua_code", id="lua_code", 
+    local form = xhtml.form {action= selfref (), method="post", enctype="multipart/form-data",
+      xhtml.div {
+        xhtml.textarea {name="lua_code", id="lua_code", 
         style = "width: 100%; resize: none; height:" .. height .. 
         "font-family:Monaco, Menlo, Ubuntu Mono, Consolas, source-code-pro, monospace; font-size:9pt; line-height: 1.3;", code}},submit_button}
     
@@ -1709,7 +1711,7 @@ local function lua_code (req, codename)
 end
 
 local function lua_edit (req, codename, height)
-  return html5.div {code_editor (lua_code (req, codename), height)}
+  return xhtml.div {code_editor (lua_code (req, codename), height)}
 end
 
 function pages.lua_startup   (_, req) return page_wrapper ("Lua Startup Code",  lua_edit (req, "StartupCode"))  end
@@ -1723,23 +1725,26 @@ local function lua_exec (req, codename, title)
     P[#P] = '\n'
   end
   -- run the code if it's posted
+  local cpu = 0
   if req.POST.lua_code then 
     local code = lua_code (req, codename)
+    cpu = timers.cpu_clock()
     local ok, err = loader.compile_and_run (code, codename, prt)
+    cpu = ("%0.1f"): format(1000 * (timers.cpu_clock() - cpu))
     if not ok then prt ("ERROR: " .. err) end
   end
   local printed = table.concat (P)
   local _, nlines = printed:gsub ('\n',{})
   --
-  local form =  html5.div { class = "w3-col w3-half",
+  local form =  xhtml.div { class = "w3-col w3-half",
     html5_title {title or codename},  code_editor (lua_code (req, codename), 500) }  
-  local output = html5.div {class="w3-half", style="padding-left:16px;", 
-    html5_title {"Console Output: (", nlines, " lines)" }, 
-    html5.textarea {readonly=1, 
+  local output = xhtml.div {class="w3-half", style="padding-left:16px;", 
+    html5_title {"Console Output: (", nlines, " lines, ", cpu, "ms)" }, 
+    xhtml.textarea {readonly=1, 
       style = "resize: none; height:500px; width:100%;" .. 
       "font-family:Monaco, Menlo, Ubuntu Mono, Consolas, source-code-pro, monospace; font-size:10pt; line-height: 1.3;",      class="w3-border", printed}
     }
-  return html5.div {class="w3-row", form, output}
+  return xhtml.div {class="w3-row", form, output}
 end
 
 pages["lua_test"]   = function (_, req) return lua_exec (req, "LuaTestCode",  "Lua Test Code")    end
@@ -1748,18 +1753,18 @@ pages["lua_test3"]  = function (_, req) return lua_exec (req, "LuaTestCode3", "L
 pages.lua_code = pages.lua_test
 
 function pages.viewer (_, req)
-  local text, language
+  local mode = setmetatable ({js = "javascript"}, {__index=function(_,x) return x end})
   local file = req.params.file or ''
-  language = file: match "%w+$" or ''
-  text = loader.raw_read (file) or ''
+  local language = file: match "%w+$" or ''
+  local text = loader.raw_read (file) or ''
   local readonly = true
-  local div = html5.div {code_editor (text, 500, language, readonly)}
+  local div = xhtml.div {code_editor (text, 500, mode[language], readonly)}
   return page_wrapper (file,  div)
 end
 
 function pages.graphics (p, req)
   local background = p.background or "GhostWhite"
-  local iframe = html5.iframe {
+  local iframe = xhtml.iframe {
     height = "450px", width = "96%", 
     style= "margin-left: 2%; margin-top:30px; background-color:"..background,
     src="/render?" .. req.query_string,
@@ -1770,7 +1775,7 @@ end
 function pages.rooms_table ()
 --  local create = html5.a {class="w3-button w3-round w3-red", 
 --    href = selfref "page=create_room", "+ Create", title="create new room"}
-  local t = html5.table {class = "w3-small"}
+  local t = xhtml.table {class = "w3-small"}
   t.header {"id", "name"}
   for n, v in sorted (luup.rooms) do
     t.row {n,v}
@@ -1781,30 +1786,30 @@ end
 function pages.create_device ()
   local function options (label_text, name, pattern, value)
     local listname = name .. "_options"
-    local label = html5.label {label_text}
-    local input = html5.input {list=listname, name=name, value=value, class="w3-input"}
-    local datalist = html5.datalist {id= listname}
+    local label = xhtml.label {label_text}
+    local input = xhtml.input {list=listname, name=name, value=value, class="w3-input"}
+    local datalist = xhtml.datalist {id= listname}
     for file in loader.dir (pattern) do
-      datalist[#datalist+1] = html5.option {value=file}
+      datalist[#datalist+1] = xhtml.option {value=file}
     end
-    return html5.div {label, input, datalist}
+    return xhtml.div {label, input, datalist}
   end
 
-  local form = html5.form {class = "w3-container w3-form w3-third", 
+  local form = xhtml.form {class = "w3-container w3-form w3-third", 
     action = selfref "action=create_device", method="post", enctype="multipart/form-data",
-    html5.label {"Device name"},
-    html5.input {class="w3-input", type="text", name="name", autocomplete="off", },
+    xhtml.label {"Device name"},
+    xhtml.input {class="w3-input", type="text", name="name", autocomplete="off", },
     options ("Device file", "d_file", "^D_.-%.xml$", "D_"),
     options ("Implementation file", "i_file", "^I_.-%.xml$", "I_"),
-    html5.input {class="w3-button w3-round w3-green w3-margin", type="submit", value="Create Device"},
+    xhtml.input {class="w3-button w3-round w3-green w3-margin", type="submit", value="Create Device"},
   }
-  return html5.div {class="w3.card", form}
+  return xhtml.div {class="w3.card", form}
 end
 
 function pages.devices_table ()
-  local create = html5.a {class="w3-button w3-round w3-green", 
+  local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_device", "+ Create", title="create new device"}
-  local t = html5.table {class = "w3-small"}
+  local t = xhtml.table {class = "w3-small"}
   t.header {"id", "name"}
   for n, v in sorted (luup.devices) do
     t.row {n,v.description}
@@ -1821,7 +1826,7 @@ function pages.scenes_table ()
 	 room_num = 0,
 	 running = true
 }]]
-  local create = html5.a {class="w3-button w3-round w3-green", 
+  local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_scene", "+ Create", title="create new scene"}
   local s = {}
   for n,x in pairs (luup.scenes) do
@@ -1832,7 +1837,7 @@ function pages.scenes_table ()
 end
 
 function pages.plugins_table ()
-  local t = html5.table {class = "w3-bordered"}
+  local t = xhtml.table {class = "w3-bordered"}
   t.header {'', "Name","Version", "Auto", "Files", "Actions", "Update", '', "Unistall"}
   local IP2 = userdata.attributes.InstalledPlugins2 or userdata.default_plugins
   for _, p in ipairs (IP2) do
@@ -1840,42 +1845,59 @@ function pages.plugins_table ()
     local src = p.Icon or ''
     local mios_plugin = src: match "^plugins/icons/"
     if mios_plugin then src = "http://apps.mios.com/" .. src end
-    local icon = html5.img {src=src, alt="no icon", height=35, width=35} 
+    local icon = xhtml.img {src=src, alt="no icon", height=35, width=35} 
     local version = table.concat ({p.VersionMajor, p.VersionMinor}, '.')
     local files = {}
     for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
     table.sort (files)
 --    local choice = {style="width:12em;", onchange="location = this.value;", 
     local choice = {style="width:12em;", name="file", onchange="this.form.submit()", 
-      html5.option {value='', "Files", disabled=1, selected=1}}
-    for _, f in ipairs (files) do choice[#choice+1] = html5.option {value=f, f} end
-    files = html5.form {action=selfref(), 
-      html5.input {hidden=1, name="page", value="viewer"},
-      html5.select (choice)}
-    local help = html5.a {href=p.Instructions or '', target="_blank", title="help",
-      html5.img {src="/icons/question-circle-solid.svg", alt="help", height=24, width=24} }
-    local info = html5.a {target="_blank", title="info",
+      xhtml.option {value='', "Files", disabled=1, selected=1}}
+    for _, f in ipairs (files) do choice[#choice+1] = xhtml.option {value=f, f} end
+    files = xhtml.form {action=selfref(), 
+      xhtml.input {hidden=1, name="page", value="viewer"},
+      xhtml.select (choice)}
+    local help = xhtml.a {href=p.Instructions or '', target="_blank", title="help",
+      xhtml.img {src="/icons/question-circle-solid.svg", alt="help", height=24, width=24} }
+    local info = xhtml.a {target="_blank", title="info",
       href=table.concat {"http://github.com/",p.Repository.source or '',"#readme"}, 
-      html5.img {src="/icons/info-circle-solid.svg", alt="info", height=24, width=24} }
-    local update = html5.form {
+      xhtml.img {src="/icons/info-circle-solid.svg", alt="info", height=24, width=24} }
+    local update = xhtml.form {
       action = selfref(), method="post",
-      html5.input {hidden=1, name="action", value="update_plugin"},
-      html5.input {hidden=1, name="plugin", value=p.id},
-      html5.div {class="w3-display-container",
-      html5.input {type = "text", autocomplete="off", name="version", value=''},
-      html5.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
+      xhtml.input {hidden=1, name="action", value="update_plugin"},
+      xhtml.input {hidden=1, name="plugin", value=p.id},
+      xhtml.div {class="w3-display-container",
+      xhtml.input {type = "text", autocomplete="off", name="version", value=''},
+      xhtml.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
         title="update", alt='', height=28, width=28} } }
-    t.row {icon, p.Title, version, p.AutoUpdate, files, html5.span{help, info}, update, ''} 
+    t.row {icon, p.Title, version, p.AutoUpdate, files, xhtml.span{help, info}, update, ''} 
   end
   return page_wrapper ("Plugins", t)
 end
 
 function pages.about () 
+  local function embedded_links (t)   -- replace embedded http reference with real links
+    local s = {}
+    local function quote (x) return table.concat {'"', x, '"'} end
+    local function p (...) for _,x in ipairs {...} do s[#s+1] = x end; end
+    local c = 1
+    t = tostring(t)
+    repeat
+      local a,b = t:find ("http%S+", c)
+      if a then 
+        p (t:sub (c, a-1), t:sub (a,b))
+        c = b + 1
+      else
+        if c < #t then p (t:sub(c,-1)) end
+      end
+    until not a
+    for i = 2,#s,2 do s[i] = xhtml.a {href=s[i], target="_blank", s[i]} end  -- add link
+    return s
+  end
   local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
-  local t = html5.table {class = "w3-table-all w3-cell w3-card"}
+  local t = xhtml.table {class = "w3-table-all w3-cell w3-card"}
   for a,b in sorted (ABOUTopenLuup) do
-    b = tostring(b): gsub ("http%S+",  '<a href=%1 target="_blank">%1</a>')
-    t.row { {a, style = "font-weight: bold"},  html5.pre {style="line-height: 1;", b}}
+    t.row { xhtml.b {a},  xhtml.pre (embedded_links(b))}
   end
   return t
 end  
@@ -1903,7 +1925,7 @@ function pages.user    () return pages.home (user_json) end
 -------------------------------------------
 
 
-local a, div = html5.a, html5.div
+local a, div = xhtml.a, xhtml.div
  
 local page_groups = {
     ["House Mode"]= {"home", "away", "night", "vacation"},
@@ -1951,7 +1973,7 @@ local function make_button(name, current)
   end
   local link = {class="w3-button w3-round " .. colour, href=selfref ("page=", short), 
                   onclick=onclick, short_name_index[short]}
-  return html5.a (link)
+  return xhtml.a (link)
 end
 
 -- walk the menu tree defined by the named JSON file, calling the user function for each item
@@ -1990,7 +2012,7 @@ function pages.home (menu_page)
     index[#index+1] = pnames
   end
   
-  local div = html5.div {html5.h4 {"Page Index"}, html5.p {menu}, div(index)} 
+  local div = xhtml.div {xhtml.h4 {"Page Index"}, xhtml.p {menu}, div(index)} 
   return div
 end
 
@@ -2011,16 +2033,24 @@ local function page_nav (current, previous)
       tabs[#tabs+1] = make_button (name, current) 
     end
   end
-  local messages = div (make_button ("Messages &#x25BC; ")) 
+--  local onclick="document.getElementById('messages').style.display='block'" 
+  local messages = div (make_button ("Messages &#x25BC; ",nil)) 
   messages.onclick="ShowHide('messages')" 
-  return div {class="w3-container w3-row w3-margin-top",
-   html5.span {class = "w3-container w3-cell w3-cell-middle w3-round w3-border w3-border-grey",
+  local msg = xhtml.div {class="w3-container w3-green w3-bar", 
+    xhtml.span {onclick="this.parentElement.style.display='none'",
+      class="w3-button", "x"},
+       nice (os.time()), ' ', "Click on the X to close this panel" }
+  return div {class="w3-container w3-row w3-margin-top", 
+
+  xhtml.span {class = "w3-container w3-cell w3-cell-middle w3-round w3-border w3-border-grey",
         a {class="nodec", href = selfref ("page=", previous), "&lArr;"}, " / ",     -- left arrow
         a {class="nodec", href = selfref "page=current", "Home"},     " / ", 
         pagename}, 
     div {class="w3-container w3-cell", messages},
-    div {class = "w3-panel w3-border w3-hide", id="messages",  "hello"},
-    div {html5.h3 {group or pagename}, div (tabs) }},
+    div {class = "w3-panel w3-border w3-hide", id="messages",  
+      msg, msg, msg,
+      },
+    div {xhtml.h3 {group or pagename}, div (tabs) }},
     current     -- return a possibly modified page 
 end
 
@@ -2029,7 +2059,7 @@ end
 local function dynamic_menu ()
   local icon = a {class = "w3-dropdown-hover w3-grey",
         href="/data_request?id=lr_ALTUI_Handler&command=home#", target="_blank",  
-        html5.img {height=42, alt="openLuup", src="icons/openLuup.svg", class="w3-button"} }
+        xhtml.img {height=42, alt="openLuup", src="icons/openLuup.svg", class="w3-button"} }
   local menus = div {class = "w3-bar w3-grey", icon}
   map_menu_tree (function (menu)
     local name = menu[1]
@@ -2070,7 +2100,7 @@ function run (wsapi_env)
   local function noop() end
 
   local req = wsapi.request.new (wsapi_env)
-  script = req.script_name      -- save to use in links
+  script_name = req.script_name      -- save to use in links
   local p = req.params 
   
   if p.page and p.page ~= current then previous = current end
@@ -2088,13 +2118,13 @@ function run (wsapi_env)
   local sheet = (pages[actual_page] or noop) (p, req)
   local formatted_page = div {class = "w3-container", navigation, sheet}
   
-  local html = html5.document { 
+  local html = xhtml.document { 
     
-    html5.title {script: match "(%w+)$"},
-    html5.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
-    html5.link {rel="stylesheet", href="w3.css"},
+    xhtml.title {script_name: match "(%w+)$"},
+    xhtml.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
+    xhtml.link {rel="stylesheet", href="w3.css"},
 
-    html5.style {
+    xhtml.style {
 [[  
   pre {line-height: 1.1; font-size:10pt;}
   a.nodec { text-decoration: none; } 
@@ -2105,8 +2135,8 @@ function run (wsapi_env)
   .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
   .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
 ]]},
-
-    html5.script {
+  
+    xhtml.script {
 [[
 function ShowHide(id) {
   var x = document.getElementById(id);
@@ -2117,11 +2147,11 @@ function ShowHide(id) {
   }
 }]]},
 
-    html5.body {class = "w3-light-grey",
+    xhtml.body {class = "w3-light-grey",
       dynamic_menu (),
       div {
         formatted_page,
-        div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", html5.p {os.date "%c"}},
+        div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", xhtml.p {os.date "%c"}},
       }}}
   
   local res = wsapi.response.new ()
