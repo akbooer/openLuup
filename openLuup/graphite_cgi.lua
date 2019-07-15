@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.06.06",
+  VERSION       = "2019.07.01",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -47,6 +47,7 @@ ABOUT = {
 -- 2019.04.07  add yMin, yMax, title, vtitle, options to SVG render
 -- 2019.04.26  return "No Data" SVG when target parameter absent (default Graphite behaviour)
 -- 2019.06.06  remove reference to external CSS
+-- 2019.07.01  use new xhtml module
 
 
 -- CGI implementation of Graphite API
@@ -89,7 +90,7 @@ local json      = require "openLuup.json"
 local historian = require "openLuup.historian"
 local timers    = require "openLuup.timers"
 
-local html5     = require "openLuup.xml" .html5
+local xhtml     = require "openLuup.xml" .xhtml
 
 local isFinders, finders = pcall (require, "L_DataFinders")  -- only present if DataYours there
 
@@ -563,8 +564,8 @@ local function svgRender (_, p)
   -- fetch the data
   
   local svgs = {}   -- separate SVGs for multiple plots
-  local body, div, head, h4, style, title = html5.body, html5.div, html5.head, html5.h4, html5.style, html5.title
-  local span = html5.span
+  local body, div, head, h4, style, title = xhtml.body, xhtml.div, xhtml.head, xhtml.h4, xhtml.style, xhtml.title
+  local span = xhtml.span
   
   local function timeformat (epoch)
     local t = os.date ("%d %b '%y, %X", epoch):gsub ("^0", '')
@@ -572,7 +573,7 @@ local function svgRender (_, p)
   end
 
   local function new_plot ()
-    return html5.svg {
+    return xhtml.svg {
         height = p.height or "300px", 
         width = p.width or "90%",
         viewBox = table.concat ({0, -Yscale/10, Xscale, 1.1 * Yscale}, ' '),
@@ -619,11 +620,11 @@ local function svgRender (_, p)
         s: line (0, v, Xscale, v, {style = "stroke:Grey; stroke-width:2"})
         s: text (0, v, {dy="-0.2em", style = "font-size:48pt; fill:Grey; font-family:Arial; transform:scale(2,1)", y})
       end
-      local br = html5.br {}
+      local br = xhtml.br {}
       local left  = span {style="float:left",  timeformat (T.min)}
       local right = span {style="float:right", timeformat (T.max)}
-      local hscale = html5.p {style="margin-left: 5%; margin-right: 5%; color:Grey; font-family:Arial; ", left, right, br}
-      s = html5.div {p.vtitle or '', s, br, hscale}
+      local hscale = xhtml.p {style="margin-left: 5%; margin-right: 5%; color:Grey; font-family:Arial; ", left, right, br}
+      s = xhtml.div {p.vtitle or '', s, br, hscale}
     end
     
     svgs[#svgs+1] = div {h4 {p.title or name, style="font-family: Arial;"}, s}
@@ -637,9 +638,10 @@ local function svgRender (_, p)
   
 -- add the options    
   local cpu = timers.cpu_clock ()
-  local doc = html5.document {
-    head {'<meta charset="utf-8">',
-      title {"Graphics"},
+  local doc = xhtml.document {
+    head {
+      xhtml.meta {charset="utf-8"},
+      title "Graphics",
       style {[[
   .bar {cursor: crosshair; }
   .bar:hover, .bar:focus {fill: DarkGray; }

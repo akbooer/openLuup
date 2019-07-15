@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.06.22",
+  VERSION       = "2019.07.01",
   DESCRIPTION   = "XML utilities (HTML5, SVG) and DOM-style parser",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -39,7 +39,6 @@ local ABOUT = {
 -- 2019.04.03  fix svg:rect() coordinate attribute names
 -- 2019.04.06  add any unknown HTML5 tag as a new element
 -- 2019.04.30  add preamble parameter to xml.encode() for encodeDocument()
--- 2019.06.20  close some special tags with '>' rather than '/>'
 -- 2019.06.22  allow html5.element contents to be a simple string
 
 
@@ -172,7 +171,8 @@ end
 
 local escape do
   local fwd = {['<'] = "&lt;", ['>'] = "&gt;", ['"'] = "&quot;", ["'"] = "&apos;", ['&'] = "&amp;"}
-  escape = function (x) return (x: gsub ([=[[<>"'&]]=], fwd)) end
+--  escape = function (x) return (x: gsub ([=[[<>"'&]]=], fwd)) end  -- ace editor couldn't cope with this!!
+  escape = function (x) return (x: gsub ('[<>"'.."'&]", fwd)) end
 end
 
 
@@ -207,6 +207,7 @@ local function decode (xml)
 --        parentNode = parent,                                          -- navigation links
 --        previousSibling = previousSibling,
         attributes = at}
+      local _ = parent          -- avoid "unused variable warning
       local children = parse (b, element)                             -- get the children
       if #children == 0 and #b > 0 then                               -- no children, empty strings are nil
         element.nodeValue = unescape(b)                               -- plain text element
@@ -285,84 +286,88 @@ local function encodeDocument (Lua)
   return encode (Lua, nil, '<?xml version="1.0"?>\n')
 end
 
+local function encodeXMLDocument (DOM)
+  return table.concat (DOM[1]:_serialize {'<?xml version="1.0"?>'})
+end
 
 -- simplify(), this yields a structure which can be encoded into XML
 -- attributes on non-structured (string-only) elements are ignored
-local function simplify (x)
-  local children = {}
-  local function item (k,v)
-    local x = children[k] or {}
-    x[#x+1] = v
-    children[k] = x
-  end
-  for _,y in ipairs (x.childNodes or {}) do
-    item (y.nodeName, y.nodeValue or simplify(y))  -- what about attrs of node with nodeValue ???
-  end
-  for k,v in pairs (children) do
-    if #v == 1 then
-      if v._attr then 
-        -- problem here
-      else
-        v = v[1]       -- un-nest single element lists
-        if (type(v) == "table") and not next(v) then v = '' end   -- replace empty list with empty string        
-      end
-    children[k] = v
-    end
-  end
-  if next(x.attributes) then children._attr = x.attributes end
-  return children
-end
+--local function simplify (x)
+--  local children = {}
+--  local function item (k,v)
+--    local x = children[k] or {}
+--    x[#x+1] = v
+--    children[k] = x
+--  end
+--  for _,y in ipairs (x.childNodes or {}) do
+--    item (y.nodeName, y.nodeValue or simplify(y))  -- what about attrs of node with nodeValue ???
+--  end
+--  for k,v in pairs (children) do
+--    if #v == 1 then
+--      if v._attr then 
+--        -- problem here
+--      else
+--        v = v[1]       -- un-nest single element lists
+--        if (type(v) == "table") and not next(v) then v = '' end   -- replace empty list with empty string        
+--      end
+--    children[k] = v
+--    end
+--  end
+--  if next(x.attributes) then children._attr = x.attributes end
+--  return children
+--end
 
 
 ----------------------------------------------------
+--
+-- HTML
 --
 -- 2019.03.22  encode Lua table as HTML element
 -- named items are attributes, list is contents (possibly other elements)
 -- element()
 --
+  
+local function _serialize (self, stream, depth)
 
-local no_slash = {option = 1, meta = 1, link = 1}   -- list of exceptions to closing '/'
+  local function is_element (v) return type (v) == "table" and v._serialize end
+  
+  stream = stream or {}
+  depth = depth or 0
+  local space = ' '
+  local name = self._name
+  
+  local function p(x) 
+    local s = stream
+    local t = type (x)
+    if t ~= "table" or is_element (x) then
+      s[#s+1] = x 
+    else
+      for _,v in ipairs (x) do s[#s+1] = v end
+    end
+  end
+  
+  p {'\n', space: rep (depth), '<', name}
+  for n,v in pairs (self) do 
+    if type (n) == "string" then p {' ', n, '="', v, '"'} end
+  end
+  if #self == 0 then
+    p "/>"
+  else
+    p '>'
+    for _,v in ipairs (self) do
+      if is_element (v) then v: _serialize (stream, depth+1) else p (v) end
+    end
+    p {'</', name, '>'}
+  end
+  return stream
+end
 
+-- basic node element
 local function element (name, contents)
   if type (contents) == "string" then contents = {contents} end   -- 2019.06.22
   
   local self = {}
   for n,v in pairs (contents or {}) do self[n] = v end    -- shallow copy of contents
-    
-  local function _serialize (self, stream, depth)
-
-    local function is_element (v) return type (v) == "table" and v._serialize end
-    
-    stream = stream or {}
-    depth = depth or 0
-    local space = ' '
-    
-    local function p(x) 
-      local s = stream
-      local t = type (x)
-      if t ~= "table" or is_element (x) then
-        s[#s+1] = x 
-      else
-        for _,v in ipairs (x) do s[#s+1] = v end
-      end
-    end
-    
-    p {'\n', space: rep (depth), '<', name}
-    for n,v in pairs (self) do 
-      if type (n) == "string" then p {' ', n, '="', v, '"'} end
-    end
-    if #self == 0 then
-      if not no_slash[name] then p '/' end    -- 2019.06.20
-      p '>'
-    else
-      p '>'
-      for _,v in ipairs (self) do
-        if is_element (v) then v: _serialize (stream, depth+1) else p (v) end
-      end
-      p {'</', name, '>'}
-    end
-    return stream
-  end
   
   local meta
   meta = {
@@ -385,7 +390,7 @@ end
 -- 2019.03.22  HTML and SVG
 --
 
-local html5 = setmetatable ({},
+local xhtml = setmetatable ({},
   {__index = function (self, tag)    -- 2019.04.06  just add any unknown tag as a new element...
     local fct = function(contents) return element(tag, contents) end
     rawset (self, tag, fct)
@@ -396,7 +401,7 @@ local html5 = setmetatable ({},
 -- tables
 --
 
-function html5.table (attr)
+function xhtml.table (attr)
   
   local tbl = element ("table", attr)
   
@@ -504,19 +509,18 @@ local function add_svg_functions (svg)
 end
 
 
-function html5.svg (attr)    
+function xhtml.svg (attr)    
   local svg = element ("svg", attr)  
   add_svg_functions(svg)
   return svg
 end
 
-function html5.document (contents)
+function xhtml.document (contents)
   local doc = element ("html", contents)
   return table.concat (doc:_serialize {"<!DOCTYPE html>"})
 end
 
 -------------------------------------
-
 
 return {
     
@@ -527,14 +531,15 @@ return {
     
     decode    = decode, 
     encode    = encode,
-    simplify  = simplify,
     
-    encodeDocument  = encodeDocument,
-    documentElement = documentElement,
+    encodeXMLDocument = encodeXMLDocument,   -- TODO: refactor into xmlDocument
+    encodeDocument    = encodeDocument,
+    documentElement   = documentElement,
     
     -- 2019.03.22   HTML5 and SVG
     
-    html5 = html5,
+    html5 = xhtml,
+    xhtml = xhtml,
 
   }
 
