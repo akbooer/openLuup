@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "whisper-edit",
-  VERSION       = "2019.06.07",
+  VERSION       = "2019.07.13",
   DESCRIPTION   = "Whisper database editor script cgi/whisper-edit.lua",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -15,11 +15,13 @@ ABOUT = {
 
 -- 2016.07.06  based on original whisper-editor
 -- 2019.06.07  use w3.css style sheets
+-- 2019.06.29  use xhtml module
+-- 2019.07.13  use new xml.createNewHtmlDocument() factory method
 
 
-local whisper   = require "openLuup.whisper"
-local wsapi     = require "openLuup.wsapi"        -- for request library
-local html5     = require "openLuup.xml" .html5
+local whisper = require "openLuup.whisper"
+local wsapi   = require "openLuup.wsapi"        -- for request library
+local xml     = require "openLuup.xml"
 
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
@@ -31,12 +33,7 @@ local pagename = "w-edit"
 
 -----------------------------------
 
-local input, label = html5.input, html5.label
 local button_class = "w3-button w3-border w3-margin w3-round-large "
-  
-local function row (time, value)
-  return {os.date ("%Y-%m-%d %H:%M:%S", time), input {name=time, value=value}}
-end  
 
 local function ymd (date, hour, min,sec)
   local y,m,d = (date or ''): match "(%d%d%d%d)%D(%d%d)%D(%d%d)"
@@ -141,33 +138,41 @@ function run (wsapi_env)
     if not ok then luup.log ("Whisper file update failed: " .. target) end
   end
 
-  -- build the common items on the return page
+  --
+  -- build the HTML page
+  --
   
-  local read_form = html5.div {class = "w3-card w3-margin w3-small",
-    html5.div {class = "w3-container w3-grey",
-      html5.h4 {"Database Query"}},
-    html5.form {class = "w3-container w3-margin-top",
+  local h = xml.createNewHtmlDocument {}
+  
+  local read_form = h.div {class = "w3-card w3-margin w3-small",
+    h.div {class = "w3-container w3-grey",
+      h.h4 {"Database Query"}},
+    h.form {class = "w3-container w3-margin-top",
       action=req.script_name, 
       method="get",
-      input {type="hidden", name="page", value=pagename},
-      label {"target: ", title="full file path"}, 
-      input {class = "w3-input", type="text", name="target", value=target},
-      label {"from:  ", title="from start of this day"}, 
-      input {class = "w3-input", type="date", name="from", value=from},
-      label {"until: ", title="until end of this day"},
-      input {class = "w3-input", type="date", name="until", value=to},
-      html5.div {class = "w3-right-align",
-        input {class = button_class .. "w3-pale-green",
+      h.input {type="hidden", name="page", value=pagename},
+      h.label {"target: ", title="full file path"}, 
+      h.input {class = "w3-input", type="text", name="target", value=target},
+      h.label {"from:  ", title="from start of this day"}, 
+      h.input {class = "w3-input", type="date", name="from", value=from},
+      h.label {"until: ", title="until end of this day"},
+      h.input {class = "w3-input", type="date", name="until", value=to},
+      h.div {class = "w3-right-align",
+        h.input {class = button_class .. "w3-pale-green",
           type="Submit", value="Read", title="get data to edit"}
         },
     },
   }
 
   -- if there is any data, then build an editable table
+    
+  local function row (time, value)
+    return {os.date ("%Y-%m-%d %H:%M:%S", time), h.input {name=time, value=value}}
+  end  
 
   local data = ''      -- default to blank space
   if V then
-    data = html5.table {class = "w3-table"}
+    data = h.table {class = "w3-table"}
     data: header {"date / time", "value"}
     for i,v in ipairs (V) do
       data: row (row (T[i], v))
@@ -179,46 +184,46 @@ function run (wsapi_env)
   for _, method in ipairs (whisper.aggregationTypeToMethod) do
     local checked
     if method == info.aggregationMethod then checked = '1' end
-    aggregation[#aggregation+1] = 
-      input {type="radio", name="aggregation", value=method, checked=checked, ' '..method..' '}
+    aggregation[#aggregation+1] = h.label {method}
+    aggregation[#aggregation+1] = h.input {type="radio", name="aggregation", value=method, checked=checked}
   end
   
   local xff = ("%0.2f"):format (info.xFilesFactor)
   
-  local write_form = html5.div {class = "w3-card w3-margin w3-small",
-    html5.div {class = "w3-container w3-grey",
-      html5.h4 {"Database Update"}},
-    html5.form {class = "w3-container w3-margin-top",
+  local write_form = h.div {class = "w3-card w3-margin w3-small",
+    h.div {class = "w3-container w3-grey",
+      h.h4 {"Database Update"}},
+    h.form {class = "w3-container w3-margin-top",
       action=req.script_name, 
       method="post",
-      input {type="hidden", name = "page",    value = pagename},
-      input {type="hidden", name = "from",    value = from},  
-      input {type="hidden", name = "until",   value = to},  
-      input {type="hidden", name = "target",  value = target},  
-      label {"archives: ",title="sample rate:time span, ..., for each resolution archive"},
-      input {class = "w3-input", readonly=1, value = tostring(info.retentions)},
-      label {"aggregation:", title="function for combining samples between archives"},
-      html5.div {class = "w3-white w3-padding w3-border-bottom", html5.div (aggregation) },
-      label {"xFilesFactor:", title = "xff (0-1) if you don't know what this is, don't change it"}, 
-      input {class = "w3-input", name="xFilesFactor", autocomplete="off", value = xff},
-      html5.div {class = "w3-right-align",
-        input {class = button_class .. "w3-pale-yellow", 
+      h.input {type="hidden", name = "page",    value = pagename},
+      h.input {type="hidden", name = "from",    value = from},  
+      h.input {type="hidden", name = "until",   value = to},  
+      h.input {type="hidden", name = "target",  value = target},  
+      h.label {"archives: ",title="sample rate:time span, ..., for each resolution archive"},
+      h.input {class = "w3-input", readonly=1, disabled=1, value = tostring(info.retentions)},
+      h.label {"aggregation:", title="function for combining samples between archives"},
+      h.div {class = "w3-white w3-padding w3-border-bottom", h.div (aggregation) },
+      h.label {"xFilesFactor:", title = "xff (0-1) if you don't know what this is, don't change it"}, 
+      h.input {class = "w3-input", name="xFilesFactor", autocomplete="off", value = xff},
+      h.div {class = "w3-right-align",
+        h.input {class = button_class .. "w3-pale-yellow", 
           type="Reset", title="clear changes to table"},
-        input {class = button_class .. "w3-pale-red", 
+        h.input {class = button_class .. "w3-pale-red", 
           type="Submit", value="Commit", title="write changes back to file"},
       },
-      html5.div {class = "w3-panel w3-border w3-hover-border-red", data},
+      h.div {class = "w3-panel w3-border w3-hover-border-red", data},
     }}
-   
-  local meta =  [[
-  <meta charset="utf-8" name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-]]
  
-  local html = html5.document {class="w3-light-grey", 
-    html5.head {html5.title {"W-Edit"}, meta}, 
-    html5.div {class = "w3-panel w3-cell", read_form, write_form}}
-  res:write (html)
+  h:appendChild {
+    h.html {
+      h.title {"W-Edit"}, 
+      h.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"}, 
+      h.link {rel="stylesheet", href="https://www.w3schools.com/w3css/4/w3.css"},
+      h.body {class = "w3-light-grey",
+        h.div {class = "w3-panel w3-cell", read_form, write_form}}}}
+  
+  res:write (tostring(h))
 
   return res:finish()
 end

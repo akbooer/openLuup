@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.06.30",
+  VERSION       = "2019.07.14",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -66,9 +66,10 @@ ABOUT = {
 -- 2019.05.25  split Database tables into known and unknown devices
 -- 2019.05.27  tabbed pages and new layout
 -- 2019.06.04  use CCS Framework W3.css, lightweight with no JavaScript libraries.  Perfect match!
+-- 2019.07.14  use new xml.createNewHtmlDocument() factory method
 
 
---  WSAPI Lua implementation
+--  WSAPI Lua CGI implementation
 
 local lfs       = require "lfs"                   -- for backup file listing, and historian files
 local vfs       = require "openLuup.virtualfilesystem"
@@ -86,8 +87,9 @@ local whisper   = require "openLuup.whisper"
 local wsapi     = require "openLuup.wsapi"        -- for response library
 local loader    = require "openLuup.loader"       -- for static data (devices page)
 local json      = require "openLuup.json"         -- for console_menus.json
-local xml       = require "openLuup.xml"          -- for xml.escape(), and...
-local xhtml     = xml.xhtml                       -- ...html and svg libraries
+local xml       = require "openLuup.xml"          -- for HTML constructors
+
+local xhtml     = xml.createHTMLDocument ()       -- factory for all HTML tags
 
 -- get local copy of w3.css if we haven't got one already
 -- so that we can work offline if required
@@ -112,15 +114,17 @@ local options = luup.attr_get "openLuup.Console" or {}   -- get configuration pa
 local service_data  = loader.service_data
 
 local unicode = {
-  double_vertical_bar = "&#x23F8;",
-  black_right_pointing_triangle ="&#x25B6",
-  clock_three = "&#x25F7;",     -- actually, WHITE CIRCLE WITH UPPER RIGHT QUADRANT
-  black_star  = "&#x2605;",
-  white_star  = "&#x2606;",
-  check_mark  = "&#x2713;",     -- &#x2714; ?
-  cross_mark  = "&#x2718;",
-  pencil      = "&#x270e;",
-  power       = "&#x23FB;",     -- NB. not yet commonly implemented.
+--  double_vertical_bar = "&#x23F8;",
+--  black_right_pointing_triangle ="&#x25B6",
+  black_down_pointing_triangle ="▼",
+  leftwards_double_arrow = "⇐",
+  clock_three = "◷",     -- actually, WHITE CIRCLE WITH UPPER RIGHT QUADRANT
+  black_star  = "★",
+  white_star  = "☆",
+  check_mark  = "✓",     
+--  cross_mark  = "&#x2718;",
+--  pencil      = "&#x270e;",
+--  power       = "&#x23FB;",     -- NB. not yet commonly implemented.
 }
 
 local SID = {
@@ -743,7 +747,8 @@ function pages.log (p)
   if f then
     local x = f:read "*a"
     f: close()
-    pre = xhtml.pre {xml.escape (x)}
+--    pre = xhtml.pre {xml.escape (x)}
+    pre = xhtml.pre {x}     -- 2019.07.14  new HTML escapes all text
   end
   return page_wrapper(name, pre)
 end
@@ -1027,7 +1032,6 @@ function pages.summary ()
       end)
     T = T / 1000
 
-    t0.row { {colspan=2, '&nbsp;'} }
     t0.header { {"Disk archive folder: " .. folder, colspan = 2} }
     t0.row {"updates/min", dp1 (write_rate)}
     t0.row {"time/point (ms)", dp1(wall_rate)}
@@ -1227,7 +1231,7 @@ local function get_display_variables (d)
 end
 
 local function device_controls (d)
-  local switch, slider = '',''
+  local switch, slider = ' ',' '
   local srv = d.services[SID.switch]
   if srv then    -- we need an on/off switch
 --    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
@@ -1266,7 +1270,7 @@ local function device_panel (self)          -- 2019.05.12
   local bookmark = xhtml.a {class = "nodec", href=selfref("action=bookmark&dev=", id), flag}
   
   local battery = (((self.services[SID.ha] or {}) .variables or {}) .BatteryLevel or {}) .value
-  battery = battery and (battery .. '%') or ''
+  battery = battery and (battery .. '%') or ' '
   
   local switch, slider = device_controls(self)
   local div, span = xhtml.div, xhtml.span
@@ -1667,7 +1671,8 @@ end
 -- text editor
 
 local function code_editor (code, height, language, readonly)
-  code = xml.escape (code or '')
+--  code = xml.escape (code or '')
+  code = code or ''
   height = (height or "500") .. "px;"
   language = language or "lua"
   local submit_button = xhtml.input {class="w3-button w3-round w3-green w3-margin", value="Submit"}
@@ -1677,7 +1682,8 @@ local function code_editor (code, height, language, readonly)
     local page = xhtml.div {id="editor", class="w3-border", style = "width: 100%; height:"..height, code }
     local form = xhtml.form {action= selfref (), method="post", enctype="multipart/form-data",
       xhtml.input {type="hidden", name="lua_code", id="lua_code"}, submit_button}
-    local ace = xhtml.script {src = options.Ace_URL, type="text/javascript", charset="utf-8", ''}
+    -- the single space in the following script is to stop a self-closing tag, which is not browser friendly!
+    local ace = xhtml.script {src = options.Ace_URL, type="text/javascript", charset="utf-8", ' '}
     local script = xhtml.script {
     'var editor = ace.edit("editor");',
     'editor.setTheme("ace/theme/', options.EditorTheme, '");',
@@ -1718,7 +1724,7 @@ function pages.lua_startup   (_, req) return page_wrapper ("Lua Startup Code",  
 function pages.lua_shutdown  (_, req) return page_wrapper ("Lua Shutdown Code", lua_edit (req, "ShutdownCode")) end
 
 local function lua_exec (req, codename, title)
-  local P = {}
+  local P = {'\r'}  -- again, to avoid self-closing divs
   local function prt (...)
     local x = {...}
     for i = 1, select('#', ...) do P[#P+1] = tostring(x[i]); P[#P+1] = ' \t' end
@@ -1737,9 +1743,9 @@ local function lua_exec (req, codename, title)
   local _, nlines = printed:gsub ('\n',{})
   --
   local form =  xhtml.div { class = "w3-col w3-half",
-    html5_title {title or codename},  code_editor (lua_code (req, codename), 500) }  
+    html5_title (title or codename),  code_editor (lua_code (req, codename), 500) }  
   local output = xhtml.div {class="w3-half", style="padding-left:16px;", 
-    html5_title {"Console Output: (", nlines, " lines, ", cpu, "ms)" }, 
+    html5_title ("Console Output: (", nlines, " lines, ", cpu, "ms)" ), 
     xhtml.textarea {readonly=1, 
       style = "resize: none; height:500px; width:100%;" .. 
       "font-family:Monaco, Menlo, Ubuntu Mono, Consolas, source-code-pro, monospace; font-size:10pt; line-height: 1.3;",      class="w3-border", printed}
@@ -2034,7 +2040,7 @@ local function page_nav (current, previous)
     end
   end
 --  local onclick="document.getElementById('messages').style.display='block'" 
-  local messages = div (make_button ("Messages &#x25BC; ",nil)) 
+  local messages = div (make_button ("Messages ▼ ", nil)) 
   messages.onclick="ShowHide('messages')" 
   local msg = xhtml.div {class="w3-container w3-green w3-bar", 
     xhtml.span {onclick="this.parentElement.style.display='none'",
@@ -2043,12 +2049,12 @@ local function page_nav (current, previous)
   return div {class="w3-container w3-row w3-margin-top", 
 
   xhtml.span {class = "w3-container w3-cell w3-cell-middle w3-round w3-border w3-border-grey",
-        a {class="nodec", href = selfref ("page=", previous), "&lArr;"}, " / ",     -- left arrow
+        a {class="nodec", href = selfref ("page=", previous), unicode.leftwards_double_arrow}, " / ", 
         a {class="nodec", href = selfref "page=current", "Home"},     " / ", 
         pagename}, 
     div {class="w3-container w3-cell", messages},
     div {class = "w3-panel w3-border w3-hide", id="messages",  
-      msg, msg, msg,
+      "hello",
       },
     div {xhtml.h3 {group or pagename}, div (tabs) }},
     current     -- return a possibly modified page 
@@ -2117,42 +2123,45 @@ function run (wsapi_env)
 
   local sheet = (pages[actual_page] or noop) (p, req)
   local formatted_page = div {class = "w3-container", navigation, sheet}
+
+
+  local h = xml.createHTMLDocument (script_name: match "(%w+)$")    -- the actual return HTML document
   
-  local html = xhtml.document { 
+  h.documentElement[1]:appendChild {  -- the <HEAD> element
+    h.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
+    h.link {rel="stylesheet", href="w3.css"},
+
+    h.style {
+  [[  
+    pre {line-height: 1.1; font-size:10pt;}
+    a.nodec { text-decoration: none; } 
+    th,td {width:1px; white-space:nowrap; padding: 0 16px 0 16px;}
+    table {table-layout: fixed; margin-top:20px}
+    .dev-panel {width:240px; float:left; }
+    .scn-panel {width:240px; float:left; }
+    .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
+  ]]},
     
-    xhtml.title {script_name: match "(%w+)$"},
-    xhtml.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
-    xhtml.link {rel="stylesheet", href="w3.css"},
-
-    xhtml.style {
-[[  
-  pre {line-height: 1.1; font-size:10pt;}
-  a.nodec { text-decoration: none; } 
-  th,td {width:1px; white-space:nowrap; padding: 0 16px 0 16px;}
-  table {table-layout: fixed; margin-top:20px}
-  .dev-panel {width:240px; float:left; }
-  .scn-panel {width:240px; float:left; }
-  .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
-  .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
-]]},
+    h.script {
+  [[
+  function ShowHide(id) {
+    var x = document.getElementById(id);
+    if (x.className.indexOf("w3-show") == -1) {
+      x.className += " w3-show";
+    } else {
+      x.className = x.className.replace(" w3-show", "");
+    }
+  }]]}}
   
-    xhtml.script {
-[[
-function ShowHide(id) {
-  var x = document.getElementById(id);
-  if (x.className.indexOf("w3-show") == -1) {
-    x.className += " w3-show";
-  } else {
-    x.className = x.className.replace(" w3-show", "");
-  }
-}]]},
-
-    xhtml.body {class = "w3-light-grey",
+  h.body.class = "w3-light-grey"
+  h.body:appendChild {
       dynamic_menu (),
-      div {
+      h.div {
         formatted_page,
-        div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", xhtml.p {os.date "%c"}},
-      }}}
+        h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", h.p {os.date "%c"}},
+      }}
+  local html = tostring(h)
   
   local res = wsapi.response.new ()
   res: write (html)  

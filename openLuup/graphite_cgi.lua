@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.07.01",
+  VERSION       = "2019.07.14",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -47,7 +47,7 @@ ABOUT = {
 -- 2019.04.07  add yMin, yMax, title, vtitle, options to SVG render
 -- 2019.04.26  return "No Data" SVG when target parameter absent (default Graphite behaviour)
 -- 2019.06.06  remove reference to external CSS
--- 2019.07.01  use new xhtml module
+-- 2019.07.14  use new HTML and SVG constructors
 
 
 -- CGI implementation of Graphite API
@@ -86,11 +86,10 @@ I've written a finder specifically for the dataMine database, to replace the exi
 local url       = require "socket.url"
 local luup      = require "openLuup.luup"
 local json      = require "openLuup.json"
---local vfs       = require "openLuup.virtualfilesystem"    -- for Graphite CSS
 local historian = require "openLuup.historian"
 local timers    = require "openLuup.timers"
-
-local xhtml     = require "openLuup.xml" .xhtml
+local xml       = require "openLuup.xml"
+--local vfs       = require "openLuup.virtualfilesystem"    -- for Graphite CSS
 
 local isFinders, finders = pcall (require, "L_DataFinders")  -- only present if DataYours there
 
@@ -564,16 +563,18 @@ local function svgRender (_, p)
   -- fetch the data
   
   local svgs = {}   -- separate SVGs for multiple plots
-  local body, div, head, h4, style, title = xhtml.body, xhtml.div, xhtml.head, xhtml.h4, xhtml.style, xhtml.title
-  local span = xhtml.span
   
   local function timeformat (epoch)
     local t = os.date ("%d %b '%y, %X", epoch):gsub ("^0", '')
     return t
   end
+  
+  -- get the convenience factory methods for HTML and SVG
+  local h = xml.createHTMLDocument "Graphics"
+  local s = xml.createSVGDocument {}
 
   local function new_plot ()
-    return xhtml.svg {
+    return s.svg {
         height = p.height or "300px", 
         width = p.width or "90%",
         viewBox = table.concat ({0, -Yscale/10, Xscale, 1.1 * Yscale}, ' '),
@@ -582,20 +583,20 @@ local function svgRender (_, p)
       }
   end
   
-  local function no_data (s)
-    return s:text (2000, Yscale/2, {"No Data",     -- TODO: move to external style sheet
-          style = "font-size:180pt; fill:Crimson; font-family:Arial; transform:scale(2,1)"} )
+  local function no_data (svg)
+    svg:appendChild (s.text (2000, Yscale/2, {"No Data",     -- TODO: move to external style sheet?
+          style = "font-size:180pt; fill:Crimson; font-family:Arial; transform:scale(2,1)"} ) )   
   end
   
   for name, tv in target (p).next() do
     
     local T, V = scale (tv)
-    local s = new_plot ()
- 
+    local svg = new_plot ()
     if not T then
-      no_data (s)    
+      no_data (svg)   
     else
       -- construct the data rows for plotting  
+      local d = {}    -- i.e. s.createDocumentFragment ()
          
       local floor = math.floor
       
@@ -608,49 +609,53 @@ local function svgRender (_, p)
         local T2, V2 = T[i], V[i]
         local t2, v2 = floor ((T2-Tmin) * Tscale), floor((V2-Vmin) * Vscale)
         local T2_label = timeformat (T2)
-        local popup = s:title {{T1_label, ' - ', T2_label, '\n', name, ": ", V1 - V1%0.001}}
-        s:rect (t1, Yscale-v1, t2-t1, v1, {class="bar", popup})
-        t1, v1, T1, V1, T1_label = t2, v2, T2, V2, T2_label
+        local V3 = V1 + 5e-4
+        local popup = s.title {T1_label, ' - ', T2_label, '\n', name, ": ", (V3 - V3 % 0.001)}
+        d[#d+1] = s.rect (t1, Yscale-v1, t2-t1, v1, {class="bar", popup})
+                          t1, v1, T1, V1, T1_label = t2, v2, T2, V2, T2_label
       end
       
       -- add the axes
       for _,y in ipairs (V.ticks) do
         -- need to scale
         local v = Yscale - floor((y-Vmin) * Vscale)
-        s: line (0, v, Xscale, v, {style = "stroke:Grey; stroke-width:2"})
-        s: text (0, v, {dy="-0.2em", style = "font-size:48pt; fill:Grey; font-family:Arial; transform:scale(2,1)", y})
+        d[#d+1] = s.line (0, v, Xscale, v, {style = "stroke:Grey; stroke-width:2"})
+        d[#d+1] = s.text (0, v, {dy="-0.2em", style = "font-size:48pt; fill:Grey; font-family:Arial; transform:scale(2,1)", y})
       end
-      local br = xhtml.br {}
-      local left  = span {style="float:left",  timeformat (T.min)}
-      local right = span {style="float:right", timeformat (T.max)}
-      local hscale = xhtml.p {style="margin-left: 5%; margin-right: 5%; color:Grey; font-family:Arial; ", left, right, br}
-      s = xhtml.div {p.vtitle or '', s, br, hscale}
+      local left  = h.span {style="float:left",  timeformat (T.min)}
+      local right = h.span {style="float:right", timeformat (T.max)}
+      local hscale = h.p {style="margin-left: 5%; margin-right: 5%; color:Grey; font-family:Arial; ", 
+                  left, right, h.br ()}
+      svg:appendChild (d)
+      svg = h.div {p.vtitle or '', svg, h.br(), hscale}
     end
     
-    svgs[#svgs+1] = div {h4 {p.title or name, style="font-family: Arial;"}, s}
+    svgs[#svgs+1] = h.div {h.h4 {p.title or name, style="font-family: Arial;"}, svg}
   end
   
   if #svgs == 0 then          -- 2019.04.26
-    local s = new_plot ()
-    no_data (s)
-    svgs[1] = s
+    local svg = new_plot ()
+    no_data (svg)
+    svgs[1] = svg
   end
   
 -- add the options    
   local cpu = timers.cpu_clock ()
-  local doc = xhtml.document {
-    head {
-      xhtml.meta {charset="utf-8"},
-      title "Graphics",
-      style {[[
-  .bar {cursor: crosshair; }
-  .bar:hover, .bar:focus {fill: DarkGray; }
-  rect {fill:Grey; stroke-width:3px; stroke:Grey; }
-]]},  -- was LightSteelBlue
-    body (svgs)}}
+  
+  h.documentElement[1]:appendChild {    -- append to <HEAD>
+        h.meta {charset="utf-8"},
+        h.style {[[
+    .bar {cursor: crosshair; }
+    .bar:hover, .bar:focus {fill: DarkGray; }
+    rect {fill:Grey; stroke-width:3px; stroke:Grey; }
+  ]]}}
+
+  h.body:appendChild (svgs)
+
+  local doc = tostring (h)
+  
   cpu = timers.cpu_clock () - cpu
 
---  local render = "render: CPU = %.3f mS for %dx%d=%d points"
   local render = "render: CPU = %.3f ms"
   _debug (render: format (cpu*1e3))
   return doc, 200, {["Content-Type"] = "text/html"}

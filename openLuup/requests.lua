@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2019.05.12",
+  VERSION       = "2019.07.14",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -68,6 +68,7 @@ local ABOUT = {
 -- 2019.05.06  always include status of devices with status ~= -1
 -- 2019.05.10  use device:get_shortcodes() in sdata_devices_table()
 -- 2019.05.12  use device:state_table() in status_devices_table()
+-- 2017.07.15  encode action request XML response from scratch, using new XML document constructor
 
 
 local http          = require "openLuup.http"
@@ -731,13 +732,19 @@ local function action (_,p,f)
   else
     arguments = arguments or {}
     arguments.OK = "OK"
-    result = {["u:"..p.action.."Response"] = arguments}
+    local rootName = "u:"..p.action.."Response"
+    result = {[rootName] = arguments}
     if f == "json" then
       result = json.encode (result)
       mime_type = "application/json"
-    else
-      result = xml.encode (result)
-      result = result: gsub ("^(%s*<u:[%w_]+)", '<?xml version="1.0"?>\n%1 xmlns:u="' .. (p.serviceId or "UnknownService") .. '"')
+    else                                -- 2017.07.15 encode XML response from scratch
+--      result = xml.encode (result)
+--      result = result: gsub ("^(%s*<u:[%w_]+)", '<?xml version="1.0"?>\n%1 xmlns:u="' .. (p.serviceId or "UnknownService") .. '"')
+      local x = xml.createDocument ()
+      local root = x.createElement (rootName, {["xmlns:u"] = p.serviceId or "UnknownService"})
+      for n,v in pairs (arguments) do root[#root+1] = x.createElement (n, tostring(v)) end
+      x: appendChild (root)
+      result = tostring (x)
       mime_type = "application/xml"
     end
   end
