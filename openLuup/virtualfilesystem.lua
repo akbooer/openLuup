@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.07.01",
+  VERSION       = "2019.07.12",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -24,7 +24,6 @@ local ABOUT = {
 
 local json  = require "openLuup.json"             -- for JSON device file encoding
 local xml   = require "openLuup.xml"              -- for XML device file encoding
-local xhtml = xml.html5                           -- for SVG icons
 
 -- the loader cache is preset with these files
 
@@ -69,47 +68,38 @@ end
 
 local openLuup_svg = (
   function (N)
-    local s = xhtml.svg {height = N, width  = N,
-      viewBox= table.concat ({0, 0,12, 12}, ' '),
-      xmlns="http://www.w3.org/2000/svg" ,
-      style="border: 0; margin: 0; background-color:#F0F0F0;" }
-    local g1 = s:group {style = "stroke-width:3; fill:#CA6C5E;"}
-      g1:rect (1,1, 10, 6)
-      g1:rect (3,7,  6, 3)
-      g1:rect (1,9, 10, 2)
-    local g0 = s:group {style = "stroke-width:3; fill:#F0F0F0;"}
-      g0:rect (3,3,  6, 4)
-      g0:rect (5,0,  2,12)
+    local s = xml.createSVGDocument ()
+    s:appendChild {
+      s.svg {height = N, width  = N,
+        viewBox= table.concat ({0, 0,12, 12}, ' '),
+        xmlns="http://www.w3.org/2000/svg" ,
+        style="border: 0; margin: 0; background-color:#F0F0F0;",
+        s.g {style = "stroke-width:3; fill:#CA6C5E;",
+          s.rect (1,1, 10, 6) ,
+          s.rect (3,7,  6, 3) ,
+          s.rect (1,9, 10, 2)  },
+        s.g {style = "stroke-width:3; fill:#F0F0F0;",
+          s.rect (3,3,  6, 4),
+          s.rect (5,0,  2,12)}}}
     return tostring(s)
   end) (60)
 
---local x = xhtml
---local D_openLuup_dev = xml.encodeXMLDocument {
---  x.root {xmlns = "urn:schemas-upnp-org:device-1-0",
---    x.device {
---      x.deviceType    "openLuup",
---      x.friendlyName  "openLuup",
---      x.manufacturer  "akbooer",
---      x.staticJson    "D_openLuup.json",
---      x.serviceList {
---        x.service {x.serviceType "openLuup", x.serviceId "openLuup", x.SCPDURL "S_openLuup.xml"}}},
---      x.implementationList {
---        x.implementationFile "I_openLuup.xml"
---      }}}
-
-local D_openLuup_dev = xml.encodeDocument {
-  root = {_attr = {xmlns="urn:schemas-upnp-org:device-1-0"},
-    device = {
-      deviceType    = "openLuup",
-      friendlyName  = "openLuup",
-      manufacturer  = "akbooer",
-      staticJson    = "D_openLuup.json",
-      serviceList = {
-        service = {
-          {serviceType = "openLuup", serviceId = "openLuup", SCPDURL = "S_openLuup.xml"}}},
-      implementationList = {
-        implementationFile = "I_openLuup.xml"}
-      }}}
+local D_openLuup_dev do
+  local x = xml.createDocument ()
+    x:appendChild {
+      x.root {xmlns="urn:schemas-upnp-org:device-1-0",
+        x.device {
+          x.deviceType    "openLuup",
+          x.friendlyName  "openLuup",
+          x.manufacturer  "akbooer",
+          x.staticJson    "D_openLuup.json",
+          x.serviceList {
+            x.service {x.serviceType "openLuup", x.serviceId "openLuup", x.SCPDURL "S_openLuup.xml"}},
+          x.implementationList {
+            x.implementationFile "I_openLuup.xml"
+        }}}}
+  D_openLuup_dev = tostring (x)
+end
 
 local D_openLuup_json = json.encode {
   flashicon = "https://avatars.githubusercontent.com/u/4962913",  -- not used, but here for reference
@@ -133,144 +123,108 @@ local D_openLuup_json = json.encode {
         Display (50,120, 75,20,  "openLuup", "Version")),
       ControlGroup (2, "label", 0,4,
         Display (50,160, 75,20),
-        Label ("donate", xhtml.a {href="console", target="_blank", "CONSOLE interface"})),
+        Label ("donate", '<a href="console" target="_blank">CONSOLE interface</a>')),
       ControlGroup (2, "label", 0,4,
         Display (50,200, 75,20),
-        Label ("donate", xhtml.a {href="https://www.justgiving.com/DataYours/", target="_blank",
-                "If you like openLuup, you could DONATE to Cancer Research UK right here"}))},
-   }},
+        Label ("donate", '<a href="https://www.justgiving.com/DataYours/" target="_blank">' ..
+                "If you like openLuup, you could DONATE to Cancer Research UK right here</a>")),
+   }}},
   eventList2 = {
     {id = 1, serviceId = "openLuup",argumentList = {},
       label = Label ("triggers_are_not_implemented", "Triggers not implemented, use Watch instead")},
     }
   }
 
-local I_openLuup_impl = xml.encodeDocument {
-implementation = {
-  files = "openLuup/L_openLuup.lua",
-  startup = "init",
-  actionList = {
+local I_openLuup_impl do
+  local x = xml.createDocument ()
+  local function action (S,N, R,J)
+    return x.action {x.serviceId (S), x.name (N), x.run(R), x.job (J)}
+  end
+    x: appendChild {
+      x.implementation {
+        x.files   "openLuup/L_openLuup.lua",
+        x.startup "init",
+        x.actionList {
+          action ("openLuup", "SendToTrash", nil, "SendToTrash (lul_settings)"),
+          action ("openLuup", "EmptyTrash",  nil, "EmptyTrash (lul_settings)"),
+          action ("openLuup", "SetHouseMode",
+            [[
+              local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+              luup.call_action (sid, "SetHouseMode", lul_settings)
+            ]]),
+          action ("openLuup", "RunScene",                  -- added by @rafale77 --
+            [[
+              local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
+              luup.call_action(sid, "RunScene", {SceneNum = lul_settings.SceneNum}, 0)
+            ]])
+        }}}
+  I_openLuup_impl = tostring(x)
+end
 
-    action = {
-      action ("openLuup", "SendToTrash", nil, "SendToTrash (lul_settings)"),
-      action ("openLuup", "EmptyTrash",  nil, "EmptyTrash (lul_settings)"),
-      action ("openLuup", "SetHouseMode",
-        [[
-          local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
-          luup.call_action (sid, "SetHouseMode", lul_settings)
-        ]]),
-      action ( "openLuup", "RunScene",                 -- added by @rafale77 --
-        [[
-          local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
-          luup.call_action(sid, "RunScene", {SceneNum = lul_settings.SceneNum}, 0)
-        ]])
-    }}}}
+local S_openLuup_svc do
+  local x = xml.createDocument ()
+  local function argument (N,D, R)
+    return x.argument {x.name (N), x.direction (D or "in"), x.relatedStateVariable (R)}
+  end
+    x: appendChild {
+      x.scpd {xmlns="urn:schemas-upnp-org:service-1-0",
+        x.specVersion {x.major "1", x.minor "0"},
 
--- TODO: move to this service file is dependent on AltUI version post-1-May-2019 to fix name tag issue
-local xS_openLuup_svc = xml.encodeDocument {
-  scpd = {_attr= {xmlns="urn:schemas-upnp-org:service-1-0"},
-    specVersion = {major = 1, minor = 0},
+        x.serviceStateTable {  -- added just for fun to expose these as device status
+          x.stateVariable {x.name "CpuLoad",     x.shortCode "cpu_load"},
+          x.stateVariable {x.name "Memory_Mb",   x.shortCode "memory_mb"},
+          x.stateVariable {x.name "Uptime_Days", x.shortCode "uptime_days"}},
 
-    serviceStateTable = {  -- added just for fun to expose these as device status
-      stateVariable = {
-        {name = "CpuLoad", shortCode = "cpu_load"},
-        {name = "Memory_Mb", shortCode = "memory_mb"},
-        {name = "Uptime_Days", shortCode = "uptime_days"}}},
+        x.actionList {
 
-    actionList = {
+          x.action {x.name "SendToTrash",
+            x.argumentList {
+              argument "Folder",
+              argument "MaxDays",
+              argument "MaxFiles",
+              argument "FileTypes"}},
 
-      action = {
-        {name = "SendToTrash",
-        argumentList = {
-          argument = {
-            argument "Folder",
-            argument "MaxDays",
-            argument "MaxFiles",
-            argument "FileTypes"}}},
+          x.action {x.name "EmptyTrash",
+            x.argumentList {
+              argument "AreYouSure"}},
 
-        {name = "EmptyTrash",
-        argumentList = {argument = argument "AreYouSure"}},
+          x.action {x.name "SetHouseMode",
+            x.argumentList {
+              argument "Mode"}},
 
-        {name = "SetHouseMode",
-        argumentList = {argument = argument "Mode"}},
+          x.action {x.name "RunScene",
+            x.argumentList {
+              argument "SceneNum"}},
+        }}}
+  S_openLuup_svc = tostring(x)
+end
 
-        {name = "RunScene",         -- added by @rafale77 --
-        argumentList = {argument = argument "SceneNum"}}}}}}
-
-local S_openLuup_svc = [[
-<?xml version="1.0"?>
-<scpd xmlns="urn:schemas-upnp-org:service-1-0">
-  <specVersion>
-    <major>1</major>
-    <minor>0</minor>
-  </specVersion>
-
- 	<serviceStateTable>  <!-- added just for fun to expose these as device status -->
-    <stateVariable> <name>CpuLoad</name> <shortCode>cpu_load</shortCode> </stateVariable>
-    <stateVariable> <name>Memory_Mb</name> <shortCode>memory_mb</shortCode> </stateVariable>
-    <stateVariable> <name>Uptime_Days</name> <shortCode>uptime_days</shortCode> </stateVariable>
-	</serviceStateTable>
-
-  <actionList>
-
-    <action>
-      <name>SendToTrash</name>
-      <argumentList>
-        <argument> <name>Folder</name> <direction>in</direction> </argument>
-        <argument> <name>MaxDays</name> <direction>in</direction> </argument>
-        <argument> <name>MaxFiles</name> <direction>in</direction> </argument>
-        <argument> <name>FileTypes</name> <direction>in</direction>
-        </argument>
-      </argumentList>
-    </action>
-
-    <action>
-      <name>EmptyTrash</name>
-      <argumentList>
-        <argument> <name>AreYouSure</name> <direction>in</direction> </argument>
-      </argumentList>
-    </action>
-
-    <action>
-      <name>SetHouseMode</name>
-      <argumentList>
-        <argument> <name>Mode</name> <direction>in</direction> </argument>
-      </argumentList>
-    </action>
-
-    <action>    <!-- added by @rafale77 -->
-      <name>RunScene</name>
-      <argumentList>
-        <argument> <name>SceneNum</name> <direction>in</direction> </argument>
-      </argumentList>
-    </action>
-
-  </actionList>
-</scpd>
-]]
 
 -----
 --
 -- AltAppStore device files
 -- This plugin runs on Vera too, so use same device/service files as there...
+-- ...rather than Lua-generated by the XML module factory methods
 --
 
 local AltAppStore_svg = (
   function (N)
-    local s = xhtml.svg {height = N, width  = N,
-      viewBox= table.concat ({-24,-24, 48,48}, ' '),
-      xmlns="http://www.w3.org/2000/svg" ,
-      style="border: 0; margin: 0; background-color:White;" }
-    local c = s:group {style = "stroke-width:3; fill:PowderBlue;"}      -- PowderBlue / SkyBlue
-      c: rect   (-13, -7, 26, 14)
-      c: circle (-13,  0, 7)
-      c: circle ( 13,  0, 7)
-      c: circle ( -5, -8, 9)
-      c: circle (  7, -8, 6)
-    local a = s:group {style = "stroke-width:0; fill:RoyalBlue;"}   -- DarkSlateBlue
-      a: polygon (
-        { 3, 3, 8,  0, -8, -3, -3},
-        {-5, 9, 9, 18,  9,  9, -5})
+    local s = xml.createSVGDocument ()
+    s:appendChild {
+      s.svg {height = N, width  = N,
+        viewBox= table.concat ({-24,-24, 48,48}, ' '),
+        xmlns="http://www.w3.org/2000/svg" ,
+        style="border: 0; margin: 0; background-color:White;",
+        s.g {style = "stroke-width:3; fill:PowderBlue;",      -- PowderBlue / SkyBlue
+          s.rect   (-13, -7, 26, 14),
+          s.circle (-13,  0, 7),
+          s.circle ( 13,  0, 7),
+          s.circle ( -5, -8, 9),
+          s.circle (  7, -8, 6)},
+        s.g {style = "stroke-width:0; fill:RoyalBlue;",   -- DarkSlateBlue
+          s.polygon (
+            { 3, 3, 8,  0, -8, -3, -3},
+            {-5, 9, 9, 18,  9,  9, -5})}}}
     return tostring(s)
   end) (60)
 
@@ -454,41 +408,45 @@ local VeraBridge_svg = (
     local background = "White"
     local Grey = "#504035"  -- was "#404040"
     local mystyle = "fill:%s; stroke-width:%s; stroke:%s;"
-    local s = xhtml.svg {height = N, width  = N,
-      viewBox= table.concat ({-24,-24, 48,48}, ' '),
-      xmlns="http://www.w3.org/2000/svg" ,
-      style="border: 1; margin: 0; background-color:" .. background }
-    local c = s:group {style= mystyle:format ("none", 3, Grey)}
-      c:  circle (0,5, 17.5)
-      c:  circle (0,5, 23)
-    local b = s:group {style= mystyle: format (background, 0, background)}
-      b: polygon ({-24, -24, -16,0,16, 24,24}, {32,-24, -24,11,-24, -24, 32})
-    local t = s:group {style= mystyle: format ("Green", 0, "Green")}
-      t: polygon ({-8,8,0}, {-5,-5, 11})
-    local v = s:group {style= mystyle: format (Grey, 0, Grey)}
-      v: polygon ({-16.5, -11, 0, 11, 16.5, 3.5,-3.5}, {-5, -5, 17, -5, -5, 20.5,20.5})
+    local s = xml.createSVGDocument ()
+    s:appendChild {
+      s.svg {height = N, width  = N,
+        viewBox= table.concat ({-24,-24, 48,48}, ' '),
+        xmlns="http://www.w3.org/2000/svg" ,
+        style="border: 1; margin: 0; background-color:" .. background,
+      s.g {style= mystyle:format ("none", 3, Grey),
+        s.circle (0,5, 17.5),
+        s.circle (0,5, 23)},
+      s.g {style= mystyle: format (background, 0, background),
+        s.polygon ({-24, -24, -16,0,16, 24,24}, {32,-24, -24,11,-24, -24, 32})},
+      s.g {style= mystyle: format ("Green", 0, "Green"),
+        s.polygon ({-8,8,0}, {-5,-5, 11})},
+      s.g {style= mystyle: format (Grey, 0, Grey),
+        s.polygon ({-16.5, -11, 0, 11, 16.5, 3.5,-3.5}, {-5, -5, 17, -5, -5, 20.5,20.5}) }}}
     return tostring(s)
   end) (60)
 
-
-local D_VeraBridge_dev = xml.encodeDocument {
-  root = {_attr = {xmlns="urn:schemas-upnp-org:device-1-0"},
-    device = {
-      Category_Num    = 1,
-      deviceType      = "VeraBridge",
-      friendlyName    = "Vera Bridge",
-      manufacturer    = "akbooer",
-      handleChildren  = 1,
-      staticJson      = "D_VeraBridge.json",
-      serviceList = {
-        service = {
-          { serviceType = "urn:akbooer-com:service:VeraBridge:1",
-            serviceId = SID.VeraBridge,
-            SCPDURL = "S_VeraBridge.xml"}}},
-      implementationList = {
-        implementationFile = "I_VeraBridge.xml"}
-      }}}
-
+local D_VeraBridge_dev do
+  local x = xml.createDocument ()
+    x: appendChild {
+      x.root {xmlns="urn:schemas-upnp-org:device-1-0",
+        x.device {
+          x.Category_Num    "1",
+          x.deviceType      "VeraBridge",
+          x.friendlyName    "Vera Bridge",
+          x.manufacturer    "akbooer",
+          x.handleChildren  "1",
+          x.staticJson      "D_VeraBridge.json",
+          x.serviceList {
+            x.service {
+              x.serviceType "urn:akbooer-com:service:VeraBridge:1",
+              x.serviceId   (SID.VeraBridge),
+              x.SCPDURL     "S_VeraBridge.xml"}},
+          x.implementationList {
+            x.implementationFile "I_VeraBridge.xml"}
+          }}}
+  D_VeraBridge_dev = tostring(x)
+end
 
 local D_VeraBridge_json = json.encode {
   flashicon = "http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
@@ -511,19 +469,23 @@ local D_VeraBridge_json = json.encode {
       }}}}
 
 
-local I_VeraBridge_impl = xml.encodeDocument {
-implementation = {
-  files = "openLuup/L_VeraBridge.lua",
-  startup = "init",
-  actionList = {
-    action = {
-      action (SID.VeraBridge, "GetVeraFiles",      nil, "GetVeraFiles (lul_settings)"),
-      action (SID.VeraBridge, "GetVeraScenes",     nil, "GetVeraScenes (lul_settings)"),
-      action (SID.VeraBridge, "RemoteVariableSet", nil, "RemoteVariableSet (lul_settings)"),
-      action (SID.VeraBridge, "SetHouseMode",      nil, "SetHouseMode (lul_settings)"),
-    }}}}
-
-
+local I_VeraBridge_impl do
+  local x = xml.createDocument ()
+  local function action (S,N, R,J)
+    return x.action {x.serviceId (S), x.name (N), x.run(R), x.job (J)}
+  end
+    x: appendChild {
+      x.implementation {
+        x.files   "openLuup/L_VeraBridge.lua",
+        x.startup "init",
+        x.actionList {
+          action (SID.VeraBridge, "GetVeraFiles",      nil, "GetVeraFiles (lul_settings)"),
+          action (SID.VeraBridge, "GetVeraScenes",     nil, "GetVeraScenes (lul_settings)"),
+          action (SID.VeraBridge, "RemoteVariableSet", nil, "RemoteVariableSet (lul_settings)"),
+          action (SID.VeraBridge, "SetHouseMode",      nil, "SetHouseMode (lul_settings)"),
+        }}}
+  I_VeraBridge_impl = tostring(x)
+end
 
 local S_VeraBridge_svc = [[
 <?xml version="1.0"?>
@@ -576,40 +538,55 @@ local S_VeraBridge_svc = [[
 
 -- Built-in device and service files
 
-local D_BinaryLight1_xml = xml.encodeDocument {
-  root = {_attr = {xmlns="urn:schemas-upnp-org:device-1-0"},
-    specVersion = {major=1, minor=0},
-    device = {
-      deviceType      = "urn:schemas-upnp-org:device:BinaryLight:1",
-      staticJson      = "D_BinaryLight1.json",
-      serviceList = {
-        service = {
-          { serviceType = "urn:schemas-upnp-org:service:SwitchPower:1",
-            serviceId = "urn:upnp-org:serviceId:SwitchPower1",
-            SCPDURL = "S_SwitchPower1.xml"},
-          { serviceType = "urn:schemas-micasaverde-com:service:EnergyMetering:1",
-            serviceId = "urn:micasaverde-com:serviceId:EnergyMetering1",
-            SCPDURL = "S_EnergyMetering1.xml"},
-          { serviceType = "urn:schemas-micasaverde-com:service:HaDevice:1",
-            serviceId = "urn:micasaverde-com:serviceId:HaDevice1",
-            SCPDURL = "S_HaDevice1.xml"}
-        }}}}}
+local D_BinaryLight1_xml do
+  local x = xml.createDocument ()
+    x: appendChild {
+      x.root {xmlns="urn:schemas-upnp-org:device-1-0",
+        x.specVersion {x.major "1", x.minor "0"},
+        x.device {
+          x.deviceType "urn:schemas-upnp-org:device:BinaryLight:1",
+          x.staticJson "D_BinaryLight1.json",
+          x.serviceList {
+            x.service {
+              x.serviceType "urn:schemas-upnp-org:service:SwitchPower:1",
+              x.serviceId   "urn:upnp-org:serviceId:SwitchPower1",
+              x.SCPDURL     "S_SwitchPower1.xml"},
+            x.service {
+              x.serviceType "urn:schemas-micasaverde-com:service:EnergyMetering:1",
+              x.serviceId   "urn:micasaverde-com:serviceId:EnergyMetering1",
+              x.SCPDURL     "S_EnergyMetering1.xml"},
+            x.service {
+              x.serviceType  "urn:schemas-micasaverde-com:service:HaDevice:1",
+              x.serviceId    "urn:micasaverde-com:serviceId:HaDevice1",
+              x.SCPDURL      "S_HaDevice1.xml"}
+          }}}}
+  D_BinaryLight1_xml = tostring(x)
+end
 
+local S_SwitchPower1_xml do
+  local x = xml.createDocument ()
+  local function argument (N,D, R)
+    return x.argument {x.name (N), x.direction (D or "in"), x.relatedStateVariable (R)}
+  end
+    x: appendChild {
+      x.scpd {xmlns="urn:schemas-upnp-org:service-1-0",
+        x.specVersion {x.major "1", x.minor "0"},
+        x.serviceStateTable {
+          x.stateVariable {sendEvents="no",
+            x.name "Target", x.sendEventsAttribute "no", x.dataType "boolean", x.defaultValue "0"},
+          x.stateVariable {sendEvents="yes",
+            x.name "Status", x.dataType "boolean", x.defaultValue "0", x.shortCode "status"}},
 
-local S_SwitchPower1_xml = xml.encodeDocument {
-  scpd = {_attr= {xmlns="urn:schemas-upnp-org:service-1-0"},
-    specVersion = {major = 1, minor = 0},
-    serviceStateTable = {
-      stateVariable = {_attr = {sendEvents="no"},
-        {name = "Target", sendEventsAttribute = "no", dataType="boolean", defaultValue = 0},
-        {name = "Status", dataType="boolean", defaultValue = 0, shortCode = "status"}}},
-
-    actionList = {
-      action = {
-        {name = "SetTarget", argumentList = {argument = {argument ("newTargetValue", "in", "Target")}}},
-        {name = "GetTarget", argumentList = {argument = {argument ("RetTargetValue", "out", "Target")}}},
-        {name = "GetStatus", argumentList = {argument = {argument ("ResultStatus", "out", "Status")}}},
-  }}}}
+        x.actionList {
+          x.action {x.name "SetTarget",
+            x.argumentList {argument ("newTargetValue", "in", "Target")}},
+          x.action {x.name "GetTarget",
+            x.argumentList {argument ("RetTargetValue", "out", "Target")}},
+          x.action {x.name "GetStatus",
+            x.argumentList {argument ("ResultStatus", "out", "Status")}}},
+      }}
+  S_SwitchPower1_xml = tostring (x)
+end
 
 
 -----
@@ -1259,11 +1236,8 @@ local manifest = {
 
 do -- add font-awesome icon SVGs
   local name = "icons/%s.svg"
-  local svg  = xhtml.svg {xmlns="http://www.w3.org/2000/svg", fill="grey"}
-  for n,v in pairs (fa) do
-    svg[1] = v
-    manifest [name: format(n)] = tostring(svg)
-  end
+  local svg  = '<svg xmlns="http://www.w3.org/2000/svg" fill="%s">%s</svg>'
+  for n,v in pairs (fa) do manifest [name: format(n)] = svg: format ("grey", v) end
 end
 
 -----

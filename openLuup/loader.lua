@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2019.06.23",
+  VERSION       = "2019.07.14.",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -63,6 +63,7 @@ local ABOUT = {
 -- 2019.06.02  export cat_by_dev table for chdev to set device category (thanks @reneboer)
 -- 2019.06.12  move compile_and_run here from loader (to be used also by console)
 -- 2019.06.16  add loader.dir() to walk search path
+-- 2019.07.14  use new XML Document methods
 
 
 ------------------
@@ -380,25 +381,27 @@ end
 -- DEVICES
 
 -- parse device file, or empty table if error
-local function parse_device_xml (device_xml)
+local function parse_device_xml (xmlDoc)
   
-  local root = xml.documentElement (device_xml, "root") -- , "urn:schemas-upnp-org:device-1-0")
-  local device = root: xpath "//device" [1]
+  local root = xmlDoc.documentElement
+  if root.nodeName ~= "root" then error ("Device XML root element name is not 'root'") end
+  -- should also check root.xmlns == "urn:schemas-upnp-org:device-1-0"
+  
+  local device = xmlDoc.xpath (root, "//device") [1]
   if not device then error ("device file syntax error", 1) end
     
   local d = {}
---  for x in device:xpathIterator "//*/text()" do  -- same as ipairs below
   for _,x in ipairs (device.childNodes) do
-    d[x.nodeName:lower()] = x.nodeValue            -- force lower case versions
+    d[x.nodeName:lower()] = x.textContent            -- force lower case versions
   end
   
-  local impl = device: xpath "//implementationList/implementationFile" [1]
-  local impl_file = (impl or {}).nodeValue
+  local impl = xmlDoc.xpath (device, "//implementationList/implementationFile") [1]
+  local impl_file = (impl or {}).textContent
   
   local service_list = {}
-  for svc in device: xpathIterator "//serviceList/service" do
+  for svc in xmlDoc.xpathIterator (device, "//serviceList/service") do
     local service = {}
-    for _,x in ipairs (svc.childNodes) do service[x.nodeName] = x.nodeValue end
+    for _,x in ipairs (svc.childNodes) do service[x.nodeName] = x.textContent end
     service_list[#service_list+1] = service
   end
   
@@ -465,32 +468,35 @@ end
 
 
 -- read implementation file, if present, and build actions, files, and code.
-local function parse_impl_xml (impl_xml, raw_xml)
+local function parse_impl_xml (xmlDoc, raw_xml)
   
-  local implementation = xml.documentElement (impl_xml, "implementation") -- apparently, no namespace
+  local implementation = xmlDoc.documentElement
+  if implementation.nodeName ~= "implementation" then 
+    error ("Implementation XML root element name is not 'implementation'") end
+  -- apparently, no namespace to check!
   
   local i = {}
   -- get the basic text elements
   for _, x in ipairs (implementation.childNodes) do
-    local name, value = x.nodeName, x.nodeValue
-    i[name:lower()] = value      -- force lower case version, value may be nil
+    local name, value = x.nodeName, x.textContent
+    i[name:lower()] = value      -- force lower case version, --TODO: value may be nil?? NOT with textContent
   end
   
   -- build general <incoming> tag (not job specific ones)
-  local incoming_lua = implementation: xpath "//incoming/lua" [1]
-  local lua = (incoming_lua or {}).nodeValue
+  local incoming_lua = xmlDoc.xpath (implementation, "//incoming/lua") [1]
+  local lua = (incoming_lua or {}).textContent
   local incoming = build_incoming (lua)
   
-  
-  local settings_protocol = implementation: xpath "//settings/protocol" [1]
-  local protocol = (settings_protocol or {}).nodeValue
+
+  local settings_protocol = xmlDoc.xpath (implementation, "//settings/protocol") [1]
+  local protocol = (settings_protocol or {}).textContent
   
   -- build actions into an array called "_openLuup_ACTIONS_" 
   -- which will be subsequently compiled and linked into the device's services
   local action_list = {}
-  for act in implementation: xpathIterator "//actionList/action" do
+  for act in xmlDoc.xpathIterator (implementation, "//actionList/action") do
     local action = {}
-    for _,x in ipairs (act.childNodes) do action[x.nodeName] = x.nodeValue end
+    for _,x in ipairs (act.childNodes) do action[x.nodeName] = x.textContent end
     action_list[#action_list+1] = action
   end
   local actions = build_action_tags (action_list)
@@ -551,15 +557,18 @@ end
 -- SERVICES
 
 -- parse service files
-local function parse_service_xml (service_xml)
+local function parse_service_xml (xmlDoc)
   
-  local scpd = xml.documentElement (service_xml, "scpd") -- , "urn:schemas-upnp-org:service-1-0")
+  local scpd = xmlDoc.documentElement
+  if scpd.nodeName ~= "scpd" then 
+    error ("Service XML root element name is not 'scpd'") end
+  -- should also check scpd.xmlns == "urn:schemas-upnp-org:device-1-0"
   
   local variables = {}
   local short_codes = {}          -- lookup table of short_codes (for use by sdata request)
-  for var in scpd: xpathIterator "//serviceStateTable/stateVariable" do
+  for var in xmlDoc.xpathIterator (scpd, "//serviceStateTable/stateVariable") do
     local variable = {}
-    for _,x in ipairs (var.childNodes) do variable[x.nodeName] = x.nodeValue end
+    for _,x in ipairs (var.childNodes) do variable[x.nodeName] = x.textContent end
     if variable.name then
       variables[#variables+1] = variable
       short_codes[variable.name] = variable.shortCode
@@ -569,14 +578,14 @@ local function parse_service_xml (service_xml)
   -- all the service actions
   local actions = {}
   
-  for act in scpd: xpathIterator "//actionList/action" do
+  for act in xmlDoc.xpathIterator (scpd, "//actionList/action") do
     local action = {}
-    for _,x in ipairs (act.childNodes) do action[x.nodeName] = x.nodeValue end
+    for _,x in ipairs (act.childNodes) do action[x.nodeName] = x.textContent end
     if action.name then
       local argumentList = {}      
-      for arg in act: xpathIterator "//argumentList/argument" do
+      for arg in xmlDoc.xpathIterator (act, "//argumentList/argument") do
         local a = {}
-        for _,x in ipairs (arg.childNodes) do a[x.nodeName] = x.nodeValue end
+        for _,x in ipairs (arg.childNodes) do a[x.nodeName] = x.textContent end
         if a.name then
           argumentList[#argumentList+1] = a
         end
@@ -793,6 +802,8 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
   return d, error_msg
 end
 
+
+------
 
 return {
   ABOUT = ABOUT,
