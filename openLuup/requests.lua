@@ -1043,8 +1043,9 @@ local luup_requests = {
   update_plugin       = update_plugin,      -- download latest plugin version
   variableget         = variableget, 
   variableset         = variableset,
-  
-  -- openLuup specials
+}
+
+local openLuup_specials = {
   altui               = altui,              -- download AltUI version from GitHub
   debug               = debug,              -- toggle debug flag
   exit                = exit,               -- shutdown
@@ -1058,6 +1059,9 @@ do -- CALLBACK HANDLERS
   for name, proc in pairs (luup_requests) do 
     extendedList[name]        = proc
     extendedList["lu_"..name] = proc              -- add compatibility with old-style call names
+  end
+  for name, proc in pairs (openLuup_specials) do  -- no compatibility mode for these!
+    extendedList[name] = proc
   end
   http.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
 end

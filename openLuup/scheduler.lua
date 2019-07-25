@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.05.15",
+  VERSION       = "2019.07.22",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -59,6 +59,7 @@ local ABOUT = {
 -- 2019.05.01  measure cpu time used by device
 -- 2019.05.10  correct expiry time handling and refine kill_job()
 -- 2019.05.15  log the number of callbacks for call_delay() and variable_watch()
+-- 2019.07.22  add error_state table for jobs
 
 
 local logs      = require "openLuup.logs"
@@ -203,6 +204,11 @@ local state =  {
  
 local valid_state = {}
 for _,s in pairs (state) do valid_state[s] = s end
+
+local error_state = {
+  [state.Error]       = true, 
+  [state.Aborted]     = true,
+}
 
 local exit_state = {
   [state.Error]       = true, 
@@ -667,6 +673,7 @@ return {
     
     -- constants
     state             = state,
+    error_state       = error_state,
     exit_state        = exit_state,
     run_state         = run_state,
     wait_state        = wait_state,

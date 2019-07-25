@@ -517,7 +517,7 @@ function TestDeviceFile:test_empty_srv_and_ifile ()
   t.assertIsTable (d.service_list)
   t.assertItemsEquals (#d.service_list, 1)
   t.assertItemsEquals (d.service_list[1], {})
-  t.assertIsNil (d.impl_file)
+  t.assertEquals (d.impl_file, '')              -- old decoder gave nil
 end
 
 function TestDeviceFile:test_empty_srv_and_ifile2 ()
@@ -540,7 +540,7 @@ function TestDeviceFile:test_empty_srv_and_ifile2 ()
   t.assertIsTable (d.service_list)
   t.assertItemsEquals (#d.service_list, 1)
   t.assertItemsEquals (d.service_list[1], {})
-  t.assertIsNil (d.impl_file)
+  t.assertEquals (d.impl_file, '')              -- old decoder gave nil
 end
 
 
@@ -699,7 +699,8 @@ function TestImplementationFile:test_empty_lists ()
   t.assertIsNil (i.handle_children)
   t.assertIsNil (i.protocol)
   t.assertIsString (i.source_code)
-  t.assertIsNil (i.startup)
+--  t.assertIsNil (i.startup)
+  t.assertEquals (i.startup, '')              -- old decoder gave nil
   t.assertIsString (i.files)
   t.assertEquals (i.files, '')
   t.assertIsString (i.actions)
@@ -1133,11 +1134,8 @@ t.LuaUnit.run "-v"
 
 -------------------
 
---local x,y = loader.read_service "files/S_ZWaveNetwork1.xml"
---print(y)
---print (pretty( x.documentElement))
 
---do return end
+do return end
 
 -------------------
 
@@ -1145,7 +1143,7 @@ t.LuaUnit.run "-v"
 local lfs = require "lfs"
 local N = 0
 
-local function test_files (dir, pattern, reader)
+local function test_files (dir, pattern, reader, compile)
   for fname in lfs.dir (dir) do
     if fname: match (pattern) then
       N = N + 1
@@ -1153,6 +1151,10 @@ local function test_files (dir, pattern, reader)
       local lua, msg = reader (dir .. fname)
       if not lua then print (msg) end
 --      print (pretty(lua))
+      if compile and lua.source_code then
+        local env,err = loader.compile_lua (lua.source_code, fname)
+        if not env then print(err) end
+      end
     end
   end
 end
@@ -1164,6 +1166,6 @@ test_files ("./", "^D_.*%.xml$", loader.read_device)
 test_files ("./files/", "^D_.*%.xml$", loader.read_device)
 
 test_files ("./", "^I_.*%.xml$", loader.read_impl)
-test_files ("./files/", "^I_.*%.xml$", loader.read_impl)
+test_files ("./files/", "^I_.*%.xml$", loader.read_impl, false) -- or true to test compile
 
 -----

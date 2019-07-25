@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.07.14",
+  VERSION       = "2019.07.18",
   DESCRIPTION   = "XML utilities (HTML, SVG) and DOM-style parser/serializer",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -62,15 +62,15 @@ Whilst not a fully validating parser, this Domain Object Model (DOM) version has
 Lua-style of DOM, but provides meta variables and methods which attempt to follow much of 
 the spirit of the WWW3 standards: 
  
- https://www.w3.org/TR/REC-DOM-Level-1/level-one-core.html
- https://www.w3.org/TR/DOM-Level-2-Core/core.html
-https://www.w3.org/TR/2004/REC-DOM-Level-3-Core-20040407/ https://www.w3.org/TR/DOM-Level-2-Traversal-Range/traversal.html
- http://w3schools.sinsixx.com/dom/dom_methods.asp.htm
+  https://www.w3.org/TR/REC-DOM-Level-1/level-one-core.html
+  https://www.w3.org/TR/DOM-Level-2-Core/core.html
+  https://www.w3.org/TR/2004/REC-DOM-Level-3-Core-20040407/
+  https://www.w3.org/TR/DOM-Level-2-Traversal-Range/traversal.html
 
 Features include:
   - ignores processing instructions, comments, and CDATA
   - expands self-closing tags
-  - reads and saves attributes
+  - handles attributes
   - element relationship links:
     - parentNode, firstChild, lastChild,
     - TODO: previousSibling, nextSibling
@@ -95,7 +95,7 @@ The underlying model is a simple Lua table, with children in succesive elements 
 Note that zero or negative indices do not appear in the Lua ipairs() iterator, or length operator.
 Structure can be navigated with simple Lua table handling.
 
-In a break from the WWW3 standard, a text Node is simply a string 
+In a break from the WWW3 standard, a Text Node is simply a string 
 (as the child of an Element Node), not a different type of Node.
 In fact, Element is the only node type with W3 standard-like features (ignoring the document itself.)
 
@@ -118,7 +118,7 @@ end
 local NodeMeta = {}     -- NB: real metamethods will be added later!
                         -- parse / serialize do not access any metamethods
 
-local function createElement (name, contents)    -- TODO: flatten tables?
+local function createElement (name, contents)    -- TODO: flatten tables (DocumentFragments) ?
   if not contents or type (contents) == "string" then contents = {contents} end
   local self = setmetatable ({[0] = name}, NodeMeta)
   for n,v in pairs (contents) do self[n] = v end          -- shallow copy of contents
@@ -130,6 +130,7 @@ end
 --
 -- Core serialize & parse routines
 --
+-- see: https://www.w3.org/TR/DOM-Parsing/
 
 -- this serialize method works on the basic xml domain object model
 local function _serialize (self, stream, depth)
@@ -175,13 +176,13 @@ local function _parse (xml)
 
   local function parse (text, pop)
     for n,a,b in (text or ''): gmatch (elem_pair) do                      -- find opening/closing tags
-      local element = createElement ()                                 -- new element
+      local element = createElement ()                                    -- new element
       element[0] = n                                                      -- add name
---      element[-1] = pop                                                   -- add parent link
+--      element[-1] = pop                                                 -- add parent link
       pop[#pop+1] = element                                               -- add it to the parent
       for k,_,v in a: gmatch (attr_pair) do element[k] = unescape (v) end  -- get the attributes
       parse (b, element)                                                   -- get the children, or...
-      element[1] = element[1] or unescape(b)                                -- ... plain text element
+      element[1] = element[1] or unescape(b)                               -- ... plain text element
     end 
   end
 
@@ -192,8 +193,8 @@ local function _parse (xml)
               :gsub (self_closing, "<%1%2></%1>")       -- expand self-closing tags
     parse (xml, document)
   end  
-  return unpack (document)    -- separate return parameters for individual root elements
-                              -- an XML document can have only one root element.
+  return (unpack or table.unpack) (document)    -- separate return parameters for individual root elements
+                                                -- an XML document can have only one root element.
 end
 
 
@@ -207,7 +208,7 @@ end
 --    Additionally, there are factory methods for XML, HTML, and SVG documents, with convenience methods.
 --
 
--- in-order traversal of DOM tree with callback (node, XPath) 
+-- in-order traversal of DOM tree with callback parameters (node, XPath) 
 local function in_order (node, callback, path)
   path = table.concat {path or '', '/', node[0]}
   callback (node, path)         -- start with the root node
@@ -279,22 +280,15 @@ local NodeMethods = {}
   end
   
 --  NOT implemented...
---  
---  Node               insertBefore(in Node newChild, 
---                                  in Node refChild)
---                                        raises(DOMException);
---  Node               replaceChild(in Node newChild, 
---                                  in Node oldChild)
---                                        raises(DOMException);
+--  Node               insertBefore(in Node newChild, in Node refChild)
+--  Node               replaceChild(in Node newChild, in Node oldChild)
 --  Node               removeChild(in Node oldChild)
---                                        raises(DOMException);
 --  Node               cloneNode(in boolean deep)
---                                        raises(DOMException);
   
 -- add above attributes and methods simulating some conventional DOM mode features.
 -- note that this may conflict with any element attributes which have 'reserved' names!!
 NodeMeta.__index = function (x,n)
-      if NodeAttributes[n] then return NodeAttributes[n](x) end  -- invoke the method returning pseudo-attribute
+      if NodeAttributes[n] then return NodeAttributes[n](x) end  -- return pseudo-attribute method
       return (rawget (x,-3) or {}) [n]               -- try the element-specific metatable at [-3] ...
         or NodeMethods[n]                            -- ...or use Node methods
     end
@@ -307,8 +301,12 @@ NodeMeta.__tostring = function (self) return table.concat (_serialize(self)) end
 
 -- DOCUMENT METHODS
 
+--  NOT implemented...
+--  Node               adoptNode(in boolean deep)
+--  Node               importNode(in boolean deep)
+
 local DocumentMethods = {
-    -- add Node/Element methods to the document (in the W3 standard, it IS a Node)
+    -- add key Node/Element methods to the document (in the W3 standard, it IS a Node)
     appendChild = NodeMethods.appendChild,                    -- used to attach the root element
     getElementsByTagName = function (self, name)
       local root = self.documentElement
@@ -382,6 +380,7 @@ local docMeta = {
       -- see: https://www.w3.org/TR/DOM-Level-2/html.html#ID-26809268
       if tag == "title" then return de[1][1][1] end  
       if tag == "body"  then return de[2] end
+      if tag == "forms" then return de[2]: getElementsByTagName "form" end
     end
     local fct = function(contents) return self.createElement(tag, contents) end  -- specific to document type
     rawset (self, tag, fct)
@@ -555,7 +554,7 @@ end
 -- VERY limited set of tags (this implementation flags illegal/unknown tags by raising an error)
 local function createSVGDocument ()
   local d = {[0] = "#document"}                                                 -- the document node
-  d.createElement = function (tag) error ("SVG: illegal tagName: " .. (tag or '?'), 2) end  -- force lowercase
+  d.createElement = function (tag) error ("SVG: illegal tagName: " .. (tag or '?'), 2) end
   for n,v in pairs (DocumentMethods) do d[n] = v end                  -- add useful methods
   for n,v in pairs (SvgConvenience) do d[n] = v end                  -- add convenience methods
   return setmetatable (d, docMeta)           -- add the meta function for creating elements
@@ -565,6 +564,8 @@ end
 -------------------------------------
 
 return {
+    
+    TEST = {createElement = createElement},       -- for testing only
     
     -- XML
     

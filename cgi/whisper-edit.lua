@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "whisper-edit",
-  VERSION       = "2019.07.13",
+  VERSION       = "2019.07.15",
   DESCRIPTION   = "Whisper database editor script cgi/whisper-edit.lua",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -16,7 +16,7 @@ ABOUT = {
 -- 2016.07.06  based on original whisper-editor
 -- 2019.06.07  use w3.css style sheets
 -- 2019.06.29  use xhtml module
--- 2019.07.13  use new xml.createNewHtmlDocument() factory method
+-- 2019.07.15  use new xml.createHTMLDocument() factory method
 
 
 local whisper = require "openLuup.whisper"
@@ -142,7 +142,7 @@ function run (wsapi_env)
   -- build the HTML page
   --
   
-  local h = xml.createNewHtmlDocument {}
+  local h = xml.createHTMLDocument "W-Edit"
   
   local read_form = h.div {class = "w3-card w3-margin w3-small",
     h.div {class = "w3-container w3-grey",
@@ -196,10 +196,10 @@ function run (wsapi_env)
     h.form {class = "w3-container w3-margin-top",
       action=req.script_name, 
       method="post",
-      h.input {type="hidden", name = "page",    value = pagename},
-      h.input {type="hidden", name = "from",    value = from},  
-      h.input {type="hidden", name = "until",   value = to},  
-      h.input {type="hidden", name = "target",  value = target},  
+      h.input {type="hidden", name = "page",   value = pagename},
+      h.input {type="hidden", name = "from",   value = from},  
+      h.input {type="hidden", name = "until",  value = to},  
+      h.input {type="hidden", name = "target", value = target},  
       h.label {"archives: ",title="sample rate:time span, ..., for each resolution archive"},
       h.input {class = "w3-input", readonly=1, disabled=1, value = tostring(info.retentions)},
       h.label {"aggregation:", title="function for combining samples between archives"},
@@ -215,13 +215,10 @@ function run (wsapi_env)
       h.div {class = "w3-panel w3-border w3-hover-border-red", data},
     }}
  
-  h:appendChild {
-    h.html {
-      h.title {"W-Edit"}, 
-      h.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"}, 
-      h.link {rel="stylesheet", href="https://www.w3schools.com/w3css/4/w3.css"},
-      h.body {class = "w3-light-grey",
-        h.div {class = "w3-panel w3-cell", read_form, write_form}}}}
+  h.body:appendChild {
+    h.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"}, 
+    h.link {rel="stylesheet", href="https://www.w3schools.com/w3css/4/w3.css"},
+    h.div {class = "w3-panel w3-cell", read_form, write_form}}
   
   res:write (tostring(h))
 

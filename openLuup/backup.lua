@@ -41,26 +41,18 @@ local DIRECTORY_DEFAULT = "backup"      -- default backup directory
 -- 2018.07.12   add &retrieve=filename option (for console page)
 -- 2018.07.28   use wsapi.response library
 
+-- 2019.07.17   use new HTML factory method
+
 
 local userdata  = require "openLuup.userdata"
 local compress  = require "openLuup.compression"
 local wsapi     = require "openLuup.wsapi"      -- for the require and response library methods
 local lfs       = require "lfs"
+local xml       = require "openLuup.xml"
+
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
 
--- template for HTML return page
-local html = [[
-<!DOCTYPE html>
-<html>
-<head><title>Backup</title></head>
-<body>
-backup completed: <p>%s<p>
-and written to <strong>%s</strong><p>
-<a href=../../%s download type="application/octet-stream">DOWNLOAD</a><p>
-</body>
-</html>
-]]
 
 -- global entry point called by WSAPI connector
 
@@ -112,16 +104,22 @@ function run (wsapi_env)
       end
     end
     
+    local h = xml.createHTMLDocument "Backup"
     if ok then 
       msg = ("%0.0f kb compressed to %0.0f kb (%0.1f:1)") : format (ok, small, ok/small)
-      local body = html: format (msg, fname, fname)
-      res.content_type = "text/html"
-      res: write (body)
+      h.body: appendChild {
+        h.div {
+          "backup completed: ", h.p (msg),
+          "written to ", h.b (fname),
+          h.p {h.a {href="../../".. fname, download=fname, type="application/octet-stream", "DOWNLOAD"}}}
+      }
     else
       res.status = 500
-      res:write ("backup failed: " .. msg)
+      h.body: appendChild {h.div {"backup failed: ", msg} }
     end
     _log (msg)
+    res.content_type = "text/html"
+    res: write (tostring (h))
   end
   
   -- retrieve the contents of a backup file, uncompressing if necessary

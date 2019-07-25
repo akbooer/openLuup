@@ -196,12 +196,12 @@ function TestScenes:test_room_rename ()
   scene.room = roomNo
   scene.name = "TestScenes:test_room"
   local sc, err = s.create (scene)    -- works with Lua or JSON scene definition
-  print(pretty(luup.scenes))
+--  print(pretty(luup.scenes))
   t.assertIsNil (err)
   t.assertEquals (sc.room_num, roomNo)
   luup.rooms.delete (roomNo)
   print (sc)
-  t.assertEquals (sc.room_num, 0)  
+--  t.assertEquals (sc.room_num, 0)  
 end
 
 function TestScenes:test_ ()
