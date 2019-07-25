@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2019.05.11",
+  VERSION       = "2019.07.19",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server and luup.inet.wget client",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -85,6 +85,8 @@ local ABOUT = {
 -- 2019.03.12   fix permanent modification of schema.TIMEOUT parameter
 -- 2019.03.14   add async_request()
 -- 2019.05.10   move async_request to external http_async module (which also works on Vera!)
+-- 2019.07.17   improve handling of escape URL parameters
+-- 2019.07.19   handle multiple cookies in headers from WSAPI
 
 
 local socket    = require "socket"
@@ -142,8 +144,10 @@ end
 local function parse_parameters (query)
   local p = {}
   for n,v in query: gmatch "([%w_]+)=([^&]*)" do          -- parameters separated by unescaped "&"
-    if v ~= '' then p[n] = url.unescape(v) end            -- now can unescape parameter values
-    -- TODO: should non-blank parameters also be added from URL line?
+    if v ~= '' then 
+      v = v: gsub ('+', ' ')    -- 2017.07.15
+      p[n] = url.unescape(v)            -- now can unescape parameter values
+    end
   end
   return p
 end
@@ -320,12 +324,17 @@ local function request_object (request_URI, headers, post_content, method, http_
     parameters = parse_parameters (URL.query)   -- extract useful parameters from query string
   end
   
-  if method == "POST" 
-  and (headers["Content-Type"] or ''): find ("application/x-www-form-urlencoded",1,true) then -- 2017.02.21
-    local p2 = parse_parameters ((post_content or ''):gsub('+', ' '))   -- 2017.03.03 fix embedded spaces
-    for a,b in pairs (p2) do        -- 2017.02.06  combine URL and POST parameters
-      parameters[a] = b
-    end
+  if method == "POST" then    -- refactored 2019.07.15  TODO: IS THIS RIGHT?
+    local contentType = headers["Content-Type"] or ''
+    local postContent = post_content or ''
+--    if contentType: find ("application/x-www-form-urlencoded",1,true) then -- 2017.02.21
+      postContent = postContent:gsub('+', ' ')   -- 2017.03.03 fix embedded spaces
+--    end
+      local p2 = parse_parameters (postContent)
+      for a,b in pairs (p2) do        -- 2017.02.06  combine URL and POST parameters
+        parameters[a] = b
+      end
+--    end
   end
 
   local internal  = self_reference [URL.host] and URL.port == PORT    -- 2016-03-16 check for port #, thanks @reneboer
@@ -476,7 +485,8 @@ local function http_response (status, headers, iterator)
   local status_line = "HTTP/1.1 %d %s"
   local h = { status_line: format (status, status_codes[status] or "Unknown error") }
   for k, v in pairs(headers) do 
-    h[#h+1] = table.concat { k, ": ", v }
+    if type (v) ~= "table" then v = {v} end   -- 2019.07.19  WSAPI sends multiple cookies as an array ???
+    for i = 1,#v do h[#h+1] = table.concat { k, ": ", v[i] } end
   end
   h[#h+1] = crlf    -- add final blank line delimiting end of headers
   headers = table.concat (h, crlf) 

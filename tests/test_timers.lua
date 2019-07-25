@@ -132,6 +132,24 @@ function TestTimersOther:test_vosmont_DoW ()
   t.assertEquals (dt(due), dt(expected))    -- check the right time
 end
 
+
+function TestTimersOther:test_day_timer()
+  -- Type is 1=Interval timer. 
+  -- For an interval timer, days is not used, and 
+  -- Time should be a number of seconds, minutes, or hours using an optional 'h' or 'm' suffix. 
+  -- 2019.05.03  also 'd' !!!
+  local ok, due
+  local function fct () end
+  local function dt(t) return os.date ("%c", t) end
+  
+  local now = os.time ()
+  ok,_,_,_,due = timers.call_timer (fct, 1, "1d", nil, "some string data")    -- shouldn't fail
+  t.assertEquals (ok, 0)
+  local expected = now + 24 * 60 * 60
+  t.assertIsNumber (due)
+  t.assertEquals (dt(due), dt(expected))    -- check the right time
+end
+
 TestRiseSet = {}
 
 
