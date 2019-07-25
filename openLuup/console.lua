@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.07.17",
+  VERSION       = "2019.07.25",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -2219,8 +2219,8 @@ function run (wsapi_env)
   local body
 
   local p = req.params                                  -- set any missing parameters from session cookies
-  local cookies = {page = "about", previous = "about",
-    device = "2", scene = "1", room = "All Rooms", dev_sort = "By Name", scn_sort = "By Name"}
+  local cookies = {page = "about", previous = "about",  -- cookie defaults
+    device = "2", scene = "1", room = "All Rooms", dev_sort = "Sort by Name", scn_sort = "All Scenes"}
   for cookie in pairs (cookies) do
     if p[cookie] then 
       res: set_cookie (cookie, p[cookie])                   -- update cookie with URL parameter
