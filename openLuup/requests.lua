@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2019.07.14",
+  VERSION       = "2019.07.31",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -69,9 +69,11 @@ local ABOUT = {
 -- 2019.05.10  use device:get_shortcodes() in sdata_devices_table()
 -- 2019.05.12  use device:state_table() in status_devices_table()
 -- 2017.07.15  encode action request XML response from scratch, using new XML document constructor
+-- 2019.07.31  use new client and server modules (http split into two)
 
 
-local http          = require "openLuup.http"
+local client        = require "openLuup.client"
+local server        = require "openLuup.server"
 local json          = require "openLuup.json"
 local scheduler     = require "openLuup.scheduler"
 local devutil       = require "openLuup.devices"      -- for dataversion
@@ -143,7 +145,7 @@ end
 
 local function iprequests_table () 
   local info = {}
-  for _,x in pairs (http.iprequests) do
+  for _,x in pairs (server.iprequests) do
     info[#info + 1] = x
   end
   return info 
@@ -980,7 +982,7 @@ local function alive () return "OK" end
 
 -- file access
 local function file (_,p) 
-  local _,f = http.wget ("http://localhost:3480/" .. (p.parameters or '')) 
+  local _,f = client.wget ("http://localhost:3480/" .. (p.parameters or '')) 
   return f 
 end
 
@@ -1063,7 +1065,7 @@ do -- CALLBACK HANDLERS
   for name, proc in pairs (openLuup_specials) do  -- no compatibility mode for these!
     extendedList[name] = proc
   end
-  http.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
+  server.add_callback_handlers (extendedList)     -- tell the HTTP server to use these callbacks
 end
 
 luup_requests.ABOUT = ABOUT   -- add module info (NOT part of request list!)

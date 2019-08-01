@@ -49,19 +49,23 @@ local function Display (L,T,W,H, S,V)
 end
 
 local function Label (tag, text)
-  return {lang_tag = tag, text = tostring(text)}    -- tostring() forces serliaization of html5 elements
+  return {lang_tag = tag, text = tostring(text)}    -- tostring() forces serialization of html5 elements
 end
 
 local function ControlGroup (G,C, L,T, D,Lab)
   return {ControlGroup = tostring(G), ControlType = C, left = tostring(L), top = tostring(T), Display = D, Label=Lab}
 end
 
-local function action (S,N, R,J)
-  return {serviceId = S, name = N, run = R, job = J}
-end
-
-local function argument (N,D, R)
-  return {name = N, direction = D or "in", relatedStateVariable = R}
+local function state_icon (img, value, cat, subcat)
+  return 
+		{ img = img,
+			conditions = {
+				{ service = "urn:upnp-org:serviceId:SwitchPower1",
+					variable = "Status",
+					operator = "==",
+					value = value,
+					category_num = cat,
+          subcategory_num = subcat }}}
 end
 
 -----
@@ -487,52 +491,41 @@ local I_VeraBridge_impl do
   I_VeraBridge_impl = tostring(x)
 end
 
-local S_VeraBridge_svc = [[
-<?xml version="1.0"?>
-<scpd xmlns="urn:schemas-upnp-org:service-1-0">
-  <specVersion>
-    <major>1</major>
-    <minor>0</minor>
-  </specVersion>
- 
- 	<serviceStateTable>  <!-- added just for fun to expose these as device status -->
-    <stateVariable> <name>LoadTime</name> <shortCode>loadtime</shortCode> </stateVariable>	
-    <stateVariable> <name>LastUpdate</name> <shortCode>lastupdate</shortCode> </stateVariable>	
-    <stateVariable> <name>HouseMode</name> <shortCode>housemode</shortCode> </stateVariable>	
-	</serviceStateTable>
-  <actionList>
-    
-    <action>
-      <name>GetVeraFiles</name> 
-      <argumentList> <argument> <name>Files</name> <direction>in</direction> </argument> </argumentList>
-    </action>
-    
-    <action> <name>GetVeraScenes</name> </action>
-    
-<!-- by analogy to this request...
-  /data_request?id=variableset&DeviceNum=6&serviceId=urn:micasaverde-com:serviceId:DoorLock1&Variable=Status&Value=
--->>
-    <action>
-      <name>RemoteVariableSet</name>
-      <argumentList>
-        <argument> <name>RemoteDevice</name> <direction>in</direction> </argument>
-        <argument> <name>RemoteServiceId</name> <direction>in</direction> </argument>
-        <argument> <name>RemoteVariable</name> <direction>in</direction> </argument>
-        <argument> <name>Value</name> <direction>in</direction> </argument>
-      </argumentList>
-    </action>
-    
-    <action>
-      <name>SetHouseMode</name>
-      <argumentList>
-        <argument> <name>Mode</name> <direction>in</direction> </argument>
-      </argumentList>
-    </action>
+-- TODO: use DOM to construct this file
 
-  </actionList>
-</scpd>
-]]
-
+local S_VeraBridge_svc do
+  local x = xml.createDocument ()
+  local function argument (N,D)
+    return x.argument {x.name (N), x.direction (D or "in")}
+  end
+    x: appendChild {
+      x.scpd {xmlns="urn:schemas-upnp-org:service-1-0",
+        x.specVersion {x.major "1", x.minor "0"},
+        
+        x.serviceStateTable {   -- added just for fun to expose these as device status
+          x.stateVariable {x.name "LoadTime", x.shortCode "loadtime"},	
+          x.stateVariable {x.name "LastUpdate", x.shortCode "lastupdate"},	
+          x.stateVariable {x.name "HouseMode", x.shortCode "housemode"}},	
+        
+        x.actionList {
+          
+          x.action {x.name "GetVeraFiles", 
+            x.argumentList {argument "Files"}},
+          
+          x.action {x.name "GetVeraScenes"},
+            -- no arguments
+          
+          x.action {x.name "RemoteVariableSet", -- by analogy to /data_request?id=variableset&DeviceNum=...
+            x.argumentList {
+              argument "RemoteDevice",
+              argument "RemoteServiceId",
+              argument "RemoteVariable",
+              argument "Value" }},
+          
+          x.action {x.name "SetHouseMode", 
+            x.argumentList {argument "Mode"}}}}}
+  S_VeraBridge_svc = tostring (x)  
+end
 
 -----
 
@@ -561,6 +554,35 @@ local D_BinaryLight1_xml do
               x.SCPDURL      "S_HaDevice1.xml"}
           }}}}
   D_BinaryLight1_xml = tostring(x)
+end
+
+local D_BinaryLight1_json do    -- note that this is only the icons, not any device panel tabs or events
+  local j = {
+    default_icon = "binary_light_default.png",
+    device_type = "urn:schemas-upnp-org:device:BinaryLight:1",
+    state_icons = {
+      state_icon ("doorbell_static.png",      0, 30),
+      state_icon ("doorbell_active.png",      1, 30),
+      state_icon ("binary_light_off.png",     0, nil, 0),
+      state_icon ("binary_light_on.png",      1, nil, 0),
+      state_icon ("doorbell_static.png",      0, nil, 6),
+      state_icon ("doorbell_active.png",      1, nil, 6),
+      state_icon ("garage_door_closed.png",   0, nil, 5),
+      state_icon ("garage_door_open.png",     1, nil, 5),
+      state_icon ("thermostat_mode_off.png",  0,   5, 1),
+      state_icon ("thermostat_mode_auto.png", 1,   5, 1),
+      state_icon ("switch_off.png",           0,   3, 3),
+      state_icon ("switch_on.png",            1,   3, 3),
+      state_icon ("switch_off.png",           0,   3, 1),
+      state_icon ("switch_on.png",            1,   3, 1),
+      state_icon ("binary_light_off.png",     0, nil, 1),
+      state_icon ("binary_light_on.png",      1, nil, 1),
+      state_icon ("binary_light_off.png",     0, nil, 2),
+      state_icon ("binary_light_on.png",      1, nil, 2),
+      state_icon ("binary_light_off.png",     0, nil, 3),
+      state_icon ("binary_light_on.png",      1, nil, 3),
+    }}
+  D_BinaryLight1_json = json.encode (j)
 end
 
 local S_SwitchPower1_xml do
@@ -1166,8 +1188,9 @@ local manifest = {
     ["built-in/classic_console_menus.json"] = classic_console_menus_json,
     ["built-in/altui_console_menus.json"]   = altui_console_menus_json,
     
-    ["built-in/D_BinaryLight1.xml"] = D_BinaryLight1_xml,
-    ["built-in/S_SwitchPower1.xml"] = S_SwitchPower1_xml,
+    ["built-in/D_BinaryLight1.xml"]  = D_BinaryLight1_xml,
+    ["built-in/D_BinaryLight1.json"] = D_BinaryLight1_json,
+    ["built-in/S_SwitchPower1.xml"]  = S_SwitchPower1_xml,
     
     ["D_ZWay.xml"]  = D_ZWay_xml,
     ["D_ZWay.json"] = D_ZWay_json,

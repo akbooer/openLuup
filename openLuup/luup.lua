@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2019.06.10",
+  VERSION       = "2019.07.31",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -69,11 +69,13 @@ local ABOUT = {
 -- 2019.03.14  added luup.openLuup.async_request()
 -- 2019.05.03  corrected scene.room to scene.room_num in rooms.delete()
 -- 2019.05.04  add status message to set_failure() and device_message()
+-- 2019.07.31  use new client and server modules (http split into two)
 
 
 local logs          = require "openLuup.logs"
 
-local http          = require "openLuup.http"
+local client        = require "openLuup.client"
+local server        = require "openLuup.server"
 local scheduler     = require "openLuup.scheduler"
 local devutil       = require "openLuup.devices"
 local Device_0      = require "openLuup.gateway"
@@ -798,7 +800,7 @@ local function register_handler (...)
       if email  then                              -- 2018.03.08
         smtp.register_handler (fct, request_name)
       else
-        http.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
+        server.add_callback_handlers ({["lr_"..request_name] = fct}, scheduler.current_device())
       end
     end
   end
@@ -906,7 +908,7 @@ local inet = {
 -- If Username and Password are specified, they will be used for HTTP Basic Authentication.
 --
   wget = function (URL, Timeout, Username, Password)
-  return http.wget (URL, Timeout, Username, Password)
+  return client.wget (URL, Timeout, Username, Password)
   end
 }
 

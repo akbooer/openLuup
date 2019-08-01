@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2019.06.14",
+  VERSION       = "2019.07.31",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -55,6 +55,7 @@ local ABOUT = {
 -- 2019.03.14  change openLuup parameter comment style
 -- 2019.06.12  move compile_and_run to loader (to be used also by console)
 -- 2019.06.14  add Console options
+-- 2019.07.31  use new server module (name reverted from http)
 
 
 local logs  = require "openLuup.logs"
@@ -69,7 +70,7 @@ local loader = require "openLuup.loader"  -- keep this first... it prototypes th
 
 luup = require "openLuup.luup"            -- here's the GLOBAL luup environment
 
-local http          = require "openLuup.http"
+local server        = require "openLuup.server"   -- HTTP server
 local smtp          = require "openLuup.smtp"
 local pop3          = require "openLuup.pop3"
 local scheduler     = require "openLuup.scheduler"
@@ -143,7 +144,7 @@ do -- set attributes, possibly decoding if required
       Incoming  = "true",
     },
     Status = {
-      IP = http.myIP,
+      IP = server.myIP,
       StartTime = os.date ("%Y-%m-%dT%H:%M:%S", timers.loadtime),
     },
     UserData = {
@@ -245,7 +246,7 @@ do -- log rotate and possible rename
 end
   
 do -- ensure some extra folders exist
-   -- note that the ownership/permissions may be system depending on how openLuup is started
+   -- note that the ownership/permissions may be 'system', depending on how openLuup is started
   lfs.mkdir "events"
   lfs.mkdir "images"
   lfs.mkdir "trash"
@@ -254,15 +255,15 @@ do -- ensure some extra folders exist
 end
 
 do -- TODO: tidy up obsolete files
---  os.remove "openLuup/server.lua"
 --  os.remove "openLuup/rooms.lua"
 --  os.remove "openLuup/hag.lua"
+--  os.remove "openLuup/http.lua"
 end
 
 local status
 
 do -- SERVERs and SCHEDULER
-  local s = http.start (config.HTTP)       -- start the port 3480 Web server
+  local s = server.start (config.HTTP)       -- start the port 3480 Web server
   if not s then 
     error "openLuup - is another copy already running?  Unable to start HTTP port 3480 server" 
   end

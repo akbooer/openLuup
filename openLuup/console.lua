@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.07.25",
+  VERSION       = "2019.07.31",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -67,6 +67,7 @@ ABOUT = {
 -- 2019.05.27  tabbed pages and new layout
 -- 2019.06.04  use CCS Framework W3.css, lightweight with no JavaScript libraries.  Perfect match!
 -- 2019.07.14  use new xml.createNewHtmlDocument() factory method
+-- 2019.07.31  use new server module (name reverted from http)
 
 
 --  WSAPI Lua CGI implementation
@@ -77,7 +78,7 @@ local luup      = require "openLuup.luup"         -- not automatically in scope 
 local scheduler = require "openLuup.scheduler"    -- for job_list, delay_list, etc...
 local requests  = require "openLuup.requests"     -- for plugin updates, etc...
 local userdata  = require "openLuup.userdata"     -- for device user_data
-local http      = require "openLuup.http"
+local server    = require "openLuup.server"       -- for HTTP server stats
 local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
 local ioutil    = require "openLuup.io"
@@ -155,7 +156,7 @@ local code_editor -- forward reference
 -- populated further on by XMLHttpRequest callback handlers
 local XMLHttpRequest = setmetatable ({}, missing_index_metatable "XMLHttpRequest")
 
-http.add_callback_handlers {XMLHttpRequest = 
+server.add_callback_handlers {XMLHttpRequest = 
   function (_, p) return XMLHttpRequest[p.action] (p) end}
 
 
@@ -163,10 +164,12 @@ http.add_callback_handlers {XMLHttpRequest =
 
 
 local SID = {
-  altui   = "urn:upnp-org:serviceId:altui1",              -- 'DisplayLine1' and 'DisplayLine2'
-  ha      = "urn:micasaverde-com:serviceId:HaDevice1", 		-- 'BatteryLevel'
-  switch  = "urn:upnp-org:serviceId:SwitchPower1",        -- on/off control
-  dimming = "urn:upnp-org:serviceId:Dimming1",            -- slider control
+  altui   = "urn:upnp-org:serviceId:altui1",                  -- 'DisplayLine1' and 'DisplayLine2'
+  ha      = "urn:micasaverde-com:serviceId:HaDevice1", 		    -- 'BatteryLevel'
+  switch  = "urn:upnp-org:serviceId:SwitchPower1",             -- on/off control
+  dimming = "urn:upnp-org:serviceId:Dimming1",                 -- slider control
+  temp    = "urn:upnp-org:serviceId:TemperatureSensor1",
+  humid   = "urn:micasaverde-com:serviceId:HumiditySensor1",
 }
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
@@ -797,18 +800,18 @@ function pages.http ()
   end
   
   local lu, lr = {}, {}     -- 2019.05.16 system- and user-defined requests
-  for n,v in pairs (http.http_handler) do
+  for n,v in pairs (server.http_handler) do
     local tbl = n: match "^lr_" and lr or lu
     tbl[n] = v
   end
   
   return xhtml.div {
       html5_title "HTTP Web server (port 3480)",
-      connectionsTable (http.iprequests),   
+      connectionsTable (server.iprequests),   
       requestTable (lu, "/data_request? (system)", {"id=lu_... ", "#requests  ","status"}),
       requestTable (lr, "/data_request? (user-defined)", {"id=lr_... ", "#requests  ","status"}, true),
-      requestTable (http.cgi_handler, "CGI requests", {"URL ", "#requests  ","status"}),
-      requestTable (http.file_handler, "File requests", {"filename ", "#requests  ","status"}),
+      requestTable (server.cgi_handler, "CGI requests", {"URL ", "#requests  ","status"}),
+      requestTable (server.file_handler, "File requests", {"filename ", "#requests  ","status"}),
     }
 end
 
@@ -1237,9 +1240,28 @@ end
 --
 
 local function get_display_variables (d)
-  local vars = (d.services[SID.altui] or {}).variables or {}
-  local line1 = (vars.DisplayLine1 or {}) .value or ''
-  local line2 = (vars.DisplayLine2 or {}) .value or ''
+  local svcs = d.services
+  local vars = (svcs[SID.altui] or {}).variables or {}
+  local line1, line2
+  
+  -- AltUI Display variables
+  local dl1 = (vars.DisplayLine1 or {}) .value
+  local dl2 = (vars.DisplayLine2 or {}) .value
+  if dl1 or dl2 then return dl1 or '', dl2 or '' end
+  
+  -- common services
+  local temp = (svcs[SID.temp] or {}).variables or {}
+  local humid = (svcs[SID.humid] or {}).variables or {}
+  if temp or humid then 
+    temp  = (temp.CurrentTemperature or {}).value
+    humid = (humid.CurrentLevel or {}).value
+    if temp  then temp = temp .. '°' end
+    if humid then humid = humid .. '%' end
+    if humid and temp then temp = temp .. ", " end
+    return xhtml.span {class="w3-large ", temp or '', humid}
+  end
+  
+  
   return line1, line2
 end
 
@@ -1404,7 +1426,7 @@ function pages.actions (p)
           xhtml.input {hidden=1, name="action", value="call_action"},
           xhtml.input {hidden=1, name="dev", value=devNo},
           xhtml.input {hidden=1, name="srv", value=s},
-          xhtml.div{class = "w3-container w3-cell", style="width:200px;",
+          xhtml.div{class = "w3-container w3-cell", style="width:250px;",
             xhtml.input {class="w3-button w3-round w3-blue", type="submit", name="act", title=s, value=a} },
             args}
         t[#t+1] = xhtml.div {class="w3-cell-row w3-border-top w3-padding", form}
@@ -1426,17 +1448,20 @@ end
 
 function pages.events (p)
   return device_page (p, function (d, title)
-      local e = {}
-      local columns = {"id", "event / variable : (serviceId)"}
-      local json_file = d.attributes.device_json
-      local static_data = loader.static_data[json_file] or {}
-      local eventList2 = static_data.eventList2
-      if eventList2 then
-        for _, event in ipairs (eventList2) do
-            e[#e+1] = {event.id, event.label.text}
-        end
+    local e = {}
+    local columns = {"id", "event / variable : (serviceId)"}
+    local json_file = d.attributes.device_json
+    local static_data = loader.static_data[json_file] or {}
+    local eventList2 = static_data.eventList2
+    if eventList2 then
+      for _, event in ipairs (eventList2) do
+          e[#e+1] = {event.id, event.label.text}
       end
-    return title .. " - generated events", create_table_from_data (columns, e)
+    end
+    table.sort (e, function (a,b) return a[1] < b[1] end)
+    local t = create_table_from_data (columns, e)
+    t.class = nil     -- remove "w3-small"
+    return title .. " - generated events", t
   end)
 end
 
@@ -1568,12 +1593,12 @@ local function scene_panel (self)
               xhtml.a {href= selfref("action=run_scene&scn=", id), 
                 xhtml.img {width=48, height=48, title="run scene", src="icons/play-circle.svg"} }
   
-  local edit_clone_history = div {class="w3-wide",
-    xhtml.a {href= selfref("page=header&scene=", id), title="view/edit scene",
+  local edit_clone_history = xhtml.span {class="w3-wide",
+    xhtml.a {href= selfref("page=header&scene=", id), title="view/edit scene", class="w3-margin-right",
       xhtml.img {width=18, height=18, src="icons/edit.svg"} },
-    xhtml.a {href= selfref("action=clone&scene=", id), title="clone scene",
+    xhtml.a {href= selfref("action=clone&scene=", id), title="clone scene", class="w3-margin-right",
       xhtml.img {width=18, height=18, src="icons/clone.svg"} },
-    xhtml.a {href= selfref("page=history&scene=", id), title="scene history",
+    xhtml.a {href= selfref("page=history&scene=", id), title="scene history", class="w3-margin-right",
       xhtml.img {width=18, height=18, src="icons/calendar-alt-regular.svg"} } }
   local flag = utab.favorite and unicode.black_star or unicode.white_star
   local bookmark = xhtml.a {class="nodec", href=selfref("action=bookmark&scn=", id), flag}
@@ -1581,11 +1606,10 @@ local function scene_panel (self)
   
   local panel = xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel",
     div {class="top-panel", bookmark, ' ', truncate (scene_name(id)) }, 
---      div {class="w3-padding-small w3-border-bottom", bookmark, ' ', truncate (scene_name(id)) }, 
     div {class = "w3-display-container", style ="height:70px",
       div {class="w3-padding-small w3-display-left", run } , 
       div {class="w3-padding-small w3-display-topright", last_run, br, next_run } ,
-      div {class="w3-padding-small w3-display-bottommiddle", edit_clone_history } 
+      div {class="w3-padding-small w3-display-bottomright", edit_clone_history } 
       }  } 
   return panel
 end
@@ -1623,9 +1647,9 @@ end
 function pages.history (p)
   return scene_page (p, function (scene, title)
     local h = {}
-    for i,v in ipairs (scene: user_table() .openLuup.history) do h[i] = {nice(v)} end
+    for i,v in ipairs (scene: user_table() .openLuup.history) do h[i] = {nice(v.at), v.by} end
     table.sort (h, function (a,b) return a[1] > b[1] end)
-    local t = create_table_from_data  ({"date/time"}, h)
+    local t = create_table_from_data  ({"date/time", "initiated by"}, h)
     return title .. " - scene history", t
   end)
 end
@@ -1753,8 +1777,7 @@ function code_editor (code, height, language, readonly, codename)
       target = "output", 
       h.input {type="hidden", name="lua_code", id="lua_code"}, 
       submit_button}
-    -- the single space in the following script is to stop a self-closing tag, which is not browser friendly!
-    local ace = h.script {src = options.Ace_URL, type="text/javascript", charset="utf-8", ' '}
+    local ace = h.script {src = options.Ace_URL, type="text/javascript", charset="utf-8"}
     local script = h.script {
     'var editor = ace.edit("editor");',
     'editor.setTheme("ace/theme/', options.EditorTheme, '");',
@@ -1788,7 +1811,7 @@ end
 local function lua_edit (codename, height)
   local readonly = false
   return xhtml.div {
-    xhtml.iframe {name = "output", style="display: none;", ' '},    -- hidden output area for response page
+    xhtml.iframe {name = "output", style="display: none;"},    -- hidden output area for response page
     code_editor (userdata.attributes[codename], height, "lua", readonly, codename)}
 end
 
@@ -1801,8 +1824,8 @@ local function lua_exec (codename, title)
     html5_title (title or codename),  code_editor (userdata.attributes[codename], 500, "lua", false, codename) }  
   local output = xhtml.div {class="w3-half", style="padding-left:16px;", 
     html5_title "Console Output:", 
-    xhtml.iframe {name="output", height="500px", width="100%", ' ',
-      style="border:1px grey; background-color:white"} }
+    xhtml.iframe {name="output", height="500px", width="100%", 
+      style="border:1px grey; background-color:white; overflow:scroll"} }
   return xhtml.div {class="w3-row", form, output}
 end
 
@@ -1827,7 +1850,7 @@ function pages.graphics (p, req)
   return xhtml.iframe {
     height = "450px", width = "96%", 
     style= "margin-left: 2%; margin-top:30px; background-color:"..background,
-    src="/render?" .. req.query_string, ' '}
+    src="/render?" .. req.query_string}
 end
 
 function pages.rooms_table ()

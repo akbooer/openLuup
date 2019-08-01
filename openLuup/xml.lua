@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.07.18",
+  VERSION       = "2019.07.28",
   DESCRIPTION   = "XML utilities (HTML, SVG) and DOM-style parser/serializer",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -85,8 +85,8 @@ Features include:
 The underlying model is a simple Lua table, with children in succesive elements and attributes as named index entries. Metamethods are provided to simulteNode interface with the following Lua substitutions:
 
     metamethods     x[-3]     -- specific to individual elements
-    x.ownerDocument x[-2]     -- may not be present
-    x.parentNode    x[-1]     -- may not be present
+    x.ownerDocument x[-2]     -- may be nil
+    x.parentNode    x[-1]     -- may be nil
     x.nodeName      x[0]      -- this is the only DOM element used in _serialize() / _parse()
     x.attributes.y  x.y       -- for non-numeric 'y'
     x.firstChild    x[1]
@@ -131,37 +131,43 @@ end
 -- Core serialize & parse routines
 --
 -- see: https://www.w3.org/TR/DOM-Parsing/
-
+    
 -- this serialize method works on the basic xml domain object model
-local function _serialize (self, stream, depth)
-  local space = ' '
-  depth = depth or 0
-  stream = stream or {}
-  local function p(...) for _, x in ipairs {...} do stream[#stream+1] = x end; end
-  
-  local name = self[0]
-  if #stream ~= 0 then p ('\n') end   -- don't start with a blank line
-  p (space: rep (depth), '<', name)
-  for n,v in pairs (self) do 
-    if type (n) == "string" then p (' ', n, '="', escape(tostring(v)), '"') end   -- attributes
-  end
-  if #self == 0                                                         -- no children, ...
-  or (#self == 1 and type(self[1]) == "string" and #self[1] == 0) then  -- TODO: ???...or only string node value
-    p '/>'
-  else          -- child nodes
-    p '>'
-    for _,v in ipairs (self) do
-      if type (v) == "table" and v[0] then 
-        _serialize (v, stream, depth+1) 
-      else 
-        if name == "script" then p (tostring(v)) else p (escape(tostring(v))) end -- should be HTML-only
-      end
+local function _serialize (self, depth, stream, void_element, no_escape)
+  no_escape = no_escape or {}
+  local function serialize (dom, depth, stream)
+    local space = ' '
+    local function p(...) for _, x in ipairs {...} do stream[#stream+1] = x end; end
+    
+    local name = dom[0] or '_'
+    if #stream ~= 0 then p ('\n') end   -- don't start with a blank line
+    p (space: rep (depth), '<', name)
+    for n,v in pairs (dom) do 
+      if type (n) == "string" then p (' ', n, '="', escape(tostring(v)), '"') end   -- attributes
     end
-    p ('</', name, '>')
+    if (void_element and void_element[name])  -- anything not in void_element must have separate closing tag (HTML)
+    or not void_element and (#dom == 0        -- no children, so may self-close (XML)
+    or (#dom == 1 and type(dom[1]) == "string" and #dom[1] == 0)) then  -- empty string
+    -- TODO: handle multiple string nodes?
+      p '/>'
+    else          -- child nodes
+      p '>'
+      for _,v in ipairs (dom) do
+        if type (v) == "table" and v[0] then 
+          serialize (v, depth+1, stream) 
+        else 
+          v = tostring(v)
+          if no_escape[name] then p (v) else p (escape(v)) end    -- for HTML <script> element, typically
+        end
+      end
+      p ('</', name, '>')
+    end
+    if depth == 0 then p '\n' end  -- add new line at end
+    return stream
   end
-  if depth == 0 then p '\n' end  -- add new line at end
-  return stream
+  return serialize (self, depth or 0, stream or {})
 end
+
 
 -- _parse(), creates a DOM model.  The inverse of _serialize()
 local function _parse (xml)
@@ -175,14 +181,14 @@ local function _parse (xml)
   local comment       = "%s*<!%-%-.-%-%->%s*"                         -- <!-- comments -->
 
   local function parse (text, pop)
-    for n,a,b in (text or ''): gmatch (elem_pair) do                      -- find opening/closing tags
+    for n, a, b in (text or ''): gmatch (elem_pair) do                    -- find opening/closing tags
       local element = createElement ()                                    -- new element
       element[0] = n                                                      -- add name
---      element[-1] = pop                                                 -- add parent link
+      element[-1] = pop                                                   -- add parent link
       pop[#pop+1] = element                                               -- add it to the parent
       for k,_,v in a: gmatch (attr_pair) do element[k] = unescape (v) end  -- get the attributes
       parse (b, element)                                                   -- get the children, or...
-      element[1] = element[1] or unescape(b)                               -- ... plain text element
+      element[1] = element[1] or #b > 0 and unescape(b) or nil             -- ... non-zero length text element
     end 
   end
 
@@ -193,6 +199,7 @@ local function _parse (xml)
               :gsub (self_closing, "<%1%2></%1>")       -- expand self-closing tags
     parse (xml, document)
   end  
+  for _,root in ipairs (document) do root[-1] = nil end  -- root elements have no parent
   return (unpack or table.unpack) (document)    -- separate return parameters for individual root elements
                                                 -- an XML document can have only one root element.
 end
@@ -230,12 +237,12 @@ local NodeAttributes = {}    -- to be embedded in an __index() function to simul
 
   function NodeAttributes:nodeName   () return self[0]  end   -- reserved location in this object model
   function NodeAttributes:tagName    () return self[0]  end   -- actually, an alias from the Element interface
-  function NodeAttributes:nodeValue  () end;                  -- NB: for Element nodes this is nil
-  function NodeAttributes:nodeType   () return 1 end          -- we only have one type: Element (+ Text & Document!)
+  function NodeAttributes:nodeValue  () return nil      end   -- NB: for Element nodes this is nil
+  function NodeAttributes:nodeType   () return 1        end   -- we only have one type: Element (+ Text & Document!)
   function NodeAttributes:parentNode () return self[-1] end   -- reserved negative table index
-  function NodeAttributes:childNodes () return type(self[1])~="string" and self or {} end -- only numerical indices
-  function NodeAttributes:firstChild () return self[1]      end
-  function NodeAttributes:lastChild  () return self[#self]  end  -- last numerical index
+  function NodeAttributes:childNodes () return self     end   -- only numerical indices
+  function NodeAttributes:firstChild () return self[1]  end   -- first numerical index
+  function NodeAttributes:lastChild  () return #self >0 and self[#self] or nil end  -- last non-zero numerical index
 
 --  readonly attribute Node             previousSibling;  (TBD)
 --  readonly attribute Node             nextSibling;      (TBD)
@@ -243,15 +250,18 @@ local NodeAttributes = {}    -- to be embedded in an __index() function to simul
   function NodeAttributes:attributes ()     -- NB: this is static, not 'LIVE'
     local a = {}
     for n,v in pairs(self) do 
-      if type(n) == "string" then a[n]=v end 
+      if type(n) == "string" then a[n]=v end  -- only non-numeric indices
     end
     return a 
   end 
   
-  function NodeAttributes:ownerDocument () return self[-2] end
+  function NodeAttributes:ownerDocument () return self[-2] end   -- reserved negative table index
   -- [-3] reserved for individual element metatable
   -- [-4] and beyond, reserved  TODO: allocate user-defined Node table?
-  function NodeAttributes:textContent() return type(self[1])=="string" and #self[1]>0 and self[1] or '' end 
+  -- TODO: node.textContent should be ALL descendant node strings
+  function NodeAttributes:textContent() 
+    return type(self[1])=="string" and #self[1]>0 and self[1] or '' 
+    end 
 
 -- NODE METHODS
 
@@ -303,8 +313,8 @@ NodeMeta.__tostring = function (self) return table.concat (_serialize(self)) end
 
 --  NOT implemented...
 --  Node               adoptNode(in boolean deep)
---  Node               importNode(in boolean deep)
-
+--  Node               importNode(in Node importedNode, in boolean deep)
+ 
 local DocumentMethods = {
     -- add key Node/Element methods to the document (in the W3 standard, it IS a Node)
     appendChild = NodeMethods.appendChild,                    -- used to attach the root element
@@ -372,7 +382,11 @@ NB: THIS IS NOT THE CASE HERE, since structures are navigated by Lua iterators!
 
 -- add above methods to documents through a metatable function
 local docMeta = {
-  __tostring = function(self) return table.concat(_serialize(self[1], {rawget (self, "preamble") })) end,
+  __tostring = function(self) return table.concat(_serialize(self[1], 0,
+      { rawget (self, "preamble") },      -- DOCTYPE etc.
+        rawget (self, "void_elements"),   -- self-closing HTML tags
+        rawget (self, "no_escape")))      -- HTML <script> (possibly others)
+    end,
   __index = function (self, tag)    -- just add any unknown tag as a new element...
     local de = rawget (self, 1)
     if tag == "documentElement" then return de end  -- can be nil!
@@ -393,20 +407,13 @@ local docMeta = {
 --
 
 local function createDocument  ()
-  local d = {[0] = "#document"}                                                 -- the document node
+  local d = {[0] = "#document", doctype = "xml"}                            -- the document node
   d.createElement = createElement                                           -- ...a way to make new elements
   d.preamble = '<?xml version="1.0"?>'
   for n,v in pairs (DocumentMethods) do d[n] = v end                  -- add useful methods
   return setmetatable (d, docMeta)           -- add the meta function for creating elements
 end
 
--- returns decoded text as a full document model
-local function decode (xml)
-  local root = _parse (xml) 
-  local d = createDocument ()                 -- TODO: use the root name for correct document type?
-  if root then d:appendChild (root)  end      -- add the real node tree
-  return d
-end
 
 ---------------------------------------------------------------
 --
@@ -455,10 +462,24 @@ end
 -- document is created with HTML, HEAD, TITLE, and BODY elements
 -- and attributes to get/set TITLE and BODY contents
 -- see: https://www.w3.org/TR/DOM-Level-2/html.html#ID-HTML-DOM
+-- <script> element contents are not escaped
+-- void elements are self-closing, all others are not
+-- see: https://html.spec.whatwg.org/multipage/syntax.html#void-elements
+
+local HTML_void_elements = {} do
+  local void = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+  for _, n in ipairs (void) do HTML_void_elements[n] = true end
+end
+
+local HTML_unescaped_elements = {script = true}
+
 local function createHTMLDocument  (title)
-  local d = {[0] = "#document"}                                                 -- the document node
+  local d = {[0] = "#document", doctype = "html"}                                   -- the document node
   d.createElement = function (tag, xxx) return createElement(tag:lower(), xxx) end  -- force lowercase
   d.preamble = "<!DOCTYPE html>"
+  d.void_elements = HTML_void_elements
+  d.no_escape = HTML_unescaped_elements
   for n,v in pairs (DocumentMethods) do d[n] = v end                  -- add useful methods
   for n,v in pairs (HtmlConvenience) do d[n] = v end                  -- add convenience methods
   local doc = setmetatable (d, docMeta)           -- add the meta function for creating elements
@@ -466,7 +487,7 @@ local function createHTMLDocument  (title)
   doc:appendChild {
     doc.html {
       doc.head {doc.title (title)},
-      doc.body ' '}}
+      doc.body {}}}
   -- remove newly-created functions for title and body, since they are, in fact, HTML document attributes
   doc.title = nil   
   doc.body = nil
@@ -553,26 +574,58 @@ end
 -- and xmlns="http://www.w3.org/2000/svg"
 -- VERY limited set of tags (this implementation flags illegal/unknown tags by raising an error)
 local function createSVGDocument ()
-  local d = {[0] = "#document"}                                                 -- the document node
-  d.createElement = function (tag) error ("SVG: illegal tagName: " .. (tag or '?'), 2) end
+  local d = {[0] = "#document", doctype = "svg"}                      -- the document node
+  d.createElement = function (tag) 
+    error ("SVG: illegal tagName: " .. (tag or '?'), 2)               -- no unknown tag names allowed
+  end
   for n,v in pairs (DocumentMethods) do d[n] = v end                  -- add useful methods
-  for n,v in pairs (SvgConvenience) do d[n] = v end                  -- add convenience methods
+  for n,v in pairs (SvgConvenience) do d[n] = v end                   -- add convenience methods
   return setmetatable (d, docMeta)           -- add the meta function for creating elements
 end
 
 
 -------------------------------------
 
+-- return decoded text as a full document model, of appropriate type
+local function decode (xml)
+  local root = _parse (xml) 
+  local doctype = (root and root[0] or ''): lower ()
+  local d = 
+    (doctype == "html") and createHTMLDocument () or
+    (doctype ==  "svg") and createSVGDocument  () or
+    createDocument   () --  plain old XML
+    
+  if root then 
+    root[-1] = nil      -- ensure no parent
+    d[1] = root         -- add the actual node tree to document
+  end
+  
+  if doctype == "html" then
+    in_order (d, function (node)                          -- visit each Element node
+        local name = node[0]: lower()                     -- force all HTML tag names to lowercase
+        node[0]  = name
+        node[-2] = d                                      -- add ownerDocument
+        if HTML_unescaped_elements[name] then
+          node[1] = unescape (tostring (node[1] or ''))   -- unescape any <script> elements 
+        end
+      end)
+    -- TODO: check for correct HTML doc structure: 
+    --       <head><title>...</title></head><body>...</body></html>
+  else
+    in_order (d, function (node) node[-2] = d end)        -- add ownerDocument to each Element node
+  end
+
+  return d
+end
+
+-------------------------------------
+
 return {
-    
-    TEST = {createElement = createElement},       -- for testing only
-    
-    -- XML
     
     escape   = escape,
     unescape = unescape,
     
-    decode = decode, 
+    decode = decode,    -- return an XML, HTML, or SVG, DOM Document representing parsed string
     
     -- 2019.07.11  create instances of Document interface for XML, HTML, and SVG
     

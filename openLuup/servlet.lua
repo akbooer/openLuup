@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2019.06.11",
+  VERSION       = "2019.07.29",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -39,7 +39,7 @@ The execute() function essentially converts a given luup-style callback handler,
 
 If a respond() function is given to the execute() call, then the servlet is scheduled.  CGI and file
 requests are currently implemented as <run> tags, so do not appear as scheduler jobs (thus improving response times.)
-The data_request one is a more complex task with <run> and <job> tags to handle the 
+The data_request one is a more complex task with, run as an asynchronous job, to handle the 
 MinimumDelay, Timeout, and DataVersion parameters which all affect timing of the response.
 
 The WSAPI-style functions are used by the servlet tasks, but also called directly by the wget() client call which processes their reponses directly.
@@ -57,9 +57,11 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2019.05.11   add GET or POST method to job info in execute()
 -- 2019.05.14   add Cache-Control header, don't chunk small file responses
 -- 2019.06.11   move cache_control definition to server_tables module
+-- 2019.07.28   call servlets with pre-built WSAPI environment
+-- 2019.08.29   use WSAPI request library to parse GET and POST parameters for /data_request...
 
 
--- TODO: use WSAPI response library in servlets
+-- TODO: use WSAPI response library in servlets?
 
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"            -- to access 'dataversion'
@@ -67,11 +69,10 @@ local scheduler = require "openLuup.scheduler"
 local json      = require "openLuup.json"               -- for unit testing only
 local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for CGI processing
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
-local vfs       = require "openLuup.virtualfilesystem"  -- on possible file path
 local loader    = require "openLuup.loader"             -- for raw_read()
 
---  local _log() and _debug()
-local _log, _debug = logs.register (ABOUT)
+--local _log, _debug = logs.register (ABOUT)
+local _log = logs.register (ABOUT)
 
 -- TABLES
 
@@ -119,10 +120,19 @@ local function add_callback_handlers (handlers, devNo)
   end
 end
 
-local function data_request (request)
+local function data_request (wsapi_env, req)
+
+  -- 2019.08.29 use WSAPI request library to parse GET and POST parameters...
+  -- the library's built-in req.params mechanism is built on demand for an individual request parameter, 
+  -- so not used here... this complete list is built from the GET and POST parameters individually
+  local parameters = {}
+  req = req or wsapi.request.new (wsapi_env)              -- request may have been prebuilt by data_request_task
+  for n,v in pairs (req.POST) do parameters[n] = v end
+  for n,v in pairs (req.GET)  do parameters[n] = v end    -- GET parameter overrides POST, if both defined
+  -----
+  
   local ok, mtype
   local status = 501
-  local parameters = request.parameters   
   local id = parameters.id or '?'
   local content_type
   local response = "No handler for data_request?id=" .. id     -- 2016.05.17   log "No handler" responses
@@ -162,51 +172,45 @@ end
 
 -- handler_task returns a task to process the request with possibly run and job entries
 
-local function data_request_task (request, respond)
+local function data_request_task (wsapi_env, respond)
+  local request_start = scheduler.timenow ()
+  local req = wsapi.request.new (wsapi_env)   -- use WSAPI library to parse GET and POST parameters
+  local p = req.params
   
-  -- special scheduling parameters used by the job 
-  local Timeout       -- (s)  respond after this time even if no data changes 
-  local MinimumDelay  -- (ms) initial delay before responding
-  local DataVersion   --      previous data version value
+  -- /data_request?DataVersion=...&MinimumDelay=...&Timeout=...
+  -- parameters have special significance for scheduling the job 
+  local Timeout      = tonumber (p.Timeout)                   -- (s)  respond after this time even if no data changes 
+  local DataVersion  = tonumber (p.DataVersion)               --      previous data version value
+  local MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3  -- (ms) initial delay before responding
   
-  local function run ()
-    -- /data_request?DataVersion=...&MinimumDelay=...&Timeout=... parameters have special significance
-    local p = request.parameters
-
-    Timeout      = tonumber (p.Timeout)                     -- seconds
-    DataVersion  = tonumber (p.DataVersion)                 -- timestamp
-    MinimumDelay = tonumber (p.MinimumDelay or 0) * 1e-3    -- milliseconds
-    
-    -- 20190403  adjust MinimumDelay option from AltUI, it is a band-aid for Vera, openLuup queues responses anyway
-    if MinimumDelay and p._ then   -- assume this request is from AltUI
-      MinimumDelay = 0.1    -- 100ms
-    end
-  
+  -- 2019.04.03  adjust MinimumDelay option from AltUI, it is a band-aid for Vera, openLuup queues responses anyway
+  if MinimumDelay and p._ then   -- assume this request is from AltUI
+    MinimumDelay = 0.1    -- 100ms
   end
-  
+    
   local function job ()
     
     -- initial delay (possibly) 
     if MinimumDelay and MinimumDelay > 0 then 
       local delay = MinimumDelay
-      MinimumDelay = nil                                        -- don't do it again!
+      MinimumDelay = nil                                              -- don't do it again!
       return scheduler.state.WaitingToStart, delay
     end
     
     -- DataVersion update or timeout (possibly)
     if DataVersion 
-      and not (devices.dataversion.value > DataVersion)         -- no updates yet
-      and scheduler.timenow() - request.request_start < (Timeout or 0) then   -- and not timed out
-        return scheduler.state.WaitingToStart, 0.5              -- wait a bit and try again
+      and not (devices.dataversion.value > DataVersion)               -- no updates yet
+      and scheduler.timenow() - request_start < (Timeout or 0) then   -- and not timed out
+        return scheduler.state.WaitingToStart, 0.5                    -- wait a bit and try again
     end
     
     -- finally (perhaps) execute the request
-    respond (request, data_request (request))
+    respond (data_request (wsapi_env, req))
     
     return scheduler.state.Done, 0  
   end
   
-  return {run = run, job = job}   -- return the task structure
+  return {job = job}   -- return the task structure
 end
 
 ----------------------------------------------------
@@ -215,13 +219,11 @@ end
 --
 local file_handler = {}     -- table of requested files
 
-local function file_request (request)
+local function file_request (wsapi_env)
   local cache_control = tables.cache_control                 -- 2019.05.14  max-age indexed by filetype
   
-  local path = request.URL.path or ''
-  if request.path_list.is_directory then 
-    path = path .. "index.html"                     -- look for index.html in given directory
-  end
+  local path = wsapi_env.SCRIPT_NAME
+  if path: match "/$" then path = path .. "index.html" end   -- look for index.html in given directory
   
   path = path: gsub ("%.%.", '')                    -- ban attempt to move up directory tree
   path = path: gsub ("^/", '')                      -- remove filesystem root from path
@@ -248,7 +250,7 @@ local function file_request (request)
     response_headers ["Content-Type"]  = content_type
     
     -- @explorer:  2016.04.14, Workaround for SONOS not liking chunked MP3 and some headers.       
-    if ftype == "mp3"        -- 2016.04.28  @akbooer, change this to apply to ALL .mp3 files, fix 2019.0514
+    if ftype == "mp3"        -- 2016.04.28  @akbooer, change this to apply to ALL .mp3 files, fix 2019.05.14
     or #response < 16000 
     then
       response_headers ["Content-Length"] = #response    
@@ -282,9 +284,9 @@ end
 -- only here to log the usage statistics
 local cgi_handler = {}
 
-local function cgi_request (request)
-  local path = request.URL.path or ''
-  local status, headers, iterator = wsapi.cgi (request)
+local function cgi_request (wsapi_env)
+  local path = wsapi_env.SCRIPT_NAME
+  local status, headers, iterator = wsapi.cgi (wsapi_env)
   
   local stats = cgi_handler[path] or {count = 0}   -- log statistics for console page
   stats.status = status
@@ -296,13 +298,13 @@ end
 
 
 -- return a task for the scheduler to handle file requests 
-local function file_task (request, respond)
-  return {run = function () respond (request, file_request(request)) end}   -- immediate run action (no job needed)
+local function file_task (wsapi_env, respond)
+  return {run = function () respond (file_request(wsapi_env)) end} -- immediate run action (no job)
 end
 
 -- return a task for the scheduler to handle CGI requests 
-local function cgi_task (request, respond)
-  return {run = function () respond (request, cgi_request(request)) end}    -- immediate run action (no job needed)
+local function cgi_task (wsapi_env, respond)
+  return {run = function () respond (cgi_request(wsapi_env)) end} -- immediate run action (no job)
 end
 
 
@@ -321,20 +323,14 @@ end
 -- no respond: execute immediately and return the handler's WSAPI-style three parameters
 --    respond: run as a scheduled task and call respond with the three return parameters for HTTP response
 --    the function return parameters in this case those of an action call: err, msg, jobNo.
-local function execute (request, respond)
-  local request_root = request.path_list[1]
+local function execute (wsapi_env, respond)
+  local request_root = wsapi_env.SCRIPT_NAME: match "[^/]+"     -- get the first path element in the request
   if respond then
-    local task = (task_selector [request_root] or file_task) (request, respond)
-    local err, msg, jobNo = scheduler.run_job (task, {}, nil)  -- nil device number
-    if jobNo and scheduler.job_list[jobNo] then
-      local r = request
-      local info = "request: HTTP %s from %s %s"  -- 2019.05.11
-      scheduler.job_list[jobNo].type = info: format (tostring(r.method), tostring(r.ip), tostring(r.sock))
-    end
-    return err, msg, jobNo
+    local task = (task_selector [request_root] or file_task) (wsapi_env, respond)
+    return scheduler.run_job (task, {}, nil)   -- nil device number,  returns err, msg, jobNo
   else
     local handler = exec_selector [request_root] or file_request
-    return handler (request)    -- no HTTP response needed by server
+    return handler (wsapi_env)    -- no HTTP response needed by server
   end
 end
 

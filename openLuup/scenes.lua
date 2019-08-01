@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.06.18",
+  VERSION       = "2019.07.26",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -60,6 +60,7 @@ local ABOUT = {
 -- 2019.05.23   re-enable triggers in anticipation of "variable updated" events
 -- 2019.06.10   add new openLuup structure (preserved over AltUI edits)
 -- 2019.06.17   add scene history
+-- 2019.07.26   add runner info to scene history
 
 
 local logs      = require "openLuup.logs"
@@ -265,13 +266,6 @@ local function create (scene_json)
     
     final_delay = tonumber(del) or 30
     scene.last_run = os.time()                -- scene run time
-    
-    do -- 2019.06.17 scene history
-      local so = scene.openLuup
-      local i = so.hipoint % HISTORY_LENGTH + 1
-      so.history[i] = scene.last_run
-      so.hipoint = i
-    end --
   
     luup_scene.running = true
     devutil.new_userdata_dataversion ()               -- 2016.11.01
@@ -281,6 +275,13 @@ local function create (scene_json)
 --      t.next_run = next_time                  -- only non-nil for timers
       runner = (t.name ~= '' and t.name) or '?'
     end
+    
+    do -- 2019.06.17 scene history
+      local so = scene.openLuup
+      local i = so.hipoint % HISTORY_LENGTH + 1
+      so.history[i] = {at = scene.last_run, by = runner}  -- 2019.07.26  add runner info to history
+      so.hipoint = i
+    end --
     
     local msg = ("scene %d, %s, initiated by %s"): format (scene.id, scene.name, runner)
     _log (msg, "luup.scenes")
