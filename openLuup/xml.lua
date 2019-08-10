@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.07.28",
+  VERSION       = "2019.08.08",
   DESCRIPTION   = "XML utilities (HTML, SVG) and DOM-style parser/serializer",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -44,7 +44,7 @@ local ABOUT = {
 This is an updated replacement for an earlier module (~February 2015) which sought to represent XML
 directly in a simple Lua table structure, suitable for UPnP device/service/implementation files.
 
-With increasing number of bespoke XML files by plugin developers, this showed inadequacies:
+With increasing number of bespoke XML files by plugin developers, the original code showed inadequacies:
 -- 2015.11.03  cope with comments (thanks @vosmont and @a-lurker)
 -- see: http://forum.micasaverde.com/index.php/topic,34572.0.html
 -- 2016.04.14  @explorer expanded tags to alpha-numerics and underscores
@@ -54,7 +54,7 @@ With increasing number of bespoke XML files by plugin developers, this showed in
 
 Many thanks to those who helped to point out (and fix) some of these problems.
 
-However, it's clear that more robustness is needed at this most fundamental level,
+However, it's clear that more robustness was needed at this most fundamental level,
 and the 'todo' comment in the original version was always "proper XML parser rather than nasty hack?"
 ...now finally been addressed with a complete rewrite, offering a DOM-style parser.
 
@@ -133,13 +133,13 @@ end
 -- see: https://www.w3.org/TR/DOM-Parsing/
     
 -- this serialize method works on the basic xml domain object model
-local function _serialize (self, depth, stream, void_element, no_escape)
+local function _serialize (DOM, depth, stream, void_element, no_escape)
   no_escape = no_escape or {}
   local function serialize (dom, depth, stream)
     local space = ' '
     local function p(...) for _, x in ipairs {...} do stream[#stream+1] = x end; end
     
-    local name = dom[0] or '_'
+    local name = rawget (dom, 0) or '_'
     if #stream ~= 0 then p ('\n') end   -- don't start with a blank line
     p (space: rep (depth), '<', name)
     for n,v in pairs (dom) do 
@@ -165,7 +165,7 @@ local function _serialize (self, depth, stream, void_element, no_escape)
     if depth == 0 then p '\n' end  -- add new line at end
     return stream
   end
-  return serialize (self, depth or 0, stream or {})
+  return serialize (DOM or {}, depth or 0, stream or {})
 end
 
 
@@ -396,8 +396,11 @@ local docMeta = {
       if tag == "body"  then return de[2] end
       if tag == "forms" then return de[2]: getElementsByTagName "form" end
     end
-    local fct = function(contents) return self.createElement(tag, contents) end  -- specific to document type
-    rawset (self, tag, fct)
+    local fct
+    if type (tag) == "string" then  -- 2019.08.08 ignore references to missing numeric array elements, etc.
+      fct = function(contents) return self.createElement(tag, contents) end  -- specific to document type
+      rawset (self, tag, fct)
+    end
     return fct
   end}
 

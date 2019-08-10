@@ -1,4 +1,4 @@
-local VERSION = "2019.07.30"
+local VERSION = "2019.08.01"
 
 -- mimetypes
 -- 2016/04/14
@@ -145,7 +145,7 @@ local cgi_prefix = {
     "cgi-bin",      -- ditto
     
     "console",      -- openLuup console interface
-    "openUI",       -- console alias
+    "openLuup",     -- console alias
     
     "dashboard",    -- for graphite_api
     "metrics",      -- ditto
@@ -164,7 +164,7 @@ local cgi_alias = setmetatable ({
     ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
     ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
     ["console"]                   = "openLuup/console.lua",
-    ["openUI"]                    = "cgi/openUI.lua",
+    ["openLuup"]                  = "openLuup/console.lua",
     
     -- graphite_api support
     ["metrics"]             = graphite_cgi,

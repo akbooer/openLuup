@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.07.26",
+  VERSION       = "2019.08.04",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -61,6 +61,7 @@ local ABOUT = {
 -- 2019.06.10   add new openLuup structure (preserved over AltUI edits)
 -- 2019.06.17   add scene history
 -- 2019.07.26   add runner info to scene history
+-- 2019.08.04   add scene on_off() to toggle paused
 
 
 local logs      = require "openLuup.logs"
@@ -325,6 +326,17 @@ local function create (scene_json)
     return scene
   end
 
+  -- toggle scene pause
+  local function on_off ()
+    if luup_scene.paused then
+      scene.paused = "0"
+      luup_scene.paused = false
+    else
+      scene.paused = "1"
+      luup_scene.paused = true
+    end
+  end
+  
   -- delete any actions which refer to non-existent devices
   -- also, remove any triggers related to unknown devices
   -- also, add warning message trigger to any scene with triggers  -- 2017.08.08
@@ -400,6 +412,7 @@ local function create (scene_json)
   scene.openLuup    = {                               -- 2019.06.10 new private structure
     history = {},                   -- cache
     hipoint = 0,                    -- pointer
+    triggers = nil,                 -- TODO: openLuup scene triggers
   }
 
   verify()   -- check that non-existent devices are not referenced
@@ -413,6 +426,7 @@ local function create (scene_json)
     run         = scene_runner,
     stop        = scene_stopper,
     user_table  = user_table,
+    on_off      = on_off,       -- toggle pause
     verify      = verify,
     actioned    = get_actioned_devices,
   }

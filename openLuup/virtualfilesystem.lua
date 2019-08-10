@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.07.12",
+  VERSION       = "2019.08.08",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -556,7 +556,14 @@ local D_BinaryLight1_xml do
   D_BinaryLight1_xml = tostring(x)
 end
 
-local D_BinaryLight1_json do    -- note that this is only the icons, not any device panel tabs or events
+
+
+local D_BinaryLight1_json do    
+  -- note that this is only the icons, and device panel CONTROL tab, not other tabs or events
+  local S = "urn:upnp-org:serviceId:SwitchPower1"
+  local function Display (N,V) return {Service = S, Variable = N, Value = V} end
+  local function Command (A, P) return {Service = S, Action = A, Parameters = P} end
+
   local j = {
     default_icon = "binary_light_default.png",
     device_type = "urn:schemas-upnp-org:device:BinaryLight:1",
@@ -581,9 +588,43 @@ local D_BinaryLight1_json do    -- note that this is only the icons, not any dev
       state_icon ("binary_light_on.png",      1, nil, 2),
       state_icon ("binary_light_off.png",     0, nil, 3),
       state_icon ("binary_light_on.png",      1, nil, 3),
-    }}
+    },
+    x = "2",
+    y = "4",
+    inScene = "1",
+    ToggleButton = 1,
+    Tabs = {
+      {
+        Label ("ui7_tabname_control", "Control"),
+        Position = "0",
+        TabType = "flash",
+        top_navigation_tab = 1,
+        ControlGroup = { {id = "1", isSingle = "1", scenegroup = "1"} },
+        SceneGroup = { {id = "1", top = "2", left = "0", x = "2", y = "1" } },
+        Control = {
+          {
+            ControlGroup = "1",
+            ControlType = "multi_state_button",
+            top = "0",
+            left = "1",
+            states = {
+              {
+                Label ("ui7_cmd_on", "On"),
+                ControlGroup = "1",
+                Display ("Status", "1"),
+                Command ("SetTarget", { {Name = "newTargetValue", Value = "1" }}),
+                ControlCode = "power_on"
+              },
+              {
+                Label ("ui7_cmd_off", "Off"),
+                ControlGroup = "1",
+                Display ("Status", "0"),
+                Command ("SetTarget", { {Name = "newTargetValue", Value = "0" }}),
+                ControlCode = "power_off"
+              }}}}}}}
   D_BinaryLight1_json = json.encode (j)
 end
+
 
 local S_SwitchPower1_xml do
   local x = xml.createDocument ()
@@ -611,7 +652,25 @@ local S_SwitchPower1_xml do
 end
 
 
------
+local D_ZWaveNetwork_xml do
+  local x = xml.createDocument ()
+    x: appendChild {
+      x.root {xmlns="urn:schemas-upnp-org:device-1-0",
+        x.specVersion {x.major "1", x.minor "0"},
+        x.device {
+          x.deviceType "urn:schemas-micasaverde-com:device:ZWaveNetwork:1",
+          x.implementationList {x.implementationFile "I_ZWave.xml"},
+          x.serviceList {
+--            x.service {
+--              x.serviceType "urn:schemas-micasaverde-org:service:ZWaveNetwork:1", 
+--              x.serviceId   "urn:micasaverde-com:serviceId:ZWaveNetwork1", 
+--              x.controlURL  "upnp/control/ZWaveNetwork1",
+--              x.eventSubURL "upnp/event/ZWaveNetwork1",
+--              x.SCPDURL     "S_ZWaveNetwork1.xml"},
+          }}}}
+  D_ZWaveNetwork_xml = tostring(x)
+end
+
 
 -- other install files
 
@@ -1110,8 +1169,14 @@ local altui_console_menus_json = [==[
 
 local fa = {}
 
+fa["pause-solid"] = [[
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M144 479H48c-26.5 0-48-21.5-48-48V79c0-26.5 21.5-48 48-48h96c26.5 0 48 21.5 48 48v352c0 26.5-21.5 48-48 48zm304-48V79c0-26.5-21.5-48-48-48h-96c-26.5 0-48 21.5-48 48v352c0 26.5 21.5 48 48 48h96c26.5 0 48-21.5 48-48z"></path></svg>]]
+
 fa ["pause-circle"] = [[
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 8C119 8 8 119 8 256s111 248 248 248 248-111 248-248S393 8 256 8zm0 448c-110.5 0-200-89.5-200-200S145.5 56 256 56s200 89.5 200 200-89.5 200-200 200zm96-280v160c0 8.8-7.2 16-16 16h-48c-8.8 0-16-7.2-16-16V176c0-8.8 7.2-16 16-16h48c8.8 0 16 7.2 16 16zm-112 0v160c0 8.8-7.2 16-16 16h-48c-8.8 0-16-7.2-16-16V176c0-8.8 7.2-16 16-16h48c8.8 0 16 7.2 16 16z"/></svg>]]
+
+fa["play-solid"] = [[
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M424.4 214.7L72.4 6.6C43.8-10.3 0 6.1 0 47.9V464c0 37.5 40.7 60.1 72.4 41.3l352-208c31.4-18.5 31.5-64.1 0-82.6z"></path></svg>]]
 
 fa ["play-circle"] = [[
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M371.7 238l-176-107c-15.8-8.8-35.7 2.5-35.7 21v208c0 18.4 19.8 29.8 35.7 21l176-101c16.4-9.1 16.4-32.8 0-42zM504 256C504 119 393 8 256 8S8 119 8 256s111 248 248 248 248-111 248-248zm-448 0c0-110.5 89.5-200 200-200s200 89.5 200 200-89.5 200-200 200S56 366.5 56 256z"/></svg>]]
@@ -1191,6 +1256,7 @@ local manifest = {
     ["built-in/D_BinaryLight1.xml"]  = D_BinaryLight1_xml,
     ["built-in/D_BinaryLight1.json"] = D_BinaryLight1_json,
     ["built-in/S_SwitchPower1.xml"]  = S_SwitchPower1_xml,
+    ["built-in/D_ZWaveNetwork.xml"]  = D_ZWaveNetwork_xml,
     
     ["D_ZWay.xml"]  = D_ZWay_xml,
     ["D_ZWay.json"] = D_ZWay_json,

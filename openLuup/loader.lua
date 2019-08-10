@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2019.07.14",
+  VERSION       = "2019.08.10",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -807,8 +807,6 @@ end
 
 return {
   ABOUT = ABOUT,
-
-  TEST = {},
   
   -- tables
   cat_by_dev          = cat_by_dev,         -- 2019.06.02

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.client",
-  VERSION       = "2019.08.01",
+  VERSION       = "2019.08.10",
   DESCRIPTION   = "luup.inet .wget() and .request()",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -93,7 +93,7 @@ local _request = function(t, Timeout)
   if (c == 401) and h["www-authenticate"] then      -- else try digest 
     local ht = parse_header(h["www-authenticate"])
     
-    assert(ht.realm and ht.nonce)
+    assert(ht.realm and ht.nonce, "missing realm or nonce in received WWW-Authenticate header")
     if not OKmd5 then
       return nil, "MD5 module not available for digest authorization"
     end
@@ -108,7 +108,7 @@ local _request = function(t, Timeout)
     local uri = url.build{path = URL.path, query = URL.query}
     local method = t.method or "GET"
     local response = hash(
-      hash(user, ht.realm, password),
+      hash(user or '', ht.realm, password or ''),
       ht.nonce,
       nc,
       cnonce,
@@ -188,7 +188,7 @@ local function wget (request_URI, Timeout, Username, Password)
     URL.path = URL.path:gsub ("/port_3480", '')               -- 2016.09.16, thanks @explorer 
     local wsapi_env = wsapi.make_env (URL.path, URL.query)
     status, headers, iterator = servlet.execute (wsapi_env)   -- make the request call
-    local result = {}
+    result = {}
     for x in iterator do result[#result+1] = tostring(x) end  -- build the return string
     result = table.concat (result)
     
@@ -242,6 +242,11 @@ local badurl = "http://user:nawak@httpbin.org/digest-auth/auth/user/passwd"
 --okurl = badurl
 --local a,b,c,d = request (okurl)
 print( pretty { request (okurl) } )
+
+print(pretty {luup.inet.wget "httpbin.org/auth"})
+print(pretty {luup.inet.wget ("http://foo:garp@httpbin.org/basic-auth/foo/garp")})
+print(pretty {luup.inet.wget ("http://httpbin.org/basic-auth/foo/garp", 5, "foo", "garp")})
+print(pretty {luup.inet.wget ("http://httpbin.org/digest-auth/auth/foo/garp", 5, "foo", "garp")})
 
 --]]
 --

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2019.07.31",
+  VERSION       = "2019.08.05",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -248,9 +248,10 @@ end
 do -- ensure some extra folders exist
    -- note that the ownership/permissions may be 'system', depending on how openLuup is started
   lfs.mkdir "events"
+  lfs.mkdir "history"
   lfs.mkdir "images"
-  lfs.mkdir "trash"
   lfs.mkdir "mail"
+  lfs.mkdir "trash"
   lfs.mkdir "www"
 end
 
