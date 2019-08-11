@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.client",
-  VERSION       = "2019.08.10",
+  VERSION       = "2019.08.11",
   DESCRIPTION   = "luup.inet .wget() and .request()",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -69,6 +69,8 @@ local function make_digest_header(t)
   return table.concat(s)
 end
 
+local function hash(...) return md5.sumhexa(table.concat({...}, ":")) end
+
 ----------------------------------------------------
 --
 -- Digest authorization code inspired by: https://github.com/catwell/lua-http-digest
@@ -78,10 +80,6 @@ end
 --
 -- this requires the lua-md5 module to be on the Lua path
 --
-
-
-local function hash(...) return md5.sumhexa(table.concat({...}, ":")) end
-
 local _request = function(t, Timeout)
   local URL = url.parse(t.url)
   local user, password = URL.user, URL.password     -- may or may not be present
@@ -204,10 +202,6 @@ local function wget (request_URI, Timeout, Username, Password)
     _debug (URL)
     
     result, status, responseHeaders = request (URL, Timeout)
-  
-    if (status == 401) and responseHeaders["www-authenticate"] and Username then
-      -- try it with username and password
-    end
   end
   
   if not result then    -- 2019.07.30  socket library has failed somehow, fix up error and message
@@ -233,15 +227,6 @@ end
 --
 --[[
 local pretty = require "pretty"
-
-local okurl  = "http://user:passwd@httpbin.org/digest-auth/auth/user/passwd"
-local badurl = "http://user:nawak@httpbin.org/digest-auth/auth/user/passwd"
-
---okurl = "http://example.com"
---okurl = "http://foo:garp@httpbin.org/basic-auth/foo/garp"
---okurl = badurl
---local a,b,c,d = request (okurl)
-print( pretty { request (okurl) } )
 
 print(pretty {luup.inet.wget "httpbin.org/auth"})
 print(pretty {luup.inet.wget ("http://foo:garp@httpbin.org/basic-auth/foo/garp")})

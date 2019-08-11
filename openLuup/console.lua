@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.08.10",
+  VERSION       = "2019.08.11",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -164,12 +164,13 @@ server.add_callback_handlers {XMLHttpRequest =
 
 
 local SID = {
-  altui   = "urn:upnp-org:serviceId:altui1",                  -- 'DisplayLine1' and 'DisplayLine2'
-  ha      = "urn:micasaverde-com:serviceId:HaDevice1", 		    -- 'BatteryLevel'
-  switch  = "urn:upnp-org:serviceId:SwitchPower1",             -- on/off control
-  dimming = "urn:upnp-org:serviceId:Dimming1",                 -- slider control
-  temp    = "urn:upnp-org:serviceId:TemperatureSensor1",
-  humid   = "urn:micasaverde-com:serviceId:HumiditySensor1",
+  altui     = "urn:upnp-org:serviceId:altui1",                    -- 'DisplayLine1' and 'DisplayLine2'
+  ha        = "urn:micasaverde-com:serviceId:HaDevice1", 		      -- 'BatteryLevel'
+  switch    = "urn:upnp-org:serviceId:SwitchPower1",              -- on/off control
+  dimming   = "urn:upnp-org:serviceId:Dimming1",                  -- slider control
+  security  = "urn:micasaverde-com:serviceId:SecuritySensor1",    -- arm/disarm control
+  temp      = "urn:upnp-org:serviceId:TemperatureSensor1",
+  humid     = "urn:micasaverde-com:serviceId:HumiditySensor1",
 }
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
@@ -414,6 +415,15 @@ local function map_menu_tree (fct)
   for _, menu in ipairs (console.menus or {}) do fct (menu) end
 end
 
+-- make a link to delete a specific something, providing a 'confirm' box
+-- e.g. delete_link ("room", 42)
+local function delete_link (what, which, whither)
+  return xhtml.a {
+    href = selfref (table.concat {"action=delete&", what, '=', which}), 
+    onclick = table.concat {"return confirm('Delete ", whither or what, " #", which, ": Are you sure?')"}, 
+    xhtml.img {height=14, width=14, alt="delete", src="icons/trash-alt-red.svg"} }
+end
+
 -----------------------------
 
 local function html5_title (...) return xhtml.h4 {...} end
@@ -502,6 +512,17 @@ function actions.call_action (_, req)
 --    print ("ACTION", act, srv, dev)
     local e,m,j,a = luup.call_action  (srv, act, q, tonumber (dev))
     local _ = {e,m,j,a}   -- TODO: write status return to message?
+  end
+end
+
+-- delete a specific something
+function actions.delete (p)
+  if p.room then
+    luup.rooms.delete (tonumber(p.room))
+  elseif p.dev then
+    requests.device ('', {action = "delete", device = p.dev}) 
+  elseif p.scn then
+    requests.scene ('', {action = "delete", scene = p.scn})
   end
 end
 
@@ -1334,6 +1355,18 @@ local function device_controls (d)
 --        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
       }
   end
+  srv = not srv and d.services[SID.security]      -- don't want two!
+  if srv then    -- we need an arm/disarm switch
+--    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
+    switch = xhtml.form {
+      action=selfref (), method="post", 
+        xhtml.input {name="action", value="arm", hidden=1},
+        xhtml.input {name="dev", value=d.attributes.id, hidden=1},
+        xhtml.input {type="image", class="w3-hover-opacity",
+          src="/icons/power-off-solid.svg", alt='arm/disarm', height=24, width=24}  -- TODO: better arm/disarm icon
+--        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
+    }
+  end
   srv = d.services[SID.dimming]
   if srv then    -- we need a slider
     local LoadLevelTarget = (srv.variables.LoadLevelTarget or {}).value or 0
@@ -1911,10 +1944,10 @@ function pages.rooms_table (p, req)
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_room", "+ Create", title="create new room"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
-  t.header {"id", "name", "#devices", "#scenes"}
+  t.header {"id", "name", "#devices", "#scenes", "action"}
   t.row {0, "No Room", rhs(droom[0] or 0), rhs(sroom[0] or 0)}
   for n, v in sorted (luup.rooms) do
-    t.row {n,v, rhs(droom[n] or 0), rhs(sroom[n] or 0)}
+    t.row {n,v, rhs(droom[n] or 0), rhs(sroom[n] or 0), delete_link ("room", n)}
   end
   return page_wrapper ("Rooms Table", create, t)
 end
@@ -1965,12 +1998,14 @@ function pages.devices_table (p)
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_device", "+ Create", title="create new device"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
-  t.header {"id", "name", "favourite", "room"}  
+  t.header {"id", "name", "favourite", "room", "action"}  
   local wanted = room_wanted(p)        -- get function to filter by room  
   for d in sorted_by_id_or_name (p, luup.devices) do
     local devNo = d.attributes.id
-    if wanted(d) then t.row {devNo, xhtml.a {href = selfref "page=control&device="..devNo, d.description}, 
-        d.attributes.bookmark or '0', luup.rooms[d.room_num] or "no room"} end
+    if wanted(d) then 
+      t.row {devNo, xhtml.a {href = selfref "page=control&device="..devNo, d.description}, 
+        d.attributes.bookmark or '0', luup.rooms[d.room_num] or "no room", delete_link ("dev", devNo, "device")} 
+    end
   end
   local room_nav = sidebar (p, rooms_selector, device_sort)
   local ddiv = xhtml.div {room_nav, xhtml.div {class="w3-rest w3-panel", create, t} }
@@ -2019,10 +2054,11 @@ function pages.scenes_table (p)
     local n = u.id
     if wanted(x) and paused_or_not(p, x) then 
       scn[#scn+1] = {n,  xhtml.a {href = selfref "page=header&scene="..n, x.description}, 
-        x:user_table().favorite, luup.rooms[x.room_num] or "no room", tostring (x.paused)}
+        x:user_table().favorite, luup.rooms[x.room_num] or "no room", tostring (x.paused),
+        delete_link ("scn", n, "scene")}
     end
   end
-  local t = create_table_from_data ({"id", "name", "favourite", "room", "paused"}, scn)  
+  local t = create_table_from_data ({"id", "name", "favourite", "room", "paused", "action"}, scn)  
   t.class = "w3-small w3-hoverable"
   local room_nav = sidebar (p, rooms_selector, device_sort, scene_filter)
   local sdiv = xhtml.div {room_nav, xhtml.div {class="w3-rest w3-panel", create, t} }

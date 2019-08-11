@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2019.07.28",
+  VERSION       = "2019.08.11",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -228,12 +228,11 @@ SERVER_NAME 	  Your server's fully qualified domain name (e.g. www.cgi101.com)
 SERVER_PORT 	  The port number your server is listening on
 SERVER_SOFTWARE The server software you're using (e.g. Apache 1.3)
 
-
 --]]
--- cgi is called by the server when it receives a GET or POST CGI request
--- request object parameter:
--- { url.path, url.query , {headers}, post_content_string, method_string, http_version_string }
 
+-- build a WSAPI environment from parameters:
+--   url.path, url.query , {headers}, post_content_string, method_string, http_version_string }
+-- only the first parameter is required
 local function make_env (path, query, headers, post_content, method, http_version)
   headers = headers or {}
   post_content = post_content or ''
@@ -286,13 +285,8 @@ local function make_env (path, query, headers, post_content, method, http_versio
   return setmetatable (env, meta)
 end
 
-
-local function cgi (wsapi_env)       -- 2019.07.28  now called with a pre-built !
-  -- build the environment
---  local wsapi_env = make_env (request)
-  
-  -- execute the CGI
---  local script = URL.path or ''  
+-- cgi is called by the server when it receives a GET or POST CGI request
+local function cgi (wsapi_env)       -- 2019.07.28  now called with a pre-built environment!
   local script = wsapi_env.SCRIPT_NAME  
   
   script = script: match "^/?(.-)/?$"      -- ignore leading and trailing '/'

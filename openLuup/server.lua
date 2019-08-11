@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2019.08.01",
+  VERSION       = "2019.08.11",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -244,6 +244,7 @@ local function receive (client)
   end
 
   local URL = url.parse (request_URI)
+  URL.path = URL.path:gsub ("/port_3480", '')        -- 2016.09.16, thanks @explorer, and 2019.08.11 @DesT!
   wsapi_env = wsapi.make_env (URL.path, URL.query, headers, post_content, method, http_version)
   
   return wsapi_env
