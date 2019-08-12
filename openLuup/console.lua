@@ -419,9 +419,10 @@ end
 -- e.g. delete_link ("room", 42)
 local function delete_link (what, which, whither)
   return xhtml.a {
+    title = "delete " .. (whither or what),
     href = selfref (table.concat {"action=delete&", what, '=', which}), 
     onclick = table.concat {"return confirm('Delete ", whither or what, " #", which, ": Are you sure?')"}, 
-    xhtml.img {height=14, width=14, alt="delete", src="icons/trash-alt-red.svg"} }
+    xhtml.img {height=14, width=14, alt="delete", src="icons/trash-alt-red.svg", class = "w3-hover-opacity"} }
 end
 
 -----------------------------
@@ -517,12 +518,17 @@ end
 
 -- delete a specific something
 function actions.delete (p)
-  if p.room then
-    luup.rooms.delete (tonumber(p.room))
+  if p.rm then
+    luup.rooms.delete (tonumber(p.rm))
   elseif p.dev then
     requests.device ('', {action = "delete", device = p.dev}) 
   elseif p.scn then
     requests.scene ('', {action = "delete", scene = p.scn})
+  elseif p.plugin then
+    requests.delete_plugin ('', {PluginNum = p.plugin})
+  elseif p.var then
+    print ("DELETE VAR", p.var, "device", p.device)
+    -- TODO: delete variable
   end
 end
 
@@ -1478,8 +1484,8 @@ end
 
 function pages.variables (p)
   return device_page (p, function (d, title)
-    local t = xhtml.table {class = "w3-small"}
-    t.header {"id", "service", '', "variable", "value"}
+    local t = xhtml.table {class = "w3-small w3-hoverable"}
+    t.header {"id", "service", '', "variable", "value", "action"}
     local info = {}
     local history, graph = ' ', ' '
     for n,v in pairs (d.variables) do
@@ -1490,7 +1496,7 @@ function pages.variables (p)
                 xhtml.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
       end
       local actions = xhtml.div {history, graph}
-      info[#info+1] = {v.id, v.srv, actions, v.name, nice(v.value) }
+      info[#info+1] = {v.id, v.srv, actions, v.name, nice(v.value), delete_link ("var", v.id, "variable") }
     end
     for _, row in ipairs (info) do 
       local serviceId = row[2]
@@ -1947,7 +1953,7 @@ function pages.rooms_table (p, req)
   t.header {"id", "name", "#devices", "#scenes", "action"}
   t.row {0, "No Room", rhs(droom[0] or 0), rhs(sroom[0] or 0)}
   for n, v in sorted (luup.rooms) do
-    t.row {n,v, rhs(droom[n] or 0), rhs(sroom[n] or 0), delete_link ("room", n)}
+    t.row {n,v, rhs(droom[n] or 0), rhs(sroom[n] or 0), delete_link ("rm", n, "room")}
   end
   return page_wrapper ("Rooms Table", create, t)
 end
@@ -2099,7 +2105,8 @@ function pages.plugins_table ()
         xhtml.input {class="w3-hover-border-red", type = "text", autocomplete="off", name="version", value=''},
         xhtml.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
           title="update", alt='', height=28, width=28} } }
-    t.row {icon, p.Title, version, p.AutoUpdate, files, xhtml.span{help, info}, update, ''} 
+    t.row {icon, p.Title, version, p.AutoUpdate, files, 
+      xhtml.span{help, info}, update, '', delete_link ("plugin", p.id)} 
   end
   return page_wrapper ("Plugins", t)
 end
@@ -2131,9 +2138,9 @@ function pages.about ()
 end  
 
 function pages.reload ()
-  luup.log "Reload requested by openLuup console"
+  _log "Reload requested by openLuup console"
   local _,_, jno = scheduler.run_job {job = luup.reload}
-  luup.log ("Shutdown job = " .. (jno or '?'))
+  _log ("Shutdown job = " .. (jno or '?'))
   return page_wrapper "Please wait a moment while system reloads"
 end
 
@@ -2240,6 +2247,8 @@ end
 
 local static_menu
 
+local VERSION = luup.devices[2].services.openLuup.variables.Version.value
+
 ----------------------------------------
 -- run()
 --
@@ -2288,7 +2297,8 @@ function run (wsapi_env)
     static_menu,
     h.div {
       formatted_page,
-      h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", h.p {os.date "%c"}},
+      h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", 
+        h.p {os.date "%c", ', ', VERSION} },
     }}
   
   h.documentElement[1]:appendChild {  -- the <HEAD> element

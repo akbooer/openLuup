@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2019.07.29",
+  VERSION       = "2019.08.12",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -58,7 +58,8 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2019.05.14   add Cache-Control header, don't chunk small file responses
 -- 2019.06.11   move cache_control definition to server_tables module
 -- 2019.07.28   call servlets with pre-built WSAPI environment
--- 2019.08.29   use WSAPI request library to parse GET and POST parameters for /data_request...
+-- 2019.07.29   use WSAPI request library to parse GET and POST parameters for /data_request...
+-- 2019.08.12   /data_request?id=xxx&foo=a&foo=b, collapses to simply &foo=b (thanks, indirectly, @DesT)
 
 
 -- TODO: use WSAPI response library in servlets?
@@ -122,13 +123,15 @@ end
 
 local function data_request (wsapi_env, req)
 
-  -- 2019.08.29 use WSAPI request library to parse GET and POST parameters...
+  -- 2019.07.29 use WSAPI request library to parse GET and POST parameters...
   -- the library's built-in req.params mechanism is built on demand for an individual request parameter, 
   -- so not used here... this complete list is built from the GET and POST parameters individually
   local parameters = {}
-  req = req or wsapi.request.new (wsapi_env)              -- request may have been prebuilt by data_request_task
-  for n,v in pairs (req.POST) do parameters[n] = v end
-  for n,v in pairs (req.GET)  do parameters[n] = v end    -- GET parameter overrides POST, if both defined
+  -- 2019.08.12 collapse table of multiple values to single (final) value
+  local function last_value (x) return type(x) == "table" and x[#x] or x end
+  req = req or wsapi.request.new (wsapi_env)            -- request may have been prebuilt by data_request_task
+  for n,v in pairs (req.POST) do parameters[n] = last_value (v) end
+  for n,v in pairs (req.GET)  do parameters[n] = last_value (v) end  -- GET parameter overrides POST, if both defined
   -----
   
   local ok, mtype
