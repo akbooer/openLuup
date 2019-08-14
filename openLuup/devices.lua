@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2019.05.15",
+  VERSION       = "2019.08.12",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -47,6 +47,7 @@ local ABOUT = {
 -- 2019.04.18  do not create variable history for Zwave serviceId or epoch values
 -- 2019.04.24  changed job.notes to job.type in call_action()
 -- 2019.04.25  add touch() function to make device appear in status request, etc.
+-- 2019.08.12  add delete_single_var() to allow console to surgically remove one variable
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -395,6 +396,7 @@ local function new (devNo)
   -- function delete_vars
   -- parameter: device 
   -- deletes all variables in all services (but retains actions)
+  -- needed for AltUI modify_user_data() call used to remove a single variable (and replace all the others)
   local function delete_vars (dev)
     local v = dev.variables
     for i in ipairs(v) do v[i] = nil end    -- clear each element, don't replace whole table
@@ -407,6 +409,21 @@ local function new (devNo)
     end
     
     new_userdata_dataversion ()
+  end
+  
+  -- function delete_var
+  -- removes a single var
+  -- this is harder than it seems, 
+  -- it's indexed in two places, and existing vars have to be renumbered
+  local function delete_single_var (dev, id)
+    -- IDs start at zero
+    local v = dev.variables
+    local var = v[id+1]                         -- this is the one to go
+    local svc = dev.services[var.srv]           -- this is its service
+    table.remove (v, id+1)                      -- remove from device variables array 
+    for i, x in ipairs (v) do x.id = i-1 end    -- renumber the whole array
+    svc[var.name] = nil                         -- remove from service variables
+    dev: touch()                                -- say we changed something
   end
   
   -- function: variable_set
@@ -560,8 +577,9 @@ local function new (devNo)
       variable_get        = variable_get,
       version_get         = function () return version end,
       
-      delete_vars         = delete_vars,    -- 2018.01.31
-      touch               = touch,          -- 2019.04.25
+      delete_single_var   = delete_single_var,  -- 2019.08.12
+      delete_vars         = delete_vars,        -- 2018.01.31
+      touch               = touch,              -- 2019.04.25
     }
     
   return device_list[devNo]

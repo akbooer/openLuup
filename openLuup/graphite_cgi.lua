@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "graphite_cgi",
-  VERSION       = "2019.07.14",
+  VERSION       = "2019.08.12",
   DESCRIPTION   = "WSAPI CGI implementation of Graphite-API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -48,6 +48,7 @@ ABOUT = {
 -- 2019.04.26  return "No Data" SVG when target parameter absent (default Graphite behaviour)
 -- 2019.06.06  remove reference to external CSS
 -- 2019.07.14  use new HTML and SVG constructors
+-- 2019.08.12  use WSAPI request library to decode parameters
 
 
 -- CGI implementation of Graphite API
@@ -89,7 +90,8 @@ local json      = require "openLuup.json"
 local historian = require "openLuup.historian"
 local timers    = require "openLuup.timers"
 local xml       = require "openLuup.xml"
---local vfs       = require "openLuup.virtualfilesystem"    -- for Graphite CSS
+local wsapi     = require "openLuup.wsapi"                -- for request and response libraries
+--local vfs       = require "openLuup.virtualfilesystem"    -- for external Graphite CSS
 
 local isFinders, finders = pcall (require, "L_DataFinders")  -- only present if DataYours there
 
@@ -715,84 +717,33 @@ Parameters are case-sensitive.
 
 --]]
 
-
--- convert HTTP GET or POST content into query parameters
-local function parse_parameters (query)
-  local p = {}
-  for n,v in (query or ''): gmatch "([%w_]+)=([^&]*)" do       -- parameters separated by unescaped "&"
-    if v ~= '' then 
-      local val = p[n] or {}
-      val[#val+1] = url.unescape(v)                  -- now can unescape parameter values
-      p[n] = val
-    end
-  end
-  return p
-end
-
-local function get_parameters (env)
-  
-  local query = env.QUERY_STRING
-  local p,p2
-  
-  p = parse_parameters (query)
-  
-  if env.REQUEST_METHOD == "POST" then 
-    local content = env.input:read ()
- 
-    if env.CONTENT_TYPE: find ("www-form-urlencoded", 1, true) then   -- 2017.02.21, plain text search
-      p2 = parse_parameters (content)
-    
-    elseif env.CONTENT_TYPE == "application/json" then
-      p2 = json.decode (content)
-    end
-    
-  end
-
-  for name,value in pairs (p2 or {}) do
-    p[name] = p[name] or value          -- don't override existing value
-  end
-  
-  for name,value in pairs (p) do
-    if #value == 1 then p[name] = value[1] end    -- convert single instances to scalar values
-  end
-  
-  if type (p.target) ~= "table" then p.target= {p.target} end -- target is ALWAYS an array
-
-  return p
-end
-
 -----------------------------------
 --
 -- global entry point called by WSAPI connector
 --
 
 function run (wsapi_env)
-
-  local function unknown (env)
-    return "Not Implemented: " .. env.SCRIPT_NAME, 501
-  end
-  
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output, note colon syntax
+  local req = wsapi.request.new (wsapi_env)
+  local p = req.GET
+  local p2 = req.POST
   
-  local p = get_parameters (wsapi_env)
+  if wsapi_env.CONTENT_TYPE == "application/json" then
+    local content = wsapi_env.input:read ()
+    p2 = json.decode (content)    
+  end
+
+  for name,value in pairs (p2 or {}) do p[name] = p[name] or value end    -- don't override existing value  
+  if type (p.target) ~= "table" then p.target= {p.target} end             -- target is ALWAYS an array
   
   local script = wsapi_env.SCRIPT_NAME
   script = script: match "^(.-)/?$"      -- ignore trailing '/'
   
-  local handler = dispatch[script] or unknown
-  local ok, return_content, status, headers = pcall (handler, wsapi_env, p)  
-  if not ok then
-    status = 500
-    headers = {}
-  end
-  
-  local function iterator ()     -- one-shot iterator, returns content, then nil
-    local x = return_content
-    return_content = nil 
-    return x
-  end
+  local handler = dispatch[script] or function () return "Not Implemented: " .. script, 501 end
 
-  return status or 500, headers or {}, iterator
+  local _, response, status, headers = pcall (handler, wsapi_env, p)  
+  
+  return status or 500, headers or {}, function () local x = response; response = nil; return x end
 end
 
 

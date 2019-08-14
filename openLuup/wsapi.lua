@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2019.08.11",
+  VERSION       = "2019.08.12",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -231,7 +231,7 @@ SERVER_SOFTWARE The server software you're using (e.g. Apache 1.3)
 --]]
 
 -- build a WSAPI environment from parameters:
---   url.path, url.query , {headers}, post_content_string, method_string, http_version_string }
+--      url.path, url.query , {headers}, post_content_string, method_string, http_version_string 
 -- only the first parameter is required
 local function make_env (path, query, headers, post_content, method, http_version)
   headers = headers or {}
@@ -308,11 +308,7 @@ local function cgi (wsapi_env)       -- 2019.07.28  now called with a pre-built 
     _log ("ERROR: " .. message)
     status = 500    -- Internal server error
     responseHeaders = { ["Content-Type"] = "text/plain" }
-    iterator = function ()
-      local line = message
-      message = nil
-      return line
-    end
+    iterator = function () local x = message; message = nil; return x end
   end
 
   return status, responseHeaders, iterator
