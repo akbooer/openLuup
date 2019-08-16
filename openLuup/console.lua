@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.08.14",
+  VERSION       = "2019.08.16",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -437,6 +437,31 @@ local function map_menu_tree (fct)
   for _, menu in ipairs (console.menus or {}) do fct (menu) end
 end
 
+-- make a drop-down selection for things
+local function xselect (hidden, options, selected, presets)
+  local sorted = {}
+  for i,v in ipairs (options or {}) do sorted[i]  = v end
+  table.sort (sorted)
+  local choices = xhtml.select {style="width:12em;", name="value", onchange="this.form.submit()"} 
+  local function choice(x) 
+    local select = x == selected and 1 or nil
+    choices[#choices+1] = xhtml.option {selected = select, x} 
+  end
+  for _,v in ipairs (presets or {}) do choice(v) end
+  for _,v in ipairs (sorted) do choice(v) end
+  local form = xhtml.form {action=selfref(), method = "post", choices}
+  for n,v in pairs (hidden or {}) do form[#form+1] = 
+    xhtml.input {name=n, value=v, hidden=1}
+  end
+  return form
+end
+
+-- make a link to go somewhere
+local function xlink (link) 
+  return xhtml.span {style ="text-align:right", xhtml.a {href= selfref (link),  title="link",
+    xhtml.img {height=14, width=14, class="w3-hover-opacity", alt="goto", src="icons/link-solid.svg"}}}
+end
+
 -- make a link to delete a specific something, providing a 'confirm' box
 -- e.g. delete_link ("room", 42)
 local function delete_link (what, which, whither)
@@ -445,6 +470,16 @@ local function delete_link (what, which, whither)
     href = selfref (table.concat {"action=delete&", what, '=', which}), 
     onclick = table.concat {"return confirm('Delete ", whither or what, " #", which, ": Are you sure?')"}, 
     xhtml.img {height=14, width=14, alt="delete", src="icons/trash-alt-red.svg", class = "w3-hover-opacity"} }
+end
+
+-- form to allow variable value updates
+-- {table of hidden form parameters}, value to display and change
+local function editable_text (hidden, value)
+  local form = xhtml.form{method="post", style="float:left", action=selfref(),
+    xhtml.input {class="w3-border w3-hover-border-red",type="text", size=28, 
+      name="value", value=nice(value, 99), autocomplete="off", onchange="this.form.submit()"} }
+  for n,v in pairs (hidden) do form[#form+1] = xhtml.input {hidden=1, name=n, value=v} end
+  return form
 end
 
 -----------------------------
@@ -521,7 +556,7 @@ end
 -- action=update_plugin&plugin=openLuup&update=version
 function actions.update_plugin (_, req)
   local q = req.params
-  requests.update_plugin (_, {Plugin=q.plugin, Version=q.version})
+  requests.update_plugin ('', {Plugin=q.plugin, Version=q.version})
   -- actual update is asynchronous, so return is not useful
 end
 
@@ -1583,13 +1618,7 @@ function pages.variables (p, req)
                   xhtml.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
         end
     -- form to allow variable value updates
-      local value_form = xhtml.form{
-        method="post", style="float:left", action=selfref(),
-        xhtml.input {hidden=1, name="page", value="variables"},
-        xhtml.input {hidden=1, name="id", value=v.id},
-        xhtml.input {class="w3-border w3-hover-border-red",type="text", size=28, 
-          name="value", value = nice(v.value, 99), autocomplete="off", onchange="this.form.submit()"} }
-    -----
+        local value_form = editable_text ({page="variables", id=v.id}, v.value)
 --        local trash_can = d.device_type == "openLuup" and '' or delete_link ("var", v.id, "variable")
         local trash_can = delete_link ("var", v.id, "variable")
         local actions = xhtml.span {history, graph}
@@ -2045,6 +2074,15 @@ function pages.create_room ()
 end
 
 function pages.rooms_table (p, req)
+  local q = req.POST
+  -- create new room
+  if q.name then
+    luup.rooms.create (q.name)
+  -- rename existing room
+  elseif q.rename and q.value then
+    luup.rooms.rename (q.rename, q.value)
+  end
+  
   local function room_count (tbl)
     local room = {}
     for _,x in pairs (tbl) do
@@ -2053,15 +2091,8 @@ function pages.rooms_table (p, req)
     end
     return room
   end
-  if req.method == "POST" and p.name then
-    luup.rooms.create (p.name)
-  end
   local droom = room_count (luup.devices)
   local sroom = room_count (luup.scenes)
-  local function xlink (link) 
-    return xhtml.span {style ="text-align:right", xhtml.a {href= selfref (link), 
-      xhtml.img {height=14, width=14, class="w3-hover-opacity", alt="goto", src="icons/link-solid.svg"}}}
-  end
   local function dlink (room, n) return n == 0 and '' or xlink ("page=devices&room=" .. room) end
   local function slink (room, n) return n == 0 and '' or xlink ("page=scenes&room="  .. room) end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
@@ -2079,7 +2110,8 @@ function pages.rooms_table (p, req)
     local d,s = droom[n] or 0, sroom[n] or 0
     D,S = D + d, S + s
     local room = v.description
-    t.row {n, room, dlink (room, d), rhs(d), slink (room, s), rhs(s), delete_link ("rm", n, "room")}
+    local editable_name = editable_text ({rename=n}, room)
+    t.row {n, editable_name, dlink (room, d), rhs(d), slink (room, s), rhs(s), delete_link ("rm", n, "room")}
   end
   t.header {'',rhs "Total", '', rhs(D), '', rhs(S)}
   local sortmenu = sidebar (p, device_sort)
@@ -2129,18 +2161,28 @@ function pages.create_device ()
   return xhtml.div {class="w3.card", form}
 end
 
-function pages.devices_table (p)
+function pages.devices_table (p, req)
+  local q = req.POST
+  if q.rename and q.value then
+    requests.device ('', {action="rename", device=q.rename, name=q.value, room=nil})
+  elseif q.reroom then
+    requests.device ('', {action="rename", device=q.reroom, name=nil, room=q.value})
+  end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_device", "+ Create", title="create new device"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
-  t.header {"id", "name", "favourite", "room", "delete"}  
+  t.header {"id", '', "name", '', "room", "delete"}  
   local wanted = room_wanted(p)        -- get function to filter by room  
   for d in sorted_by_id_or_name (p, luup.devices) do
     local devNo = d.attributes.id
     if wanted(d) then 
       local trash_can = devNo == 2 and '' or delete_link ("dev", devNo, "device")
-      t.row {devNo, xhtml.a {href = selfref "page=control&device="..devNo, d.description}, 
-        d.attributes.bookmark or '0', luup.rooms[d.room_num] or "no room", trash_can} 
+      local bookmark = d.attributes.bookmark == '1' and unicode.black_star or ''
+      local link = xlink ("page=control&device="..devNo)
+      local current_room = luup.rooms[d.room_num] or "No Room"
+      local room_selection = xselect ({reroom=devNo}, luup.rooms, current_room, {"No Room"})
+      t.row {devNo, link, editable_text({rename=devNo}, d.description), 
+        bookmark, room_selection, trash_can} 
     end
   end
   local room_nav = sidebar (p, rooms_selector, device_sort)
@@ -2180,7 +2222,20 @@ function pages.create_scene ()
   return xhtml.div {class="w3.card", form} 
 end
 
-function pages.scenes_table (p)
+function pages.scenes_table (p, req)
+  local q = req.POST
+  -- rename scene
+  if q.rename and q.value then
+    local s = luup.scenes[tonumber(q.rename)]
+    if s then s.rename (q.value) end
+  elseif q.reroom and q.value then
+    local s = luup.scenes[tonumber(q.reroom)]
+    local num = 0                       -- default is "No Room"
+    for i,v in pairs (luup.rooms) do    -- convert from room name to room number
+      if v == q.value then num = i break end
+    end
+    s.rename (nil, num)
+  end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_scene", "+ Create", title="create new scene"}
   local scn = {}
@@ -2189,12 +2244,16 @@ function pages.scenes_table (p)
     local u = x: user_table()
     local n = u.id
     if wanted(x) and paused_or_not(p, x) then 
-      scn[#scn+1] = {n,  xhtml.a {href = selfref "page=header&scene="..n, x.description}, 
-        x:user_table().favorite, luup.rooms[x.room_num] or "no room", tostring (x.paused),
-        delete_link ("scn", n, "scene")}
+      local favorite = x:user_table().favorite and unicode.black_star or ''
+      local paused = x.paused and "paused" or '' -- unicode.paused or ''
+      local link = xlink ("page=header&scene="..n)
+      local current_room = luup.rooms[x.room_num] or "No Room"
+      local room_selection = xselect ({reroom=n}, luup.rooms, current_room, {"No Room"})
+      scn[#scn+1] = {n,  link, editable_text({rename=n}, x.description), 
+        favorite, room_selection, paused, delete_link ("scn", n, "scene")}
     end
   end
-  local t = create_table_from_data ({"id", "name", "favourite", "room", "paused", "delete"}, scn)  
+  local t = create_table_from_data ({"id", '', "name", '', "room", "paused", "delete"}, scn)  
   t.class = "w3-small w3-hoverable"
   local room_nav = sidebar (p, rooms_selector, device_sort, scene_filter)
   local sdiv = xhtml.div {room_nav, xhtml.div {class="w3-rest w3-panel", create, t} }
@@ -2215,7 +2274,6 @@ function pages.plugins_table ()
     local files = {}
     for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
     table.sort (files)
---    local choice = {style="width:12em;", onchange="location = this.value;", 
     local choice = {style="width:12em;", name="file", onchange="this.form.submit()", 
       xhtml.option {value='', "Files", disabled=1, selected=1}}
     for _, f in ipairs (files) do choice[#choice+1] = xhtml.option {value=f, f} end
@@ -2429,7 +2487,7 @@ function run (wsapi_env)
     h.div {
       formatted_page,
       h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", 
-        h.p {os.date "%c", ', ', VERSION} },
+        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION} },
     }}
   
   h.documentElement[1]:appendChild {  -- the <HEAD> element

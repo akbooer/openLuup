@@ -172,6 +172,7 @@ end
 --   http://ip_address:3480/data_request?id=device&action=delete&device=5
 --
 -- TODO: add better status messages
+-- TODO: move rename and delete to device object/class?
 local function device (_,p)
   local devNo = tonumber (p.device)
   local dev = luup.devices[devNo]

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.08.04",
+  VERSION       = "2019.08.16",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -318,7 +318,7 @@ local function create (scene_json)
   local function scene_rename (name, room)
     scene.name = name or scene.name
     scene.room = room or scene.room
-    luup_scene.description = scene.name     -- luup is SO inconsistent with names!
+    luup_scene.description = tostring(scene.name)     -- luup is SO inconsistent with names!
     luup_scene.room_num = scene.room
   end
 
