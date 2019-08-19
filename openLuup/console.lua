@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.08.16",
+  VERSION       = "2019.08.19",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -173,6 +173,7 @@ local SID = {
   security  = "urn:micasaverde-com:serviceId:SecuritySensor1",    -- arm/disarm control
   temp      = "urn:upnp-org:serviceId:TemperatureSensor1",
   humid     = "urn:micasaverde-com:serviceId:HumiditySensor1",
+  gateway   = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
 }
 
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
@@ -197,7 +198,7 @@ local page_groups = {
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "user_data"},
     ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
-    ["Servers"]   = {"http", "smtp", "pop3", "udp", "sockets", "file_cache"},
+    ["Servers"]   = {"sockets", "http", "smtp", "pop3", "udp", "file_cache"},
     ["Utilities"] = {"backups", "images", "trash"},
     ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3"},
     ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "scenes_table", "triggers_table"},
@@ -341,13 +342,14 @@ local function house_mode_group (selected)
   selected = tostring (selected)
   local mode_name = {"Home", "Away", "Night", "Vacation"}
   local on = {}
+  local size = 42
   for x in selected: gmatch "%d" do on[tonumber(x)] = true end
   local function mode_button (number, icon)
     local name = mode_name[number]
     local colour =''
     if on[number] then colour = "w3-light-green" end
-    return xhtml.div {title=name, class="w3-button w3-round " .. colour, 
-      xhtml.img {height=50, width=50, alt=name, src=icon}}
+    return xhtml.a {title=name, class="w3-button w3-round " .. colour, href= selfref ("mode=" .. number),
+      xhtml.img {height=size, width=size, alt=name, src=icon}}
   end
   
   return xhtml.div {class = "w3-cell w3-bar w3-padding w3-round w3-border",
@@ -905,102 +907,129 @@ end
 for i = 1,5 do pages["log." .. i] = pages.log end         -- add the older file versions
 pages.startup_log = pages.log
 
--- generic connections table for all servers
-local function connectionsTable (iprequests)
-  local t = xhtml.table {}
---  t.header { {"Received connections:", colspan=3} }
-  t.header {"IP address", "#connects", "date / time"}
-  for ip, req in pairs (iprequests) do
-    t.row {ip, req.count, todate(req.date)}
+
+-- socket & connections summary
+function pages.sockets ()
+  local data = {}
+  local sock_drawer = scheduler.get_socket_list()    -- list is indexed by socket !!
+  for sock, x in pairs (sock_drawer) do
+    local sockname = table.concat {tostring(x.name), ' ', tostring(sock)}
+    data[#data+1] = {x.time, todate (x.time), x.devNo or 0, sockname}
   end
-  if t.length() == 0 then t.row {'', "--- none ---", ''} end
-  return xhtml.div {class = "w3-small w3-card w3-padding w3-cell", xhtml.h5 {"Received connections:"}, t}
+  -----
+  local columns = {"#", "date / time", "device", "socket"}
+  table.sort (data, function (a,b) return a[1] > b[1] end)
+  local t = create_table_from_data (columns, data, function (row, i) row[1] = i end)
+  -----
+  local c2 = {"server", "date / time", "#connects", "from IP"}
+  local function connectionsTable (tbl, server, iprequests)
+    local info = iprequests or {}
+    info = next(info) and info or {[''] = {}} 
+    for ip, req in pairs (info) do
+      tbl[#tbl+1] = {server, req.date and todate(req.date) or '', req.count or 0, ip}
+    end
+  end
+  local x = {}
+  connectionsTable (x, "HTTP", server.iprequests)
+  connectionsTable (x, "SMTP", smtp.iprequests)
+  connectionsTable (x, "POP3", pop3.iprequests)
+  connectionsTable (x, "UDP",  ioutil.udp.iprequests) 
+  local h2 = xhtml.h4 "Received connections"
+  local t2 = create_table_from_data (c2, x)
+  return page_wrapper ("Server sockets watched for incoming connections", t, h2, t2)
 end
 
-
-function pages.http ()    
-  local function requestTable (requests, title, columns, include_zero)
-  local t = xhtml.table {class = "w3-small w3-card w3-padding"}
---    t.header { {title, colspan = 3} }
+function pages.http (p)    
+  local function requestTable (requests, columns)
+    local t = xhtml.table {class = "w3-small"}
     t.header (columns)
-    local calls = {}
-    for name in pairs (requests) do calls[#calls+1] = name end
-    table.sort (calls)
-    for _,name in ipairs (calls) do
-      local call = requests[name]
+    for name, call in sorted (requests) do
       local count = call.count
       local status = call.status
+      local include_zero = name: match "^id=lr_"
       if include_zero or (count and count > 0) then
         t.row {name, count or 0, status and status_number(status) or ''}
       end
     end
     if t.length() == 0 then t.row {'', "--- none ---", ''} end
---    return t
-    return xhtml.div {class = "w3-small w3-padding", xhtml.h5 {title}, t}
+    return xhtml.div {class = "w3-small", t}
   end
   
-  local lu, lr = {}, {}     -- 2019.05.16 system- and user-defined requests
+  local options = {"All Requests", "System", "User Defined", "CGI", "Files"}
+  local request_type = p.type or options[1]
+  local selection = sidebar (p, function () return filter_menu (options, request_type, "type=") end)
+  
+  local tbl = {}
+  local all = request_type == options[1]
+  local lu_ = request_type == options[2]   -- system request
+  local lr_ = request_type == options[3]   -- user-defined request
   for n,v in pairs (server.http_handler) do
-    local tbl = n: match "^lr_" and lr or lu
-    tbl[n] = v
+    local prefix = n: match "^lr_"
+    local wanted = all or (prefix and lr_) or (not prefix and lu_)
+    if wanted then tbl["id=" .. n] = v end
+  end
+
+  local cgi = request_type == options[4]
+  for n,v in pairs (server.cgi_handler) do
+    if all or cgi then tbl[n] = v end
+  end
+  
+  local file = request_type == options[5]
+  for n,v in pairs (server.file_handler) do
+    if all or file then tbl[n] = v end
   end
   
   return xhtml.div {
       html5_title "HTTP Web server (port 3480)",
-      connectionsTable (server.iprequests),   
-      requestTable (lu, "/data_request? (system)", {"id=lu_... ", "#requests  ","status"}),
-      requestTable (lr, "/data_request? (user-defined)", {"id=lr_... ", "#requests  ","status"}, true),
-      requestTable (server.cgi_handler, "CGI requests", {"URL ", "#requests  ","status"}),
-      requestTable (server.file_handler, "File requests", {"filename ", "#requests  ","status"}),
-    }
+      selection,
+      xhtml.div {class="w3-rest w3-panel", 
+        requestTable (tbl, {"request", "#requests  ","status"}) } }
 end
 
-function pages.smtp ()
-  local none = "--- none ---"
-  
-  local function sortedTable (title, info, ok)
-    local t = xhtml.table {class = "w3-small w3-card w3-padding"}
-    t.header { {title, colspan = 3} }
-    t.header {"Address", "#messages", "for device"}
-    local index = {}
-    for ip in pairs (info) do index[#index+1] = ip end
-    table.sort (index)    -- get the email addresses into order
-    for _,ip in ipairs (index) do
-      local dest = info[ip]
+function pages.smtp (p)
+  local function sortedTable (info, ok)
+    local tbl = {}
+    for ip, dest in sorted (info) do
       local name = devname (dest.devNo)
-      if ok(ip) then 
-        t.row {ip, dest.count, name}
-      end
+      if ok(ip) then  tbl[#tbl+1] = {ip, dest.count, name} end
     end
-    if t.length() == 0 then t.row {'', none, ''} end
-    return t
-  end
+    return create_table_from_data ({"Address", "#sent", "for device"}, tbl)
+  end  
+  local options = {"Mailboxes", "Senders", "Blocked"}
+  local request_type = p.type or options[1]
+  local selection = sidebar (p, function () return filter_menu (options, request_type, "type=") end)
   
-  local t = xhtml.table {class = "w3-small w3-card w3-padding"}
-  t.header {{ "Blocked senders:", colspan=2 }}
-  t.header {"eMail address","#attempts"}
-  for email in pairs (smtp.blocked) do
-    t.row {email, '?'}
-  end
-  if t.length() == 0 then t.row {'', none, ''} end
+  local tbl = {}
+  for email in pairs (smtp.blocked) do tbl[#tbl+1] = {email, '?'} end
+  local t = create_table_from_data ({"eMail address","#attempts"}, tbl)
   
   return xhtml.div {
     html5_title "SMTP eMail server",
-    connectionsTable (smtp.iprequests),
-    sortedTable ("Registered email sender IPs:", smtp.destinations, function(x) return not x:match "@" end),
-    sortedTable ("Registered destination mailboxes:", smtp.destinations, function(x) return x:match "@" end),
-    t }
+    selection,
+    xhtml.div {class="w3-rest w3-panel", 
+      xhtml.h5 "Registered destination mailboxes:", 
+      sortedTable (smtp.destinations, function(x) return x:match "@" end),
+      xhtml.h5 "Registered email sender IPs:", 
+      sortedTable (smtp.destinations, function(x) return not x:match "@" end),
+      xhtml.h5 "Blocked senders:", t }}
 end
 
-function pages.pop3 ()
+function pages.pop3 (p)
   local T = xhtml.div {}
   local header = "Mailbox '%s': %d messages, %0.1f (kB)"
   local accounts = pop3.accounts    
+  
+  local options = {}
+  for n in sorted (accounts) do options[#options+1] = n end
+  table.insert (options, 1, "All Mailboxes")
+  local request_type = p.type or options[1]
+  local selection = sidebar (p, function () return filter_menu (options, request_type, "type=") end)
+  
   for name, folder in pairs (accounts) do
     local mbx = pop3.mailbox.open (folder)
     local total, bytes = mbx: status()
     
-    local t = xhtml.table {class = "w3-small w3-card w3-padding"}
+    local t = xhtml.table {class = "w3-small"}
     t.header { {header: format (name, total, bytes/1e3), colspan = 3 } }
     t.header {'#', "date / time", "size (bytes)"}
     
@@ -1017,60 +1046,32 @@ function pages.pop3 ()
     T[#T+1] = t
   end
   
-  return xhtml.div {
-    html5_title "POP3 eMail client server",
-    connectionsTable (ioutil.udp.iprequests), T}
+  return xhtml.div {html5_title "POP3 eMail client server", 
+    selection, xhtml.div {class="w3-rest w3-panel", T}}
 end
 
-function pages.udp ()
-  local t0 = xhtml.table {class = "w3-small w3-card w3-padding"}
-  t0.header { {"Registered listeners:", colspan = 3} }
-  t0.header {"port", "#datagrams", "for device"}
+function pages.udp (p)
+  local options = {"Listeners", "Destinations"}
+  local request_type = p.type or options[1]
+  local selection = sidebar (p, function () return filter_menu (options, request_type, "type=") end)
+  ---
   local list = {}
-  for port, x in pairs(ioutil.udp.listeners) do
-    local dname = devname (x.devNo)
-    list[#list+1] = {port = port, n = x.count, dev = dname}
+  for port, x in sorted(ioutil.udp.listeners) do
+    list[#list+1] = {port, x.count, devname (x.devNo)} 
   end
-  table.sort (list, function (a,b) return a.port < b.port end)
-  for _,x in ipairs (list) do 
-    t0.row {x.port, x.n, x.dev} 
-  end
-  if t0.length() == 0 then t0.row {'', "--- none ---", ''} end 
-  
-  local t = xhtml.table {class = "w3-small w3-card w3-padding"}
-  t.header { {"Opened for write:", colspan = 2} }
-  t.header {"ip:port", "by device"}
+  local t0 = create_table_from_data ({"port", "#datagrams", "for device"}, list)
+  -----
   list = {}
   for i, x in pairs(ioutil.udp.senders) do
-    local dname = devname (x.devNo)
-    list[i] = {ip_and_port = x.ip_and_port, n = x.count, dev = dname}   -- doesn't yet count datagrams sent
+    list[i] = {x.ip_and_port, devname (x.devNo)} --, x.count or 0}   -- doesn't yet count datagrams sent
   end
-  table.sort (list, function (a,b) return a.ip_and_port < b.ip_and_port end)
-  for _,x in ipairs (list) do 
-    t.row {x.ip_and_port, x.dev} 
-  end
-  if t.length() == 0 then t.row {"--- none ---", ''} end 
-  
+  table.sort (list, function (a,b) return a[1] < b[1] end)
+  local t = create_table_from_data ({"ip:port", "by device"}, list)
   return xhtml.div {
-    html5_title "UDP datagram ports",
-    connectionsTable (ioutil.udp.iprequests), 
-    t0, t}
-end
-
-
-function pages.sockets ()
-  local data = {}
-  local sock_drawer = scheduler.get_socket_list()    -- list is indexed by socket !!
-  for sock, x in pairs (sock_drawer) do
-    local sockname = table.concat {tostring(x.name), ' ', tostring(sock)}
-    data[#data+1] = {x.time, todate (x.time), x.devNo or 0, sockname}
-  end
-  -----
-  local columns = {"#", "date / time", "device", "socket"}
-  table.sort (data, function (a,b) return a[1] > b[1] end)
-  -----
-  local t = create_table_from_data (columns, data, function (row, i) row[1] = i end)
-  return page_wrapper ("Server sockets watched for incoming connections", t)
+    html5_title "UDP datagram ports", selection,
+    xhtml.div {class="w3-container w3-rest", 
+      xhtml.h5 "Registered listeners", t0, 
+      xhtml.h5 "Datagram destinations", t}}
 end
 
 
@@ -2082,7 +2083,7 @@ function pages.rooms_table (p, req)
   elseif q.rename and q.value then
     luup.rooms.rename (q.rename, q.value)
   end
-  
+  ---
   local function room_count (tbl)
     local room = {}
     for _,x in pairs (tbl) do
@@ -2095,13 +2096,17 @@ function pages.rooms_table (p, req)
   local sroom = room_count (luup.scenes)
   local function dlink (room, n) return n == 0 and '' or xlink ("page=devices&room=" .. room) end
   local function slink (room, n) return n == 0 and '' or xlink ("page=scenes&room="  .. room) end
+  local function link_pair (link, count)
+    return xhtml.div {class="w3-display-container", style = "width: 56px;",
+      link, xhtml.span {class="w3-display-right", count} }
+  end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_room", "+ Create", title="create new room"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
-  t.header {"id", "name", {"#devices", colspan=2}, {"#scenes", colspan=2}, "delete"}
+  t.header {"id", "name", "#devices", "#scenes", "delete"}
   local D,S = droom[0] or 0, sroom[0] or 0
   local room = "No Room"
-  t.row {0, room, dlink (room, D), rhs(D), slink (room, S), rhs(S)}
+  t.row {0, room, link_pair (dlink (room, D), D), link_pair (slink (room, S), S)}
   -- build a table for use by the id/name sort menu routine
   local rooms = {}
   for n, v in pairs (luup.rooms) do rooms[n] = {id = n, description = v} end
@@ -2111,9 +2116,11 @@ function pages.rooms_table (p, req)
     D,S = D + d, S + s
     local room = v.description
     local editable_name = editable_text ({rename=n}, room)
-    t.row {n, editable_name, dlink (room, d), rhs(d), slink (room, s), rhs(s), delete_link ("rm", n, "room")}
+    local d_name_link = link_pair (dlink (room, d), d)
+    local s_name_link = link_pair (slink (room, s), s)
+    t.row {n, editable_name, d_name_link, s_name_link, delete_link ("rm", n, "room")}
   end
-  t.header {'',rhs "Total", '', rhs(D), '', rhs(S)}
+  t.header {'',rhs "Total", rhs(D), rhs(S)}
   local sortmenu = sidebar (p, device_sort)
   local rdiv = xhtml.div {sortmenu, xhtml.div {class="w3-rest w3-panel", create, t} }
   return page_wrapper ("Rooms Table", rdiv)
@@ -2171,18 +2178,19 @@ function pages.devices_table (p, req)
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_device", "+ Create", title="create new device"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
-  t.header {"id", '', "name", '', "room", "delete"}  
+  t.header {"id", "name", '', "room", "delete"}  
   local wanted = room_wanted(p)        -- get function to filter by room  
   for d in sorted_by_id_or_name (p, luup.devices) do
     local devNo = d.attributes.id
     if wanted(d) then 
       local trash_can = devNo == 2 and '' or delete_link ("dev", devNo, "device")
-      local bookmark = d.attributes.bookmark == '1' and unicode.black_star or ''
+      local bookmark = xhtml.span{class="w3-display-right", d.attributes.bookmark == '1' and unicode.black_star or ''}
       local link = xlink ("page=control&device="..devNo)
       local current_room = luup.rooms[d.room_num] or "No Room"
       local room_selection = xselect ({reroom=devNo}, luup.rooms, current_room, {"No Room"})
-      t.row {devNo, link, editable_text({rename=devNo}, d.description), 
-        bookmark, room_selection, trash_can} 
+      t.row {devNo, editable_text({rename=devNo}, d.description), 
+        xhtml.div {class="w3-display-container", style="width:40px;", link, bookmark}, 
+          room_selection, trash_can} 
     end
   end
   local room_nav = sidebar (p, rooms_selector, device_sort)
@@ -2244,16 +2252,18 @@ function pages.scenes_table (p, req)
     local u = x: user_table()
     local n = u.id
     if wanted(x) and paused_or_not(p, x) then 
-      local favorite = x:user_table().favorite and unicode.black_star or ''
-      local paused = x.paused and "paused" or '' -- unicode.paused or ''
+      local favorite = xhtml.span{class="w3-display-middle", x:user_table().favorite and unicode.black_star or ''}
+      local paused = x.paused and 
+        xhtml.img {height=14, width=14, class="w3-display-right", src="icons/pause-solid.svg"} or ''
       local link = xlink ("page=header&scene="..n)
       local current_room = luup.rooms[x.room_num] or "No Room"
       local room_selection = xselect ({reroom=n}, luup.rooms, current_room, {"No Room"})
-      scn[#scn+1] = {n,  link, editable_text({rename=n}, x.description), 
-        favorite, room_selection, paused, delete_link ("scn", n, "scene")}
+      scn[#scn+1] = {n,  editable_text({rename=n}, x.description), 
+        xhtml.div {class="w3-display-container", style="width:60px;", link, favorite, paused}, 
+        room_selection, delete_link ("scn", n, "scene")}
     end
   end
-  local t = create_table_from_data ({"id", '', "name", '', "room", "paused", "delete"}, scn)  
+  local t = create_table_from_data ({"id", "name", '', "room", "delete"}, scn)  
   t.class = "w3-small w3-hoverable"
   local room_nav = sidebar (p, rooms_selector, device_sort, scene_filter)
   local sdiv = xhtml.div {room_nav, xhtml.div {class="w3-rest w3-panel", create, t} }
@@ -2341,7 +2351,11 @@ pages.reload_luup_engine = pages.reload    -- alias for top-level menu
 
 local a, div = xhtml.a, xhtml.div
 
-function pages.home ()
+function pages.home (p)
+  -- set house mode immediately, if provided
+  if p.mode then
+    luup.call_action (SID.gateway, "SetHouseMode", {Mode = p.mode, Now=1}, 0)
+  end
   -- create a list of all the page groups referenced by current menu structure
   local group_names = {}
   local function add_name (name)
