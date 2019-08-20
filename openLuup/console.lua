@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.08.19",
+  VERSION       = "2019.08.20",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -68,6 +68,7 @@ ABOUT = {
 -- 2019.06.04  use CCS Framework W3.css, lightweight with no JavaScript libraries.  Perfect match!
 -- 2019.07.14  use new xml.createNewHtmlDocument() factory method
 -- 2019.07.31  use new server module (name reverted from http)
+-- 2019.08.20  add new "globals" page for individual devices
 
 
 --  WSAPI Lua CGI implementation
@@ -194,8 +195,8 @@ end
 local page_groups = {
 --    ["House Mode"]= {"home", "away", "night", "vacation"},
     ["Historian"] = {"summary", "cache", "database", "orphans"},
-    ["System"]    = {"parameters", "top_level", "globals", "states", "sandboxes", "RELOAD"},
-    ["Device"]    = {"control", "attributes", "variables", "actions", "events", "user_data"},
+    ["System"]    = {"parameters", "top_level", "all_globals", "states", "sandboxes", "RELOAD"},
+    ["Device"]    = {"control", "attributes", "variables", "actions", "events", "globals", "user_data"},
     ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
     ["Servers"]   = {"sockets", "http", "smtp", "pop3", "udp", "file_cache"},
@@ -216,7 +217,11 @@ end
 -- look for user-defined device panels
 -- named U_xxx.lua, derived from trailing word of device type:
 -- urn:schemas-micasaverde-com:device:TemperatureSensor:1, would be U_TemperatureSensor.lua
-local user_defined = {}
+local user_defined = {
+    openLuup = {control = function() return 
+        '<a class="w3-text-blue", href="https://www.justgiving.com/DataYours/" target="_blank">' ..
+          "If you like openLuup, you could DONATE to Cancer Research UK right here</a>" end}
+  }
 for f in loader.dir "^U_.-%.lua$" do
   local name = f: match "^U_(.-)%.lua$"
   local ok, user = pcall (require, "U_" .. name)
@@ -330,7 +335,7 @@ local function get_device_icon (d)
   else
     local icon = d:get_icon ()
     if icon ~= '' and not icon: lower() : match "^http" then icon = "/icons/" .. icon end
-    img = xhtml.img {src = icon, alt="no icon", style = "width:50px; height:50px;"}
+    img = xhtml.img {title="control panel", src = icon, alt="no icon", style = "width:50px; height:50px;"}
   end
 
   return xhtml.a {href=selfref ("page=control&device=", d.attributes.id), img}
@@ -766,8 +771,7 @@ function pages.top_level ()
 end
 
 -- plugin globals
-  
-function pages.globals ()
+function pages.all_globals ()
   local columns = {"device", "variable", "value"}
   local data = {}
   local ignored = {"ABOUT", "_NAME", "lul_device"}
@@ -790,7 +794,7 @@ function pages.globals ()
     end
   end 
   local tbl = create_table_from_data (nil, data)
-  return page_wrapper("Plugin Globals", tbl)
+  return page_wrapper("Plugin Globals (excluding functions)", tbl)
 end
 
 -- state table
@@ -1702,6 +1706,23 @@ function pages.events (p)
   end)
 end
 
+function pages.globals (p)
+  return device_page (p, function (d, title)
+    local env = d.environment
+    local pretty = loader.shared_environment.pretty
+    local x = {}
+    for n,v in sorted (env) do
+      if not _G[n] and type(v) ~= "function" then
+        x[#x+1] = {n, xhtml.pre {pretty(v)}}
+      end
+    end
+    local t = create_table_from_data ({"name", "value"}, x)
+    t.class = (t.class or '') .. " w3-hoverable"
+    return title .. " - plugin globals (excluding functions)", xhtml.div {class="w3-row", t}
+  end)
+
+end
+
 function pages.user_data (p)
   return device_page (p, function (d, title)
     local j, err
@@ -2496,12 +2517,16 @@ function run (wsapi_env)
   
   static_menu = static_menu or dynamic_menu()    -- build the menu tree just once
 
+  local donate = xhtml.a {
+    title = "If you like openLuup, you could DONATE to Cancer Research UK right here",
+    href="https://www.justgiving.com/DataYours/", target="_blank", " [donate] "}
+                
   body = {
     static_menu,
     h.div {
       formatted_page,
       h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", 
-        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION} },
+        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate} }
     }}
   
   h.documentElement[1]:appendChild {  -- the <HEAD> element
