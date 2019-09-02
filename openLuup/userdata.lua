@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.06.11",
+  VERSION       = "2019.08.25",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -65,6 +65,7 @@ local ABOUT = {
 -- 2019.05.03   don't load device attribute cpu(s)
 -- 2019.05.12   use device:state_table() in devices_table()
 -- 2019.05.31   update openLuup help URL to new Vera community forum
+-- 2019.08.25   use local .svg icons for openLuup, AltAppStore, and VeraBridge plugins
 
 
 local json    = require "openLuup.json"
@@ -203,7 +204,8 @@ local preinstalled = {
     {
       AllowMultiple   = "0",
       Title           = "openLuup",
-      Icon            = "https://avatars.githubusercontent.com/u/4962913",
+--      Icon            = "https://avatars.githubusercontent.com/u/4962913",
+      Icon            = "icons/openLuup.svg",
       Instructions    = "https://community.getvera.com/c/plugins-and-plugin-development/openluup",
       AutoUpdate      = "0",
       VersionMajor    = '',
@@ -266,7 +268,7 @@ local preinstalled = {
     {
       AllowMultiple   = "0",
       Title           = "Alternate App Store",
-      Icon            = "https://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
+      Icon            = "icons/AltAppStore.svg",
       Instructions    = "https://github.com/akbooer/AltAppStore",
       AutoUpdate      = "0",
       VersionMajor    = '',
@@ -298,7 +300,8 @@ local preinstalled = {
     {
       AllowMultiple   = "1",
       Title           = "VeraBridge",
-      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
+--      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
+      Icon            = "icons/VeraBridge.svg",
       Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
       AutoUpdate      = "0",
       VersionMajor    = "not",

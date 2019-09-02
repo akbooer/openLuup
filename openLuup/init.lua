@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2019.08.05",
+  VERSION       = "2019.08.24",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -130,7 +130,7 @@ do -- set attributes, possibly decoding if required
     },
     Console = {
       Menu = "",           -- add user-defined menu JSON definition file here
-      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.3/ace.js",
+      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.5/ace.js",
       EditorTheme = "eclipse",
     },
     DataStorageProvider = {

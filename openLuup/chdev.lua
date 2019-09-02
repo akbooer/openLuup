@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.08.08",
+  VERSION       = "2019.08.29",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -58,6 +58,7 @@ local ABOUT = {
 -- 2019.06.02  chdev.create() sets device category from device type, if necessary (thanks @reneboer)
 --             ALSO, allow missing serviceId in variable definitions to set attribute (thanks @rigpapa)
 -- 2019.06.19  add dev:get_icon() to return dynamic icon name (for console)
+-- 2019.08.29  check non-empty device name in create(), thanks @cokeman
 
 
 local logs      = require "openLuup.logs"
@@ -172,7 +173,9 @@ local function create (x)
   end
 
   -- schedule device startup code
-  local device_name = x.description or d.friendly_name or ('_' .. (x.device_type:match "(%w+):%d+$" or'?'))
+  local function non_empty(x) return x and x:match "%S" and x end
+  local device_name = non_empty (x.description) 
+                        or d.friendly_name or "Device_" .. x.devNo  -- 2019.08.29 check non-empty name
   if d.entry_point then 
     if tonumber (x.disabled) ~= 1 then
       scheduler.device_start (d.entry_point, x.devNo, device_name)         -- schedule startup in device context

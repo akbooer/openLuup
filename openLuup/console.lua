@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.08.20",
+  VERSION       = "2019.09.02",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -219,8 +219,9 @@ end
 -- urn:schemas-micasaverde-com:device:TemperatureSensor:1, would be U_TemperatureSensor.lua
 local user_defined = {
     openLuup = {control = function() return 
-        '<a class="w3-text-blue", href="https://www.justgiving.com/DataYours/" target="_blank">' ..
-          "If you like openLuup, you could DONATE to Cancer Research UK right here</a>" end}
+        '<div><a class="w3-text-blue", href="https://www.justgiving.com/DataYours/" target="_blank">' ..
+          "If you like openLuup, you could DONATE to Cancer Research UK right here</a>" ..
+          "<p>...or from the link in the page footer below</p></div>" end}
   }
 for f in loader.dir "^U_.-%.lua$" do
   local name = f: match "^U_(.-)%.lua$"
@@ -289,6 +290,7 @@ local function sorted (x, fct)
     if type(a) ~= type(b) then a,b = tostring(a), tostring(b) end
     return a < b 
   end
+  x = x or {}
   local y, i = {}, 0
   for z in pairs(x) do y[#y+1] = z end
   table.sort (y, fct) 
@@ -358,10 +360,10 @@ local function house_mode_group (selected)
   end
   
   return xhtml.div {class = "w3-cell w3-bar w3-padding w3-round w3-border",
-    mode_button (1, "/icons/home-solid.svg"), 
-    mode_button (2, "/icons/car-side-solid.svg"),
-    mode_button (3, "/icons/moon-solid.svg"),
-    mode_button (4, "/icons/plane-solid.svg"),
+    mode_button (1, "/icons/home-solid-grey.svg"), 
+    mode_button (2, "/icons/car-side-solid-grey.svg"),
+    mode_button (3, "/icons/moon-solid-grey.svg"),
+    mode_button (4, "/icons/plane-solid-grey.svg"),
   }
 end
 
@@ -461,6 +463,19 @@ local function xselect (hidden, options, selected, presets)
     xhtml.input {name=n, value=v, hidden=1}
   end
   return form
+end
+
+
+-- create an option list for certain file types
+local function xoptions (label_text, name, pattern, value)
+  local listname = name .. "_options"
+  local label = xhtml.label {label_text}
+  local input = xhtml.input {list=listname, name=name, value=value, class="w3-input"}
+  local datalist = xhtml.datalist {id= listname}
+  for file in loader.dir (pattern) do
+    datalist[#datalist+1] = xhtml.option {value=file}
+  end
+  return xhtml.div {label, input, datalist}
 end
 
 -- make a link to go somewhere
@@ -733,8 +748,9 @@ function pages.watches ()
   end
   -----
   local columns = {'#', "dev", "callback", "#calls", "watching"}
+  table.sort (W, function(a,b) return a[1] < b[1] end)
   -----
-  local tbl = create_table_from_data (columns, W)
+  local tbl = create_table_from_data (columns, W, function (row,i) row[1] = i end)
   return page_wrapper("Callbacks: Variable Watches", tbl)
 end
 
@@ -772,7 +788,7 @@ end
 
 -- plugin globals
 function pages.all_globals ()
-  local columns = {"device", "variable", "value"}
+  local columns = {'', "device", "variable", "value"}
   local data = {}
   local ignored = {"ABOUT", "_NAME", "lul_device"}
   local ignore = {}
@@ -786,9 +802,9 @@ function pages.all_globals ()
       end
       if next(x) then
         local dname = devname (dno)
-        data[#data+1] = {{xhtml.strong {dname}, colspan = #columns}}
+        data[#data+1] = {xlink ("page=globals&device=" .. dno),{xhtml.strong {dname}, colspan = #columns-1}}
         for n,v in sorted (x) do
-          data[#data+1] = {'', n, tostring(v)}
+          data[#data+1] = {'','', n, tostring(v)}
         end
       end
     end
@@ -1811,9 +1827,10 @@ local function scene_panel (self)
   local run = self.paused 
           and 
               xhtml.img {width=d, height=d, 
-                title="scene is paused", src="icons/pause-solid.svg"} 
+                title="scene is paused", src="icons/pause-solid-grey.svg"} 
           or
               xhtml.a {href= selfref("action=run_scene&scn=", id), class = "w3-hover-opacity",
+--                xhtml.img {width=d, height=d, title="run scene", src="icons/play-solid-cadetblue.svg"} }
                 xhtml.img {width=d, height=d, title="run scene", src="icons/play-solid.svg"} }
   
   local edit_clone_history = xhtml.span {class="w3-wide",
@@ -1826,7 +1843,7 @@ local function scene_panel (self)
   local flag = utab.favorite and unicode.black_star or unicode.white_star
   local bookmark = xhtml.a {class="nodec  w3-hover-opacity", href=selfref("action=bookmark&scn=", id), flag}
   local br = xhtml.br {}
-  local on_off = xhtml.a {href= selfref("action=toggle_pause&scn=", id), title="toggle pause", class="w3-hover-opacity",
+  local on_off = xhtml.a {href= selfref("action=toggle_pause&scn=", id), title="enable/disable", class="w3-hover-opacity",
       xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
   local highlight = self.paused and '' or "w3-hover-border-red"
   local panel = xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel",
@@ -1853,19 +1870,157 @@ function pages.header (p)
   end)
 end
 
+--[[
+  top_line {left = ..., right = ...},
+  icon = icon,
+  body = {middle = ..., topright = ..., bottomright = ...},
+  widgets = { w1, w2, ... },
+--]]
+local function generic_panel (x)
+  local div = xhtml.div
+      local widgets = xhtml.span {class="w3-wide"}
+      for i,w in ipairs (x.widgets or {}) do widgets[i] = w end
+      return xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card tim-panel",
+        div {class="top-panel", 
+          truncate (x.top_line.left or ''), 
+          xhtml.span{style="float: right;", x.top_line.right or '' } }, 
+        div {class = "w3-display-container", style ="height:100px",
+--          div {class="w3-padding-small w3-margin-left w3-display-left ", x.icon } , 
+          div {class="w3-margin-left w3-display-left ", x.icon } , 
+          div {class="w3-display-middle", x.body.middle},
+          div {class="w3-padding-small w3-display-topright", x.body.topright } ,
+          div {class="w3-padding-small w3-display-bottomright", x.body.bottomright } 
+          }  } 
+end
+
 function pages.triggers (p)
   return scene_page (p, function (scene, title)
-    local pre = xhtml.pre {json.encode (scene:user_table() .triggers)}
-    return title .. " - scene triggers", pre
+    local h = xhtml
+    local T = h.div {class = "w3-container w3-cell"}
+    for i, t in ipairs (scene:user_table() .triggers) do
+      
+      local d, wh, woo = 28, 18, 14
+      local dominos = t.enabled == 1 and 
+          h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
+        or 
+          h.img {width=d, height=d, title="trigger is paused", src="icons/trigger-grey.svg"} 
+      
+      local on_off = xhtml.a {href= selfref("toggle=", t.id), title="toggle pause", 
+        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
+      local edit_delete = xhtml.span {class="w3-wide",
+        xhtml.a {href= selfref("page=trigger&edit=", t.id), title="view/edit trigger", 
+          class="w3-margin-right w3-hover-opacity", 
+          xhtml.img {width=wh, height=wh, src="icons/edit.svg"} },
+          delete_link ("trigger", t.id)}
+      local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
+      local desc = h.div {"trigger info here"}
+      T[i] = generic_panel {
+        title = t,
+        top_line = {left =  truncate (t.name), right = on_off},
+        icon = icon,
+        body = {middle = desc, bottomright = edit_delete},
+--        widgets = { w1, w2, ... },
+      }        
+    end
+    local create = xhtml.a {class="w3-button w3-round w3-green", 
+      href = selfref "page=create_trigger", "+ Create", title="create new trigger"}
+    return title .. " - scene triggers", xhtml.div {class="w3-panel", create}, T
   end)
 end
 
 function pages.timers (p)
   return scene_page (p, function (scene, title)
-    local pre = xhtml.pre {json.encode (scene:user_table() .timers)}
-    return title .. " - scene timers", pre
+    local h = xhtml
+    local T = h.div {class = "w3-container w3-cell"}
+    for i, t in ipairs (scene:user_table() .timers) do
+      local next_run = table.concat {unicode.clock_three, ' ', t.abstime or nice (t.next_run) or ''}
+      local info =
+        t.type == 1 and t.interval or
+        t.type == 2 and t.days_of_week or
+        t.type == 3 and t.days_of_month or
+        t.type == 4 and '' or
+        "---"
+      local info2 = t.time or ''
+      
+      local d, wh, woo = 28, 18, 14
+      local clock = t.enabled == 1 and 
+          h.img {width = d, height=d, title="timer is running", alt="timer", src="icons/clock-grey.svg"}
+        or 
+          h.img {width=d, height=d, title="timer is paused", src="icons/circle-regular-grey.svg"} 
+      
+      local on_off = xhtml.a {href= selfref("toggle=", t.id), title="toggle pause", 
+        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
+      local edit_delete = xhtml.span {class="w3-wide",
+        xhtml.a {href= selfref("page=timer&edit=", t.id), title="view/edit timer", 
+          class="w3-margin-right w3-hover-opacity", 
+          xhtml.img {width=wh, height=wh, src="icons/edit.svg"} },
+          delete_link ("timer", t.id)}
+      local ttype = ({"interval", "day of week", "day of month", "absolute"}) [t.type] or '?'
+      local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", clock }
+      local desc = h.div {ttype, h.br{}, info, h.br{}, info2}
+      T[i] = generic_panel {
+        title = t,
+        top_line = {left =  truncate (t.name), right = on_off},
+        icon = icon,
+        body = {middle = desc, topright = next_run, bottomright = edit_delete},
+--        widgets = { w1, w2, ... },
+      }        
+    end
+    local create = xhtml.a {class="w3-button w3-round w3-green", 
+      href = selfref "page=create_timer", "+ Create", title="create new timer"}
+    return title .. " - scene timers", xhtml.div {class="w3-panel", create}, T
   end)
 end
+
+--function pages.timers (p)
+--  return scene_page (p, function (scene, title)
+--    local h = xhtml
+--    local T = h.div {class = "w3-container w3-cell"}
+--    for i, t in ipairs (scene:user_table() .timers) do
+--      local tim = h.div {class="w3-panel tim-panel",
+--        h.div {class="w3-container w3-grey", h.h5 (t.name)},
+--        h.pre {json.encode (t)}} 
+--      local next_run = table.concat {unicode.clock_three, ' ', t.abstime or nice (t.next_run) or ''}
+--      local info =
+--        t.type == 1 and t.interval or
+--        t.type == 2 and t.days_of_week or
+--        t.type == 3 and t.days_of_month or
+--        t.type == 4 and '' or
+--        "---"
+--      local info2 = t.time or ''
+      
+--      local d, wh, woo = 28, 18, 14
+--      local div = h.div
+--      local clock = t.enabled == 1 and 
+--          h.img {width = d, height=d, title="timer is running", alt="timer", src="icons/clock-grey.svg"}
+--        or 
+--          h.img {width=d, height=d, title="timer is paused", src="icons/circle-regular-grey.svg"} 
+      
+--      local on_off = xhtml.a {href= selfref("toggle=", t.id), title="toggle pause", 
+--        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
+--      local edit_delete = xhtml.span {class="w3-wide",
+--        xhtml.a {href= selfref("page=timer&edit=", t.id), title="view/edit timer", 
+--          class="w3-margin-right w3-hover-opacity", 
+--          xhtml.img {width=wh, height=wh, src="icons/edit.svg"} },
+--          delete_link ("timer", t.id)}
+--      local ttype = ({"interval", "day of week", "day of month", "absolute"}) [t.type] or '?'
+--      tim = xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card tim-panel",
+--      div {class="top-panel", truncate (t.name), 
+--        xhtml.span{style="float: right;", on_off } }, 
+--      div {class = "w3-display-container", style ="height:100px",
+--        div {class="w3-padding-small w3-margin-left w3-display-left ", 
+--          style = "border:2px solid grey; border-radius: 4px;", clock } , 
+--        div {class="w3-display-middle", ttype, h.br{}, info, h.br{}, info2},
+--        div {class="w3-padding-small w3-display-topright", next_run } ,
+--        div {class="w3-padding-small w3-display-bottomright", edit_delete } 
+--        }  } 
+--      T[i] = tim
+--    end
+--    local create = xhtml.a {class="w3-button w3-round w3-green", 
+--      href = selfref "page=create_timer", "+ Create", title="create new timer"}
+--    return title .. " - scene timers", xhtml.div {class="w3-panel", create}, T
+--  end)
+--end
 
 function pages.history (p)
   return scene_page (p, function (scene, title)
@@ -1980,7 +2135,6 @@ function code_editor (code, height, language, readonly, codename)
   codename = codename or ' '
   height = (height or "500") .. "px;"
   language = language or "lua"
---  local submit_button = h.input {class="w3-button w3-round w3-green w3-margin", value="Submit"}
   local submit_button
   
   if options.Ace_URL ~= '' then
@@ -2078,11 +2232,23 @@ function pages.graphics (p, req)
     end
   end
   
+  local form = ''
+--  xhtml.div{class = "w3-panel",
+--    xhtml.form {
+--      xhtml.label "From",  
+--        xhtml.input {type="date", name="d_from"},  
+--        xhtml.input {type="time", name="t_from"},
+--      xhtml.label "until", 
+--        xhtml.input {type="date", name="d_until"}, 
+--        xhtml.input {type="time", name="t_until"},
+--      xhtml.input {type="submit", value="Update", class = "w3-button w3-round w3-green"},
+--    } }
   local background = p.background or "GhostWhite"
-  return xhtml.iframe {
+  return xhtml.div {
+    form, xhtml.iframe {
     height = "450px", width = "96%", 
     style= "margin-left: 2%; margin-top:30px; background-color:"..background,
-    src="/render?" .. req.query_string}
+    src="/render?" .. req.query_string} }
 end
 
 function pages.create_room ()
@@ -2167,23 +2333,13 @@ function pages.device_created (_,req)
 end
 
 function pages.create_device ()
-  local function options (label_text, name, pattern, value)
-    local listname = name .. "_options"
-    local label = xhtml.label {label_text}
-    local input = xhtml.input {list=listname, name=name, value=value, class="w3-input"}
-    local datalist = xhtml.datalist {id= listname}
-    for file in loader.dir (pattern) do
-      datalist[#datalist+1] = xhtml.option {value=file}
-    end
-    return xhtml.div {label, input, datalist}
-  end
 
   local form = xhtml.form {class = "w3-container w3-form w3-third", 
     action = selfref "page=device_created", method="post",
     xhtml.label {"Device name"},
     xhtml.input {class="w3-input w3-border w3-hover-border-red", type="text", name="name", autocomplete="off", },
-    options ("Device file", "d_file", "^D_.-%.xml$", "D_"),
-    options ("Implementation file", "i_file", "^I_.-%.xml$", "I_"),
+    xoptions ("Device file", "d_file", "^D_.-%.xml$", "D_"),
+    xoptions ("Implementation file", "i_file", "^I_.-%.xml$", "I_"),
     xhtml.input {class="w3-button w3-round w3-red w3-margin", type="submit", value="Create Device"},
   }
   return xhtml.div {class="w3.card", form}
@@ -2291,17 +2447,83 @@ function pages.scenes_table (p, req)
   return page_wrapper ("Scenes Table", sdiv)
 end
 
-function pages.plugins_table ()
+local function xinput (label, name, value, title)
+  return xhtml.div {title = title,
+    xhtml.label (label), 
+    xhtml.input {name = name or label: lower(), 
+      class="w3-hover-border-red", size=50,  value = value or ''} }
+end
+
+local function find_plugin (plugin)
+  local IP2 = userdata.attributes.InstalledPlugins2
+  for _, plug in ipairs (IP2) do
+    if plug.id == plugin then return plug end
+  end
+end
+
+function pages.plugin (p)
+  local h = xhtml
+  local function w(x) return xhtml.div{x, style="clear: none; float:left; width: 120px;"} end
+  -- if specified plugin, then retrieve installed information
+  local P = find_plugin (p.plugin) or {}
+  ---
+  local D = (P.Devices or {}) [1] or {}
+  local R = P.Repository or {}
+  local F = table.concat (R.folders or {}, ", ")
+  ---
+  local app = h.div {class = "w3-panel w3-cell",
+    h.form {class = "w3-form", method="post", action=selfref  "page=plugins_table",
+      h.div {class = "w3-container w3-grey", h.h5 "Application"},
+      h.div {class = "w3-panel",
+        xinput (w "ID", "id", P.id, "number of Vera plugin or name of openLuup plugin"),
+        xinput (w "Title", "title", P.Title, "name for plugin"),
+        xinput (w "Icon", "icon", P.Icon or '', "URL (relative or absolute) for .png or .svg")},
+      
+      h.div {class = "w3-container w3-grey", h.h5 "Device files"},
+      h.div {class = "w3-panel",
+        xoptions ("Device file", "d_file", "^D_.-%.xml$", D.DeviceFileName or "D_"),
+        xoptions ("Implementation file", "i_file", "^I_.-%.xml$", D.ImplFile or "I_")},
+      
+      h.div {class = "w3-container w3-grey", h.h5 "GitHub"},
+      h.div {class = "w3-panel",
+        xinput (w "Repository", "repository", R.source, "eg. akbooer/openLuup"),
+        xinput (w "Pattern", "pattern", R.pattern, "try: [DIJLS]_.+"),
+        xinput (w "Folders", "folders", F, "blank for top-level or sub-folder name")},
+    
+      xhtml.input {class="w3-button w3-round w3-red w3-margin", type="submit", value="Submit"},
+    }}
+  return app
+end
+
+function pages.plugins_table (_, req)
+  local q = req.POST
+  -- if info posted then create or update plugin
+  local IP2 = userdata.attributes.InstalledPlugins2
+  local P = find_plugin (q.id)
+  if not P then 
+    P = {Devices = {}, Repository = {}, id = q.id}
+    if q.id and q.id ~= '' then IP2[#IP2+1] = P end
+  end
+  if q.id then
+    P.Title = q.title
+    P.Icon = q.icon
+    P.Devices = {{DeviceFileName = q.d_file, ImplFile = q.i_file}}
+    local folders = {}
+    for folder in (q.folders or ''): gmatch "[^,%s]+" do    -- comma or space separated list
+      folders[#folders+1] = folder
+    end
+    P.Repository = {source = q.repository, pattern=q.pattern, folders = folders}
+  end
+  ---
   local t = xhtml.table {class = "w3-bordered"}
   t.header {'', "Name","Version", "Auto", "Files", "Actions", "Update", '', "Unistall"}
-  local IP2 = userdata.attributes.InstalledPlugins2 or userdata.default_plugins
   for _, p in ipairs (IP2) do
     -- http://apps.mios.com/plugin.php?id=8246
     local src = p.Icon or ''
     local mios_plugin = src: match "^plugins/icons/"
     if mios_plugin then src = "http://apps.mios.com/" .. src end
     local icon = xhtml.img {src=src, alt="no icon", height=35, width=35} 
-    local version = table.concat ({p.VersionMajor, p.VersionMinor}, '.')
+    local version = table.concat ({p.VersionMajor or '?', p.VersionMinor}, '.')
     local files = {}
     for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
     table.sort (files)
@@ -2311,6 +2533,9 @@ function pages.plugins_table ()
     files = xhtml.form {action=selfref(), 
       xhtml.input {hidden=1, name="page", value="viewer"},
       xhtml.select (choice)}
+    local auto_update = p.AutoUpdate == '1' and unicode.check_mark or ''
+    local edit = xhtml.a {href=selfref "page=plugin&plugin="..p.id, title="edit",
+      xhtml.img {src="/icons/edit.svg", alt="edit", height=24, width=24} }
     local help = xhtml.a {href=p.Instructions or '', target="_blank", title="help",
       xhtml.img {src="/icons/question-circle-solid.svg", alt="help", height=24, width=24} }
     local info = xhtml.a {target="_blank", title="info",
@@ -2325,10 +2550,12 @@ function pages.plugins_table ()
         xhtml.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
           title="update", alt='', height=28, width=28} } }
     local trash_can = p.id == "openLuup" and '' or delete_link ("plugin", p.id)
-    t.row {icon, p.Title, version, p.AutoUpdate, files, 
-      xhtml.span{help, info}, update, '', trash_can} 
+    t.row {icon, p.Title, version, auto_update, files, 
+      xhtml.span{edit, help, info}, update, '', trash_can} 
   end
-  return page_wrapper ("Plugins", t)
+  local create = xhtml.a {class="w3-button w3-round w3-green", 
+    href = selfref "page=plugin", "+ Create", title="create new plugin"}
+  return page_wrapper ("Plugins", create, t)
 end
 
 function pages.about () 
@@ -2541,6 +2768,7 @@ function run (wsapi_env)
     table {table-layout: fixed; margin-top:20px}
     .dev-panel {width:240px; float:left; }
     .scn-panel {width:240px; float:left; }
+    .tim-panel {width:240px; float:left; }
     .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
     .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
   ]]},
