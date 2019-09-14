@@ -1798,6 +1798,36 @@ end
 -- ["Scene"] = {"header", "triggers", "timers", "lua", "group_actions", "json"},
 --
 
+local function widget_link (action, title, icon, wh)
+  wh = wh or 18
+  return xhtml.a {class="w3-margin-right w3-hover-opacity",
+    href= selfref(action), title=title, xhtml.img {width=wh, height=wh, src=icon} }
+end
+
+--[[
+  height = n,
+  top_line {left = ..., right = ...},
+  icon = icon,
+  body = {middle = ..., topright = ..., bottomright = ...},
+  widgets = { w1, w2, ... },
+--]]
+local function generic_panel (x)
+  local div = xhtml.div
+      local widgets = xhtml.span {class="w3-wide"}
+      for i,w in ipairs (x.widgets or {}) do widgets[i] = w end
+      return xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card tim-panel",
+        div {class="top-panel", 
+          truncate (x.top_line.left or ''), 
+          xhtml.span{style="float: right;", x.top_line.right or '' } }, 
+        div {class = "w3-display-container", style = table.concat {"height:", x.height, "px;"},
+--          div {class="w3-padding-small w3-margin-left w3-display-left ", x.icon } , 
+          div {class="w3-margin-left w3-display-left ", x.icon } , 
+          div {class="w3-display-middle", x.body.middle},
+          div {class="w3-padding-small w3-display-topright", x.body.topright } ,
+          div {class="w3-padding-small w3-display-bottomright", x.widgets and div(x.widgets) or x.body.bottomright } 
+          }  } 
+end
+
 -- generic scene page
 local function scene_page (p, fct)
   local i = tonumber(p.scene)
@@ -1823,38 +1853,35 @@ local function scene_panel (self)
   last_run = last_run and table.concat {unicode.check_mark, ' ', nice (last_run)} or ''
   
   local div = xhtml.div
-  local d, wh, woo = 28, 18, 14
+  local d, woo = 28, 14
   local run = self.paused 
           and 
               xhtml.img {width=d, height=d, 
                 title="scene is paused", src="icons/pause-solid-grey.svg"} 
           or
               xhtml.a {href= selfref("action=run_scene&scn=", id), class = "w3-hover-opacity",
---                xhtml.img {width=d, height=d, title="run scene", src="icons/play-solid-cadetblue.svg"} }
                 xhtml.img {width=d, height=d, title="run scene", src="icons/play-solid.svg"} }
   
-  local edit_clone_history = xhtml.span {class="w3-wide",
-    xhtml.a {href= selfref("page=header&scene=", id), title="view/edit scene", class="w3-margin-right w3-hover-opacity",
-      xhtml.img {width=wh, height=wh, src="icons/edit.svg"} },
-    xhtml.a {href= selfref("action=clone&scene=", id), title="clone scene", class="w3-margin-right w3-hover-opacity",
-      xhtml.img {width=wh, height=wh, src="icons/clone.svg"} },
-    xhtml.a {href= selfref("page=history&scene=", id), title="scene history", class="w3-margin-right w3-hover-opacity",
-      xhtml.img {width=wh, height=wh, src="icons/calendar-alt-regular.svg"} } }
+  local w1 = widget_link ("page=header&scene="  .. id, "view/edit scene", "icons/edit.svg")
+  local w2 = widget_link ("action=clone&scene=" .. id, "clone scene",     "icons/clone.svg")
+  local w3 = widget_link ("page=history&scene=" .. id, "scene history",   "icons/calendar-alt-regular.svg")
+  
   local flag = utab.favorite and unicode.black_star or unicode.white_star
   local bookmark = xhtml.a {class="nodec  w3-hover-opacity", href=selfref("action=bookmark&scn=", id), flag}
   local br = xhtml.br {}
   local on_off = xhtml.a {href= selfref("action=toggle_pause&scn=", id), title="enable/disable", class="w3-hover-opacity",
       xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
   local highlight = self.paused and '' or "w3-hover-border-red"
-  local panel = xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card scn-panel",
-    div {class="top-panel", bookmark, ' ', truncate (scene_name(id)), xhtml.span{style="float: right;", on_off } }, 
-    div {class = "w3-display-container", style ="height:70px",
-      div {class="w3-padding-small w3-margin-left w3-display-left " .. highlight, 
-        style = "border:2px solid grey; border-radius: 4px;", run } , 
-      div {class="w3-padding-small w3-display-topright", last_run, br, next_run } ,
-      div {class="w3-padding-small w3-display-bottomright", edit_clone_history } 
-      }  } 
-  return panel
+  
+  return generic_panel {
+    height = 70,
+    top_line = {
+      left = xhtml.span {bookmark, ' ', truncate (scene_name(id))}, right = on_off},
+    icon = div {class="w3-padding-small w3-margin-left w3-display-left " .. highlight, 
+        style = "border:2px solid grey; border-radius: 4px;", run },
+    body = {topright = xhtml.div {last_run, br, next_run } },
+    widgets = { w1, w2, w3 },
+  }
 end
 
 function pages.header (p)
@@ -1871,55 +1898,44 @@ function pages.header (p)
 end
 
 --[[
-  top_line {left = ..., right = ...},
-  icon = icon,
-  body = {middle = ..., topright = ..., bottomright = ...},
-  widgets = { w1, w2, ... },
+{
+           "name": "temp_over_80",
+           "enabled": 1,
+           "template": 2,
+           "device": 79,
+           "arguments": [
+               {
+                   "id": 1,
+                   "value": "80"
+               }
+           ]
+       },
 --]]
-local function generic_panel (x)
-  local div = xhtml.div
-      local widgets = xhtml.span {class="w3-wide"}
-      for i,w in ipairs (x.widgets or {}) do widgets[i] = w end
-      return xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card tim-panel",
-        div {class="top-panel", 
-          truncate (x.top_line.left or ''), 
-          xhtml.span{style="float: right;", x.top_line.right or '' } }, 
-        div {class = "w3-display-container", style ="height:100px",
---          div {class="w3-padding-small w3-margin-left w3-display-left ", x.icon } , 
-          div {class="w3-margin-left w3-display-left ", x.icon } , 
-          div {class="w3-display-middle", x.body.middle},
-          div {class="w3-padding-small w3-display-topright", x.body.topright } ,
-          div {class="w3-padding-small w3-display-bottomright", x.body.bottomright } 
-          }  } 
-end
-
 function pages.triggers (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
     local T = h.div {class = "w3-container w3-cell"}
     for i, t in ipairs (scene:user_table() .triggers) do
       
-      local d, wh, woo = 28, 18, 14
+      local d, woo = 28, 14
       local dominos = t.enabled == 1 and 
           h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
         or 
           h.img {width=d, height=d, title="trigger is paused", src="icons/trigger-grey.svg"} 
       
-      local on_off = xhtml.a {href= selfref("toggle=", t.id), title="toggle pause", 
+      local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
         class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
-      local edit_delete = xhtml.span {class="w3-wide",
-        xhtml.a {href= selfref("page=trigger&edit=", t.id), title="view/edit trigger", 
-          class="w3-margin-right w3-hover-opacity", 
-          xhtml.img {width=wh, height=wh, src="icons/edit.svg"} },
-          delete_link ("trigger", t.id)}
+      local w1 = widget_link ("page=trigger&edit=".. i, "view/edit trigger", "icons/edit.svg")
+      local w2 = delete_link ("trigger", i)
       local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
-      local desc = h.div {"trigger info here"}
+      local desc = h.div {"dev: ", t.device}
       T[i] = generic_panel {
         title = t,
+        height = 100,
         top_line = {left =  truncate (t.name), right = on_off},
         icon = icon,
-        body = {middle = desc, bottomright = edit_delete},
---        widgets = { w1, w2, ... },
+        body = {middle = desc},
+        widgets = {w1, w2},
       }        
     end
     local create = xhtml.a {class="w3-button w3-round w3-green", 
@@ -1942,7 +1958,7 @@ function pages.timers (p)
         "---"
       local info2 = t.time or ''
       
-      local d, wh, woo = 28, 18, 14
+      local d, woo = 28, 14
       local clock = t.enabled == 1 and 
           h.img {width = d, height=d, title="timer is running", alt="timer", src="icons/clock-grey.svg"}
         or 
@@ -1950,20 +1966,18 @@ function pages.timers (p)
       
       local on_off = xhtml.a {href= selfref("toggle=", t.id), title="toggle pause", 
         class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
-      local edit_delete = xhtml.span {class="w3-wide",
-        xhtml.a {href= selfref("page=timer&edit=", t.id), title="view/edit timer", 
-          class="w3-margin-right w3-hover-opacity", 
-          xhtml.img {width=wh, height=wh, src="icons/edit.svg"} },
-          delete_link ("timer", t.id)}
+      local w1 = widget_link ("page=timer&edit=".. t.id, "view/edit timer", "icons/edit.svg")
+      local w2 = delete_link ("timer", t.id)
       local ttype = ({"interval", "day of week", "day of month", "absolute"}) [t.type] or '?'
       local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", clock }
       local desc = h.div {ttype, h.br{}, info, h.br{}, info2}
       T[i] = generic_panel {
         title = t,
+        height = 100,
         top_line = {left =  truncate (t.name), right = on_off},
         icon = icon,
-        body = {middle = desc, topright = next_run, bottomright = edit_delete},
---        widgets = { w1, w2, ... },
+        body = {middle = desc, topright = next_run},
+        widgets = {w1, w2},
       }        
     end
     local create = xhtml.a {class="w3-button w3-round w3-green", 
@@ -1971,56 +1985,6 @@ function pages.timers (p)
     return title .. " - scene timers", xhtml.div {class="w3-panel", create}, T
   end)
 end
-
---function pages.timers (p)
---  return scene_page (p, function (scene, title)
---    local h = xhtml
---    local T = h.div {class = "w3-container w3-cell"}
---    for i, t in ipairs (scene:user_table() .timers) do
---      local tim = h.div {class="w3-panel tim-panel",
---        h.div {class="w3-container w3-grey", h.h5 (t.name)},
---        h.pre {json.encode (t)}} 
---      local next_run = table.concat {unicode.clock_three, ' ', t.abstime or nice (t.next_run) or ''}
---      local info =
---        t.type == 1 and t.interval or
---        t.type == 2 and t.days_of_week or
---        t.type == 3 and t.days_of_month or
---        t.type == 4 and '' or
---        "---"
---      local info2 = t.time or ''
-      
---      local d, wh, woo = 28, 18, 14
---      local div = h.div
---      local clock = t.enabled == 1 and 
---          h.img {width = d, height=d, title="timer is running", alt="timer", src="icons/clock-grey.svg"}
---        or 
---          h.img {width=d, height=d, title="timer is paused", src="icons/circle-regular-grey.svg"} 
-      
---      local on_off = xhtml.a {href= selfref("toggle=", t.id), title="toggle pause", 
---        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
---      local edit_delete = xhtml.span {class="w3-wide",
---        xhtml.a {href= selfref("page=timer&edit=", t.id), title="view/edit timer", 
---          class="w3-margin-right w3-hover-opacity", 
---          xhtml.img {width=wh, height=wh, src="icons/edit.svg"} },
---          delete_link ("timer", t.id)}
---      local ttype = ({"interval", "day of week", "day of month", "absolute"}) [t.type] or '?'
---      tim = xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card tim-panel",
---      div {class="top-panel", truncate (t.name), 
---        xhtml.span{style="float: right;", on_off } }, 
---      div {class = "w3-display-container", style ="height:100px",
---        div {class="w3-padding-small w3-margin-left w3-display-left ", 
---          style = "border:2px solid grey; border-radius: 4px;", clock } , 
---        div {class="w3-display-middle", ttype, h.br{}, info, h.br{}, info2},
---        div {class="w3-padding-small w3-display-topright", next_run } ,
---        div {class="w3-padding-small w3-display-bottomright", edit_delete } 
---        }  } 
---      T[i] = tim
---    end
---    local create = xhtml.a {class="w3-button w3-round w3-green", 
---      href = selfref "page=create_timer", "+ Create", title="create new timer"}
---    return title .. " - scene timers", xhtml.div {class="w3-panel", create}, T
---  end)
---end
 
 function pages.history (p)
   return scene_page (p, function (scene, title)

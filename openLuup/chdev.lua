@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.08.29",
+  VERSION       = "2019.09.14",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -59,6 +59,7 @@ local ABOUT = {
 --             ALSO, allow missing serviceId in variable definitions to set attribute (thanks @rigpapa)
 -- 2019.06.19  add dev:get_icon() to return dynamic icon name (for console)
 -- 2019.08.29  check non-empty device name in create(), thanks @cokeman
+-- 2019.09.14  set specified attributes to AFTER the default settings - thanks @reneboer
 
 
 local logs      = require "openLuup.logs"
@@ -160,18 +161,6 @@ local function create (x)
     end
   end
 
-  -- go through the variables and set them
-  -- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
-  if type(x.statevariables) == "table" then
-    for _,v in ipairs(x.statevariables) do
-      if v.service then                                   -- 2019.06.02
-        dev:variable_set (v.service, v.variable, v.value)
-      else
-        dev:attr_set (v.variable, v.value)
-      end
-    end
-  end
-
   -- schedule device startup code
   local function non_empty(x) return x and x:match "%S" and x end
   local device_name = non_empty (x.description) 
@@ -213,7 +202,20 @@ local function create (x)
     ip              = x.ip or '',
     mac             = x.mac or '',
   }
-  
+
+  -- 2019.09.14 move to here from earlier in the code to avoid overwriting by defaults - thanks @reneboer
+  -- go through the variables and set them
+  -- 2016.04.15 note statevariables are now a Lua array of {service="...", variable="...", value="..."}
+  if type(x.statevariables) == "table" then
+    for _,v in ipairs(x.statevariables) do
+      if v.service then                                   -- 2019.06.02
+        dev:variable_set (v.service, v.variable, v.value)
+      else
+        dev:attr_set (v.variable, v.value)
+      end
+    end
+  end
+
   local a = dev.attributes
 -- TODO: consider protecting device attributes...
 --  setmetatable (dev.attributes, {__newindex = 

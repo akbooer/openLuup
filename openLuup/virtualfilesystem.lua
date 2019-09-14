@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.08.28",
+  VERSION       = "2019.09.09",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -533,6 +533,9 @@ end
 
 local D_BinaryLight1_xml do
   local x = xml.createDocument ()
+  local function service (T,I,U)
+    return x.service {x.serviceType (T), x.serviceId (I), x.SCPDURL(U)}
+  end
     x: appendChild {
       x.root {xmlns="urn:schemas-upnp-org:device-1-0",
         x.specVersion {x.major "1", x.minor "0"},
@@ -540,18 +543,12 @@ local D_BinaryLight1_xml do
           x.deviceType "urn:schemas-upnp-org:device:BinaryLight:1",
           x.staticJson "D_BinaryLight1.json",
           x.serviceList {
-            x.service {
-              x.serviceType "urn:schemas-upnp-org:service:SwitchPower:1", 
-              x.serviceId   "urn:upnp-org:serviceId:SwitchPower1", 
-              x.SCPDURL     "S_SwitchPower1.xml"},
-            x.service {
-              x.serviceType "urn:schemas-micasaverde-com:service:EnergyMetering:1",
-              x.serviceId   "urn:micasaverde-com:serviceId:EnergyMetering1",
-              x.SCPDURL     "S_EnergyMetering1.xml"},
-            x.service {
-              x.serviceType  "urn:schemas-micasaverde-com:service:HaDevice:1",
-              x.serviceId    "urn:micasaverde-com:serviceId:HaDevice1",
-              x.SCPDURL      "S_HaDevice1.xml"}
+            service ("urn:schemas-upnp-org:service:SwitchPower:1", 
+              "urn:upnp-org:serviceId:SwitchPower1", "S_SwitchPower1.xml"),
+            service ("urn:schemas-micasaverde-com:service:EnergyMetering:1",
+              "urn:micasaverde-com:serviceId:EnergyMetering1", "S_EnergyMetering1.xml"),
+            service ("urn:schemas-micasaverde-com:service:HaDevice:1",
+              "urn:micasaverde-com:serviceId:HaDevice1", "S_HaDevice1.xml")
           }}}}
   D_BinaryLight1_xml = tostring(x)
 end
@@ -671,6 +668,26 @@ local D_ZWaveNetwork_xml do
   D_ZWaveNetwork_xml = tostring(x)
 end
 
+
+local D_MotionSensor1_xml do
+  local x = xml.createDocument ()
+  local function service (T,I,U)
+    return x.service {x.serviceType (T), x.serviceId (I), x.SCPDURL(U)}
+  end
+    x: appendChild {
+      x.root {xmlns="urn:schemas-upnp-org:device-1-0",
+        x.specVersion {x.major "1", x.minor "0"},
+        x.device {
+          x.deviceType "urn:schemas-micasaverde-com:device:MotionSensor:1",
+          x.staticJson "D_MotionSensor1.json",
+          x.serviceList {
+            service ("urn:schemas-micasaverde-com:service:SecuritySensor:1", 
+              "urn:micasaverde-com:serviceId:SecuritySensor1", "S_SecuritySensor1.xml"),
+            service ("urn:schemas-micasaverde-com:service:HaDevice:1",
+              "urn:micasaverde-com:serviceId:HaDevice1","S_HaDevice1.xml")
+          }}}}
+  D_MotionSensor1_xml = tostring(x)
+end
 
 -- other install files
 
@@ -1264,6 +1281,7 @@ local manifest = {
     ["built-in/D_BinaryLight1.json"] = D_BinaryLight1_json,
     ["built-in/S_SwitchPower1.xml"]  = S_SwitchPower1_xml,
     ["built-in/D_ZWaveNetwork.xml"]  = D_ZWaveNetwork_xml,
+    ["built-in/D_MotionSensor1.xml"] = D_MotionSensor1_xml,
     
     ["D_ZWay.xml"]  = D_ZWay_xml,
     ["D_ZWay.json"] = D_ZWay_json,
