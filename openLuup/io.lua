@@ -199,10 +199,15 @@ local function open (device, ip, port)
   end
 
   if dev and not sock then
-    local jobNo
+--    local jobNo
     scheduler.run_job ({run = connect}, nil, devNo)   -- run now 
 --    local __,__, jobNo = scheduler.run_job ({job = connect}, nil, devNo)   -- ...or, schedule for later 
     _debug (("starting job #%d to connect to %s:%s"): format (jobNo or 0, ip, tostring(port)), "luup.io.open")
+  elseif sock then
+    sock: close ()            -- close our end in case already open
+    scheduler.socket_unwatch (sock)
+    sock = {}
+    scheduler.run_job ({run = connect}, nil, devNo)   -- run now
   end
 end
 
