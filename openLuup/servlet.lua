@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2019.08.12",
+  VERSION       = "2019.10.12",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -128,7 +128,12 @@ local function data_request (wsapi_env, req)
   -- so not used here... this complete list is built from the GET and POST parameters individually
   local parameters = {}
   -- 2019.08.12 collapse table of multiple values to single (final) value
-  local function last_value (x) return type(x) == "table" and x[#x] or x end
+  -- 2019.10.12 only return non-zero length strings, thanks @a-lurker
+  -- see: https://community.getvera.com/t/openluup-and-url-parameters/210507
+  local function last_value (x) 
+    local v = type(x) == "table" and x[#x] or x 
+    if #v > 0 then return v end
+  end
   req = req or wsapi.request.new (wsapi_env)            -- request may have been prebuilt by data_request_task
   for n,v in pairs (req.POST) do parameters[n] = last_value (v) end
   for n,v in pairs (req.GET)  do parameters[n] = last_value (v) end  -- GET parameter overrides POST, if both defined

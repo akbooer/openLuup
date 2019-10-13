@@ -68,6 +68,37 @@ local function state_icon (img, value, cat, subcat)
           subcategory_num = subcat }}}
 end
 
+local function Device (d)
+  local x = xml.createDocument ()
+  local dev = {}
+  local special = {implementationList = true, serviceList = true}
+  for n,v in pairs (d) do
+    if not special[n] then
+      dev[#dev+1] = x[n] (v)
+    end
+  end
+  if d.serviceList then 
+    local slist = {}
+    for i, s in ipairs (d.serviceList) do
+      slist[i] = x.service {x.serviceType (s[1]), x.serviceId (s[2]), x.SCPDURL(s[3])}
+    end
+    dev[#dev+1] = x.serviceList (slist)
+  end
+  if d.implementationList then
+    local flist = {}
+    for i,f in ipairs (d.implementationList) do
+      flist[i] = x.implementationFile (f)
+    end
+    dev[#dev+1] = x.implementationList (flist)
+  end
+  x: appendChild {
+    x.root {xmlns="urn:schemas-upnp-org:device-1-0",
+      x.specVersion {x.major "1", x.minor "0", x.minimus "built-in"},
+      x.device (dev)
+        }}
+  return tostring (x)
+end
+
 -----
 
 local openLuup_svg = (
@@ -88,22 +119,13 @@ local openLuup_svg = (
     return tostring(s)
   end) (60)
 
-local D_openLuup_dev do
-  local x = xml.createDocument ()
-    x:appendChild {
-      x.root {xmlns="urn:schemas-upnp-org:device-1-0",
-        x.device {
-          x.deviceType    "openLuup",
-          x.friendlyName  "openLuup",
-          x.manufacturer  "akbooer",
-          x.staticJson    "D_openLuup.json",
-          x.serviceList {
-            x.service {x.serviceType "openLuup", x.serviceId "openLuup", x.SCPDURL "S_openLuup.xml"}},
-          x.implementationList {
-            x.implementationFile "I_openLuup.xml"
-        }}}}
-  D_openLuup_dev = tostring (x)
-end
+local D_openLuup_dev = Device {
+        deviceType   = "openLuup",
+        friendlyName = "openLuup",
+        manufacturer = "akbooer",
+        staticJson   = "D_openLuup.json",
+        serviceList  = { {"openLuup", "openLuup", "S_openLuup.xml"} },
+        implementationList = {"I_openLuup.xml"}}
 
 local D_openLuup_json = json.encode {
   flashicon = "https://avatars.githubusercontent.com/u/4962913",  -- not used, but here for reference
@@ -491,7 +513,6 @@ local I_VeraBridge_impl do
   I_VeraBridge_impl = tostring(x)
 end
 
--- TODO: use DOM to construct this file
 
 local S_VeraBridge_svc do
   local x = xml.createDocument ()
@@ -649,45 +670,28 @@ local S_SwitchPower1_xml do
 end
 
 
-local D_ZWaveNetwork_xml do
-  local x = xml.createDocument ()
-    x: appendChild {
-      x.root {xmlns="urn:schemas-upnp-org:device-1-0",
-        x.specVersion {x.major "1", x.minor "0"},
-        x.device {
-          x.deviceType "urn:schemas-micasaverde-com:device:ZWaveNetwork:1",
-          x.implementationList {x.implementationFile "I_ZWave.xml"},
-          x.serviceList {
+local D_ZWaveNetwork_xml = Device {
+          deviceType = "urn:schemas-micasaverde-com:device:ZWaveNetwork:1",
+          implementationList = {"I_ZWave.xml"},
+          serviceList  = {
 --            x.service {
 --              x.serviceType "urn:schemas-micasaverde-org:service:ZWaveNetwork:1", 
 --              x.serviceId   "urn:micasaverde-com:serviceId:ZWaveNetwork1", 
 --              x.controlURL  "upnp/control/ZWaveNetwork1",
 --              x.eventSubURL "upnp/event/ZWaveNetwork1",
 --              x.SCPDURL     "S_ZWaveNetwork1.xml"},
-          }}}}
-  D_ZWaveNetwork_xml = tostring(x)
-end
+          }}
 
 
-local D_MotionSensor1_xml do
-  local x = xml.createDocument ()
-  local function service (T,I,U)
-    return x.service {x.serviceType (T), x.serviceId (I), x.SCPDURL(U)}
-  end
-    x: appendChild {
-      x.root {xmlns="urn:schemas-upnp-org:device-1-0",
-        x.specVersion {x.major "1", x.minor "0"},
-        x.device {
-          x.deviceType "urn:schemas-micasaverde-com:device:MotionSensor:1",
-          x.staticJson "D_MotionSensor1.json",
-          x.serviceList {
-            service ("urn:schemas-micasaverde-com:service:SecuritySensor:1", 
-              "urn:micasaverde-com:serviceId:SecuritySensor1", "S_SecuritySensor1.xml"),
-            service ("urn:schemas-micasaverde-com:service:HaDevice:1",
-              "urn:micasaverde-com:serviceId:HaDevice1","S_HaDevice1.xml")
-          }}}}
-  D_MotionSensor1_xml = tostring(x)
-end
+local D_MotionSensor1_xml = Device {
+    deviceType = "urn:schemas-micasaverde-com:device:MotionSensor:1",
+    staticJson = "D_MotionSensor1.json",
+    serviceList = {
+      {"urn:schemas-micasaverde-com:service:SecuritySensor:1", 
+        "urn:micasaverde-com:serviceId:SecuritySensor1", "S_SecuritySensor1.xml"},
+      {"urn:schemas-micasaverde-com:service:HaDevice:1",
+        "urn:micasaverde-com:serviceId:HaDevice1","S_HaDevice1.xml"}}}
+
 
 -- other install files
 

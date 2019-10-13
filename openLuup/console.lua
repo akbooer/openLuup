@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.09.02",
+  VERSION       = "2019.09.22",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -1428,6 +1428,7 @@ end
 
 local function device_controls (d)
   local switch, slider = ' ',' '
+  local on_off_size = 20
   local srv = d.services[SID.switch]
   if srv then    -- we need an on/off switch
 --    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
@@ -1436,7 +1437,7 @@ local function device_controls (d)
         xhtml.input {name="action", value="switch", hidden=1},
         xhtml.input {name="dev", value=d.attributes.id, hidden=1},
         xhtml.input {type="image", class="w3-hover-opacity", title = "on/off",
-          src="/icons/power-off-solid.svg", alt='on/off', height=24, width=24}
+          src="/icons/power-off-solid.svg", alt='on/off', height=on_off_size, width=on_off_size}
 --        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
       }
   end
@@ -1448,7 +1449,7 @@ local function device_controls (d)
         xhtml.input {name="action", value="arm", hidden=1},
         xhtml.input {name="dev", value=d.attributes.id, hidden=1},
         xhtml.input {type="image", class="w3-hover-opacity", title = "arm/disarm",
-          src="/icons/power-off-solid.svg", alt='arm/disarm', height=24, width=24}  -- TODO: better arm/disarm icon
+          src="/icons/power-off-solid.svg", alt='arm/disarm', height=on_off_size, width=on_off_size}  -- TODO: better arm/disarm icon
 --        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
     }
   end
@@ -1836,6 +1837,7 @@ local function scene_page (p, fct)
   fct = s and fct or function (_, t) return t .. " - no such scene" end
   return page_wrapper (fct (s, title))   -- call back with actual scene    
 end
+
 local function scene_panel (self)
   local utab = self: user_table()
   
@@ -1877,7 +1879,7 @@ local function scene_panel (self)
     height = 70,
     top_line = {
       left = xhtml.span {bookmark, ' ', truncate (scene_name(id))}, right = on_off},
-    icon = div {class="w3-padding-small w3-margin-left w3-display-left " .. highlight, 
+    icon = div {class="w3-padding-small w3-display-left " .. highlight, 
         style = "border:2px solid grey; border-radius: 4px;", run },
     body = {topright = xhtml.div {last_run, br, next_run } },
     widgets = { w1, w2, w3 },
