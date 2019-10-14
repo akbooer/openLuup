@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.09.09",
+  VERSION       = "2019.10.14",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -452,27 +452,16 @@ local VeraBridge_svg = (
     return tostring(s)
   end) (60)
 
-local D_VeraBridge_dev do
-  local x = xml.createDocument ()
-    x: appendChild {
-      x.root {xmlns="urn:schemas-upnp-org:device-1-0",
-        x.device {
-          x.Category_Num    "1",
-          x.deviceType      "VeraBridge",
-          x.friendlyName    "Vera Bridge",
-          x.manufacturer    "akbooer",
-          x.handleChildren  "1",
-          x.staticJson      "D_VeraBridge.json",
-          x.serviceList {
-            x.service {
-              x.serviceType "urn:akbooer-com:service:VeraBridge:1", 
-              x.serviceId   (SID.VeraBridge), 
-              x.SCPDURL     "S_VeraBridge.xml"}},
-          x.implementationList {
-            x.implementationFile "I_VeraBridge.xml"}
-          }}}
-  D_VeraBridge_dev = tostring(x)
-end
+
+local D_VeraBridge_dev  = Device {
+        Category_Num    = "1",
+        deviceType      = "VeraBridge",
+        friendlyName    = "Vera Bridge",
+        manufacturer    = "akbooer",
+        handleChildren  = "1",
+        staticJson      = "D_VeraBridge.json",
+        serviceList     = { {"urn:akbooer-com:service:VeraBridge:1", SID.VeraBridge, "S_VeraBridge.xml"} },
+        implementationList = {"I_VeraBridge.xml"}}
 
 local D_VeraBridge_json = json.encode {
   flashicon = "http://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
@@ -992,6 +981,19 @@ local I_Dummy_xml = [[
   <implementation />
 ]]
 
+local I_Crash_xml = [[
+<?xml version="1.0"?>
+  <implementation>
+    <functions>
+      function Crash (...)
+        luup.log "about to crash by calling non-existent global"
+        Non_Existent_Global ()
+      end
+    </functions>
+    <startup>Crash</startup>
+  </implementation>
+]]
+
 -----
 --
 -- DataYours schema and aggregation definitions for AltUI DataStorage Provider
@@ -1294,6 +1296,7 @@ local manifest = {
     
     ["I_openLuupCamera1.xml"]   = I_openLuupCamera1_xml,
     ["I_openLuupSecurity1.xml"] = I_openLuupSecurity1_xml,
+    ["I_Crash.xml"]             = I_Crash_xml,
     ["I_Dummy.xml"]             = I_Dummy_xml,
     
     ["index.html"]            = index_html,

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2019.08.24",
+  VERSION       = "2019.10.14",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -56,6 +56,7 @@ local ABOUT = {
 -- 2019.06.12  move compile_and_run to loader (to be used also by console)
 -- 2019.06.14  add Console options
 -- 2019.07.31  use new server module (name reverted from http)
+-- 2019.10.14  set HTTP client port with client.start()
 
 
 local logs  = require "openLuup.logs"
@@ -70,6 +71,7 @@ local loader = require "openLuup.loader"  -- keep this first... it prototypes th
 
 luup = require "openLuup.luup"            -- here's the GLOBAL luup environment
 
+local client        = require "openLuup.client"   -- HTTP client
 local server        = require "openLuup.server"   -- HTTP server
 local smtp          = require "openLuup.smtp"
 local pop3          = require "openLuup.pop3"
@@ -264,7 +266,8 @@ end
 local status
 
 do -- SERVERs and SCHEDULER
-  local s = server.start (config.HTTP)       -- start the port 3480 Web server
+  local s = server.start (config.HTTP)      -- start the port 3480 Web server
+  client.start (config.HTTP)                -- and tell the client which ACTUAL port to use!
   if not s then 
     error "openLuup - is another copy already running?  Unable to start HTTP port 3480 server" 
   end

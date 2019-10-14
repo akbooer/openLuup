@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.client",
-  VERSION       = "2019.08.11",
+  VERSION       = "2019.10.14",
   DESCRIPTION   = "luup.inet .wget() and .request()",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -31,6 +31,8 @@ local ABOUT = {
 
 
 -- 2019.07.30  split from openLuup.server
+-- 2019.10.14  added start() function, called from server, to allow use of arbitrary port
+
 
 local url       = require "socket.url"
 local http      = require "socket.http"
@@ -50,7 +52,7 @@ local _log, _debug = logs.register (ABOUT)
 
 -- CONFIGURATION DEFAULTS
 
-local PORT = "3480"       -- NB: a string
+local PORT -- filled in during start()
 local myIP = tables.myIP
 
 -- local functions
@@ -246,8 +248,9 @@ return {
     
     -- functions
     wget = wget,
+    start = function (config) PORT = tostring(config.Port or 3480) end,    -- 2019.10.14 
     
-    -- TODO: inext.request
+    -- TODO: inet.request
   }
 
 -----

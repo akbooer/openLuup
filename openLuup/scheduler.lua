@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.07.22",
+  VERSION       = "2019.10.14",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -60,7 +60,7 @@ local ABOUT = {
 -- 2019.05.10  correct expiry time handling and refine kill_job()
 -- 2019.05.15  log the number of callbacks for call_delay() and variable_watch()
 -- 2019.07.22  add error_state table for jobs
-
+-- 2019.10.14  add device number to context_switch error message, thanks @Buxton
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
@@ -175,11 +175,12 @@ local function context_switch (devNo, fct, ...)
       total_cpu = total_cpu + cpu   
     end
     --
-    current_device = old                        -- restore old device context
     if not ok then
       msg = tostring(msg or '?')                -- 2019.04.19 make sure that string error is returned
-      _log (" ERROR: " .. msg, "openLuup.context_switch")  -- 2018.08.04 
+      local errmsg = " ERROR: [dev #%s] %s"     -- 2019.10.14 add device number, thanks @Buxton
+      _log (errmsg: format (current_device or '0', msg), "openLuup.context_switch")  -- 2018.08.04 
     end
+    current_device = old                        -- restore old device context
     return ok, msg, ... 
   end
   return restore (pcall (fct, ...))
