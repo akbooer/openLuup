@@ -66,6 +66,7 @@ local ABOUT = {
 -- 2019.05.12   use device:state_table() in devices_table()
 -- 2019.05.31   update openLuup help URL to new Vera community forum
 -- 2019.08.25   use local .svg icons for openLuup, AltAppStore, and VeraBridge plugins
+-- 2019.10.19   add modelID attribute, per latest Vera firmware (7.30)
 
 
 local json    = require "openLuup.json"
@@ -158,6 +159,7 @@ luup.log "startup code completed"
   mode_change_mode = '',
   mode_change_time = '',
   model = "Not a Vera",
+  modelID = 0,
 --  net_pnp = "0",
 --  overview_tabs = {},
 --  rooms = {},

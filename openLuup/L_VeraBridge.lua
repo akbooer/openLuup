@@ -104,6 +104,8 @@ ABOUT = {
 --              see: https://github.com/akbooer/openLuup/issues/16
 -- 2019.05.03   correct error and exit status on missing Vera in GetUserData()  (thanks @reneboer)
 -- 2019.05.11   use external http_async module
+-- 2019.10.22   add AsyncTimeout as watchdog timer for missing async responses (thanks @rafale77)
+--              see: https://community.getvera.com/t/openluup-suggestions/189405/166
 
 
 local devNo                      -- our device number
@@ -131,7 +133,7 @@ local PK_AccessPoint              -- ... ditto
 local LoadTime                    -- ... ditto
 
 local RemotePort                  -- port to access remote machine ("/port_3480" for Vera, ":3480" for openLuup)
-local AsyncPoll                   -- asynchronous polling
+local AsyncPoll, AsyncTimeout     -- asynchronous polling
 
 local SID = {
   altui    = "urn:upnp-org:serviceId:altui1"  ,         -- Variables = 'DisplayLine1' and 'DisplayLine2'
@@ -644,6 +646,11 @@ do
     luup.call_delay ("VeraBridge_async_request", delay, init)    -- schedule next request
   end
 
+  function VeraBridge_async_watchdog (timeout)
+    VeraBridge_async_request ()                     -- throw in another call, just in case we missed one
+    luup.call_delay ("VeraBridge_async_watchdog", timeout, timeout)
+  end
+
 end
 
 -- find other bridges in order to establish base device number for cloned devices
@@ -965,8 +972,9 @@ function init (lul_device)
   Excluded    = uiVar ("ExcludeDevices", '')    -- list of devices to exclude from synchronization by VeraBridge, 
                                                 -- ...takes precedence over the first two.
                                               
-  RemotePort  = uiVar ("RemotePort", "/port_3480")
-  AsyncPoll   = uiVar ("AsyncPoll", "false")    -- set to "true" to use ansynchronous polling of remote Vera
+  RemotePort    = uiVar ("RemotePort", "/port_3480")
+  AsyncPoll     = uiVar ("AsyncPoll", "false")    -- set to "true" to use ansynchronous polling of remote Vera
+  AsyncTimeout  = uiVar ("AsyncTimeout", 300)     -- watchdog timer for lost async requests
   
   local hmm = uiVar ("HouseModeMirror",HouseModeOptions['0'])   -- 2016.05.23
   HouseModeMirror = hmm: match "^([012])" or '0'
@@ -1011,6 +1019,7 @@ function init (lul_device)
     if Ndev > 0 or Nscn > 0 then
       if logical_true (AsyncPoll) then
         VeraBridge_async_request "INIT"
+        VeraBridge_async_watchdog (AsyncTimeout)
       else
         VeraBridge_delay_callback ()
       end

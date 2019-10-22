@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2019.07.31",
+  VERSION       = "2019.10.19",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -70,6 +70,7 @@ local ABOUT = {
 -- 2019.05.03  corrected scene.room to scene.room_num in rooms.delete()
 -- 2019.05.04  add status message to set_failure() and device_message()
 -- 2019.07.31  use new client and server modules (http split into two)
+-- 2019.10.19  add luup.modelID
 
 
 local logs          = require "openLuup.logs"
@@ -977,6 +978,10 @@ local function reload (exit_status)
   os.exit (exit_status) 
 end 
 
+-- 2019.10.19
+local function modelID()
+  return userdata.attributes.modelID
+end
 
 -- 2017.04.18   CHDEV module with parameter checking
 
@@ -1117,6 +1122,7 @@ return {
     job_watch           = job_watch,
     log                 = function (msg, level) logs.send (msg, level, scheduler.current_device()) end,
     mac_set             = mac_set,
+    modelID             = modelID,
     register_handler    = register_handler, 
     reload              = reload,
 --    require             = "what is this?"  --the redefined 'require' which deals with pluto.lzo ??
