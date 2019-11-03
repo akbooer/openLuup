@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.10.22",
+  VERSION       = "2019.11.03",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -106,6 +106,8 @@ ABOUT = {
 -- 2019.05.11   use external http_async module
 -- 2019.10.22   add AsyncTimeout as watchdog timer for missing async responses (thanks @rafale77)
 --              see: https://community.getvera.com/t/openluup-suggestions/189405/166
+-- 2019.10.26   use actual implementation file for bridged devices, not 'X'
+-- 2019.11.03   fix async timeout request cascade error
 
 
 local devNo                      -- our device number
@@ -314,7 +316,8 @@ local function create_new (cloneId, dev, room)
     json_file       = dev.device_json,
     description     = dev.name,
     upnp_file       = dev.device_file,
-    upnp_impl       = 'X',              -- override device file's implementation definition... musn't run here!
+--    upnp_impl       = 'X',              -- override device file's implementation definition... musn't run here!
+    upnp_impl       = dev.impl_file,
     parent          = devNo,
     password        = dev.password,
     room            = room, 
@@ -619,7 +622,10 @@ do
 
   -- 2019.03.14   long polling, this is the way that the lu_status request is supposed to be used     
 
+  local last_async_call
+  
   function VeraBridge_async_request (init)
+    last_async_call = os.time()
     poll_count = (poll_count + 1) % 20                                    -- wrap every 20 ...
     if init == "INIT" or poll_count == 0 then DataVersion = '' end        -- .. and go for the complete list 
     
@@ -647,7 +653,9 @@ do
   end
 
   function VeraBridge_async_watchdog (timeout)
-    VeraBridge_async_request ()                     -- throw in another call, just in case we missed one
+    if (last_async_call + timeout) > os.time() then
+      VeraBridge_async_request ()                     -- throw in another call, just in case we missed one
+    end
     luup.call_delay ("VeraBridge_async_watchdog", timeout, timeout)
   end
 
@@ -974,7 +982,7 @@ function init (lul_device)
                                               
   RemotePort    = uiVar ("RemotePort", "/port_3480")
   AsyncPoll     = uiVar ("AsyncPoll", "false")    -- set to "true" to use ansynchronous polling of remote Vera
-  AsyncTimeout  = uiVar ("AsyncTimeout", 300)     -- watchdog timer for lost async requests
+  AsyncTimeout  = uiVar ("AsyncTimeout", 300)     -- watchdog timer for lost async requests (seconds)
   
   local hmm = uiVar ("HouseModeMirror",HouseModeOptions['0'])   -- 2016.05.23
   HouseModeMirror = hmm: match "^([012])" or '0'

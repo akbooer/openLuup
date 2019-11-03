@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.09.14",
+  VERSION       = "2019.10.28",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -60,6 +60,7 @@ local ABOUT = {
 -- 2019.06.19  add dev:get_icon() to return dynamic icon name (for console)
 -- 2019.08.29  check non-empty device name in create(), thanks @cokeman
 -- 2019.09.14  set specified attributes to AFTER the default settings - thanks @reneboer
+-- 2019.10.28  do not run startup code for devices whose parent handles them
 
 
 local logs      = require "openLuup.logs"
@@ -123,9 +124,10 @@ local function create (x)
   local X                             -- 2018.06.11  don't use impl_file if parent handles actions
   local parent = tonumber (x.parent) or 0
   local parent_device = luup.devices[parent] or {}
-  if parent_device.handle_children then X = 'X' end         -- use dummy device implementation file
+--  if parent_device.handle_children then X = 'X' end         -- use dummy device implementation file
 
-  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, X or x.upnp_impl, x.json_file)
+--  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, X or x.upnp_impl, x.json_file)
+  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
 
   d = d or {}
   local fmt = "[%d] %s / %s / %s   (%s)"
@@ -167,7 +169,9 @@ local function create (x)
                         or d.friendly_name or "Device_" .. x.devNo  -- 2019.08.29 check non-empty name
   if d.entry_point then 
     if tonumber (x.disabled) ~= 1 then
-      scheduler.device_start (d.entry_point, x.devNo, device_name)         -- schedule startup in device context
+      if not parent_device.handle_children then                             -- 2019.10.28  
+        scheduler.device_start (d.entry_point, x.devNo, device_name)        -- schedule startup in device context
+      end
     else
       local fmt = "[%d] is DISABLED"
       _log (fmt: format (x.devNo), "luup.create_device")

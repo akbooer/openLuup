@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.09.22",
+  VERSION       = "2019.11.02",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -632,7 +632,13 @@ local function jobs_tables (_, running, title)
   end
   -----
   local columns = {'#', "date / time", "device", "status", "run", "hh:mm:ss.sss", "job #", "info", "notes"}
-  table.sort (jlist, function (a,b) return a[1] > b[1] end)
+  local sort_function
+  if running then 
+    sort_function = function (a,b) return a[1] < b[1] end  -- normal sort for running jobs
+  else
+    sort_function = function (a,b) return a[1] > b[1] end  -- reverse sort for completed jobs
+  end
+  table.sort (jlist, sort_function)
   -----
   local milli = true
   local tbl = create_table_from_data (columns, jlist,

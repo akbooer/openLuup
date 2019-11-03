@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.10.14",
+  VERSION       = "2019.11.02",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -61,6 +61,8 @@ local ABOUT = {
 -- 2019.05.15  log the number of callbacks for call_delay() and variable_watch()
 -- 2019.07.22  add error_state table for jobs
 -- 2019.10.14  add device number to context_switch error message, thanks @Buxton
+-- 2019.11.02  order local job list by priority (to allow VerBridge to start before other plugins)
+
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
@@ -384,7 +386,7 @@ end
 
 -- create a job and schedule it to run
 -- arguments is a table of name-value pairs, devNo is the device number
-local function create_job (action, arguments, devNo, target_device)
+local function create_job (action, arguments, devNo, target_device, priority)
   local jobNo = next_job_number
   next_job_number = next_job_number + 1
   
@@ -398,6 +400,7 @@ local function create_job (action, arguments, devNo, target_device)
       type        = nil,                -- used in request id=status, and possibly elsewhere
       expiry      = timenow(),          -- time to go
       target      = target_device,
+      priority    = priority,
       settings    = {},                 -- 2017.05.01  user-defined parameter list
       -- job tag entry points
       tag = {
@@ -497,7 +500,7 @@ local function kill_job (jobNo)
 end
 
 
-local function device_start (entry_point, devNo, name)
+local function device_start (entry_point, devNo, name, priority)
   -- job wrapper for device initialisation
   local function startup_job (_,_,job)       -- note that user code is run in protected mode
     local label = ("[%s] %s device startup"): format (tostring(devNo), name or '')
@@ -511,7 +514,7 @@ local function device_start (entry_point, devNo, name)
     return (a == false) and state.Error or state.Done, 0      -- 2019.05.03 reflect startup job exit status
   end
   
-  local jobNo = create_job ({job = startup_job}, {}, devNo)
+  local jobNo = create_job ({job = startup_job}, {}, devNo, nil, priority)
   local job = job_list[jobNo]
   local text = "plugin: %s"
   job.type = text: format ((name or ''): match "^%s*(.+)")
@@ -526,38 +529,46 @@ local function task_callbacks ()
     N = N + 1
     local njn = next_job_number
   
-    local local_job_list = {}
-    do
-      for jobNo, job in pairs (job_list) do 
-        local_job_list[jobNo] = job  -- make local copy: list might be changed by jobs spawning
+    local local_job_list = {}  -- make local copy: list might be changed by jobs spawning, and for priority
+    do  -- 2019.11.02  order local job list by priority
+        -- currently, the 'priority' is simply a flag, but in future there could be finer gradations
+        -- this affects both the order of device startup, and also prioritization of subsequent time slices
+      for jobNo, job in pairs (job_list) do
+        if job.priority then 
+          table.insert (local_job_list, 1, jobNo)   -- insert at front
+        else
+          table.insert (local_job_list, jobNo)      -- insert at end
+        end
       end
     end
   
-    for jobNo, job in pairs (local_job_list) do 
-      
-      job.now = timenow()
-      
-      if job.status == state.WaitingToStart and job.now >= job.expiry then
-        job.status = state.InProgress   -- wake up after timeout period
-      end
-
-      if run_state[job.status] then
-        job.status = state.InProgress   
-        job: dispatch "job"       
-      end
-   
-      if wait_state[job.status] then
-        local incoming = false
-        if incoming then          -- TODO: get 'incoming' status to do the right thing
-          job: dispatch "incoming"
-        elseif job.now > job.expiry then
-          job: dispatch "timeout"         
+    for _, jobNo in ipairs (local_job_list) do      -- go through local list in priority order
+      local job = job_list[jobNo]
+      if job then
+        job.now = timenow()
+        
+        if job.status == state.WaitingToStart and job.now >= job.expiry then
+          job.status = state.InProgress   -- wake up after timeout period
         end
-      end
 
-      job.now = timenow()        -- 2017.05.05  update, since dispatched job may have taken a while
-      if exit_state[job.status] and job.now > job.expiry + job_linger then  -- 2019.05.10
-        job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local_job_list)
+        if run_state[job.status] then
+          job.status = state.InProgress   
+          job: dispatch "job"       
+        end
+     
+        if wait_state[job.status] then
+          local incoming = false
+          if incoming then          -- TODO: get 'incoming' status to do the right thing
+            job: dispatch "incoming"
+          elseif job.now > job.expiry then
+            job: dispatch "timeout"         
+          end
+        end
+
+        job.now = timenow()        -- 2017.05.05  update, since dispatched job may have taken a while
+        if exit_state[job.status] and job.now > job.expiry + job_linger then  -- 2019.05.10
+          job_list[jobNo] = nil   -- remove the job entirely from the actual job list (not local_job_list)
+        end
       end
     end
   until njn == next_job_number        -- keep going until no more new jobs queued
