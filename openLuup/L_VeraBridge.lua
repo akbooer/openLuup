@@ -653,7 +653,7 @@ do
   end
 
   function VeraBridge_async_watchdog (timeout)
-    if (last_async_call + timeout) > os.time() then
+    if (last_async_call + timeout) < os.time() then
       VeraBridge_async_request ()                     -- throw in another call, just in case we missed one
     end
     luup.call_delay ("VeraBridge_async_watchdog", timeout, timeout)
