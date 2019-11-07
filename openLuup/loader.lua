@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2019.08.10",
+  VERSION       = "2019.11.07",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -64,6 +64,7 @@ local ABOUT = {
 -- 2019.06.12  move compile_and_run here from loader (to be used also by console)
 -- 2019.06.16  add loader.dir() to walk search path
 -- 2019.07.14  use new XML Document methods
+-- 2019.11.07  add do_not_implement parameter to assemble_device_from_files() for child devices
 
 
 ------------------
@@ -682,7 +683,7 @@ end
 -- The functional definition is sprayed over a variety of files with various inter-dependencies.
 -- This function attempts to wrap the assembly into one place.
 -- defined filename parameters override the definitions embedded in other files.
-local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_impl, json_file)
+local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_impl, json_file, do_not_implement)
 
   -- returns non-blank contents of x or nil
   local function non_blank (x) 
@@ -737,7 +738,7 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
 
   -- load and compile the amalgamated code from <files>, <functions>, <actions>, and <startup> tags
   local code, error_msg
-  if i.source_code then
+  if i.source_code and not do_not_implement then
     
   -----
   --

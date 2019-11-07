@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.10.28",
+  VERSION       = "2019.11.07",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -124,10 +124,10 @@ local function create (x)
   local X                             -- 2018.06.11  don't use impl_file if parent handles actions
   local parent = tonumber (x.parent) or 0
   local parent_device = luup.devices[parent] or {}
---  if parent_device.handle_children then X = 'X' end         -- use dummy device implementation file
+  local do_not_implement = parent_device.handle_children     -- ignore device implementation file if parent handles it
 
---  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, X or x.upnp_impl, x.json_file)
-  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file)
+  local d, err = loader.assemble_device (x.devNo, x.device_type, x.upnp_file, x.upnp_impl, x.json_file,
+                                              do_not_implement)
 
   d = d or {}
   local fmt = "[%d] %s / %s / %s   (%s)"
