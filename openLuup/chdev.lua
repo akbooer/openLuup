@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.11.07",
+  VERSION       = "2019.11.08",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -121,7 +121,6 @@ local function create (x)
   local dev = devutil.new (x.devNo)   -- create the proto-device
   local services = dev.services
   
-  local X                             -- 2018.06.11  don't use impl_file if parent handles actions
   local parent = tonumber (x.parent) or 0
   local parent_device = luup.devices[parent] or {}
   local do_not_implement = parent_device.handle_children     -- ignore device implementation file if parent handles it
@@ -162,24 +161,26 @@ local function create (x)
       end
     end
   end
-
+  
+  local device_type = d.device_type or ''
+  local job_priority = {openLuup = 1, ["urn:schemas-upnp-org:device:altui:1"] = 3, VeraBridge = 5}
+  local cat_num = tonumber (x.category_num or d.category_num or loader.cat_by_dev[device_type])   -- 2019.06.02
+  local priority = job_priority[device_type]
+  
   -- schedule device startup code
   local function non_empty(x) return x and x:match "%S" and x end
   local device_name = non_empty (x.description) 
                         or d.friendly_name or "Device_" .. x.devNo  -- 2019.08.29 check non-empty name
   if d.entry_point then 
     if tonumber (x.disabled) ~= 1 then
-      if not parent_device.handle_children then                             -- 2019.10.28  
-        scheduler.device_start (d.entry_point, x.devNo, device_name)        -- schedule startup in device context
+      if not parent_device.handle_children then                                 -- 2019.10.28  
+        scheduler.device_start (d.entry_point, x.devNo, device_name, priority)  -- schedule startup in device context
       end
     else
       local fmt = "[%d] is DISABLED"
       _log (fmt: format (x.devNo), "luup.create_device")
     end
   end
-  
-  local device_type = d.device_type or ''
-  local cat_num = tonumber (x.category_num or d.category_num or loader.cat_by_dev[device_type])   -- 2019.06.02
   
   -- set known attributes
   dev:attr_set {

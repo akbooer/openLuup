@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.11.02",
+  VERSION       = "2019.11.08",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -62,6 +62,7 @@ local ABOUT = {
 -- 2019.07.22  add error_state table for jobs
 -- 2019.10.14  add device number to context_switch error message, thanks @Buxton
 -- 2019.11.02  order local job list by priority (to allow VerBridge to start before other plugins)
+-- 2019.11.08  use numerical priority (0 high, inf low, nil lowest), add jobNo to job structure
 
 
 local logs      = require "openLuup.logs"
@@ -232,7 +233,7 @@ local wait_state = {
 -- LOCALS
 
 local next_job_number = 1
-local startup_list = {}
+local startup_list = {}   -- 2019.11.08 note that this is now an ordered list, not indexed by jobNo
 
 local job_list = setmetatable ( 
     {},      -- jobs indexed by job number
@@ -394,6 +395,7 @@ local function create_job (action, arguments, devNo, target_device, priority)
     {              -- this is the job structure
       arguments   = {},
       devNo       = devNo,              -- system jobs may have no device number
+      jobNo       = jobNo,              -- 2019.11.08
       status      = state.WaitingToStart,
       notes       =  '',                -- job 'notes' are 'comments'?
       timeout     = 0,
@@ -518,7 +520,7 @@ local function device_start (entry_point, devNo, name, priority)
   local job = job_list[jobNo]
   local text = "plugin: %s"
   job.type = text: format ((name or ''): match "^%s*(.+)")
-  startup_list[jobNo] = job  -- put this into the startup job list too 
+  startup_list[#startup_list+1] = job  -- put this into the startup job list too 
   return jobNo
 end    
 
@@ -528,17 +530,23 @@ local function task_callbacks ()
   repeat
     N = N + 1
     local njn = next_job_number
-  
-    local local_job_list = {}  -- make local copy: list might be changed by jobs spawning, and for priority
+    local local_job_list          -- make local copy: list might be changed by jobs spawning, and for priority
+    
     do  -- 2019.11.02  order local job list by priority
-        -- currently, the 'priority' is simply a flag, but in future there could be finer gradations
+        -- priority is a number (not necessarily integer) with smaller numbers having higher priority, nil is lowest
         -- this affects both the order of device startup, and also prioritization of subsequent time slices
+      local_job_list = {}
+      local no_priority = {}, {}
       for jobNo, job in pairs (job_list) do
         if job.priority then 
-          table.insert (local_job_list, 1, jobNo)   -- insert at front
+          local_job_list[#local_job_list+1] = jobNo     -- insert at front
         else
-          table.insert (local_job_list, jobNo)      -- insert at end
+          no_priority[#no_priority+1] = jobNo           -- insert at end
         end
+      end
+      table.sort (local_job_list, function(a,b) return job_list[a].priority < job_list[b].priority end)
+      for _, j in ipairs(no_priority) do
+        local_job_list[#local_job_list+1] = j         -- add remaining un-prioritised jobs
       end
     end
   

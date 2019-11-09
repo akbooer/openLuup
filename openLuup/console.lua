@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.11.02",
+  VERSION       = "2019.11.08",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -621,17 +621,18 @@ local function jobs_tables (_, running, title)
   local jlist = {}
   for jn, j in pairs (scheduler.job_list) do
     local status = j.status or state.NoJob
+    local priority = j.priority or ''
     local n = j.logging.invocations
     local ok = scheduler.exit_state[status]
     if running then ok = not ok end
     if ok then
-      jlist[#jlist+1] = {j.expiry, todate(j.expiry + 0.5), j.devNo or "system", status, n, 
+      jlist[#jlist+1] = {j.expiry, todate(j.expiry + 0.5), j.devNo or "system", priority, status, n, 
                           j.logging.cpu, -- cpu time in seconds, here
                           jn, j.type or '?', j.notes or ''}
     end
   end
   -----
-  local columns = {'#', "date / time", "device", "status", "run", "hh:mm:ss.sss", "job #", "info", "notes"}
+  local columns = {'#', "date / time", "device", "priority", "status", "run", "hh:mm:ss.sss", "job #", "info", "notes"}
   local sort_function
   if running then 
     sort_function = function (a,b) return a[1] < b[1] end  -- normal sort for running jobs
@@ -644,9 +645,9 @@ local function jobs_tables (_, running, title)
   local tbl = create_table_from_data (columns, jlist,
     function (row, i)
       row[1] = i
-      row[4] = scheduler.error_state[row[4]] and red (state[row[4]]) or state[row[4]]
-      row[6] = rhs (dhms (row[6], nil, milli))
-      row[7] = rhs (row[7])
+      row[5] = scheduler.error_state[row[5]] and red (state[row[5]]) or state[row[5]]
+      row[7] = rhs (dhms (row[7], nil, milli))
+      row[8] = rhs (row[8])
     end)
   return xhtml.div {class = "w3-responsive", page_wrapper(title, tbl) }	-- may be wide, let's scroll sideways
 end
@@ -687,25 +688,25 @@ end
 
 function pages.startup ()
   local jlist = {}
-  for jn, b in pairs (scheduler.startup_list) do
+  for _, b in ipairs (scheduler.startup_list) do
     local status = state[b.status] or ''
     jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", 
-      status, b.logging.cpu, jn, b.type or '?', b.notes or ''}
+      b.priority or '', status, b.logging.cpu, b.jobNo or '', b.type or '?', b.notes or ''}
   end
   -----
-  local columns = {"#", "date / time", "device", "status", "hh:mm:ss.sss", "job #", "info", "notes"}
-  table.sort (jlist, function (a,b) return a[2] < b[2] end)
+  local columns = {"#", "date / time", "device", "priority", "status", "hh:mm:ss.sss", "job #", "info", "notes"}
+--  table.sort (jlist, function (a,b) return a[2] < b[2] end)
   -----
   local milli = true
   local tbl = xhtml.table {class = "w3-small"}
   tbl.header (columns)
   for i, row in ipairs (jlist) do
     row[1] = i
-    if row[4] ~= "Done" then row[4] = red (row[4]) end
-    row[5] = rhs (dhms(row[5], nil, milli))
+    if row[5] ~= "Done" then row[5] = red (row[5]) end
+    row[6] = rhs (dhms(row[6], nil, milli))
     tbl.row (row)
   end
-  local title = "Plugin Startup Jobs CPU usage"
+  local title = "Plugin Startup Jobs CPU usage (in startup order)"
   return page_wrapper(title, tbl)
 end
 
