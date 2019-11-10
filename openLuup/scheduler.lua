@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.11.08",
+  VERSION       = "2019.11.09",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -554,6 +554,7 @@ local function task_callbacks ()
       local job = job_list[jobNo]
       if job then
         job.now = timenow()
+        job.started = job.started or job.now        -- 2019.11.09 add start time
         
         if job.status == state.WaitingToStart and job.now >= job.expiry then
           job.status = state.InProgress   -- wake up after timeout period

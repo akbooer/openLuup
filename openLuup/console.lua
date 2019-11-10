@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.11.08",
+  VERSION       = "2019.11.09",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -234,6 +234,7 @@ local function selfref (...) return table.concat {script_name, '?', ...} end   -
 local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
 
 local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
+local function todate_ms (epoch) return ("%s.%03d"): format (todate (epoch),  math.floor(1000*(epoch % 1))) end
 
 local function truncate (s, maxlength)
   maxlength = maxlength or 24
@@ -690,7 +691,7 @@ function pages.startup ()
   local jlist = {}
   for _, b in ipairs (scheduler.startup_list) do
     local status = state[b.status] or ''
-    jlist[#jlist+1] = {b.expiry, todate(b.expiry + 0.5), b.devNo or "system", 
+    jlist[#jlist+1] = {b.started or b.expiry, todate_ms(b.expiry + 0.5), b.devNo or "system", 
       b.priority or '', status, b.logging.cpu, b.jobNo or '', b.type or '?', b.notes or ''}
   end
   -----
