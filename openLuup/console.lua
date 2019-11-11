@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.11.09",
+  VERSION       = "2019.11.11",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -696,7 +696,7 @@ function pages.startup ()
   end
   -----
   local columns = {"#", "date / time", "device", "priority", "status", "hh:mm:ss.sss", "job #", "info", "notes"}
---  table.sort (jlist, function (a,b) return a[2] < b[2] end)
+  table.sort (jlist, function (a,b) return a[2] < b[2] end)
   -----
   local milli = true
   local tbl = xhtml.table {class = "w3-small"}
