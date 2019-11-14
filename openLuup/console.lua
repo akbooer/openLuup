@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.11.11",
+  VERSION       = "2019.11.14",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -174,6 +174,7 @@ local SID = {
   security  = "urn:micasaverde-com:serviceId:SecuritySensor1",    -- arm/disarm control
   temp      = "urn:upnp-org:serviceId:TemperatureSensor1",
   humid     = "urn:micasaverde-com:serviceId:HumiditySensor1",
+  light     = "urn:micasaverde-com:serviceId:LightSensor1",
   gateway   = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
 }
 
@@ -1419,17 +1420,24 @@ local function get_display_variables (d)
   if dl1 or dl2 then return dl1 or '', dl2 or '' end
   
   -- common services
-  local temp = (svcs[SID.temp] or {}).variables or {}
-  local humid = (svcs[SID.humid] or {}).variables or {}
-  if temp or humid then 
-    temp  = (temp.CurrentTemperature or {}).value
-    humid = (humid.CurrentLevel or {}).value
-    if temp  then temp = temp .. '°' end
-    if humid then humid = humid .. '%' end
-    if humid and temp then temp = temp .. ", " end
-    return xhtml.span {class="w3-large ", temp or '', humid}
+  local var  = {temp = "CurrentTemperature"}   -- default is CurrentLevel
+  local unit = {temp = '°', humid = '%', light = "lux"}
+  local function var_with_units (kind)
+    local s =  svcs[SID[kind]]
+    if s then 
+      s = s.variables or {}
+      local v = (s[var[kind] or "CurrentLevel"] or {}).value
+      if v then return v .. (unit[kind] or '') end
+    end
   end
   
+  local temp  = var_with_units "temp"
+  local humid = var_with_units "humid"
+  local light = var_with_units "light"
+  if temp or humid or light then 
+    if humid and temp then temp = table.concat {temp, ", ", humid} end
+    return xhtml.span {class="w3-large w3-text-dark-grey", temp or humid or light }
+  end  
   
   return line1, line2
 end
