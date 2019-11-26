@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2019.11.26",
+  VERSION       = "2019.11.26b",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -52,7 +52,7 @@ local sid = {
     energy    = "urn:	micasaverde-com:serviceId:EnergyMetering1",
     netatmo   = "urn:akbooer-com:serviceId:Netatmo1",
     scene     = "urn:	micasaverde-com:serviceId:SceneController1",
-    security  = "urn:micasaverde-con:serviceId:SecuritySensor1",
+    security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
   }
   
 local panels = {
