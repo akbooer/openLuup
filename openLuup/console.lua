@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.11.14",
+  VERSION       = "2019.11.26",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -90,6 +90,7 @@ local whisper   = require "openLuup.whisper"
 local wsapi     = require "openLuup.wsapi"        -- for response library
 local loader    = require "openLuup.loader"       -- for static data (devices page)
 local json      = require "openLuup.json"         -- for console_menus.json
+local panels    = require "openLuup.panels"       -- for default console device panels
 local xml       = require "openLuup.xml"          -- for HTML constructors
 
 local xhtml     = xml.createHTMLDocument ()       -- factory for all HTML tags
@@ -144,6 +145,8 @@ local function missing_index_metatable (name)
 local pages = setmetatable ({}, missing_index_metatable "Page")
 
 local actions = setmetatable ({}, missing_index_metatable "Action")
+
+local empty = setmetatable ({}, {__newindex = function() error ("read-only", 2) end})
 
 local code_editor -- forward reference
 
@@ -218,12 +221,13 @@ end
 -- look for user-defined device panels
 -- named U_xxx.lua, derived from trailing word of device type:
 -- urn:schemas-micasaverde-com:device:TemperatureSensor:1, would be U_TemperatureSensor.lua
-local user_defined = {
-    openLuup = {control = function() return 
-        '<div><a class="w3-text-blue", href="https://www.justgiving.com/DataYours/" target="_blank">' ..
-          "If you like openLuup, you could DONATE to Cancer Research UK right here</a>" ..
-          "<p>...or from the link in the page footer below</p></div>" end}
-  }
+local user_defined = panels
+--local user_defined = {
+--    openLuup = {control = function() return 
+--        '<div><a class="w3-text-blue", href="https://www.justgiving.com/DataYours/" target="_blank">' ..
+--          "If you like openLuup, you could DONATE to Cancer Research UK right here</a>" ..
+--          "<p>...or from the link in the page footer below</p></div>" end}
+--  }
 for f in loader.dir "^U_.-%.lua$" do
   local name = f: match "^U_(.-)%.lua$"
   local ok, user = pcall (require, "U_" .. name)
@@ -258,7 +262,7 @@ end
 
 local function dev_or_scene_name (d, tbl)
   d = tonumber(d) or 0
-  local name = (tbl[d] or {}).description or 'system'
+  local name = (tbl[d] or empty).description or 'system'
   name = name: match "^%s*(.+)" or "???"
   local number = table.concat {'[', d, '] '}
   return number .. name
@@ -328,14 +332,25 @@ local function get_matching_files_from (folder, pattern)
   return files
 end
 
+local function get_user_html_as_dom (html)
+  if type(html) == "string" then             -- otherwise assume it's a DOM (or nil)
+    local x = xml.decode (html)
+    html = x.documentElement
+  end
+  return html
+end
+
+local function user_defined_ui (d)
+  local dtype = (d.attributes.device_type or ''): match "(%w+):?%d*$"   -- pick the last word
+  return user_defined[dtype] or empty
+end
 
 local function get_device_icon (d)
   local img  
   -- user-defined icon
-  local dtype = (d.attributes.device_type or ''): match "(%w+):?%d*$"   -- pick the last word
-  local user = user_defined[dtype] or {}
+  local user = user_defined_ui (d)
   if user.icon then 
-    img = user.icon(d.attributes.id) -- TODO: parse a string to get DOM
+    img = get_user_html_as_dom (user.icon(d.attributes.id))
   else
     local icon = d:get_icon ()
     if icon ~= '' and not icon: lower() : match "^http" then icon = "/icons/" .. icon end
@@ -395,7 +410,7 @@ end
 local function page_group_buttons (page)  
   local groupname = page_groups_index[page] 
                     or capitalise (page)    -- restore the leading capital
-  local group = page_groups[groupname]  or {}
+  local group = page_groups[groupname]  or empty
   local tabs = {}
   for _, name in ipairs (group) do 
     tabs[#tabs+1] = make_button (name, page) 
@@ -431,7 +446,7 @@ local function sorted_by_id_or_name (p, tbl)  -- _or_description
   end
   table.sort (x, function (a,b) return a.key < b.key end)
   local i = 0
-  return function() i = i + 1 return (x[i] or {}).item end
+  return function() i = i + 1 return (x[i] or empty).item end
 end
 
 -- sidebar menu built from function arguments
@@ -444,24 +459,24 @@ end
 -- walk the menu tree, calling the user function for each item
 local function map_menu_tree (fct)
   local console_json = loader.raw_read (menu_json)
-  local console = json.decode(console_json) or {}
+  local console = json.decode(console_json) or empty
   for _, menu in ipairs (console.menus or {}) do fct (menu) end
 end
 
 -- make a drop-down selection for things
 local function xselect (hidden, options, selected, presets)
   local sorted = {}
-  for i,v in ipairs (options or {}) do sorted[i]  = v end
+  for i,v in ipairs (options or empty) do sorted[i]  = v end
   table.sort (sorted)
   local choices = xhtml.select {style="width:12em;", name="value", onchange="this.form.submit()"} 
   local function choice(x) 
     local select = x == selected and 1 or nil
     choices[#choices+1] = xhtml.option {selected = select, x} 
   end
-  for _,v in ipairs (presets or {}) do choice(v) end
+  for _,v in ipairs (presets or empty) do choice(v) end
   for _,v in ipairs (sorted) do choice(v) end
   local form = xhtml.form {action=selfref(), method = "post", choices}
-  for n,v in pairs (hidden or {}) do form[#form+1] = 
+  for n,v in pairs (hidden or empty) do form[#form+1] = 
     xhtml.input {name=n, value=v, hidden=1}
   end
   return form
@@ -540,6 +555,17 @@ function actions.bookmark (p)
   if scn then
     local a = scn.user_table ()
     a.favorite = not a.favorite
+  end
+end
+
+function actions.clear_cache (p)
+  local d = luup.devices[tonumber(p.dev)]
+  if d then
+    local v = d.variables[tonumber(p.variable)] or {name = "UNKNOWN"}
+    if v then   -- empty cache by turning off and on again
+      v: disableCache()
+      v:  enableCache()
+    end
   end
 end
 
@@ -806,7 +832,7 @@ function pages.all_globals ()
     local env = d.environment
     if env then
       local x = {}
-      for n,v in pairs (env or {}) do 
+      for n,v in pairs (env or empty) do 
         if not _G[n] and not ignore[n] and type(v) ~= "function" then x[n] = v end
       end
       if next(x) then
@@ -877,7 +903,7 @@ function pages.sandboxes ()               -- 2018.04.07
     local lookup = getmetatable (tbl).lookup
     local boxmsg = "[%d] %s - Private items:"
     local function devname (d) 
-      return ((luup.devices[d] or {}).description or "System"): match "^%s*(.+)" 
+      return ((luup.devices[d] or empty).description or "System"): match "^%s*(.+)" 
     end
     local function sorted(x, title)
       local y = {}
@@ -901,7 +927,7 @@ function pages.sandboxes ()               -- 2018.04.07
   
   local div = xhtml.div {html5_title "Sandboxed system tables (by plugin)"}
   for n,v in pairs (_G) do
-    local meta = ((type(v) == "table") and getmetatable(v)) or {}
+    local meta = ((type(v) == "table") and getmetatable(v)) or empty
     if meta.__newindex and meta.__tostring and meta.lookup then   -- not foolproof, but good enough?
       div[#div+1] = xhtml.p { n, ".sandbox"} 
       div[#div+1] = format(v)
@@ -1137,10 +1163,10 @@ function pages.trash (p)
     data[#data+1] = {i, f.name, f.size}
   end
   local tbl = create_table_from_data ({'#', "filename", "size"}, data)
-  local empty = xhtml.a {class="w3-button w3-round w3-red",
+  local empty_trash = xhtml.a {class="w3-button w3-round w3-red",
     onclick = "return confirm('Empty Trash: Are you sure?')", 
     href = selfref "page=trash&AreYouSure=yes", "Empty Trash"}
-  return page_wrapper ("Files pending delete in trash/ folder", empty, tbl)
+  return page_wrapper ("Files pending delete in trash/ folder", empty_trash, tbl)
 end
 
 
@@ -1254,7 +1280,7 @@ function pages.cache ()
     local v = x.v
     local finderName = hist.metrics.var2finder (v)
     local archived = archived[finderName]
-    local graph = ''
+    local graph, clear = '', ''
     if finderName then 
       local _,start = v:oldest()      -- get earliest entry in the cache (if any)
       if start then
@@ -1263,6 +1289,8 @@ function pages.cache ()
         local img = xhtml.img {height=14, width=14, alt="plot", src="icons/chart-bar-solid.svg"}
         graph = xhtml.a {class = "w3-hover-opacity", title="graph", 
           href= selfref (link: format (finderName, from)), img}
+        clear = xhtml.a {href=selfref ("action=clear_cache&variable=", v.id + 1, "&dev=", v.dev), title="clear cache", 
+                  xhtml.img {width="18px;", height="14px;", alt="clear", src="/icons/undo-solid.svg"}}
       end
     end
     local h = #v.history / 2
@@ -1274,7 +1302,7 @@ function pages.cache ()
     local check = archived and 1 or nil
     local tick = xhtml.input {type="checkbox", readonly=1, checked = check} 
     local short_service_name = v.srv: match "[^:]+$" or v.srv
-    t.row {'', short_service_name, h, v.value, graph, xhtml.span {tick, ' ', v.name}}
+    t.row {'', short_service_name, h, v.value, xhtml.span {graph, ' ', clear}, xhtml.span {tick, ' ', v.name}}
   end
   
   local div = xhtml.div {html5_title "Data Historian in-memory Cache", t}
@@ -1411,22 +1439,22 @@ end
 
 local function get_display_variables (d)
   local svcs = d.services
-  local vars = (svcs[SID.altui] or {}).variables or {}
+  local vars = (svcs[SID.altui] or empty).variables or empty
   local line1, line2
   
   -- AltUI Display variables
-  local dl1 = (vars.DisplayLine1 or {}) .value
-  local dl2 = (vars.DisplayLine2 or {}) .value
+  local dl1 = (vars.DisplayLine1 or empty) .value
+  local dl2 = (vars.DisplayLine2 or empty) .value
   if dl1 or dl2 then return dl1 or '', dl2 or '' end
   
   -- common services
   local var  = {temp = "CurrentTemperature"}   -- default is CurrentLevel
-  local unit = {temp = '°', humid = '%', light = "lux"}
+  local unit = {temp = '°', humid = '%', light = " lux"}
   local function var_with_units (kind)
     local s =  svcs[SID[kind]]
     if s then 
-      s = s.variables or {}
-      local v = (s[var[kind] or "CurrentLevel"] or {}).value
+      s = s.variables or empty
+      local v = (s[var[kind] or "CurrentLevel"] or empty).value
       if v then return v .. (unit[kind] or '') end
     end
   end
@@ -1471,7 +1499,7 @@ local function device_controls (d)
   end
   srv = d.services[SID.dimming]
   if srv then    -- we need a slider
-    local LoadLevelTarget = (srv.variables.LoadLevelTarget or {}).value or 0
+    local LoadLevelTarget = (srv.variables.LoadLevelTarget or empty).value or 0
     slider = xhtml.form {
       oninput="LoadLevelTarget.value = slider.valueAsNumber + ' %'",
       action=selfref (), method="post", 
@@ -1486,30 +1514,42 @@ local function device_controls (d)
 end
 
 local function device_panel (self)          -- 2019.05.12
-  local id = self.attributes.id
-  local line1, line2 = get_display_variables (self)
-  local img = get_device_icon (self)
-  
-  local flag = unicode.white_star
-  if self.attributes.bookmark == "1" then flag = unicode.black_star end
-  local bookmark = xhtml.a {class = "nodec w3-hover-opacity", href=selfref("action=bookmark&dev=", id), flag}
-  
-  local battery = (((self.services[SID.ha] or {}) .variables or {}) .BatteryLevel or {}) .value
-  battery = battery and (battery .. '%') or ' '
-  
-  local switch, slider = device_controls(self)
   local div, span = xhtml.div, xhtml.span
-  local panel = xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card dev-panel", 
-    div {class="top-panel", 
-      bookmark, ' ', truncate (devname (id)), span{style="float: right;", battery }},
-    div {class = "w3-row", style="height:54px; padding:2px;", 
-      div {class="w3-col", style="width:50px;", img} , 
-      div {class="w3-padding-small w3-rest w3-display-container", style="height:50px;",
-        line1 or '', xhtml.br{}, line2 or '',
+  local id = self.attributes.id
+  local icon = get_device_icon (self)
+  
+  local top_panel do
+    local flag = unicode.white_star
+    if self.attributes.bookmark == "1" then flag = unicode.black_star end
+    local bookmark = xhtml.a {class = "nodec w3-hover-opacity", href=selfref("action=bookmark&dev=", id), flag}
+    
+    local battery = (((self.services[SID.ha] or empty) .variables or empty) .BatteryLevel or empty) .value
+    battery = battery and (battery .. '%') or ' '
+    top_panel = div {class="top-panel", 
+      bookmark, ' ', truncate (devname (id)), span{style="float: right;", battery }}
+  end
+  
+  local main_panel do
+    local user = user_defined_ui (self)
+    local line1, line2 = get_display_variables (self)
+    if user.panel then 
+      main_panel = get_user_html_as_dom (user.panel (id))
+    elseif line1 or line2 then
+      main_panel = div {line1 or '', xhtml.br{}, line2 or ''}
+    else
+      local switch, slider = device_controls(self)
+      main_panel = div {
         div {class="w3-display-topright w3-padding-small", switch},
-        div {class="w3-display-bottommiddle", slider},
-        } } }
-  return panel
+        div {class="w3-display-bottommiddle", slider}}
+    end
+  end
+  
+  return div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card dev-panel", 
+    top_panel,
+    div {class = "w3-row", style="height:54px; padding:2px;", 
+      div {class="w3-col", style="width:50px;", icon} , 
+      div {class="w3-padding-small w3-rest w3-display-container", style="height:50px;",
+       main_panel}}}
 end
 
 -- generic device page
@@ -1523,22 +1563,15 @@ end
 
 function pages.control (p)
   return device_page (p, function (d, title)
-    local dtype = (d.attributes.device_type or ''): match "(%w+):?%d*$"   -- pick the last word
-    local user = user_defined[dtype] or {}
+    local user = user_defined_ui (d)
     local t = xhtml.table {class = "w3-small"}
     local user_control
     if user.control then 
-      user_control = user.control (d.attributes.id)           -- either HTML DOM tree, or...
-      if type (user_control) == "string" then                 -- ... text/html string
-        local x = xml.decode (user_control)
-        user_control = x.documentElement
-      end
+      user_control = get_user_html_as_dom (user.control (d.attributes.id))
     end
     local states = d:get_shortcodes ()
     for n,v in sorted (states) do t.row {n, nice(v)} end
     return title .. " - status and control", 
---        xhtml.div {style="clear: left; float:left;", device_panel(d), xhtml.div {t}},
---        xhtml.div {style="clear: none; float:left;", class = "w3-margin-left", user_control} 
         xhtml.div {class="w3-cell", device_panel(d), xhtml.div {t}},
         xhtml.div {class = "w3-cell w3-padding-large", user_control} 
   end)
@@ -1689,9 +1722,9 @@ function pages.actions (p)
     local devNo = d.attributes.id
     local t = xhtml.div {class = "w3-container "}
     for s,srv in sorted (d.services) do
-      local service_actions = (service_data[s] or {}) .actions
+      local service_actions = (service_data[s] or empty) .actions
       local action_index = {}         -- service actions indexed by name
-      for _, act in ipairs (service_actions or {}) do
+      for _, act in ipairs (service_actions or empty) do
         action_index[act.name] = act.argumentList or {}
       end
       for a in sorted (srv.actions) do
@@ -1725,7 +1758,7 @@ function pages.events (p)
     local e = {}
     local columns = {"id", "event / variable : (serviceId)"}
     local json_file = d.attributes.device_json
-    local static_data = loader.static_data[json_file] or {}
+    local static_data = loader.static_data[json_file] or empty
     local eventList2 = static_data.eventList2
     if eventList2 then
       for _, event in ipairs (eventList2) do
@@ -1831,7 +1864,7 @@ end
 local function generic_panel (x)
   local div = xhtml.div
       local widgets = xhtml.span {class="w3-wide"}
-      for i,w in ipairs (x.widgets or {}) do widgets[i] = w end
+      for i,w in ipairs (x.widgets or empty) do widgets[i] = w end
       return xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card tim-panel",
         div {class="top-panel", 
           truncate (x.top_line.left or ''), 
@@ -1860,7 +1893,7 @@ local function scene_panel (self)
   --TODO: move scene next run code to scenes module
   local id = utab.id
   local earliest_time
-  for _,timer in ipairs (utab.timers or {}) do
+  for _,timer in ipairs (utab.timers or empty) do
     local next_run = timer.next_run 
     if next_run and timer.enabled == 1 then
       earliest_time = math.min (earliest_time or next_run,  next_run)
@@ -2447,11 +2480,11 @@ function pages.plugin (p)
   local h = xhtml
   local function w(x) return xhtml.div{x, style="clear: none; float:left; width: 120px;"} end
   -- if specified plugin, then retrieve installed information
-  local P = find_plugin (p.plugin) or {}
+  local P = find_plugin (p.plugin) or empty
   ---
-  local D = (P.Devices or {}) [1] or {}
-  local R = P.Repository or {}
-  local F = table.concat (R.folders or {}, ", ")
+  local D = (P.Devices or empty) [1] or empty
+  local R = P.Repository or empty
+  local F = table.concat (R.folders or empty, ", ")
   ---
   local app = h.div {class = "w3-panel w3-cell",
     h.form {class = "w3-form", method="post", action=selfref  "page=plugins_table",
@@ -2507,7 +2540,7 @@ function pages.plugins_table (_, req)
     local icon = xhtml.img {src=src, alt="no icon", height=35, width=35} 
     local version = table.concat ({p.VersionMajor or '?', p.VersionMinor}, '.')
     local files = {}
-    for _, f in ipairs (p.Files or {}) do files[#files+1] = f.SourceName end
+    for _, f in ipairs (p.Files or empty) do files[#files+1] = f.SourceName end
     table.sort (files)
     local choice = {style="width:12em;", name="file", onchange="this.form.submit()", 
       xhtml.option {value='', "Files", disabled=1, selected=1}}
@@ -2597,7 +2630,7 @@ function pages.home (p)
   end
   map_menu_tree  (function  (menu)
     add_name (menu[1])                       -- try the top-level menu name too
-    for _, name in ipairs (menu[2] or {}) do
+    for _, name in ipairs (menu[2] or empty) do
       add_name(name) 
     end
   end)
@@ -2661,7 +2694,7 @@ local function dynamic_menu ()
       local dropdown_content = 
         {class="w3-dropdown-content w3-bar-block w3-border-grey w3-light-grey w3-card-4"}
       local border = ''
-      for _, item in ipairs (menu[2] or {}) do
+      for _, item in ipairs (menu[2] or empty) do
         if item == "hr" then 
           border = " w3-border-top"                   -- give next item a line above...
         else

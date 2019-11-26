@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.10.14",
+  VERSION       = "2019.11.21",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -149,7 +149,7 @@ local D_openLuup_json = json.encode {
         Display (50,120, 75,20,  "openLuup", "Version")),
       ControlGroup (2, "label", 0,4, 
         Display (50,160, 75,20),
-        Label ("donate", '<a href="openLuup" target="_blank">CONSOLE interface</a>')),
+        Label ("console", '<a href="openLuup" target="_blank">CONSOLE interface</a>')),
       ControlGroup (2, "label", 0,4,
         Display (50,200, 75,20),
         Label ("donate", '<a href="https://www.justgiving.com/DataYours/" target="_blank">' ..
@@ -1255,6 +1255,8 @@ fa["trigger"] = [[
 fa["circle-regular"] = [[
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 8C119 8 8 119 8 256s111 248 248 248 248-111 248-248S393 8 256 8zm0 448c-110.5 0-200-89.5-200-200S145.5 56 256 56s200 89.5 200 200-89.5 200-200 200z"></path></svg>]]
 
+fa["undo-solid"] = [[
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M212.333 224.333H12c-6.627 0-12-5.373-12-12V12C0 5.373 5.373 0 12 0h48c6.627 0 12 5.373 12 12v78.112C117.773 39.279 184.26 7.47 258.175 8.007c136.906.994 246.448 111.623 246.157 248.532C504.041 393.258 393.12 504 256.333 504c-64.089 0-122.496-24.313-166.51-64.215-5.099-4.622-5.334-12.554-.467-17.42l33.967-33.967c4.474-4.474 11.662-4.717 16.401-.525C170.76 415.336 211.58 432 256.333 432c97.268 0 176-78.716 176-176 0-97.267-78.716-176-176-176-58.496 0-110.28 28.476-142.274 72.333h98.274c6.627 0 12 5.373 12 12v48c0 6.627-5.373 12-12 12z"></path></svg>]]
 
 -----
 

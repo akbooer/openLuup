@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.08.16",
+  VERSION       = "2019.11.24",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -62,6 +62,7 @@ local ABOUT = {
 -- 2019.06.17   add scene history
 -- 2019.07.26   add runner info to scene history
 -- 2019.08.04   add scene on_off() to toggle paused
+-- 2019.11.24   remove scene_watcher code (a poor implementation of the concept)
 
 
 local logs      = require "openLuup.logs"
@@ -102,7 +103,7 @@ local trigger_warning = {   -- template points to openLuup notification message
 }
 
 -- scene-wide variables
-local watched_devices = {}      -- table of watched devices indexed by device number 
+--local watched_devices = {}      -- table of watched devices indexed by device number 
 
 ---
 --- utilities
@@ -148,6 +149,7 @@ local function runs_in_current_mode (scene)
   return (modeStatus == "0") or modeStatus:match (currentMode)
 end
 
+--[[
 -- called when watched device variable changes
 local function scene_watcher (devNo, service, variable, value_old, value_new)
   local device = luup.devices[devNo]
@@ -185,6 +187,8 @@ end
 local function start_watching_triggers(dlist)
   local _ = dlist   --TODO: start_watching_triggers
 end
+--]]
+
 
 -- scene.create() - returns compiled scene object given json string containing group / timers / lua / ...
 local function create (scene_json)
@@ -459,8 +463,8 @@ local function create (scene_json)
   end
   
   -- start watching the actioned devices
-  local actioned = get_actioned_devices()           -- 2019.05.15
-  start_watching_devices (actioned)
+--  local actioned = get_actioned_devices()           -- 2019.05.15
+--  start_watching_devices (actioned)
 
   devutil.new_userdata_dataversion ()               -- 2017.07.19
 
