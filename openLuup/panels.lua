@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2019.11.26b",
+  VERSION       = "2019.11.26c",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -55,6 +55,8 @@ local sid = {
     security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
   }
   
+local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
+
 local panels = {
 
 --
@@ -93,7 +95,7 @@ local panels = {
   MotionSensor = {
     panel = function (devNo)
       local time  = luup.variable_get (sid.security, "LastTrip", devNo)
-      return div {class = "w3-small w3-display-bottomright", time or "--- 00:00"}
+      return div {class = "w3-small w3-display-bottomright", time and todate(time) or ''}
     end},
 
 --
@@ -115,7 +117,7 @@ local panels = {
       local time  = luup.variable_get (sid.energy, "KWHReading", devNo)
       local kwh   = luup.variable_get (sid.energy, "KWH", devNo)
       return h.span {watts or '???', " Watts", h.br(), kwh or '???', " kWh", h.br(), 
-        div {class = "w3-small w3-display-bottomright", time or "--- 00:00"}}
+        div {class = "w3-small w3-display-bottomright", time and todate(time) or ''}}
     end},
 
 --
@@ -124,8 +126,8 @@ local panels = {
 
   SceneController = {
     panel = function (devNo)
-      local t = luup.variable_get (sid.scene, "LastSceneTime", devNo)
-      return h.span (t or '')
+      local time = luup.variable_get (sid.scene, "LastSceneTime", devNo)
+      return h.span (time and todate(time) or '')
     end,
     control = function ()
       return "<p>Scene Controller displays</p>"
