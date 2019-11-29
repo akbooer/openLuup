@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2019.11.26c",
+  VERSION       = "2019.11.29",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -49,9 +49,9 @@ local div = h.div
 
 local sid = {
     altui     = "urn:upnp-org:serviceId:altui1",
-    energy    = "urn:	micasaverde-com:serviceId:EnergyMetering1",
+    energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
     netatmo   = "urn:akbooer-com:serviceId:Netatmo1",
-    scene     = "urn:	micasaverde-com:serviceId:SceneController1",
+    scene     = "urn:micasaverde-com:serviceId:SceneController1",
     security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
   }
   
@@ -95,7 +95,7 @@ local panels = {
   MotionSensor = {
     panel = function (devNo)
       local time  = luup.variable_get (sid.security, "LastTrip", devNo)
-      return div {class = "w3-small w3-display-bottomright", time and todate(time) or ''}
+      return div {class = "w3-tiny w3-display-bottomright", time and todate(time) or ''}
     end},
 
 --
@@ -117,7 +117,7 @@ local panels = {
       local time  = luup.variable_get (sid.energy, "KWHReading", devNo)
       local kwh   = luup.variable_get (sid.energy, "KWH", devNo)
       return h.span {watts or '???', " Watts", h.br(), kwh or '???', " kWh", h.br(), 
-        div {class = "w3-small w3-display-bottomright", time and todate(time) or ''}}
+        div {class = "w3-tiny w3-display-bottomright", time and todate(time) or "---  00:00"}}
     end},
 
 --

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2019.07.31",
+  VERSION       = "2019.11.29",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -70,6 +70,7 @@ local ABOUT = {
 -- 2019.05.12  use device:state_table() in status_devices_table()
 -- 2017.07.15  encode action request XML response from scratch, using new XML document constructor
 -- 2019.07.31  use new client and server modules (http split into two)
+-- 2019.11.29  update test request to show client socket id (if present)
 
 
 local client        = require "openLuup.client"
@@ -993,10 +994,14 @@ local function reload () luup.reload () end
 --
 -- openLuup additions
 --
-local function test (r,p)
-  local d = {"data_request","id=" .. r}   -- 2017.11.08
+local function test (r,p,f,c)
+  local d = {
+    "data_request:  id=" .. r,          -- 2017.11.08
+    "output_format: " .. tostring(f),
+    "client_socket: " .. tostring(c),   -- 2019.11.29
+    "user_parameters:"}
   for a,b in pairs (p) do
-    d[#d+1] = table.concat {a,'=',b}
+    d[#d+1] = table.concat {'  ',a,'=',b}
   end
   return table.concat (d,'\n')
 end

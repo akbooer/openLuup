@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2019.10.12",
+  VERSION       = "2019.11.29",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -60,6 +60,8 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2019.07.28   call servlets with pre-built WSAPI environment
 -- 2019.07.29   use WSAPI request library to parse GET and POST parameters for /data_request...
 -- 2019.08.12   /data_request?id=xxx&foo=a&foo=b, collapses to simply &foo=b (thanks, indirectly, @DesT)
+-- 2019.11.29   add client socket to servlet.execute() parameter list and data_request handlers
+--   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263
 
 
 -- TODO: use WSAPI response library in servlets?
@@ -121,7 +123,7 @@ local function add_callback_handlers (handlers, devNo)
   end
 end
 
-local function data_request (wsapi_env, req)
+local function data_request (wsapi_env, req, client)
 
   -- 2019.07.29 use WSAPI request library to parse GET and POST parameters...
   -- the library's built-in req.params mechanism is built on demand for an individual request parameter, 
@@ -153,7 +155,8 @@ local function data_request (wsapi_env, req)
     -- fixed callback request name - thanks @reneboer
     -- see: http://forum.micasaverde.com/index.php/topic,36207.msg269018.html#msg269018
     local request_name = id: gsub ("^l[ru]_", '')     -- remove leading "lr_" or "lu_"
-    ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request_name, parameters, format)
+    ok, response, mtype = scheduler.context_switch (handler.devNo, handler.callback, request_name, parameters, format,
+                                client)     -- 2019.11.29
     if ok then
       status = 200
       response = tostring (response)      -- force string type
@@ -180,7 +183,7 @@ end
 
 -- handler_task returns a task to process the request with possibly run and job entries
 
-local function data_request_task (wsapi_env, respond)
+local function data_request_task (wsapi_env, respond, client)
   local request_start = scheduler.timenow ()
   local req = wsapi.request.new (wsapi_env)   -- use WSAPI library to parse GET and POST parameters
   local p = req.params
@@ -213,7 +216,7 @@ local function data_request_task (wsapi_env, respond)
     end
     
     -- finally (perhaps) execute the request
-    respond (data_request (wsapi_env, req))
+    respond (data_request (wsapi_env, req, client))
     
     return scheduler.state.Done, 0  
   end
@@ -331,10 +334,11 @@ end
 -- no respond: execute immediately and return the handler's WSAPI-style three parameters
 --    respond: run as a scheduled task and call respond with the three return parameters for HTTP response
 --    the function return parameters in this case those of an action call: err, msg, jobNo.
-local function execute (wsapi_env, respond)
+-- 2019.11.29  added client parameter
+local function execute (wsapi_env, respond, client)
   local request_root = wsapi_env.SCRIPT_NAME: match "[^/]+"     -- get the first path element in the request
   if respond then
-    local task = (task_selector [request_root] or file_task) (wsapi_env, respond)
+    local task = (task_selector [request_root] or file_task) (wsapi_env, respond, client)
     return scheduler.run_job (task, {}, nil)   -- nil device number,  returns err, msg, jobNo
   else
     local handler = exec_selector [request_root] or file_request

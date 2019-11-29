@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2019.08.11",
+  VERSION       = "2019.11.29",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -42,6 +42,8 @@ Many people have contributed to finding and fixing bugs over the years, in parti
 --              WGET split out into separate openluup.client 
 --              Servlets now use WSAPI environment as their only input parameter
 --              (and return the usual status, headers, iterator parameters)
+-- 2019.11.29   add client socket to servlet.execute() parameter list
+--   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263
 
 
 local url       = require "socket.url"
@@ -258,7 +260,7 @@ end
 --
 local function HTTPservlet (client)  
   -- incoming() is called by the io.server for each new client request
-  return function ()
+  return function --[[incoming--]] ()
     local wsapi_env, err = receive (client)         -- get the request (in the form of a WSAPI environment)       
     local request_start = scheduler.timenow()
     
@@ -284,7 +286,8 @@ local function HTTPservlet (client)
     end
   
     -- run the appropriate servlet
-    local _, msg, jobNo = servlet.execute (wsapi_env, respond)  -- returns are as for scheduler.run_job ()
+    -- 2019.11.29  added client parameter
+    local _, msg, jobNo = servlet.execute (wsapi_env, respond, client)  -- returns are as for scheduler.run_job ()
 
     -- log the outcome
     if jobNo and scheduler.job_list[jobNo] then

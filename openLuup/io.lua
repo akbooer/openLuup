@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2019.05.11",
+  VERSION       = "2019.11.29",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -55,7 +55,8 @@ local ABOUT = {
 -- 2019.01.25  set_raw_blocksize, see: http://forum.micasaverde.com/index.php/topic,119217.0.html
 -- 2019.03.17  __index() function in client socket allows ANY valid socket call to be used
 -- 2019.05.11  add request IP to incoming server job info
-
+-- 2019.11.29  server.new() watches client proxy, rather than socket itself, as passed to incoming handler
+--   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
@@ -507,20 +508,22 @@ function server.new (config)
     
     -- create the client object... a modified socket
     -- 2019.03.17 __index() function allows ANY valid socket call to be used
-    local client = setmetatable ({            -- client object
+    local client = {            -- client object
         ip = ip,                              -- ip address of the client
         closed = false,
-        close  = function (self, msg)         -- note optional log message cf. standard socket close
+      }
+      client.close  = function (self, msg)         -- note optional log message cf. standard socket close
           if not self.closed then
             self.closed = true
             local disconnect = "%s connection closed %s %s"
             _log (disconnect: format (name, msg or '', tostring(sock)))
-            scheduler.socket_unwatch (sock)   -- immediately stop watching for incoming
+--            scheduler.socket_unwatch (sock)   -- immediately stop watching for incoming, 2019.11.29 change to client
+            scheduler.socket_unwatch (client)   -- immediately stop watching for incoming
             sock: close ()
           end
           expiry = 0             -- let the job timeout
-        end,
-      },{
+        end
+      setmetatable (client,{
         __index = function (s, f) 
             s[f] = function (_, ...) return sock[f] (sock, ...) end
             return s[f]  -- it's there now, so no need to recreate it in future
@@ -536,7 +539,8 @@ function server.new (config)
     
     do -- start a new user servlet using client socket and set up its callback
       incoming = servlet(client)                -- give client object and get user incoming callback
-      scheduler.socket_watch (sock, callback, nil, name)   -- start listening for incoming
+--      scheduler.socket_watch (sock, callback, nil, name)   -- start listening for incoming, 2019.11.29 change to client
+      scheduler.socket_watch (client, callback, nil, name)   -- start listening for incoming
     end
     
     --  job (), wait for job expiry

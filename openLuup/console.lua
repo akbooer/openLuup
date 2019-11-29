@@ -1963,30 +1963,75 @@ end
        },
 --]]
 function pages.triggers (p)
+  local function altui_device_watches (scn_no)
+    local altui_dn
+    for i,d in pairs (luup.devices) do
+      if d.device_type == "urn:schemas-upnp-org:device:altui:1"
+      and d.attributes.id_parent == 0 then 
+        altui_dn = i
+        break
+      end
+    end
+    local watches = {}
+    if altui_dn then
+      local w = luup.variable_get ("urn:upnp-org:serviceId:altui1","VariablesToWatch", altui_dn) or ''
+      for s,v,d,x,l in w: gmatch "([^#]+)#([^#]+)#0%-([^#]+)#([^#]+)#([^#]+)#;?" do
+        local srv, dev, scn = s:match "%w+$", tonumber (d), tonumber(x)   -- short serviceId, devNo, scnNo
+        if scn == scn_no then
+          watches[#watches+1] = {srv = srv, var = v, dev = dev, scn = scn, lua = l}
+        end
+      end
+    end
+    return watches
+  end
+  
   return scene_page (p, function (scene, title)
     local h = xhtml
     local T = h.div {class = "w3-container w3-cell"}
-    for i, t in ipairs (scene:user_table() .triggers) do
+--    for i, t in ipairs (scene:user_table() .triggers) do
+      
+--      local d, woo = 28, 14
+--      local dominos = t.enabled == 1 and 
+--          h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
+--        or 
+--          h.img {width=d, height=d, title="trigger is paused", src="icons/trigger-grey.svg"} 
+      
+--      local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
+--        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
+--      local w1 = widget_link ("page=trigger&edit=".. i, "view/edit trigger", "icons/edit.svg")
+--      local w2 = delete_link ("trigger", i)
+--      local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
+--      local desc = h.div {"dev: ", t.device}
+--      T[i] = generic_panel {
+--        title = t,
+--        height = 100,
+--        top_line = {left =  truncate (t.name), right = on_off},
+--        icon = icon,
+--        body = {middle = desc},
+--        widgets = {w1, w2},
+--      }        
+--    end
+    local watches = altui_device_watches (scene:user_table().id)
+    for i, t in ipairs (watches) do
       
       local d, woo = 28, 14
-      local dominos = t.enabled == 1 and 
+      local nbsp = unicode.nbsp
+      local dominos = 
           h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
-        or 
-          h.img {width=d, height=d, title="trigger is paused", src="icons/trigger-grey.svg"} 
       
-      local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
-        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
-      local w1 = widget_link ("page=trigger&edit=".. i, "view/edit trigger", "icons/edit.svg")
-      local w2 = delete_link ("trigger", i)
+--      local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
+--        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
+      local w1 = widget_link ("page=trigger&edit=".. t.scn, "view/edit trigger", "icons/edit.svg")
+--      local w2 = delete_link ("trigger", i)
       local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
-      local desc = h.div {"dev: ", t.device}
-      T[i] = generic_panel {
-        title = t,
+      local desc = h.div {'#', t.dev, h.br(), t.srv, h.br(), t.var}
+      T[#T+1] = generic_panel {
+        title = '',
         height = 100,
-        top_line = {left =  truncate (t.name), right = on_off},
+        top_line = {left = truncate ("AltUI watch #" .. tostring(i)), right = on_off},
         icon = icon,
         body = {middle = desc},
-        widgets = {w1, w2},
+--        widgets = {w1},
       }        
     end
     local create = xhtml.a {class="w3-button w3-round w3-green", 
@@ -2784,6 +2829,7 @@ function run (wsapi_env)
     .dev-panel {width:240px; float:left; }
     .scn-panel {width:240px; float:left; }
     .tim-panel {width:240px; float:left; }
+    .trg-panel {width:240px; float:left; }
     .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
     .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
   ]]},

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.08.25",
+  VERSION       = "2019.11.28",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -67,6 +67,7 @@ local ABOUT = {
 -- 2019.05.31   update openLuup help URL to new Vera community forum
 -- 2019.08.25   use local .svg icons for openLuup, AltAppStore, and VeraBridge plugins
 -- 2019.10.19   add modelID attribute, per latest Vera firmware (7.30)
+-- 2019.11.28   add openLuup table to saved user_data (for continuity of parameter settings between reloads)
 
 
 local json    = require "openLuup.json"
@@ -709,6 +710,8 @@ local function json_user_data (localLuup)   -- refactored thanks to @explorer
   for a,b in pairs (attributes) do
     if type(b) ~= "table" then data[a] = b end
   end
+  -- openLuup table attribute
+  data.openLuup = attributes.openLuup         -- 2019.11.28
   -- devices
   data.devices = devices_table (luup.devices or {})
   -- plugins
