@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2019.12.10",
+  VERSION       = "2019.12.11",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -50,6 +50,7 @@ local ABOUT = {
 -- 2019.08.12  add delete_single_var() to allow console to surgically remove one variable
 -- 2019.12.10  add sl_ prefix special case for variable history caching
 --             see: https://community.getvera.com/t/reactor-on-altui-openluup-variable-updates-condition/211412/16
+-- 2019.12.11  correct nil parameter handling in variable_watch() - thanks @rigpapa
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -347,13 +348,15 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
   }
   if dev then
     -- a specfic device
-    local srv = dev.services[serviceId]
-    if srv then
-      local var = srv.variables[variable] 
-      if var then                                 -- set the watch on the variable
-        var.watchers[#var.watchers+1] = callback
-      else                                        -- set the watch on the service
-        srv.watchers[#srv.watchers+1] = callback
+    if serviceId then
+      local srv = dev.services[serviceId]
+      if srv then 
+        if variable then                                 -- set the watch on the variable
+          local var = srv.variables[variable] 
+          if var then var.watchers[#var.watchers+1] = callback end
+        else                                        -- set the watch on the service
+          srv.watchers[#srv.watchers+1] = callback
+        end
       end
     else
       dev.watchers[#dev.watchers+1] = callback     -- set the watch on the device
