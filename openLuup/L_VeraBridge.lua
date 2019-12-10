@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.11.03",
+  VERSION       = "2019.12.10",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -108,6 +108,8 @@ ABOUT = {
 --              see: https://community.getvera.com/t/openluup-suggestions/189405/166
 -- 2019.10.26   use actual implementation file for bridged devices, not 'X'
 -- 2019.11.03   fix async timeout request cascade error
+-- 2019.12.10   add sl_ prefix special case to UpdateVariables(), thanks @rigpapa
+--              see: https://community.getvera.com/t/reactor-on-altui-openluup-variable-updates-condition/211412/16
 
 
 local devNo                      -- our device number
@@ -537,7 +539,7 @@ local function UpdateVariables(devices)
       device: status_set (dev.status)      -- 2016.04.29 set the overall device status
       for _, v in ipairs (dev.states) do
         local value = luup.variable_get (v.service, v.variable, i)
-        if v.value ~= value then
+        if (v.value ~= value) or (v.variable: sub(1,3) == "sl_") then   -- 2019.12.10  add sl_ prefix special case
           luup.variable_set (v.service, v.variable, v.value, i)
           update = true
         end

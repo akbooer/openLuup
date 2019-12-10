@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2019.11.29",
+  VERSION       = "2019.12.05",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -48,6 +48,7 @@ local h = xml.createHTMLDocument ()    -- for factory methods
 local div = h.div
 
 local sid = {
+    althue    = "urn:upnp-org:serviceId:althue1",
     altui     = "urn:upnp-org:serviceId:altui1",
     energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
     netatmo   = "urn:akbooer-com:serviceId:Netatmo1",
@@ -74,9 +75,10 @@ local panels = {
 -- AltHue
 --
 
-  alhue = {
-    panel = function ()
-      return "<span>ALTHUE panel coming shortly</span>"
+  althue = {
+    panel = function (devNo)
+      local v = luup.variable_get (sid.althue, "Version", devNo)
+      return h.span (v or '')
     end},
   
 --

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2019.08.12",
+  VERSION       = "2019.12.10",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2018 AKBooer",
@@ -48,6 +48,8 @@ local ABOUT = {
 -- 2019.04.24  changed job.notes to job.type in call_action()
 -- 2019.04.25  add touch() function to make device appear in status request, etc.
 -- 2019.08.12  add delete_single_var() to allow console to surgically remove one variable
+-- 2019.12.10  add sl_ prefix special case for variable history caching
+--             see: https://community.getvera.com/t/reactor-on-altui-openluup-variable-updates-condition/211412/16
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -256,7 +258,9 @@ function variable:set (value)
     local v = tonumber(value)                     -- only numeric values
     if v then
       local epoch = v > 1234567890                -- cheap way to identify recent epochs? (and other big numbers!)
-      if value ~= self.value and not epoch then   -- only cache changes
+      if ((value ~= self.value)                   -- only cache changes
+      or  (self.name: sub(1,3) == "sl_"))         -- 2019.12.10 sl_ prefix special case
+      and not epoch then
         local hipoint = (self.hipoint or 0) % (self.hicache or CacheSize) + 1
         local n = hipoint + hipoint
         self.hipoint = hipoint
