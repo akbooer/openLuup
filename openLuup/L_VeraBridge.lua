@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.12.10",
+  VERSION       = "2019.12.12",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -110,6 +110,8 @@ ABOUT = {
 -- 2019.11.03   fix async timeout request cascade error
 -- 2019.12.10   add sl_ prefix special case to UpdateVariables(), thanks @rigpapa
 --              see: https://community.getvera.com/t/reactor-on-altui-openluup-variable-updates-condition/211412/16
+-- 2019.12.12   CheckAllEveryNth added for user-selection of periodic status requests for all variables (0 = don't)
+--              see: https://community.getvera.com/t/reactor-on-altui-openluup-variable-updates-condition/211412/24
 
 
 local devNo                      -- our device number
@@ -138,6 +140,7 @@ local LoadTime                    -- ... ditto
 
 local RemotePort                  -- port to access remote machine ("/port_3480" for Vera, ":3480" for openLuup)
 local AsyncPoll, AsyncTimeout     -- asynchronous polling
+local CheckAllEveryNth            -- periodic status request for all variables
 
 local SID = {
   altui    = "urn:upnp-org:serviceId:altui1"  ,         -- Variables = 'DisplayLine1' and 'DisplayLine2'
@@ -611,10 +614,16 @@ do
   local log = "VeraBridge ASYNC callback status: %s, #data: %s"
   local erm = "VeraBridge ASYNC request: %s"
   
+  local function increment_poll_count ()                        -- 2019.12.12
+    local every = tonumber (CheckAllEveryNth) or 0
+    poll_count = poll_count + 1
+    if every > 0 then poll_count = poll_count % every end       -- wrap every N
+  end
+  
   -- original short polling
   
   function VeraBridge_delay_callback ()
-    poll_count = (poll_count + 1) % 10            -- wrap every 10
+    increment_poll_count ()
     if poll_count == 0 then DataVersion = '' end  -- .. and go for the complete list (in case we missed any)
     local url = "/data_request?id=status2&output_format=json&DataVersion=" .. DataVersion 
     local status, j = remote_request (url)
@@ -628,7 +637,7 @@ do
   
   function VeraBridge_async_request (init)
     last_async_call = os.time()
-    poll_count = (poll_count + 1) % 20                                    -- wrap every 20 ...
+    increment_poll_count ()
     if init == "INIT" or poll_count == 0 then DataVersion = '' end        -- .. and go for the complete list 
     
     local url = uri: format ("http://", ip, RemotePort, POLL_MAXIMUM, DataVersion)
@@ -983,8 +992,9 @@ function init (lul_device)
                                                 -- ...takes precedence over the first two.
                                               
   RemotePort    = uiVar ("RemotePort", "/port_3480")
-  AsyncPoll     = uiVar ("AsyncPoll", "false")    -- set to "true" to use ansynchronous polling of remote Vera
-  AsyncTimeout  = uiVar ("AsyncTimeout", 300)     -- watchdog timer for lost async requests (seconds)
+  AsyncPoll     = uiVar ("AsyncPoll", "false")        -- set to "true" to use ansynchronous polling of remote Vera
+  AsyncTimeout  = uiVar ("AsyncTimeout", 300)         -- watchdog timer for lost async requests (seconds)
+  CheckAllEveryNth = uiVar ("CheckAllEveryNth", 20)   -- periodic request for ALL variables to check status
   
   local hmm = uiVar ("HouseModeMirror",HouseModeOptions['0'])   -- 2016.05.23
   HouseModeMirror = hmm: match "^([012])" or '0'
