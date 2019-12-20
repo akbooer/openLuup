@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2019.12.05",
+  VERSION       = "2019.12.16",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -46,6 +46,7 @@ local xml = require "openLuup.xml"
 
 local h = xml.createHTMLDocument ()    -- for factory methods
 local div = h.div
+local p = h.p
 
 local sid = {
     althue    = "urn:upnp-org:serviceId:althue1",
@@ -54,6 +55,7 @@ local sid = {
     netatmo   = "urn:akbooer-com:serviceId:Netatmo1",
     scene     = "urn:micasaverde-com:serviceId:SceneController1",
     security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
+    weather   = "urn:upnp-micasaverde-com:serviceId:Weather1",
   }
   
 local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
@@ -106,7 +108,13 @@ local panels = {
 
   Netatmo = {
     control = function ()
-      return "<p>Netatmo controls</p>"
+      local br = h.br{}
+      return div {p "Links to reports:",
+        p {
+          h.a {href="/data_request?id=lr_Netatmo&page=organization", target="_blank", "Device Tree"}, br,
+          h.a {href="/data_request?id=lr_Netatmo&page=list", target="_blank", "Device List"}, br,
+          h.a {href="/data_request?id=lr_Netatmo&page=diagnostics?", target="_blank", "Diagnostics"}, br,
+        }}
     end},
 
 --
@@ -141,13 +149,12 @@ local panels = {
 
   Weather = {
     control = function (devNo)  
-      local sid = "urn:upnp-micasaverde-com:serviceId:Weather1"
       local class = "w3-card w3-margin w3-round w3-padding"
       
       local function items (list)
         local t = h.table {class="w3-small"}
         for _, name in ipairs (list) do 
-          local v = luup.variable_get (sid, name, devNo)
+          local v = luup.variable_get (sid.weather, name, devNo)
           t.row {name:gsub ("(%w)([A-Z])", "%1 %2"), v} 
         end
         return t
@@ -158,12 +165,13 @@ local panels = {
                 "PrecipType", "PrecipProbability", "WindBearing", "Ozone", "ApparentTemperature", "CurrentCloudCover"}
       local today = items {"TodayLowTemp", "TodayHighTemp", "TodayPressure"}
       local tomorrow = items {"TomorrowLowTemp", "TomorrowHighTemp", "TomorrowPressure"}
+      local time = luup.variable_get (sid.weather, "LastUpdate", devNo)
       
       return 
         div { class = "w3-row",
           div {class = class, h.h5 "General Conditions", conditions},
           div {class = "w3-half", 
-            div {class = class, h.h5 "Now", current} },
+            div {class = class, h.h5 "At ", time and todate(time) or '?', current} },
           div {class = "w3-row w3-half",
             div {class = class, h.h5 "Today", today},
             div {class = class, h.h5 "Tomorrow", tomorrow} } }

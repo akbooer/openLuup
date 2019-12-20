@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2019.11.08",
+  VERSION       = "2019.12.19",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -61,6 +61,7 @@ local ABOUT = {
 -- 2019.08.29  check non-empty device name in create(), thanks @cokeman
 -- 2019.09.14  set specified attributes to AFTER the default settings - thanks @reneboer
 -- 2019.10.28  do not run startup code for devices whose parent handles them
+-- 2019.12.19  fix get_icons() - state_icon entries may incllude list of the icon names, so ignore non-table items
 
 
 local logs      = require "openLuup.logs"
@@ -343,16 +344,19 @@ local function create (x)
 
     local cn, scn = self.category_num, self.subcategory_num
     for _, set in ipairs (si) do
+      -- 2019.12.19 note that initial entries may include list of the icon names, so ignore non-table items
       -- each set is {conditions = {}...}, img = '...'} and all need to be met
-      local met = true
-      for _, c in ipairs (set.conditions or {}) do
-        local cat = (not c.category_num or c.category_num == cn) and
-                    (not c.subcategory_num or c.subcategory_num == scn) 
-        met = met and cat and is_true (self, c)
-      end
-      if met then
-        icon = set.img or icon
-        break
+      if type(set) == "table" then
+        local met = true
+        for _, c in ipairs (set.conditions or {}) do
+          local cat = (not c.category_num or c.category_num == cn) and
+                      (not c.subcategory_num or c.subcategory_num == scn) 
+          met = met and cat and is_true (self, c)
+        end
+        if met then
+          icon = set.img or icon
+          break
+        end
       end
     end
     return icon

@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.11.26",
+  VERSION       = "2019.12.20",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -462,6 +462,54 @@ local function map_menu_tree (fct)
   local console = json.decode(console_json) or empty
   for _, menu in ipairs (console.menus or {}) do fct (menu) end
 end
+
+-- find the local AltUI plugin device number
+local function find_AltUI ()
+  for i,d in pairs (luup.devices) do
+    if d.device_type == "urn:schemas-upnp-org:device:altui:1"
+    and d.attributes.id_parent == 0 then 
+      return i
+    end
+  end
+end
+
+-- find all the AltUI device watch triggers
+-- optional scene number return triggers for that scene only
+local function altui_device_watches (scn_no)
+  local watches = {}
+  local altui_dn = find_AltUI()
+  if altui_dn then
+    local w = luup.variable_get ("urn:upnp-org:serviceId:altui1", "VariablesToWatch", altui_dn) or ''
+    for s,v,d,x,l in w: gmatch "([^#]+)#([^#]+)#0%-([^#]+)#([^#]+)#([^#]+)#;?" do
+      local srv, dev, scn = s:match "%w+$", tonumber (d), tonumber(x)   -- short serviceId, devNo, scnNo
+      if not scn_no or scn == scn_no then
+        watches[#watches+1] = {srv = srv, var = v, dev = dev, scn = scn, lua = l}
+      end
+    end
+  end
+  return watches
+end
+
+-- find all the native Luup triggers (ignored/disabled by openLuup)
+local function luup_triggers (scn_no)
+  local triggers = {}
+  local scenes = scn_no and {[scn_no] = luup.scenes[scn_no]} or luup.scenes
+  for s, scn in pairs (scenes) do
+    local info = scn: user_table() --.triggers
+    for _, t in ipairs (info.triggers or {}) do
+      local devNo = t.device
+      if devNo ~= 2 then    -- else ignore openLuup trigger warning
+        local json = ((luup.devices[devNo] or empty).attributes or empty).device_json
+        local events = (loader.static_data[json] or empty) .eventList2 or empty
+        local template = events[tonumber(t.template or 0)] or empty
+        local text = (template.label or empty) . text or '?'
+        triggers[#triggers+1] = {scn = s, name = t.name, dev = devNo, text = text}
+      end
+    end
+  end
+  return triggers
+end
+
 
 -- make a drop-down selection for things
 local function xselect (hidden, options, selected, presets)
@@ -1963,28 +2011,6 @@ end
        },
 --]]
 function pages.triggers (p)
-  local function altui_device_watches (scn_no)
-    local altui_dn
-    for i,d in pairs (luup.devices) do
-      if d.device_type == "urn:schemas-upnp-org:device:altui:1"
-      and d.attributes.id_parent == 0 then 
-        altui_dn = i
-        break
-      end
-    end
-    local watches = {}
-    if altui_dn then
-      local w = luup.variable_get ("urn:upnp-org:serviceId:altui1","VariablesToWatch", altui_dn) or ''
-      for s,v,d,x,l in w: gmatch "([^#]+)#([^#]+)#0%-([^#]+)#([^#]+)#([^#]+)#;?" do
-        local srv, dev, scn = s:match "%w+$", tonumber (d), tonumber(x)   -- short serviceId, devNo, scnNo
-        if scn == scn_no then
-          watches[#watches+1] = {srv = srv, var = v, dev = dev, scn = scn, lua = l}
-        end
-      end
-    end
-    return watches
-  end
-  
   return scene_page (p, function (scene, title)
     local h = xhtml
     local T = h.div {class = "w3-container w3-cell"}
@@ -2505,6 +2531,32 @@ function pages.scenes_table (p, req)
   local room_nav = sidebar (p, rooms_selector, device_sort, scene_filter)
   local sdiv = xhtml.div {room_nav, xhtml.div {class="w3-rest w3-panel", create, t} }
   return page_wrapper ("Scenes Table", sdiv)
+end
+
+function pages.triggers_table ()
+  local Topen = {}
+  local Otrg = {}
+  local o = create_table_from_data ({'#', "scene", "watching: device.service.variable", "Lua conditional"}, Otrg)  
+  
+  local Taltui = altui_device_watches ()    -- {srv = srv, var = v, dev = dev, scn = scn, lua = l}
+  local Atrg = {}
+  for i, x in ipairs (Taltui) do
+    Atrg[i]= {i, rhs(x.scn), table.concat ({x.dev, x.srv, x.var}, '.'), x.lua}
+  end
+  local t = create_table_from_data ({'#', "scene", "watching: device.service.variable", "Lua conditional"}, Atrg)  
+  
+  local Tluup = luup_triggers ()    -- {{scn = s, name = t.name, dev = devNo, text = text}}
+  local Ltrg = {}
+  for i, x in ipairs (Tluup) do
+    Ltrg[i]= {i, rhs(x.scn), rhs(x.dev), x.name, x.text}
+  end
+  local l = create_table_from_data ({'#', "scene", "device", "event", "text"}, Ltrg)  
+  
+  local tdiv = xhtml.div {
+    xhtml.h5 "openLuup Device Variable Watch Triggers", o,
+    xhtml.h5 "AltUI Device Variable Watch Triggers", t,
+    xhtml.h5 "Luup UPnP Triggers (ignored by openLuup)", l}
+  return page_wrapper ("Triggers Table", tdiv)
 end
 
 local function xinput (label, name, value, title)
