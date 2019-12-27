@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.12.20",
+  VERSION       = "2019.12.26",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -2533,29 +2533,48 @@ function pages.scenes_table (p, req)
   return page_wrapper ("Scenes Table", sdiv)
 end
 
-function pages.triggers_table ()
-  local Topen = {}
+function pages.triggers_table (p)
+  
+  local options = {"All Triggers", "openLuup", "AltUI", "Luup UPnP"}
+  local request_type = p.type or options[1]
+  local selection = sidebar (p, function () return filter_menu (options, request_type, "type=") end)
+  
+  local all = request_type == options[1]
+  local triggers = xhtml.div {class="w3-rest w3-panel"}
+    
   local Otrg = {}
-  local o = create_table_from_data ({'#', "scene", "watching: device.service.variable", "Lua conditional"}, Otrg)  
+  if all or request_type == options[2] then
+    -- local Topen = {}
+    local o = create_table_from_data ({'#', "scene", "watching: device.service.variable", "Lua conditional"}, Otrg)  
+    triggers[#triggers+1] = xhtml.div {xhtml.h5 "openLuup Device Variable Watch Triggers", o}
+  end
   
-  local Taltui = altui_device_watches ()    -- {srv = srv, var = v, dev = dev, scn = scn, lua = l}
   local Atrg = {}
-  for i, x in ipairs (Taltui) do
-    Atrg[i]= {i, rhs(x.scn), table.concat ({x.dev, x.srv, x.var}, '.'), x.lua}
+  if all or request_type == options[3] then
+    local Taltui = altui_device_watches ()    -- {srv = srv, var = v, dev = dev, scn = scn, lua = l}
+    for i, x in ipairs (Taltui) do
+      local link = xlink ("page=header&scene="..x.scn)
+      Atrg[i]= {i, link, rhs(x.scn), table.concat ({x.dev, x.srv, x.var}, '.'), x.lua}
+    end
+    local t = create_table_from_data (
+      {'#', {colspan=2, "scene"}, "watching: device.service.variable", "Lua conditional"}, Atrg)  
+    triggers[#triggers+1] = xhtml.div {xhtml.h5 "AltUI Device Variable Watch Triggers", t}   
   end
-  local t = create_table_from_data ({'#', "scene", "watching: device.service.variable", "Lua conditional"}, Atrg)  
   
-  local Tluup = luup_triggers ()    -- {{scn = s, name = t.name, dev = devNo, text = text}}
   local Ltrg = {}
-  for i, x in ipairs (Tluup) do
-    Ltrg[i]= {i, rhs(x.scn), rhs(x.dev), x.name, x.text}
+  if all or request_type == options[4] then
+    local Tluup = luup_triggers ()    -- {{scn = s, name = t.name, dev = devNo, text = text}}
+    for i, x in ipairs (Tluup) do
+      local link = xlink ("page=header&scene="..x.scn)
+      Ltrg[i]= {i, link, rhs(x.scn), rhs(x.dev), x.name, x.text}
+    end
+    local l = create_table_from_data ({'#', {colspan=2, "scene"}, "device", "event", "text"}, Ltrg)  
+    triggers[#triggers+1] = xhtml.div {xhtml.h5 "Luup UPnP Triggers (ignored by openLuup)", l}
   end
-  local l = create_table_from_data ({'#', "scene", "device", "event", "text"}, Ltrg)  
-  
-  local tdiv = xhtml.div {
-    xhtml.h5 "openLuup Device Variable Watch Triggers", o,
-    xhtml.h5 "AltUI Device Variable Watch Triggers", t,
-    xhtml.h5 "Luup UPnP Triggers (ignored by openLuup)", l}
+      
+  local create = xhtml.a {class="w3-button w3-round w3-green", 
+    href = selfref "page=create_trigger", "+ Create", title="create new trigger"}
+  local tdiv = xhtml.div {selection, xhtml.div {class="w3-rest w3-panel", create, triggers} }
   return page_wrapper ("Triggers Table", tdiv)
 end
 

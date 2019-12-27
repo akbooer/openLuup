@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2019.12.16",
+  VERSION       = "2019.12.26",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -110,10 +110,10 @@ local panels = {
     control = function ()
       local br = h.br{}
       return div {p "Links to reports:",
-        p {
+        p {class="w3-text-indigo",
           h.a {href="/data_request?id=lr_Netatmo&page=organization", target="_blank", "Device Tree"}, br,
           h.a {href="/data_request?id=lr_Netatmo&page=list", target="_blank", "Device List"}, br,
-          h.a {href="/data_request?id=lr_Netatmo&page=diagnostics?", target="_blank", "Diagnostics"}, br,
+          h.a {href="/data_request?id=lr_Netatmo&page=diagnostics", target="_blank", "Diagnostics"}, br,
         }}
     end},
 
@@ -126,7 +126,7 @@ local panels = {
       local watts = luup.variable_get (sid.energy, "Watts", devNo)
       local time  = luup.variable_get (sid.energy, "KWHReading", devNo)
       local kwh   = luup.variable_get (sid.energy, "KWH", devNo)
-      return h.span {watts or '???', " Watts", h.br(), kwh or '???', " kWh", h.br(), 
+      return h.span {watts or '???', " Watts", h.br(), ("%0.0f"): format(kwh or 0), " kWh", h.br(), 
         div {class = "w3-tiny w3-display-bottomright", time and todate(time) or "---  00:00"}}
     end},
 
@@ -151,27 +151,28 @@ local panels = {
     control = function (devNo)  
       local class = "w3-card w3-margin w3-round w3-padding"
       
-      local function items (list)
+      local function items (list, prefix)
+        prefix = prefix or ''
         local t = h.table {class="w3-small"}
         for _, name in ipairs (list) do 
-          local v = luup.variable_get (sid.weather, name, devNo)
+          local v = luup.variable_get (sid.weather, prefix..name, devNo)
           t.row {name:gsub ("(%w)([A-Z])", "%1 %2"), v} 
         end
-        return t
+        return div {class = "w3-container", t}
       end
       
       local conditions = items {"CurrentConditions", "TodayConditions", "TomorrowConditions", "WeekConditions"}
-      local current = items {"CurrentTemperature", "CurrentHumidity", "CurrentDewPoint", "PrecipIntensity", "WindSpeed", 
-                "PrecipType", "PrecipProbability", "WindBearing", "Ozone", "ApparentTemperature", "CurrentCloudCover"}
-      local today = items {"TodayLowTemp", "TodayHighTemp", "TodayPressure"}
-      local tomorrow = items {"TomorrowLowTemp", "TomorrowHighTemp", "TomorrowPressure"}
+      local current = items ({"Temperature", "Humidity", "DewPoint", "PrecipIntensity", "WindSpeed", 
+              "PrecipType", "PrecipProbability", "WindBearing", "Ozone", "ApparentTemperature", "CloudCover"}, "Current")
+      local today = items ({"LowTemp", "HighTemp", "Pressure"}, "Today")
+      local tomorrow = items ({"LowTemp", "HighTemp", "Pressure"}, "Tomorrow")
       local time = luup.variable_get (sid.weather, "LastUpdate", devNo)
       
       return 
         div { class = "w3-row",
           div {class = class, h.h5 "General Conditions", conditions},
           div {class = "w3-half", 
-            div {class = class, h.h5 "At ", time and todate(time) or '?', current} },
+            div {class = class, h.h5 (time and os.date ("At %H:%M, %d-%b-'%y", time) or '?'), current} },
           div {class = "w3-row w3-half",
             div {class = class, h.h5 "Today", today},
             div {class = class, h.h5 "Tomorrow", tomorrow} } }
