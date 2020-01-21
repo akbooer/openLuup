@@ -5,13 +5,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2019.12.26",
+  VERSION       = "2020.01.16",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-19 AK Booer
+  Copyright 2013-20 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -2129,8 +2129,31 @@ end
  
 function pages.group_actions (p)
   return scene_page (p, function (scene, title)
-    local pre = xhtml.pre {json.encode (scene:user_table() .groups)}
-    return title .. " - actions (in delay groups)", pre
+--    local pre = xhtml.pre {json.encode (scene:user_table() .groups)}
+    local h = xhtml
+    local groups = h.div {class = "w3-container"}
+    for g, group in ipairs (scene:user_table() .groups) do
+      local delay = tonumber (group.delay) or 0
+      local d = h.div {class = "w3-panel", h.h5 {"Delay ", delay}}
+      for i, a in ipairs (group.actions) do
+--        local args = {}
+--        for _, arg in pairs(a.arguments) do   -- fix parameters handling.  Thanks @delle !
+--          args[arg.name] = arg.value
+--        end
+        local srv = a.service: match "[^:]+$" or a.service
+        local desc = h.div {'#', a.device, h.br(), srv}
+        d[i+1] = generic_panel {
+          title = a.action,
+          height = 100,
+          top_line = {left = a.action},
+          icon = '',
+          body = {middle = desc},
+--          widgets = {w1, w2},
+        }        
+      end
+      groups[g] = d
+    end
+    return title .. " - actions (in delay groups)", groups
   end)
 end
  
@@ -2677,6 +2700,7 @@ function pages.plugins_table (_, req)
       xhtml.input {hidden=1, name="action", value="update_plugin"},
       xhtml.input {hidden=1, name="plugin", value=p.id},
       xhtml.div {class="w3-display-container",
+        -- TODO: should the following name be "update" or "version" ???
         xhtml.input {class="w3-hover-border-red", type = "text", autocomplete="off", name="version", value=''},
         xhtml.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
           title="update", alt='', height=28, width=28} } }

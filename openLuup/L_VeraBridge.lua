@@ -1,13 +1,13 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2019.12.12",
+  VERSION       = "2020.01.21",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -113,6 +113,8 @@ ABOUT = {
 -- 2019.12.12   CheckAllEveryNth added for user-selection of periodic status requests for all variables (0 = don't)
 --              see: https://community.getvera.com/t/reactor-on-altui-openluup-variable-updates-condition/211412/24
 
+-- 2020.01.21   Add POLL_ERRORS and POLL_TIMEOUTS globals to diagnose asynch callback failures
+
 
 local devNo                      -- our device number
 
@@ -130,6 +132,9 @@ local ip                          -- remote machine ip address
 POLL_DELAY = 5              -- number of seconds between remote polls
 POLL_MINIMUM = 0.5          -- minimum delay (s) for async polling
 POLL_MAXIMUM = 30           -- maximum delay (s) ditto
+
+POLL_ERRORS = 0
+POLL_TIMEOUTS = 0
 
 local local_room_index           -- bi-directional index of our rooms
 local remote_room_index          -- bi-directional of remote rooms
@@ -645,6 +650,7 @@ do
   
     if not ok then -- we will never be called again, unless we do something about it
       luup.log (erm: format (tostring(err)))                              -- report error...
+      POLL_ERRORS = POLL_ERRORS + 1
       luup.call_delay ("VeraBridge_async_request", POLL_DELAY, "INIT")    -- ...and reschedule ourselves to try again
     end
   end
@@ -665,6 +671,7 @@ do
 
   function VeraBridge_async_watchdog (timeout)
     if (last_async_call + timeout) < os.time() then
+      POLL_TIMEOUTS = POLL_TIMEOUTS + 1
       VeraBridge_async_request ()                     -- throw in another call, just in case we missed one
     end
     luup.call_delay ("VeraBridge_async_watchdog", timeout, timeout)
