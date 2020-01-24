@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.01.16",
+  VERSION       = "2020.01.23",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -2014,29 +2014,29 @@ function pages.triggers (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
     local T = h.div {class = "w3-container w3-cell"}
---    for i, t in ipairs (scene:user_table() .triggers) do
+    for i, t in ipairs (scene:user_table() .triggers) do
       
---      local d, woo = 28, 14
---      local dominos = t.enabled == 1 and 
---          h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
---        or 
---          h.img {width=d, height=d, title="trigger is paused", src="icons/trigger-grey.svg"} 
+      local d, woo = 28, 14
+      local dominos = t.enabled == 1 and 
+          h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
+        or 
+          h.img {width=d, height=d, title="trigger is paused", src="icons/trigger-grey.svg"} 
       
---      local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
---        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
---      local w1 = widget_link ("page=trigger&edit=".. i, "view/edit trigger", "icons/edit.svg")
---      local w2 = delete_link ("trigger", i)
---      local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
---      local desc = h.div {"dev: ", t.device}
---      T[i] = generic_panel {
---        title = t,
---        height = 100,
---        top_line = {left =  truncate (t.name), right = on_off},
---        icon = icon,
---        body = {middle = desc},
---        widgets = {w1, w2},
---      }        
---    end
+      local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
+        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
+      local w1 = widget_link ("page=trigger&edit=".. i, "view/edit trigger", "icons/edit.svg")
+      local w2 = delete_link ("trigger", i)
+      local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
+      local desc = h.div {"dev: ", t.device}
+      T[i] = generic_panel {
+        title = t,
+        height = 100,
+        top_line = {left =  truncate (t.name), right = on_off},
+        icon = icon,
+        body = {middle = desc},
+        widgets = {w1, w2},
+      }        
+    end
     local watches = altui_device_watches (scene:user_table().id)
     for i, t in ipairs (watches) do
       

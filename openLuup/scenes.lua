@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2019.11.24",
+  VERSION       = "2020.01.23",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -362,14 +362,15 @@ local function create (scene_json)
     for i = n,1,-1 do       -- go backwards through list since it may be shortened in the process
       local t = triggers[i]
       t.enabled = 0         -- 2019.06.10  disable all triggers
-      if t.device == 2 or not luup.devices[t.device] then
+--      if t.device == 2 or not luup.devices[t.device] then
+      if not luup.devices[t.device] then
         table.remove (triggers, i)
       end
     end
     -- 2017.08.08
-    if #triggers ~= 0 then    -- insert warning that these triggers are not active
-      table.insert(triggers, 1, trigger_warning)
-    end
+--    if #triggers ~= 0 then    -- insert warning that these triggers are not active
+--      table.insert(triggers, 1, trigger_warning)
+--    end
   end
 
   --create ()

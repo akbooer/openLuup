@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2019.11.21",
+  VERSION       = "2020.01.23",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2019 AK Booer
+  Copyright 2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -158,6 +158,30 @@ local D_openLuup_json = json.encode {
   eventList2 = {
     {id = 1, serviceId = "openLuup",argumentList = {},
       label = Label ("triggers_are_not_implemented", "Triggers not implemented, use Watch instead")},
+    {id = 2, serviceId = "openLuup",
+      label = Label ("hft_dvw", "Device Variable Watch"),
+      argumentList = {
+              {
+                  id = 1,
+                  name = "Device",
+                  comparisson = "=",
+--                  HumanFriendlyText = Label ("hft_", "_DEVICE_NAME_: Variable Watch, device #_ARGUMENT_VALUE_"),
+                  suffix = Label ("spc", ' '),
+              },
+              {
+                  id = 2,
+                  name = "Service",
+                  defaultValue = "blank: serviceId only required to disambiguate non-unique variable names",
+                  comparisson = "=",
+              },
+              {
+                  id = 3,
+                  name = "Variable",
+                  comparisson = "=",
+              },
+          },
+      },
+    
     }
   }
 
