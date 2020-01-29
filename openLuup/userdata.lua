@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2019.11.28",
+  VERSION       = "2020.01.28",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -68,6 +68,8 @@ local ABOUT = {
 -- 2019.08.25   use local .svg icons for openLuup, AltAppStore, and VeraBridge plugins
 -- 2019.10.19   add modelID attribute, per latest Vera firmware (7.30)
 -- 2019.11.28   add openLuup table to saved user_data (for continuity of parameter settings between reloads)
+
+-- 2020.01.28   replace scene:user_table() with scene.definition, following object changes in scenes
 
 
 local json    = require "openLuup.json"
@@ -724,7 +726,7 @@ local function json_user_data (localLuup)   -- refactored thanks to @explorer
   -- scenes
   local scenes = data.scenes
   for _, s in pairs (luup.scenes or {}) do
-    scenes[#scenes+1] = s: user_table ()
+    scenes[#scenes+1] = s.definition
   end    
   --
   return json.encode (data)   -- json text or nil, error message if any

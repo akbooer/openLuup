@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2019.05.12",
+  VERSION       = "2020.01.28",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -38,6 +38,8 @@ local ABOUT = {
 -- 2018.03.05   only trigger House Mode change if new value different from old
 
 -- 2019.05.12   make RunScene action use job, rather than run tag.
+
+-- 2020.01.28   add parameter table to scene(run) call (for detection of AltUI requests)
 
 
 local requests    = require "openLuup.requests"
@@ -334,7 +336,8 @@ Device_0.services[SID].actions =
         local scene_num = tonumber (p.SceneNum)
         local scene = luup.scenes[scene_num or '']
         if scene then
-          scene.run ()
+          local actor = (p and p._) and "AltUI" or "command"
+          scene: run (nil, nil, {actor = actor})    -- third parameter is for logging AltUI requests
         end
 --        return true
       end

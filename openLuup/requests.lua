@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2019.11.29",
+  VERSION       = "2020.01.28",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -71,6 +71,8 @@ local ABOUT = {
 -- 2017.07.15  encode action request XML response from scratch, using new XML document constructor
 -- 2019.07.31  use new client and server modules (http split into two)
 -- 2019.11.29  update test request to show client socket id (if present)
+
+-- 2020.01.27  object-oriented scene:rename() rather than scene.rename()
 
 
 local client        = require "openLuup.client"
@@ -524,7 +526,7 @@ local category_filter = {      -- no idea what this is, but AltUI seems to need 
 local function user_scenes_table()
   local scenes = {}
   for _,sc in pairs (luup.scenes) do
-    scenes[#scenes+1] = sc.user_table()
+    scenes[#scenes+1] = sc.definition
   end
   return scenes
 end
@@ -629,15 +631,14 @@ local function scene (_,p)
   --Example: http://ip_address:3480/data_request?id=scene&action=delete&scene=5
   local function delete (scene) 
     if scene then 
-      scene:stop()                             -- stop scene triggers and timers
-      luup.scenes[scene.user_table().id] = nil -- remove reference to the scene
+      scenes.delete (scene.definition.id) -- remove reference to the scene
     end
   end
   --Example: http://ip_address:3480/data_request?id=scene&action=create&json=[valid json data]
   local function create () 
     local new_scene, msg = scenes.create (p.json)
     if new_scene then
-      local id = new_scene.user_table().id
+      local id = new_scene.definition.id
       if luup.scenes[id] then
         delete (luup.scenes[id])               -- remove the old scene with this id
       end
@@ -653,14 +654,11 @@ local function scene (_,p)
       for i, name in pairs (luup.rooms) do room_index[name] = i end
       new_room_num = room_index[room]
     end
-    if scene then scene.rename (name, new_room_num) end
+    if scene then scene: rename (name, new_room_num) end    -- 2020.01.27
   end
   --Example: http://ip_address:3480/data_request?id=scene&action=list&scene=5
   local function list (scene)
-    if scene and scene.user_table then
-      return json.encode (scene.user_table()) or "ERROR"
-    end
-    return "ERROR"
+    return scene and tostring (scene) or "ERROR"            -- 2020.01.27
   end
   local function noop () return "ERROR" end
 
@@ -965,7 +963,7 @@ local function lua ()    -- 2018.04.22
 
   -- scenes
   for i,s in pairs (luup.scenes) do
-      local lua = s:user_table().lua
+      local lua = s.definition.lua or ''
       if #lua > 0 then
           pr ("function scene_" .. i .. "()")
           pr (lua)

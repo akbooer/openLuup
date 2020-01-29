@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2019.11.09",
+  VERSION       = "2020.01.25",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -63,6 +63,8 @@ local ABOUT = {
 -- 2019.10.14  add device number to context_switch error message, thanks @Buxton
 -- 2019.11.02  order local job list by priority (to allow VerBridge to start before other plugins)
 -- 2019.11.08  use numerical priority (0 high, inf low, nil lowest), add jobNo to job structure
+
+-- 2020.01.25  improve watch callback log message, adding device contaxt and callback name
 
 
 local logs      = require "openLuup.logs"
@@ -536,7 +538,7 @@ local function task_callbacks ()
         -- priority is a number (not necessarily integer) with smaller numbers having higher priority, nil is lowest
         -- this affects both the order of device startup, and also prioritization of subsequent time slices
       local_job_list = {}
-      local no_priority = {}, {}
+      local no_priority = {}
       for jobNo, job in pairs (job_list) do
         if job.priority then 
           local_job_list[#local_job_list+1] = jobNo     -- insert at front
@@ -623,12 +625,14 @@ local function luup_callbacks ()
     N = N + 1
     local old_watch_list = watch_list
     watch_list = {}                       -- new list, because callbacks may change some variables!
+    local log_message = "%s.%s.%s called [%s]%s() %s"
     for _, callback in ipairs (old_watch_list) do
       for _, watcher in ipairs (callback.watchers) do   -- single variable may have multiple watchers
         local var = callback.var
         local user_callback = watcher.callback
         if not watcher.silent then
-          _log (("%s.%s.%s %s"): format(var.dev, var.srv, var.name, tostring (user_callback)), 
+          _log (log_message: format(var.dev, var.srv, var.name, 
+                      watcher.devNo or 0, watcher.name or "anon", tostring (user_callback)), 
                   "luup.watch_callback") 
         end
         local ok, msg = context_switch (watcher.devNo, user_callback, 

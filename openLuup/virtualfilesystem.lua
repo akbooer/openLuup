@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.01.23",
+  VERSION       = "2020.01.24",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -156,17 +156,15 @@ local D_openLuup_json = json.encode {
                 "If you like openLuup, you could DONATE to Cancer Research UK right here</a>")),
    }}},
   eventList2 = {
-    {id = 1, serviceId = "openLuup",argumentList = {},
-      label = Label ("triggers_are_not_implemented", "Triggers not implemented, use Watch instead")},
-    {id = 2, serviceId = "openLuup",
-      label = Label ("hft_dvw", "Device Variable Watch"),
+--    {id = 1, serviceId = "openLuup",argumentList = {},
+--      label = Label ("triggers_are_not_implemented", "Triggers not implemented, use Watch instead")},
+    {id = 1, serviceId = "openLuup",
+      label = Label ("hft_dvw", "Variable Watch"),
       argumentList = {
               {
                   id = 1,
                   name = "Device",
                   comparisson = "=",
---                  HumanFriendlyText = Label ("hft_", "_DEVICE_NAME_: Variable Watch, device #_ARGUMENT_VALUE_"),
-                  suffix = Label ("spc", ' '),
               },
               {
                   id = 2,

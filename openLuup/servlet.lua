@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2019.11.29",
+  VERSION       = "2020.01.29",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -63,6 +63,9 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2019.11.29   add client socket to servlet.execute() parameter list and data_request handlers
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263
 
+-- 2020.01.29   add "dontrespond" option for external data_requests
+--   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263/7
+
 
 -- TODO: use WSAPI response library in servlets?
 
@@ -75,7 +78,7 @@ local tables    = require "openLuup.servertables"       -- mimetypes and status_
 local loader    = require "openLuup.loader"             -- for raw_read()
 
 --local _log, _debug = logs.register (ABOUT)
-local _log = logs.register (ABOUT)
+local _log, _debug = logs.register (ABOUT)
 
 -- TABLES
 
@@ -124,7 +127,7 @@ local function add_callback_handlers (handlers, devNo)
 end
 
 local function data_request (wsapi_env, req, client)
-
+  _debug ((client or {}).ip or "internal") 
   -- 2019.07.29 use WSAPI request library to parse GET and POST parameters...
   -- the library's built-in req.params mechanism is built on demand for an individual request parameter, 
   -- so not used here... this complete list is built from the GET and POST parameters individually
@@ -216,7 +219,9 @@ local function data_request_task (wsapi_env, respond, client)
     end
     
     -- finally (perhaps) execute the request
-    respond (data_request (wsapi_env, req, client))
+    local status, headers, iterator = data_request (wsapi_env, req, client)
+      
+    if headers ["Content-Type"] ~= "dontrespond" then respond (status, headers, iterator) end  -- 2020.01.29
     
     return scheduler.state.Done, 0  
   end

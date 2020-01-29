@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.01.23",
+  VERSION       = "2020.01.28",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -69,6 +69,9 @@ ABOUT = {
 -- 2019.07.14  use new xml.createNewHtmlDocument() factory method
 -- 2019.07.31  use new server module (name reverted from http)
 -- 2019.08.20  add new "globals" page for individual devices
+
+-- 2020.01.25  add openLuup watch triggers
+-- 2020.01.27  start implementing object-oriented scene changes
 
 
 --  WSAPI Lua CGI implementation
@@ -242,7 +245,7 @@ local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
 local function todate_ms (epoch) return ("%s.%03d"): format (todate (epoch),  math.floor(1000*(epoch % 1))) end
 
 local function truncate (s, maxlength)
-  maxlength = maxlength or 24
+  maxlength = maxlength or 22
   if #s > maxlength then s = s: sub(1, maxlength) .. "..." end
   return s
 end
@@ -495,16 +498,18 @@ local function luup_triggers (scn_no)
   local triggers = {}
   local scenes = scn_no and {[scn_no] = luup.scenes[scn_no]} or luup.scenes
   for s, scn in pairs (scenes) do
-    local info = scn: user_table() --.triggers
+    local info = scn.definition --.triggers
     for _, t in ipairs (info.triggers or {}) do
       local devNo = t.device
-      if devNo ~= 2 then    -- else ignore openLuup trigger warning
+--      if devNo ~= 2 then    -- else ignore openLuup trigger warning
         local json = ((luup.devices[devNo] or empty).attributes or empty).device_json
         local events = (loader.static_data[json] or empty) .eventList2 or empty
         local template = events[tonumber(t.template or 0)] or empty
+        local args = {}
+        for i, arg in ipairs (t.arguments or empty) do args[i] = arg.value end
         local text = (template.label or empty) . text or '?'
-        triggers[#triggers+1] = {scn = s, name = t.name, dev = devNo, text = text}
-      end
+        triggers[#triggers+1] = {scn = s, name = t.name, dev = devNo, text = text, args = args}
+--      end
     end
   end
   return triggers
@@ -601,7 +606,7 @@ function actions.bookmark (p)
   end
   local scn = luup.scenes[tonumber (p.scn)]
   if scn then
-    local a = scn.user_table ()
+    local a = scn.definition
     a.favorite = not a.favorite
   end
 end
@@ -619,12 +624,12 @@ end
 
 function actions.toggle_pause (p)
   local scene = luup.scenes[tonumber (p.scn)]
-  if scene then scene.on_off () end
+  if scene then scene: on_off() end
 end
 
 function actions.run_scene (p)
   local scene = luup.scenes[tonumber (p.scn)]
-  if scene then scene.run () end    -- TODO: run this asynchronously?
+  if scene then scene: run (nil, nil, {actor = "openLuup console"}) end    -- TODO: run this asynchronously?
 end
 
 function actions.slider (_, req)
@@ -678,7 +683,8 @@ function actions.delete (p)
   elseif p.dev then
     requests.device ('', {action = "delete", device = p.dev}) 
   elseif p.scn then
-    requests.scene ('', {action = "delete", scene = p.scn})
+--    requests.scene ('', {action = "delete", scene = p.scn})
+    scenes.delete (tonumber(p.scn))    -- 2020.01.27
   elseif p.plugin then
     requests.delete_plugin ('', {PluginNum = p.plugin})
   elseif p.var then
@@ -1871,7 +1877,7 @@ local function room_wanted (p)
   local room_number = room_index[room]
   return function (x)  -- works for devices or scenes
     local room_match = all_rooms or x.room_num == room_number
-    local scene_favorite = x.page and x:user_table().favorite               -- only scenes have pages
+    local scene_favorite = x.page and x.definition.favorite               -- only scenes have pages
     local device_favorite = x.attributes and x.attributes.bookmark == '1'   -- only devices have attributes
     local bookmarked = scene_favorite or device_favorite
     return room_match or (bookmarks and bookmarked)
@@ -1936,7 +1942,7 @@ local function scene_page (p, fct)
 end
 
 local function scene_panel (self)
-  local utab = self: user_table()
+  local utab = self.definition
   
   --TODO: move scene next run code to scenes module
   local id = utab.id
@@ -1985,7 +1991,7 @@ end
 
 function pages.header (p)
   return scene_page (p, function (scene, title)
-    local modes = scene: user_table() .modeStatus
+    local modes = scene.definition.modeStatus
     return title .. " - scene header", 
       xhtml.div {class="w3-row", 
         xhtml.div{class="w3-col", style="width:550px;", 
@@ -2014,50 +2020,48 @@ function pages.triggers (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
     local T = h.div {class = "w3-container w3-cell"}
-    for i, t in ipairs (scene:user_table() .triggers) do
-      
-      local d, woo = 28, 14
-      local dominos = t.enabled == 1 and 
-          h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
-        or 
-          h.img {width=d, height=d, title="trigger is paused", src="icons/trigger-grey.svg"} 
-      
-      local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
-        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
-      local w1 = widget_link ("page=trigger&edit=".. i, "view/edit trigger", "icons/edit.svg")
-      local w2 = delete_link ("trigger", i)
-      local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
-      local desc = h.div {"dev: ", t.device}
-      T[i] = generic_panel {
-        title = t,
-        height = 100,
-        top_line = {left =  truncate (t.name), right = on_off},
-        icon = icon,
-        body = {middle = desc},
-        widgets = {w1, w2},
-      }        
+    for i, t in ipairs (scene.definition.triggers) do
+      if t.device == 2 then       -- only display openLuup variable watch triggers
+        local d, woo = 28, 14
+        local dominos = t.enabled == 1 and 
+            h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
+          or 
+            h.img {width=d, height=d, title="trigger is paused", alt = 'pause', src="icons/pause-solid-grey.svg"} 
+        
+        local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
+          class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
+        local w1 = widget_link ("page=trigger&edit=".. i, "view/edit trigger", "icons/edit.svg")
+        local w2 = delete_link ("trigger", i)
+        local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
+        local desc
+          -- openLuup watch
+          local args = t.arguments or empty
+          local function arg(n, lbl) return h.span {lbl or '', ((args[n] or empty).value or ''): match "[^:]+$", h.br()} end
+          desc = h.span {arg(1, '#'), arg(2), arg(3)}
+        T[i] = generic_panel {
+          title = t,
+          height = 100,
+          top_line = {left =  truncate (t.name), right = on_off},
+          icon = icon,
+          body = {middle = desc},
+          widgets = {w1, w2},
+        }        
+      end
     end
-    local watches = altui_device_watches (scene:user_table().id)
+    local watches = altui_device_watches (scene.definition.id)
     for i, t in ipairs (watches) do
       
-      local d, woo = 28, 14
-      local nbsp = unicode.nbsp
+      local d = 28
       local dominos = 
           h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
-      
---      local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
---        class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
-      local w1 = widget_link ("page=trigger&edit=".. t.scn, "view/edit trigger", "icons/edit.svg")
---      local w2 = delete_link ("trigger", i)
       local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
       local desc = h.div {'#', t.dev, h.br(), t.srv, h.br(), t.var}
       T[#T+1] = generic_panel {
         title = '',
         height = 100,
-        top_line = {left = truncate ("AltUI watch #" .. tostring(i)), right = on_off},
+        top_line = {left = truncate ("AltUI watch #" .. tostring(i))},
         icon = icon,
         body = {middle = desc},
---        widgets = {w1},
       }        
     end
     local create = xhtml.a {class="w3-button w3-round w3-green", 
@@ -2070,7 +2074,7 @@ function pages.timers (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
     local T = h.div {class = "w3-container w3-cell"}
-    for i, t in ipairs (scene:user_table() .timers) do
+    for i, t in ipairs (scene.definition.timers) do
       local next_run = table.concat {unicode.clock_three, ' ', t.abstime or nice (t.next_run) or ''}
       local info =
         t.type == 1 and t.interval or
@@ -2084,7 +2088,8 @@ function pages.timers (p)
       local clock = t.enabled == 1 and 
           h.img {width = d, height=d, title="timer is running", alt="timer", src="icons/clock-grey.svg"}
         or 
-          h.img {width=d, height=d, title="timer is paused", src="icons/circle-regular-grey.svg"} 
+--          h.img {width=d, height=d, title="timer is paused", src="icons/circle-regular-grey.svg"} 
+          h.img {width=d, height=d, title="timer is paused", src="icons/pause-solid-grey.svg"} 
       
       local on_off = xhtml.a {href= selfref("toggle=", t.id), title="toggle pause", 
         class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
@@ -2111,7 +2116,7 @@ end
 function pages.history (p)
   return scene_page (p, function (scene, title)
     local h = {}
-    for i,v in ipairs (scene: user_table() .openLuup.history) do h[i] = {nice(v.at), v.by} end
+    for i,v in ipairs (scene.openLuup.history) do h[i] = {nice(v.at), v.by} end
     table.sort (h, function (a,b) return a[1] > b[1] end)
     local t = create_table_from_data  ({"date/time", "initiated by"}, h)
     return title .. " - scene history", t
@@ -2121,7 +2126,7 @@ end
 function pages.lua (p)
   return scene_page (p, function (scene, title)
     local readonly = true
-    local Lua = scene:user_table() .lua
+    local Lua = scene.definition.lua
     return title .. " - scene Lua", 
       xhtml.div {code_editor (Lua, 500, "lua", readonly)}
   end)
@@ -2129,10 +2134,9 @@ end
  
 function pages.group_actions (p)
   return scene_page (p, function (scene, title)
---    local pre = xhtml.pre {json.encode (scene:user_table() .groups)}
     local h = xhtml
     local groups = h.div {class = "w3-container"}
-    for g, group in ipairs (scene:user_table() .groups) do
+    for g, group in ipairs (scene.definition.groups) do
       local delay = tonumber (group.delay) or 0
       local d = h.div {class = "w3-panel", h.h5 {"Delay ", delay}}
       for i, a in ipairs (group.actions) do
@@ -2491,7 +2495,7 @@ function pages.scene_created (_,req)
   local div
   if q.name ~= '' then
     local scn = scenes.create {name = name}
-    local scnNo = scn:user_table().id
+    local scnNo = scn.definition.id
     local msg = "Scene #%d '%s' created"
     if scnNo then     -- offer to go there
       luup.scenes[scnNo] = scn      -- insert into scene table
@@ -2521,24 +2525,23 @@ function pages.scenes_table (p, req)
   -- rename scene
   if q.rename and q.value then
     local s = luup.scenes[tonumber(q.rename)]
-    if s then s.rename (q.value) end
+    if s then s: rename (q.value) end
   elseif q.reroom and q.value then
     local s = luup.scenes[tonumber(q.reroom)]
     local num = 0                       -- default is "No Room"
     for i,v in pairs (luup.rooms) do    -- convert from room name to room number
       if v == q.value then num = i break end
     end
-    s.rename (nil, num)
+    s: rename (nil, num)
   end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_scene", "+ Create", title="create new scene"}
   local scn = {}
   local wanted = room_wanted(p)        -- get function to filter by room  
   for x in sorted_by_id_or_name (p, luup.scenes) do
-    local u = x: user_table()
-    local n = u.id
+    local n = x.definition.id
     if wanted(x) and paused_or_not(p, x) then 
-      local favorite = xhtml.span{class="w3-display-middle", x:user_table().favorite and unicode.black_star or ''}
+      local favorite = xhtml.span{class="w3-display-middle", x.definition.favorite and unicode.black_star or ''}
       local paused = x.paused and 
         xhtml.img {height=14, width=14, class="w3-display-right", src="icons/pause-solid.svg"} or ''
       local link = xlink ("page=header&scene="..n)
@@ -2564,34 +2567,44 @@ function pages.triggers_table (p)
   
   local all = request_type == options[1]
   local triggers = xhtml.div {class="w3-rest w3-panel"}
+  local Tluup = luup_triggers ()    -- {{scn = s, name = t.name, dev = devNo, text = text}}
     
   local Otrg = {}
   if all or request_type == options[2] then
-    -- local Topen = {}
-    local o = create_table_from_data ({'#', "scene", "watching: device.service.variable", "Lua conditional"}, Otrg)  
-    triggers[#triggers+1] = xhtml.div {xhtml.h5 "openLuup Device Variable Watch Triggers", o}
+    for _, x in ipairs (Tluup) do
+      if x.dev == 2 then              -- this is an openLuup Variable Watch trigger
+        local i = #Otrg + 1
+        local link = xlink ("page=triggers&scene="..x.scn)
+        local watch = table.concat (x.args, '.')
+        Otrg[i]= {i, x.name, link, rhs(x.scn), watch}
+      end
+    end
+    local o = create_table_from_data ({'#', "name", {colspan=2, "scene"}, "watching: device.service.variable"}, Otrg)  
+    triggers[#triggers+1] = xhtml.div {xhtml.h5 "openLuup Variable Watch Triggers", o}
   end
   
   local Atrg = {}
   if all or request_type == options[3] then
     local Taltui = altui_device_watches ()    -- {srv = srv, var = v, dev = dev, scn = scn, lua = l}
     for i, x in ipairs (Taltui) do
-      local link = xlink ("page=header&scene="..x.scn)
-      Atrg[i]= {i, link, rhs(x.scn), table.concat ({x.dev, x.srv, x.var}, '.'), x.lua}
+      local link = xlink ("page=triggers&scene="..x.scn)
+      Atrg[i]= {i, "AltUI watch", link, rhs(x.scn), table.concat ({x.dev, x.srv, x.var}, '.'), x.lua}
     end
     local t = create_table_from_data (
-      {'#', {colspan=2, "scene"}, "watching: device.service.variable", "Lua conditional"}, Atrg)  
-    triggers[#triggers+1] = xhtml.div {xhtml.h5 "AltUI Device Variable Watch Triggers", t}   
+      {'#', "name", {colspan=2, "scene"}, "watching: device.service.variable", "Lua conditional"}, Atrg)  
+    triggers[#triggers+1] = xhtml.div {xhtml.h5 "AltUI Variable Watch Triggers", t}   
   end
   
   local Ltrg = {}
   if all or request_type == options[4] then
-    local Tluup = luup_triggers ()    -- {{scn = s, name = t.name, dev = devNo, text = text}}
-    for i, x in ipairs (Tluup) do
-      local link = xlink ("page=header&scene="..x.scn)
-      Ltrg[i]= {i, link, rhs(x.scn), rhs(x.dev), x.name, x.text}
+    for _, x in ipairs (Tluup) do
+      if x.dev ~= 2 then            -- skip the openLuup triggers
+        local i = #Ltrg + 1
+        local link = xlink ("page=triggers&scene="..x.scn)
+        Ltrg[i]= {i, x.name, link, rhs(x.scn), rhs(x.dev), x.text}
+      end
     end
-    local l = create_table_from_data ({'#', {colspan=2, "scene"}, "device", "event", "text"}, Ltrg)  
+    local l = create_table_from_data ({'#', "name", {colspan=2, "scene"}, "device", "description"}, Ltrg)  
     triggers[#triggers+1] = xhtml.div {xhtml.h5 "Luup UPnP Triggers (ignored by openLuup)", l}
   end
       

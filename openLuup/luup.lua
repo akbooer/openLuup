@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2019.10.19",
+  VERSION       = "2020.01.27",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2012 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -72,6 +72,8 @@ local ABOUT = {
 -- 2019.07.31  use new client and server modules (http split into two)
 -- 2019.10.19  add luup.modelID
 
+-- 2020.01.27  use object-oriented scene: rename() rather  thn scene.rename()
+
 
 local logs          = require "openLuup.logs"
 
@@ -82,9 +84,10 @@ local devutil       = require "openLuup.devices"
 local Device_0      = require "openLuup.gateway"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
-local loader        = require "openLuup.loader"     -- simply to access shared environment
+local loader        = require "openLuup.loader"     -- for shared environment and compiler
 local smtp          = require "openLuup.smtp"       -- for register_handler to work with email
 local historian     = require "openLuup.historian"  -- for luup.variable_get() to work with historian
+local scene_module  = require "openLuup.scenes"     -- for luup.scenes metatable
 
 -- luup sub-modules
 local chdev         = require "openLuup.chdev"
@@ -170,7 +173,9 @@ do
       end
       -- check scenes for reference to deleted room no.
       for _, s in pairs (scenes) do
-        if s.room_num == number then s.rename (nil, 0) end    -- 2019.05.03  corrected s.room to s.room_num
+        if s.room_num == number then    -- 2019.05.03  corrected s.room to s.room_num
+          s: rename (nil, 0)            -- 2020.01.27
+        end
       end
     devutil.new_userdata_dataversion ()   -- 2018.05.01  we've changed the user_data structure
     end
