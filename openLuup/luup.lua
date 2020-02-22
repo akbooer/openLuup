@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2020.01.27",
+  VERSION       = "2020.02.14",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2012 AKBooer",
@@ -72,7 +72,8 @@ local ABOUT = {
 -- 2019.07.31  use new client and server modules (http split into two)
 -- 2019.10.19  add luup.modelID
 
--- 2020.01.27  use object-oriented scene: rename() rather  thn scene.rename()
+-- 2020.01.27  use object-oriented scene: rename() rather than scene.rename()
+-- 2020.02.14  add room.lookup() to find room by name
 
 
 local logs          = require "openLuup.logs"
@@ -87,15 +88,14 @@ local userdata      = require "openLuup.userdata"
 local loader        = require "openLuup.loader"     -- for shared environment and compiler
 local smtp          = require "openLuup.smtp"       -- for register_handler to work with email
 local historian     = require "openLuup.historian"  -- for luup.variable_get() to work with historian
-local scene_module  = require "openLuup.scenes"     -- for luup.scenes metatable
 
 -- luup sub-modules
 local chdev         = require "openLuup.chdev"
 local ioutil        = require "openLuup.io"    
 
 
---  local _log() and _debug()
-local _log, _debug = logs.register (ABOUT)
+--  local _log() and, optionally, _debug()
+local _log = logs.register (ABOUT)
 
 local _log_altui_variable  = logs.altui_variable
 
@@ -181,6 +181,12 @@ do
     end
   end
 
+  function room.lookup (name)             -- 2020.02.14  return room number if named room exists
+    for id, room_name in pairs (rooms) do
+      if name == room_name then return id end
+    end
+  end
+  
   setmetatable (rooms,     -- 2018.03.24  add room functions to luup.rooms metatable
     { __index = room,
       __tostring = function ()    -- so that print (luup.rooms) works
@@ -1086,6 +1092,7 @@ return {
     
     openLuup = {   -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate not a Vera (for plugin developers)
       -- openLuup-specific API extensions go here...
+      bridge = chdev.bridge, -- 2020.02.12  Bridge utilities 
     },
     
     hw_key              = "--hardware key--",

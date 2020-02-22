@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.01.24",
+  VERSION       = "2020.02.20",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -39,8 +39,11 @@ local xml   = require "openLuup.xml"              -- for XML device file encodin
 --
 
 local SID = {
-    AltUI = "urn:upnp-org:serviceId:altui1",
-    VeraBridge = "urn:akbooer-com:serviceId:VeraBridge1",
+    AltUI           = "urn:upnp-org:serviceId:altui1",
+    VeraBridge      = "urn:akbooer-com:serviceId:VeraBridge1",
+    ZwaveNetwork    = "urn:micasaverde-com:serviceId:ZWaveNetwork1",
+    ZWay            = "urn:akbooer-com:serviceId:ZWay1",
+    openLuupBridge  = "urn:akbooer-com:serviceId:openLuupBridge1",
   }
 
 
@@ -185,22 +188,26 @@ local D_openLuup_json = json.encode {
 
 local I_openLuup_impl do
   local x = xml.createDocument ()
-  local function action (S,N, R,J)
-    return x.action {x.serviceId (S), x.name (N), x.run(R), x.job (J)}
+  local function run_action (S,N, R)
+    return x.action {x.serviceId (S), x.name (N),x.run(R)}
+  end
+  local function job_action (S,N, J)
+    return x.action {x.serviceId (S), x.name (N), x.job (J)}
   end
     x: appendChild {
       x.implementation {
         x.files   "openLuup/L_openLuup.lua",
         x.startup "init",
         x.actionList {
-          action ("openLuup", "SendToTrash", nil, "SendToTrash (lul_settings)"),
-          action ("openLuup", "EmptyTrash",  nil, "EmptyTrash (lul_settings)"),
-          action ("openLuup", "SetHouseMode",
+          job_action ("openLuup", "SendToTrash",  "SendToTrash (lul_settings)"),
+          job_action ("openLuup", "EmptyTrash",   "EmptyTrash (lul_settings)"),
+          run_action ("openLuup", "EmptyRoom101", "EmptyRoom101 (lul_settings)"),
+          run_action ("openLuup", "SetHouseMode",
             [[
               local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
               luup.call_action (sid, "SetHouseMode", lul_settings)
             ]]),
-          action ("openLuup", "RunScene",                  -- added by @rafale77 --
+          run_action ("openLuup", "RunScene",                  -- added by @rafale77 --
             [[
               local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
               luup.call_action(sid, "RunScene", {SceneNum = lul_settings.SceneNum}, 0)
@@ -233,6 +240,10 @@ local S_openLuup_svc do
               argument "FileTypes"}},
         
           x.action {x.name "EmptyTrash",
+            x.argumentList {
+              argument "AreYouSure"}},
+        
+          x.action {x.name "EmptyRoom101",
             x.argumentList {
               argument "AreYouSure"}},
             
@@ -508,18 +519,18 @@ local D_VeraBridge_json = json.encode {
 
 local I_VeraBridge_impl do
   local x = xml.createDocument ()
-  local function action (S,N, R,J)
-    return x.action {x.serviceId (S), x.name (N), x.run(R), x.job (J)}
+  local function job_action (S,N, J)
+    return x.action {x.serviceId (S), x.name (N), x.job (J)}
   end
     x: appendChild {
       x.implementation {
         x.files   "openLuup/L_VeraBridge.lua",
         x.startup "init",
         x.actionList {
-          action (SID.VeraBridge, "GetVeraFiles",      nil, "GetVeraFiles (lul_settings)"),
-          action (SID.VeraBridge, "GetVeraScenes",     nil, "GetVeraScenes (lul_settings)"),
-          action (SID.VeraBridge, "RemoteVariableSet", nil, "RemoteVariableSet (lul_settings)"),
-          action (SID.VeraBridge, "SetHouseMode",      nil, "SetHouseMode (lul_settings)"),
+          job_action (SID.VeraBridge, "GetVeraFiles",      "GetVeraFiles (lul_settings)"),
+          job_action (SID.VeraBridge, "GetVeraScenes",     "GetVeraScenes (lul_settings)"),
+          job_action (SID.VeraBridge, "RemoteVariableSet", "RemoteVariableSet (lul_settings)"),
+          job_action (SID.VeraBridge, "SetHouseMode",      "SetHouseMode (lul_settings)"),
         }}}
   I_VeraBridge_impl = tostring(x)
 end
@@ -558,6 +569,77 @@ local S_VeraBridge_svc do
             x.argumentList {argument "Mode"}}}}}
   S_VeraBridge_svc = tostring (x)  
 end
+
+-----
+--
+-- Z-Way support
+--
+
+local D_ZWay_xml = Device {
+        deviceType   = "ZWay",
+        Category_Num = "1",
+        friendlyName = "ZWay Bridge",
+        manufacturer = "akbooer",
+        staticJson   = "D_ZWay.json",
+        serviceList     = { 
+          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+          {"urn:schemas-micasaverde-org:service:ZWaveNetwork:1", SID.ZwaveNetwork, "S_ZWaveNetwork1.xml"} },
+        implementationList = {"I_ZWay2.xml"}}
+
+
+local D_ZWay_json = json.encode {
+  default_icon = "http://raw.githubusercontent.com/akbooer/Z-Way/master/icons/Z-Wave.me.png",
+  DeviceType = "ZWay",
+  Tabs = {{
+      Label = Label ("tabname_control", "Control"),
+			Position = "0",
+			TabType = "flash",
+			ControlGroup = { {id = "1",scenegroup = "1"} },
+			SceneGroup = { {id = "1", top = "1.5", left = "0.25", x = "1.5",y ="2"} },
+    
+    Control = {
+      ControlGroup (1, "variable", 0,0,
+        Display (50,40, 75,20, SID.AltUI, "DisplayLine1")),
+      ControlGroup (1, "variable", 0,1,
+        Display (50,60, 75,20, SID.AltUI, "DisplayLine2")),
+      ControlGroup (2, "variable", 0,3,
+        Display (50,100, 75,20, SID.ZWay,"Version")),
+      ControlGroup (2, "label", 0,4, 
+        Display (50,160, 75,20),
+        Label ("configure", '<a href="/cgi/zway_cgi.lua" target="_blank">Configure ZWay child devices</a>')),
+      }}}}
+
+
+local I_ZWay_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <handleChildren>1</handleChildren>
+  <functions>
+    local M = require "L_ZWay"
+    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
+    function startup (...)
+      return M.init (...)
+    end
+  </functions>
+  <startup>startup</startup>
+</implementation>
+]]
+
+-- testing new ZWay implementation
+local I_ZWay2_xml = [[
+<?xml version="1.0"?>
+<implementation>
+  <handleChildren>1</handleChildren>
+  <functions>
+    local M = require "L_ZWay2"
+    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
+    function startup (...)
+      return M.init (...)
+    end
+  </functions>
+  <startup>startup</startup>
+</implementation>
+]]
 
 -----
 
@@ -749,149 +831,6 @@ GOTO loop
 :exit
 ]]
 
-
------
---
--- Z-Way support
---
-local D_ZWay_xml = [[
-<?xml version="1.0"?>
-<root xmlns="urn:schemas-upnp-org:device-1-0">
-  <specVersion>
-    <major>1</major>
-    <minor>0</minor>
-  </specVersion>
-  <device>
-    <deviceType>urn:akbooer-com:device:ZWay:1</deviceType>
-    <friendlyName>ZWay Network Interface</friendlyName>
-    <manufacturer>akbooer</manufacturer>
-    <manufacturerURL></manufacturerURL>
-    <modelDescription>ZWay Network</modelDescription>
-    <modelName></modelName>
-    <modelNumber></modelNumber>
-    <serviceList>
-      <service>
-        <serviceType>urn:schemas-micasaverde-org:service:ZWaveNetwork:1</serviceType>
-        <serviceId>urn:micasaverde-com:serviceId:ZWaveNetwork1</serviceId>
-        <controlURL>/upnp/control/ZWaveNetwork1</controlURL>
-        <eventSubURL>/upnp/event/ZWaveNetwork1</eventSubURL>
-        <SCPDURL>S_ZWaveNetwork1.xml</SCPDURL>
-      </service>
-    </serviceList>
-    <implementationList>
-      <implementationFile>I_ZWay.xml</implementationFile>
-    </implementationList>
-		<staticJson>D_ZWay.json</staticJson>
-  </device>
-</root>
-]]
-
-
-local D_ZWay_json = [[
-{
-  "default_icon": "http://raw.githubusercontent.com/akbooer/Z-Way/master/icons/Z-Wave.me.png",
-	"Tabs": [
-		{
-			"Label": {
-				"lang_tag": "tabname_control",
-				"text": "Control"
-			},
-			"Position": "0",
-			"TabType": "flash",
-			"ControlGroup":[
-				{
-					"id": "1",
-					"scenegroup": "1"
-				}
-			],
-			"SceneGroup":[
-				{
-					"id": "1",
-					"top": "1.5",
-					"left": "0.25",
-					"x": "1.5",
-					"y": "2"
-				}
-			],
-			"Control": [
-				{
-					"ControlGroup":"1",
-					"ControlType": "variable",
-					"top": "0",
-					"left": "0",
-					"Display": {
-						"Service": "urn:upnp-org:serviceId:altui1",
-						"Variable": "DisplayLine1",
-						"Top": 40,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				},
-				{
-					"ControlGroup":"1",
-					"ControlType": "variable",
-					"top": "1",
-					"left": "0",
-					"Display": {
-						"Service": "urn:upnp-org:serviceId:altui1",
-						"Variable": "DisplayLine2",
-						"Top": 60,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				},
-				{
-					"ControlGroup":"2",
-					"ControlType": "variable",
-					"top": "3",
-					"left": "0",
-					"Display": {
-						"Service": "urn:akbooer-com:serviceId:ZWay1",
-						"Variable": "Version",
-						"Top": 100,
-						"Left": 50,
-						"Width": 75,
-						"Height": 20
-					}
-				}
-			]
-		}
-  ],
-  "DeviceType": "urn:akbooer-com:device:ZWay:1"
-}
-]]
-
-local I_ZWay_xml = [[
-<?xml version="1.0"?>
-<implementation>
-  <functions>
-    local M = require "L_ZWay"
-    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
-    function startup (...)
-      return M.init (...)
-    end
-  </functions>
-  <startup>startup</startup>
-</implementation>
-]]
-
--- testing new ZWay implementation
-local I_ZWay2_xml = [[
-<?xml version="1.0"?>
-<implementation>
-  <handleChildren>1</handleChildren>
-  <functions>
-    local M = require "L_ZWay2"
-    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
-    function startup (...)
-      return M.init (...)
-    end
-  </functions>
-  <startup>startup</startup>
-</implementation>
-]]
 
 -- Camera with child Motion Detector triggered by email
 local I_openLuupCamera1_xml = [[
@@ -1303,6 +1242,11 @@ local manifest = {
     ["I_VeraBridge.xml"]  = I_VeraBridge_impl,
     ["S_VeraBridge.xml"]  = S_VeraBridge_svc,
     
+    ["D_ZWay.xml"]  = D_ZWay_xml,
+    ["D_ZWay.json"] = D_ZWay_json,
+    ["I_ZWay.xml"]  = I_ZWay_xml,
+    ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
+    
     ["built-in/default_console_menus.json"] = default_console_menus_json,
     ["built-in/classic_console_menus.json"] = classic_console_menus_json,
     ["built-in/altui_console_menus.json"]   = altui_console_menus_json,
@@ -1312,11 +1256,6 @@ local manifest = {
     ["built-in/S_SwitchPower1.xml"]  = S_SwitchPower1_xml,
     ["built-in/D_ZWaveNetwork.xml"]  = D_ZWaveNetwork_xml,
     ["built-in/D_MotionSensor1.xml"] = D_MotionSensor1_xml,
-    
-    ["D_ZWay.xml"]  = D_ZWay_xml,
-    ["D_ZWay.json"] = D_ZWay_json,
-    ["I_ZWay.xml"]  = I_ZWay_xml,
-    ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
     
     ["I_openLuupCamera1.xml"]   = I_openLuupCamera1_xml,
     ["I_openLuupSecurity1.xml"] = I_openLuupSecurity1_xml,

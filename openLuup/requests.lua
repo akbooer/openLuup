@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2020.01.28",
+  VERSION       = "2020.02.05",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -73,6 +73,7 @@ local ABOUT = {
 -- 2019.11.29  update test request to show client socket id (if present)
 
 -- 2020.01.27  object-oriented scene:rename() rather than scene.rename()
+-- 2020.02.05  object-oriented dev:rename() in device request
 
 
 local client        = require "openLuup.client"
@@ -181,18 +182,7 @@ local function device (_,p)
   local dev = luup.devices[devNo]
 
   local function rename ()
-    if p.name then
-      dev.description = p.name
-      dev.attributes.name = p.name
-    end
-    if p.room then
-      local idx = {}
-      for i,room in pairs(luup.rooms) do
-        idx[room] = i
-      end
-      dev.room_num = tonumber(p.room) or idx[p.room] or 0
-      dev.attributes.room = tostring(dev.room_num)        -- 2018.07.02
-    end
+    if dev then dev: rename (p.name, p.room) end      -- 2020.02.05
   end
   local function delete ()
     local tag = {}                -- list of devices to delete

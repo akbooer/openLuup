@@ -31,7 +31,7 @@ Requests are of three basic types:
   - data_request?id=...       Luup-style system requests (both system lu_xxx, and user-defined lr_xxx)
   - Lua WSAPI CGIs            enumerated in the cgi_prefix section of the servertables.lua file
   - file requests             anything not recognised as one of the above, and on defined file paths,
-                              or as redirected from severtables dir_alias table.
+                              or as redirected from servertables dir_alias table.
 
 The add_callback_handlers () function registers a list of new request callback handlers.
 
@@ -63,11 +63,9 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2019.11.29   add client socket to servlet.execute() parameter list and data_request handlers
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263
 
--- 2020.01.29   add "dontrespond" option for external data_requests
+-- 2020.01.29   add "dontrespond" mimetype option for external data_requests
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263/7
 
-
--- TODO: use WSAPI response library in servlets?
 
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"            -- to access 'dataversion'
@@ -221,7 +219,7 @@ local function data_request_task (wsapi_env, respond, client)
     -- finally (perhaps) execute the request
     local status, headers, iterator = data_request (wsapi_env, req, client)
       
-    if headers ["Content-Type"] ~= "dontrespond" then respond (status, headers, iterator) end  -- 2020.01.29
+    if headers["Content-Type"] ~= "dontrespond" then respond (status, headers, iterator) end  -- 2020.01.29
     
     return scheduler.state.Done, 0  
   end

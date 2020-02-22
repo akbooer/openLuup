@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2019.04.18",
+  VERSION       = "2020.02.12",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -28,6 +28,8 @@ local ABOUT = {
 -- 2018.11.26  enable historian mirroring to external Graphite and InfluxDB databases via UDP
 
 -- 2019.04.18  remove TidyCache daemon (now done implicitly at variable creation in devices module)
+
+-- 2020.02.12  move get_bridge_info to luup.openLuup.bridge.get_info()
 
 
 local logs    = require "openLuup.logs"
@@ -70,7 +72,7 @@ see: https://github.com/graphite-project/carbon/blob/master/lib/carbon/instrumen
 --]]
 
 
-local BRIDGEBLOCK = 10000   -- hardcoded VeraBridge blocksize (sorry, but easy and quick)
+local BRIDGEBLOCK           -- openLuupBridge blocksize, set in start()
 local Bridges               -- VeraBridge info for nodeNames and device offsets
 
 local Directory             -- location of history database
@@ -233,36 +235,6 @@ local function archiveRule(schema, newrule)
     schema = schema,
     patterns = {newrule},
   }  
-end
-
--- get vital information from installed VeraBridge devices
--- indexed by (integer) bridge#, and  .by_pk[], .by_name[]
-local function get_bridge_info ()
-  local bridgeSID = "urn:akbooer-com:serviceId:VeraBridge1"
-  local bridge = {[0] = {nodeName = "openLuup", PK = '0', offset = 0}}   -- preload with openLuup info
-
-  for i,d in pairs(luup.devices) do
-    if d.device_type == "VeraBridge" then
-      local name = d.description: gsub ("%W",'')      -- remove non-alphanumerics
-      local PK = luup.variable_get (bridgeSID, "PK_AccessPoint", i)
-      local offset = luup.variable_get (bridgeSID, "Offset", i)
-      offset = tonumber (offset)
-      if offset and PK then
-        local index = math.floor (offset / BRIDGEBLOCK)   -- should be a round number anyway
-        bridge[index] = {nodeName = name, PK = PK, offset = offset}
-      end
-    end
-  end
-  
-  local by_pk, by_name = {}, {}  -- indexes
-  for _,b in pairs (bridge) do    
-    by_pk[b.PK] = b
-    by_name[b.nodeName] = b
-  end
-  
-  bridge.by_pk = by_pk          -- add indexes to bridge table
-  bridge.by_name = by_name
-  return bridge
 end
 
 ---------------------------------
@@ -888,7 +860,8 @@ end
 local function start (config)
   CacheSize   = config.CacheSize
   Directory   = config.Directory
-  Bridges     = get_bridge_info ()
+  BRIDGEBLOCK = luup.openLuup.bridge.BLOCKSIZE
+  Bridges     = luup.openLuup.bridge.get_info ()
   
   local ip_port = "%d+%.%d+%.%d+%.%d+:%d+"
   local Graphite = (config.Graphite_UDP or ''): match (ip_port)

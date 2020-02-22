@@ -177,6 +177,17 @@ local panels = {
             div {class = class, h.h5 "Today", today},
             div {class = class, h.h5 "Tomorrow", tomorrow} } }
     end},
+
+--
+-- ZWay
+--
+  ZWay = {
+    control = function() return 
+      div {
+        h.a {class="w3-text-blue", href="/cgi/zway_cgi.lua", target="_blank",
+          "Configure ZWay child devices"} }
+    end},
+
  
 }
 

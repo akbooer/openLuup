@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.01.28",
+  VERSION       = "2020.02.19",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -43,7 +43,7 @@ ABOUT = {
 -- 2018.05.19  use openLuup ABOUT, not console
 -- 2018.05.28  add Files HistoryDB menu
 -- 2018.07.08  add hyperlink database files to render graphics
--- 2018.07.12  add typerlink backup files to uncompress and retrieve
+-- 2018.07.12  add hyperlink backup files to uncompress and retrieve
 -- 2018.07.15  colour code non-200 status numbers
 -- 2018.07.19  use openLuup.whisper, not L_DataWhisper! (thanks @powisquare)
 -- 2018.07.28  use wsapi request and response libraries
@@ -72,6 +72,9 @@ ABOUT = {
 
 -- 2020.01.25  add openLuup watch triggers
 -- 2020.01.27  start implementing object-oriented scene changes
+-- 2020.02.05  use object-oriented dev:rename() rather than call to requests
+-- 2020.02.12  add altid to Devices table (thanks @DesT)
+-- 2020.02.19  fix missing discontiguous items in xselect() menu choices
 
 
 --  WSAPI Lua CGI implementation
@@ -363,6 +366,16 @@ local function get_device_icon (d)
   return xhtml.a {href=selfref ("page=control&device=", d.attributes.id), img}
 end
 
+-- return HTML for navigation tree of current / previous pages
+-- (used at top of all pages and also at bottom of logs, to aid navigation)
+local function page_tree (current, previous)
+  local pagename = capitalise (current)
+  return xhtml.span {class = "w3-container w3-cell w3-cell-middle w3-round w3-border w3-border-grey",
+          xhtml.a {class="nodec", href = selfref ("page=", previous), unicode.leftwards_double_arrow}, " / ", 
+          xhtml.a {class="nodec", href = selfref "page=home", "Home"},     " / ", 
+          pagename}
+end
+
 -- create HTML for a group of house mode buttons
 -- selected parameter is a string, e.g. "1,3" with 'on' buttons 
 local function house_mode_group (selected)  
@@ -519,7 +532,7 @@ end
 -- make a drop-down selection for things
 local function xselect (hidden, options, selected, presets)
   local sorted = {}
-  for i,v in ipairs (options or empty) do sorted[i]  = v end
+  for n,v in pairs (options or empty) do sorted[#sorted+1]  = v end
   table.sort (sorted)
   local choices = xhtml.select {style="width:12em;", name="value", onchange="this.form.submit()"} 
   local function choice(x) 
@@ -1006,11 +1019,12 @@ function pages.log (p)
   if f then
     local x = f:read "*a"
     f: close()
---    pre = xhtml.pre {xml.escape (x)}
-    pre = xhtml.pre {x}     -- 2019.07.14  new HTML escapes all text
+    pre = xhtml.pre {x}
   end
   local end_of_page_buttons = page_group_buttons (page)
-  return page_wrapper(name, pre, xhtml.div (end_of_page_buttons))
+  return page_wrapper(name, pre, xhtml.div {class="w3-container w3-row w3-margin-top",
+      page_tree (page, p.previous), 
+      xhtml.div {class="w3-container w3-cell", xhtml.div (end_of_page_buttons)}})
 end
 
 for i = 1,5 do pages["log." .. i] = pages.log end         -- add the older file versions
@@ -2138,19 +2152,19 @@ function pages.group_actions (p)
     local groups = h.div {class = "w3-container"}
     for g, group in ipairs (scene.definition.groups) do
       local delay = tonumber (group.delay) or 0
-      local d = h.div {class = "w3-panel", h.h5 {"Delay ", delay}}
+      local d = h.div{class = "w3-panel", h.div {class = "w3-panel w3-grey", h.h5 {"Delay ", delay}}}
       for i, a in ipairs (group.actions) do
---        local args = {}
---        for _, arg in pairs(a.arguments) do   -- fix parameters handling.  Thanks @delle !
---          args[arg.name] = arg.value
---        end
         local srv = a.service: match "[^:]+$" or a.service
         local desc = h.div {'#', a.device, h.br(), srv}
+        for _, arg in pairs(a.arguments) do
+          desc[#desc+1] = h.br()
+          desc[#desc+1] = h.span {arg.name, '=', arg.value}
+        end
         d[i+1] = generic_panel {
           title = a.action,
           height = 100,
           top_line = {left = a.action},
-          icon = '',
+          icon = h.img {alt = "no icon", src = luup.devices[tonumber(a.device)]: get_icon()},
           body = {middle = desc},
 --          widgets = {w1, w2},
         }        
@@ -2461,24 +2475,27 @@ end
 function pages.devices_table (p, req)
   local q = req.POST
   if q.rename and q.value then
-    requests.device ('', {action="rename", device=q.rename, name=q.value, room=nil})
+    local dev = luup.devices[tonumber(q.rename)]
+    if dev then dev: rename (q.value, nil) end
   elseif q.reroom then
-    requests.device ('', {action="rename", device=q.reroom, name=nil, room=q.value})
+    local dev = luup.devices[tonumber(q.reroom)]
+    if dev then dev: rename (nil, q.value) end
   end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=create_device", "+ Create", title="create new device"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
-  t.header {"id", "name", '', "room", "delete"}  
+  t.header {"id", "name", "altid", '', "room", "delete"}  
   local wanted = room_wanted(p)        -- get function to filter by room  
   for d in sorted_by_id_or_name (p, luup.devices) do
     local devNo = d.attributes.id
     if wanted(d) then 
+      local altid = d.id
       local trash_can = devNo == 2 and '' or delete_link ("dev", devNo, "device")
       local bookmark = xhtml.span{class="w3-display-right", d.attributes.bookmark == '1' and unicode.black_star or ''}
       local link = xlink ("page=control&device="..devNo)
       local current_room = luup.rooms[d.room_num] or "No Room"
       local room_selection = xselect ({reroom=devNo}, luup.rooms, current_room, {"No Room"})
-      t.row {devNo, editable_text({rename=devNo}, d.description), 
+      t.row {devNo, editable_text({rename=devNo}, d.description), altid,
         xhtml.div {class="w3-display-container", style="width:40px;", link, bookmark}, 
           room_selection, trash_can} 
     end
@@ -2807,9 +2824,7 @@ function pages.home (p)
     xhtml.h4 {"Page Index"}, div(index)} 
 end
 
-
 local function page_nav (current, previous)
-  local pagename = capitalise (current)
 --  local onclick="document.getElementById('messages').style.display='block'" 
   local messages = div (xhtml.div {class="w3-button w3-round w3-border", "Messages ▼ "})
   messages.onclick="ShowHide('messages')" 
@@ -2819,10 +2834,7 @@ local function page_nav (current, previous)
 --       nice (os.time()), ' ', "Click on the X to close this panel" }
   local tabs, groupname = page_group_buttons (current)
   return div {class="w3-container w3-row w3-margin-top",
-    xhtml.span {class = "w3-container w3-cell w3-cell-middle w3-round w3-border w3-border-grey",
-          a {class="nodec", href = selfref ("page=", previous), unicode.leftwards_double_arrow}, " / ", 
-          a {class="nodec", href = selfref "page=home", "Home"},     " / ", 
-          pagename}, 
+      page_tree (current, previous), 
       div {class="w3-container w3-cell", messages},
       div {class = "w3-panel w3-border w3-hide", id="messages",  
         "hello",

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2020.01.28",
+  VERSION       = "2020.02.04",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -106,7 +106,9 @@ local HISTORY_LENGTH = 20   -- number of points in scene history cache
 -- single environment for all scenes and startup code
 local scene_environment = loader.shared_environment
 
-local function jsonify (x) return (json.encode (x.definition)) or '?' end -- return JSON scene representation
+local function newindex (self, ...) rawset (getmetatable(self).__index, ...) end    -- put non-visible variables into meta
+
+local function jsonify (x) return (json.encode (x.definition)) or '?' end             -- return JSON scene representation
 
 local function load_lua_code (lua, id)
   local scene_lua, error_msg, code
@@ -257,6 +259,30 @@ local function scene_verify (self)
   end
 end
 
+-- initialise scene timers
+local function start_timers (self)
+  local function timer_run (timer, next_time) 
+    self: run (timer, next_time, {actor= "timer: " .. (timer.name or '?')}) 
+  end
+  if not self.paused then      -- 2019.05.10
+    local recurring = true
+    local jobs = self.jobs
+    local scene = self.definition
+    local info = "timer: '%s' for scene [%d] %s"
+    for _, t in ipairs (scene.timers or {}) do
+      local _,_,j,_,due = timers.call_timer (timer_run, t.type, t.time or t.interval, 
+                            t.days_of_week or t.days_of_month, t, recurring)
+      if j and scheduler.job_list[j] then
+        local job = scheduler.job_list[j]
+        local text = info: format (t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
+        job.type = text
+        t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers
+        jobs[#jobs+1] = j               -- save the jobs we're running
+      end
+    end
+  end
+end
+
 -- stop scene (prior to deleting)
 local function scene_stopper (self)
   local scene = self.definition
@@ -327,8 +353,8 @@ local function scene_runner (self, t, next_time, params)              -- called 
   final_delay = tonumber(del) or 30
   scene.last_run = os.time()                -- scene run time
 
-  self.running = true                       -- TODO: fix the fact that this is created in the visible scene?
-  devutil.new_userdata_dataversion ()               -- 2016.11.01
+  self.running = true                       -- 2020.02.04  due to the __newindex function, this gets set in the metadata
+  devutil.new_userdata_dataversion ()       -- 2016.11.01
 --  local runner = "command"
   if t then
     t.last_run = scene.last_run             -- timer or trigger specific run time
@@ -417,7 +443,7 @@ local function create (scene_json)
       description = scene.name,
       hidden = false,
       page = 0,           -- TODO: discover what page and remote are for
-      paused = tonumber (scene.paused) == 1,     -- 2016.04.30 
+      paused = tonumber (scene.paused) == 1,
       remote = 0,
       room_num = scene.room,
     }
@@ -438,36 +464,18 @@ local function create (scene_json)
     rename      = scene_rename,
     run         = scene_runner,
     stop        = scene_stopper,
-    on_off      = scene_on_off,       -- toggle pause
+    on_off      = scene_on_off,         -- toggle pause
     verify      = scene_verify,
   }
 
-  setmetatable (luup_scene, {__index = meta, __tostring = jsonify})
+  setmetatable (luup_scene, {
+      __index = meta, 
+      __newindex = newindex,
+      __tostring = jsonify})
   
-  luup_scene: verify()   -- check that non-existent devices are not referenced
-  
-  -- start the timers
-  local function timer_run (timer, next_time) 
-    luup_scene: run (timer, next_time, {actor= "timer: " .. (timer.name or '?')}) 
-  end
-  if not luup_scene.paused then      -- 2019.05.10
-    local recurring = true
-    local jobs = meta.jobs
-    local info = "timer: '%s' for scene [%d] %s"
-    for _, t in ipairs (scene.timers or {}) do
-      local _,_,j,_,due = timers.call_timer (timer_run, t.type, t.time or t.interval, 
-                            t.days_of_week or t.days_of_month, t, recurring)
-      if j and scheduler.job_list[j] then
-        local job = scheduler.job_list[j]
-        local text = info: format (t.name or '?', scene.id or 0, scene.name or '?') -- 2016.10.29
-        job.type = text
-        t.next_run = math.floor (due)   -- 2018.01.30 scene time only deals with integers
-        jobs[#jobs+1] = j               -- save the jobs we're running
-      end
-    end
-  end
-  
-  devutil.new_userdata_dataversion ()               -- 2017.07.19
+  luup_scene: verify()                  -- check that non-existent devices are not referenced
+  start_timers (luup_scene)             -- start the timers
+  devutil.new_userdata_dataversion ()   -- say something has changed
   
   return luup_scene
 end
