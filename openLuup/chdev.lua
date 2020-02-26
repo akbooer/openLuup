@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2020.02.18",
+  VERSION       = "2020.02.26",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -398,7 +398,8 @@ local function create (x)
       self.room_num = tonumber(new_room) or idx[new_room] or 0    -- room number also appears in two places
       self.attributes.room = tostring(self.room_num)
     end
-    devutil.new_userdata_dataversion ()
+--    devutil.new_userdata_dataversion ()
+    dev: touch()                    -- 2020.02.23
   end
 
   -- set parent of device
@@ -584,9 +585,9 @@ function bridge_utilities.nextIdBlock ()
 end
 
 -- get next available device number in block
-function bridge_utilities.nextIdInBlock (offset)
+function bridge_utilities.nextIdInBlock (offset, baseline)
   local bridgeNo = math.floor (offset / BLOCKSIZE)
-  local maxId = offset + 1000    -- Ids below 1000 reserved for mapping Zwave nodes (max 231, in fact)
+  local maxId = offset + (baseline or 1000)  -- Ids below baseline reserved for whatever you like
   for n in pairs(luup.devices) do
     if math.floor (n / BLOCKSIZE) == bridgeNo then
       maxId = math.max (maxId, n)
