@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2020.02.26",
+  VERSION       = "2020.03.07",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -142,7 +142,7 @@ local function calc_stats ()
   
   local cpu_load = round ((cpu - cpu_prev) / INTERVAL * 100, 0.1)
   local memory_mb  = round (AppMemoryUsed / 1000, 0.1)
-  local uptime_days    = round (uptime / 24 / 60 / 60, 0.01)
+  local uptime_days    = round (uptime / 24 / 60 / 60, 0.1)
   cpu_prev= cpu
   
   -- store the results as module globals
@@ -155,7 +155,7 @@ local function calc_stats ()
   set ("CpuLoad",     cpu_load)
   set ("Uptime_Days", uptime_days)
 
-  local line1 = ("%0.0f Mb, cpu %s%%, %s days"): format (memory_mb, cpu_load, uptime_days)
+  local line1 = ("%0.0fMb, %s%%cpu, %sdays"): format (memory_mb, cpu_load, uptime_days)
   display (line1)
   luup.log (line1)
  

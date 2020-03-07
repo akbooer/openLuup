@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2020.02.26",
+  VERSION       = "2020.03.07",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -66,6 +66,7 @@ local ABOUT = {
 -- 2020.02.05  add dev:rename()
 -- 2020.02.09  add newindex() to keep integrity of visible luup.device[] structure
 -- 2020.02.12  add Bridge utilities (mapped to luup.openLuup.bridge.*)
+-- 2020.03.07  add ZWay bridge to device startup priorities
 
 
 local logs      = require "openLuup.logs"
@@ -175,7 +176,11 @@ local function create (x)
   end
   
   local device_type = d.device_type or ''
-  local job_priority = {openLuup = 1, ["urn:schemas-upnp-org:device:altui:1"] = 3, VeraBridge = 5}
+  local job_priority = {
+    openLuup = 1, 
+    ["urn:schemas-upnp-org:device:altui:1"] = 3, 
+    VeraBridge = 5,
+    ZWay = 5}         -- 2020.03.07
   local cat_num = tonumber (x.category_num or d.category_num or loader.cat_by_dev[device_type])   -- 2019.06.02
   local priority = job_priority[device_type]
   

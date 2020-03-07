@@ -583,6 +583,7 @@ local D_ZWay_xml = Device {
         staticJson   = "D_ZWay.json",
         serviceList     = { 
           {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+          {"urn:akbooer-com:service:ZWay:1", SID.ZWay, "S_ZWay.xml"},
           {"urn:schemas-micasaverde-org:service:ZWaveNetwork:1", SID.ZwaveNetwork, "S_ZWaveNetwork1.xml"} },
         implementationList = {"I_ZWay2.xml"}}
 
@@ -626,7 +627,7 @@ local I_ZWay_xml = [[
 ]]
 
 -- testing new ZWay implementation
-local I_ZWay2_xml = [[
+local I_ZWay3_xml = [[
 <?xml version="1.0"?>
 <implementation>
   <handleChildren>1</handleChildren>
@@ -640,6 +641,50 @@ local I_ZWay2_xml = [[
   <startup>startup</startup>
 </implementation>
 ]]
+
+local I_ZWay2_xml do
+  local x = xml.createDocument ()
+  local function action (S,N, JorR)
+    return x.action {x.serviceId (S), x.name (N), JorR}
+  end
+    x: appendChild {
+      x.implementation {
+        x.handleChildren {1},
+        x.functions [[
+          local M = require "L_ZWay2"
+          ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
+          Login = M.Login
+          function startup (...)
+            return M.init (...)
+          end
+        ]],
+        x.startup "startup",
+        x.actionList {
+          action (SID.ZWay, "Login",      x.job "Login (lul_settings)"),
+        }}}
+  I_ZWay2_xml = tostring(x)
+end
+
+
+
+local S_ZWay_svc do
+  local x = xml.createDocument ()
+  local function argument (N,D)
+    return x.argument {x.name (N), x.direction (D or "in")}
+  end
+    x: appendChild {
+      x.scpd {xmlns="urn:schemas-upnp-org:service-1-0",
+        x.specVersion {x.major "1", x.minor "0"},
+        x.actionList {
+          x.action {x.name "Login",
+            x.argumentList {
+              argument "Username",
+              argument "Password"}},
+         }}}
+  S_ZWay_svc = tostring(x)
+end
+
+
 
 -----
 
@@ -1246,6 +1291,8 @@ local manifest = {
     ["D_ZWay.json"] = D_ZWay_json,
     ["I_ZWay.xml"]  = I_ZWay_xml,
     ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
+    ["I_ZWay3.xml"] = I_ZWay3_xml,    -- TODO: remove after development
+    ["S_ZWay.xml"]  = S_ZWay_svc,
     
     ["built-in/default_console_menus.json"] = default_console_menus_json,
     ["built-in/classic_console_menus.json"] = classic_console_menus_json,

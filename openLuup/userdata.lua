@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2020.01.28",
+  VERSION       = "2020.03.03",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -70,6 +70,7 @@ local ABOUT = {
 -- 2019.11.28   add openLuup table to saved user_data (for continuity of parameter settings between reloads)
 
 -- 2020.01.28   replace scene:user_table() with scene.definition, following object changes in scenes
+-- 2020.03.03   update ZWay implementation file to I_ZWay2.xml
 
 
 local json    = require "openLuup.json"
@@ -378,7 +379,7 @@ local preinstalled = {
         {
           DeviceFileName  = "D_ZWay.xml",
           DeviceType      = "urn:akbooer-com:device:ZWay:1",
-          ImplFile        = "I_ZWay.xml",
+          ImplFile        = "I_ZWay2.xml",
           Invisible       =  "0",
         },
       },

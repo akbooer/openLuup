@@ -137,7 +137,8 @@ local panels = {
   SceneController = {
     panel = function (devNo)
       local time = luup.variable_get (sid.scene, "LastSceneTime", devNo)
-      return h.span (time and todate(time) or '')
+--      return h.span (time and todate(time) or '')
+      return div {class = "w3-tiny w3-display-bottomright", time and todate(time) or "---  00:00"}
     end,
     control = function ()
       return "<p>Scene Controller displays</p>"

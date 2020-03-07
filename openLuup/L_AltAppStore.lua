@@ -1,9 +1,9 @@
 ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2018.06.28",
+  VERSION       = "2020.03.03",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
-  COPYRIGHT     = "(c) 2013-2018",
+  COPYRIGHT     = "(c) 2013-2020",
   DOCUMENTATION = "https://github.com/akbooer/AltAppStore",
 }
 
@@ -48,6 +48,8 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 -- 2018.05.17   allow .svg as well as .png icon files
 -- 2018.06.11   report total size downloaded in kB (not bytes!)
 -- 2018.06.28   correct non-alphanumeric handling in download directory 
+
+-- 2020.03.03   add log output of request metadata (for diagnostics)
 
 
 local https     = require "ssl.https"
@@ -468,6 +470,8 @@ function update_plugin_run(args)
     return false                            -- failure
   end
   
+  _log (args.metadata)    -- 2020.03.03
+
   local d = meta.devices
   local p = meta.plugin
   local r = meta.repository
@@ -479,8 +483,15 @@ function update_plugin_run(args)
   end
   
   local t = r.type
-  local w = (r.versions or {}) [meta.versionid] or {}
-  local rev = w.release
+  local versionid = meta.versionid or ''
+  -----
+  -- 2020.03.03 allow versionid to override missing release information
+  versionid = #versionid > 0 and versionid or "master"
+  local w = (r.versions or {}) [versionid] or {}
+  local rev = w.release or ''
+  rev = #rev > 0 and rev or versionid
+  --
+  -----
   if not (t == "GitHub" and type(rev) == "string") then
     _log "invalid metadata: missing GitHub release"
     return false
