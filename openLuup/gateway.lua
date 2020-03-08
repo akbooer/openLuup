@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2020.01.28",
+  VERSION       = "2020.03.08",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -40,6 +40,7 @@ local ABOUT = {
 -- 2019.05.12   make RunScene action use job, rather than run tag.
 
 -- 2020.01.28   add parameter table to scene(run) call (for detection of AltUI requests)
+-- 2020.03.08   add new scene creation date in ModifyUserData 
 
 
 local requests    = require "openLuup.requests"
@@ -246,6 +247,7 @@ Device_0.services[SID].actions =
               for _, scene in pairs (j.scenes) do
                 local id = tonumber (scene.id)
                 if id >= 1e6 then scene.id = nil end        -- remove bogus scene number
+                scene.Timestamp = nil                       -- remove original creation date
                 local new_scene, msg = scenes.create (scene)
                 id = tonumber (scene.id)                    -- may have changed
                 if id and new_scene then

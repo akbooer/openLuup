@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2020.02.04",
+  VERSION       = "2020.03.08",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -67,6 +67,7 @@ local ABOUT = {
 
 -- 2020.01.27   start implementing object-oriented scene changes
 -- 2020.01.28   move openLuup structure to scene metatable
+-- 2020.03.08   add optional timestamp to create()
 
 
 local logs      = require "openLuup.logs"
@@ -408,7 +409,7 @@ end
 --
 -- scene.create() - returns compiled scene object given json string containing group / timers / lua / ...
 --
-local function create (scene_json)
+local function create (scene_json, timestamp)
   local scene, err
   if type(scene_json) == "table" then         -- it's not actually JSON
     scene = scene_json                        -- ...assume it's Lua
@@ -423,7 +424,7 @@ local function create (scene_json)
 
   -- ensure VALID values for some essential variables...
     
-  scene.Timestamp   = scene.Timestamp or os.time()   -- creation time stamp
+  scene.Timestamp   = timestamp or scene.Timestamp or os.time()   -- creation time stamp
   scene.favorite    = scene.favorite or false
   scene.groups      = scene.groups or {}
   scene.id          = tonumber (scene.id) or (#luup.scenes + 1)     -- given id or next one available

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2020.02.05",
+  VERSION       = "2020.03.08",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -74,6 +74,7 @@ local ABOUT = {
 
 -- 2020.01.27  object-oriented scene:rename() rather than scene.rename()
 -- 2020.02.05  object-oriented dev:rename() in device request
+-- 2020.03.08  add new scene creation date
 
 
 local client        = require "openLuup.client"
@@ -626,7 +627,7 @@ local function scene (_,p)
   end
   --Example: http://ip_address:3480/data_request?id=scene&action=create&json=[valid json data]
   local function create () 
-    local new_scene, msg = scenes.create (p.json)
+    local new_scene, msg = scenes.create (p.json, os.time())    -- 2020.03.08 add new creation date
     if new_scene then
       local id = new_scene.definition.id
       if luup.scenes[id] then
