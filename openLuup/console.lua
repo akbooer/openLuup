@@ -461,13 +461,13 @@ end
 -- works for devices, scenes, and variables
 local function sorted_by_id_or_name (p, tbl)  -- _or_description
   local sort_options = {
-    ["Sort by Id"]    = function (x) return x.id end,
+    ["Sort by Id"]    = function (_, id) return id end,   -- NB: NOT the same as x.id (which is altid)!
     ["Sort by Name"]  = function (x) return x.description or x.name end,    -- name is for variables
     ["Sort by Date"]  = function (x) return -((x.definition or empty).Timestamp or 0) end} -- for scenes only
   local sort_index = sort_options[p.dev_sort] or function () end
   local x = {}
   for id, item in pairs (tbl) do 
-    x[#x+1] = {item = item, key = sort_index(item) or id} 
+    x[#x+1] = {item = item, key = sort_index(item, id) or id} 
   end
   table.sort (x, function (a,b) return a.key < b.key end)
   local i = 0
