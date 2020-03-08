@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.02.19",
+  VERSION       = "2020.03.08",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -75,6 +75,7 @@ ABOUT = {
 -- 2020.02.05  use object-oriented dev:rename() rather than call to requests
 -- 2020.02.12  add altid to Devices table (thanks @DesT)
 -- 2020.02.19  fix missing discontiguous items in xselect() menu choices
+-- 2020.03.08  added creation time to scenes table (thanks @DesT)
 
 
 --  WSAPI Lua CGI implementation
@@ -452,13 +453,21 @@ local function device_sort (p)
   return filter_menu ({"Sort by Name", "Sort by Id"}, p.dev_sort, "dev_sort=")
 end
 
+local function scene_sort (p)
+  return filter_menu ({"Sort by Name", "Sort by Id", "Sort by Date"}, p.dev_sort, "dev_sort=")
+end
+
 -- returns an iterator which sorts items, key= "Sort by Name" or "Sort by Id" 
 -- works for devices, scenes, and variables
 local function sorted_by_id_or_name (p, tbl)  -- _or_description
+  local sort_options = {
+    ["Sort by Id"]    = function (x) return x.id end,
+    ["Sort by Name"]  = function (x) return x.description or x.name end,    -- name is for variables
+    ["Sort by Date"]  = function (x) return -x.definition.Timestamp end}    -- for scenes only
+  local sort_index = sort_options[p.dev_sort] or function () end
   local x = {}
-  local by_name = p.dev_sort == "Sort by Name"
   for id, item in pairs (tbl) do 
-    x[#x+1] = {item = item, key = by_name and (item.description or item.name) or id} 
+    x[#x+1] = {item = item, key = sort_index(item) or id} 
   end
   table.sort (x, function (a,b) return a.key < b.key end)
   local i = 0
@@ -532,7 +541,7 @@ end
 -- make a drop-down selection for things
 local function xselect (hidden, options, selected, presets)
   local sorted = {}
-  for n,v in pairs (options or empty) do sorted[#sorted+1]  = v end
+  for _,v in pairs (options or empty) do sorted[#sorted+1]  = v end
   table.sort (sorted)
   local choices = xhtml.select {style="width:12em;", name="value", onchange="this.form.submit()"} 
   local function choice(x) 
@@ -2555,6 +2564,7 @@ function pages.scenes_table (p, req)
     href = selfref "page=create_scene", "+ Create", title="create new scene"}
   local scn = {}
   local wanted = room_wanted(p)        -- get function to filter by room  
+  local ymdhms = "%y-%m-%d %X"
   for x in sorted_by_id_or_name (p, luup.scenes) do
     local n = x.definition.id
     if wanted(x) and paused_or_not(p, x) then 
@@ -2563,15 +2573,16 @@ function pages.scenes_table (p, req)
         xhtml.img {height=14, width=14, class="w3-display-right", src="icons/pause-solid.svg"} or ''
       local link = xlink ("page=header&scene="..n)
       local current_room = luup.rooms[x.room_num] or "No Room"
+      local timestamp = os.date (ymdhms, x.definition.Timestamp or 0)
       local room_selection = xselect ({reroom=n}, luup.rooms, current_room, {"No Room"})
       scn[#scn+1] = {n,  editable_text({rename=n}, x.description), 
         xhtml.div {class="w3-display-container", style="width:60px;", link, favorite, paused}, 
-        room_selection, delete_link ("scn", n, "scene")}
+        room_selection, timestamp, delete_link ("scn", n, "scene")}
     end
   end
-  local t = create_table_from_data ({"id", "name", '', "room", "delete"}, scn)  
+  local t = create_table_from_data ({"id", "name", '', "room", "created", "delete"}, scn)  
   t.class = "w3-small w3-hoverable"
-  local room_nav = sidebar (p, rooms_selector, device_sort, scene_filter)
+  local room_nav = sidebar (p, rooms_selector, scene_sort, scene_filter)
   local sdiv = xhtml.div {room_nav, xhtml.div {class="w3-rest w3-panel", create, t} }
   return page_wrapper ("Scenes Table", sdiv)
 end
