@@ -463,7 +463,7 @@ local function sorted_by_id_or_name (p, tbl)  -- _or_description
   local sort_options = {
     ["Sort by Id"]    = function (x) return x.id end,
     ["Sort by Name"]  = function (x) return x.description or x.name end,    -- name is for variables
-    ["Sort by Date"]  = function (x) return -x.definition.Timestamp end}    -- for scenes only
+    ["Sort by Date"]  = function (x) return -((x.definition or empty).Timestamp or 0) end} -- for scenes only
   local sort_index = sort_options[p.dev_sort] or function () end
   local x = {}
   for id, item in pairs (tbl) do 
