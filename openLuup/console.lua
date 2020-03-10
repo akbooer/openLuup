@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.03.08",
+  VERSION       = "2020.03.10",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -76,6 +76,7 @@ ABOUT = {
 -- 2020.02.12  add altid to Devices table (thanks @DesT)
 -- 2020.02.19  fix missing discontiguous items in xselect() menu choices
 -- 2020.03.08  added creation time to scenes table (thanks @DesT)
+-- 2020.03.10  add "Move to Trash" button for orphaned historian files
 
 
 --  WSAPI Lua CGI implementation
@@ -1444,11 +1445,13 @@ local function database_tables ()
   t.header  {'', "archives", "(kB)", "fct", {"#updates", colspan=2}, "filename (node.dev.srv.var)" }
   t2.header {'', "archives", "(kB)", "fct", '', '', "filename (node.dev.srv.var)"}
   local prev
+  local orphans = {}
   for _,f in ipairs (files) do 
     local devnum = f.devnum     -- openLuup device number (if present)
     local tbl = t
     if devnum == '' then
       tbl = t2
+      orphans[#orphans+1] = f.name
     elseif devnum ~= prev then 
       t.row { {xhtml.strong {'[', f.devnum, '] ', f.description}, colspan = 6} }
     end
@@ -1457,17 +1460,30 @@ local function database_tables ()
   end
   
   if t2.length() == 0 then t2.row {'', "--- none ---", ''} end
-  return t, t2
+  return t, t2, orphans
 end
 
 pages.database = function (...) 
-  local t, _ = database_tables(...) 
+  local t, _ = database_tables() 
   return page_wrapper ("Data Historian Disk Database", t) 
 end
 
-pages.orphans = function (...) 
-  local _, t = database_tables(...) 
-  return page_wrapper ("Orphaned Database Files  - from non-existent devices", t) 
+pages.orphans = function (p) 
+  local _, t, orphans = database_tables() 
+  if p and p.TrashOrphans == "yes" then
+    local folder = luup.attr_get "openLuup.Historian.Directory"
+    for _, o in pairs (orphans) do
+      local old, new = folder .. o, "trash/" ..o
+      lfs.link (old, new)
+      os.remove (old)
+    end
+    t = nil   -- they should all have gone
+  end
+  local trash = xhtml.div {class = "w3-panel",
+    xhtml.a {class="w3-button w3-round w3-red", 
+      href = selfref "TrashOrphans=yes", "Move All to Trash", title="move all orphans to trash",
+      onclick = "return confirm('Trash All Orphans: Are you sure?')" } }
+  return page_wrapper ("Orphaned Database Files  - from non-existent devices", trash, t) 
 end
 
 -- file cache
@@ -2707,11 +2723,11 @@ function pages.plugins_table (_, req)
     for folder in (q.folders or ''): gmatch "[^,%s]+" do    -- comma or space separated list
       folders[#folders+1] = folder
     end
-    P.Repository = {source = q.repository, pattern=q.pattern, folders = folders}
+    P.Repository = {type = "GitHub", source = q.repository, pattern=q.pattern, folders = folders}
   end
   ---
   local t = xhtml.table {class = "w3-bordered"}
-  t.header {'', "Name","Version", "Auto", "Files", "Actions", "Update", '', "Unistall"}
+  t.header {'', "Name","Version", "Files", "Actions", "Update", '', "Unistall"}
   for _, p in ipairs (IP2) do
     -- http://apps.mios.com/plugin.php?id=8246
     local src = p.Icon or ''
@@ -2728,7 +2744,7 @@ function pages.plugins_table (_, req)
     files = xhtml.form {action=selfref(), 
       xhtml.input {hidden=1, name="page", value="viewer"},
       xhtml.select (choice)}
-    local auto_update = p.AutoUpdate == '1' and unicode.check_mark or ''
+--    local auto_update = p.AutoUpdate == '1' and unicode.check_mark or ''
     local edit = xhtml.a {href=selfref "page=plugin&plugin="..p.id, title="edit",
       xhtml.img {src="/icons/edit.svg", alt="edit", height=24, width=24} }
     local help = xhtml.a {href=p.Instructions or '', target="_blank", title="help",
@@ -2746,7 +2762,7 @@ function pages.plugins_table (_, req)
         xhtml.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
           title="update", alt='', height=28, width=28} } }
     local trash_can = p.id == "openLuup" and '' or delete_link ("plugin", p.id)
-    t.row {icon, p.Title, version, auto_update, files, 
+    t.row {icon, p.Title, version, files, 
       xhtml.span{edit, help, info}, update, '', trash_can} 
   end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
