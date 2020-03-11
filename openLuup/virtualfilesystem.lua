@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.02.20",
+  VERSION       = "2020.03.11",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -626,22 +626,6 @@ local I_ZWay_xml = [[
 </implementation>
 ]]
 
--- testing new ZWay implementation
-local I_ZWay3_xml = [[
-<?xml version="1.0"?>
-<implementation>
-  <handleChildren>1</handleChildren>
-  <functions>
-    local M = require "L_ZWay2"
-    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
-    function startup (...)
-      return M.init (...)
-    end
-  </functions>
-  <startup>startup</startup>
-</implementation>
-]]
-
 local I_ZWay2_xml do
   local x = xml.createDocument ()
   local function action (S,N, JorR)
@@ -654,13 +638,15 @@ local I_ZWay2_xml do
           local M = require "L_ZWay2"
           ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
           Login = M.Login
+          SendData = M.SendData
           function startup (...)
             return M.init (...)
           end
         ]],
         x.startup "startup",
         x.actionList {
-          action (SID.ZWay, "Login",      x.job "Login (lul_settings)"),
+          action (SID.ZWay,         "Login",      x.job "Login (lul_settings)"),
+          action (SID.ZwaveNetwork, "SendData",   x.job "SendData (lul_settings)"),
         }}}
   I_ZWay2_xml = tostring(x)
 end
@@ -1291,7 +1277,6 @@ local manifest = {
     ["D_ZWay.json"] = D_ZWay_json,
     ["I_ZWay.xml"]  = I_ZWay_xml,
     ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
-    ["I_ZWay3.xml"] = I_ZWay3_xml,    -- TODO: remove after development
     ["S_ZWay.xml"]  = S_ZWay_svc,
     
     ["built-in/default_console_menus.json"] = default_console_menus_json,
