@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2020.02.12",
+  VERSION       = "2020.03.14",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -116,6 +116,7 @@ ABOUT = {
 -- 2020.01.21   Add POLL_ERRORS and POLL_TIMEOUTS globals to diagnose asynch callback failures
 -- 2020.02.05   Put missing devices into Room 101 (retaining them in scene triggers and actions)  (for @DesT)
 -- 2020.02.12   use existing Bridge offset, if defined (thanks @reneboer.)  New luup.openLuup.bridge.*()
+-- 2020.03.14   add 'host' attribute to all children to show that they come from a Vera
 
 
 local devNo                      -- our device number
@@ -322,6 +323,7 @@ local function create_new (cloneId, dev, room)
   for _,name in ipairs (extras) do 
     attr[name] = dev[name]
   end
+  attr.host = "Vera"    -- 2020.03.14  show that we come from a Vera
   
   luup.devices[cloneId] = d   -- remember to put into the devices table! (chdev.create doesn't do that)
 end

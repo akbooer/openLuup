@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2020.02.14",
+  VERSION       = "2020.03.14",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2012 AKBooer",
@@ -74,6 +74,7 @@ local ABOUT = {
 
 -- 2020.01.27  use object-oriented scene: rename() rather than scene.rename()
 -- 2020.02.14  add room.lookup() to find room by name
+-- 2020.03.14  disable special Tripped processing on Vera bridged devices ONLY (ie. not Z-Way)
 
 
 local logs          = require "openLuup.logs"
@@ -98,12 +99,6 @@ local ioutil        = require "openLuup.io"
 local _log = logs.register (ABOUT)
 
 local _log_altui_variable  = logs.altui_variable
-
------
-
-local BRIDGEBLOCK = 10000         -- hardcoded VeraBridge blocksize (sorry, but easy and quick)
-
------
 
 -- devices contains all the devices in the system as a table indexed by the device number 
 -- not necessarily contiguous!
@@ -374,19 +369,19 @@ local function variable_set (service, name, value, device, startup)
     end 
   end
   set (name, value)
-  
+
   -- 2018.06.17  special Tripped processing for security devices, has to be synchronous with variable change
-  
+
   local security  = "urn:micasaverde-com:serviceId:SecuritySensor1"
-  if (name ~= "Tripped") or (service ~= security) or (device >= BRIDGEBLOCK) then return end   -- not interested 
-  
+  if (name ~= "Tripped") or (service ~= security) or (dev.attributes.host == "Vera") then return end   -- not interested 
+
   set ("LastTrip", tostring(os.time()))
-  
+
   -- 2018.08.05  AutoUntrip functionality (thanks for the suggestion @rigpapa)
-  
+
   local untrip = dev:variable_get (service, "AutoUntrip") or {}
   untrip = tonumber (untrip.value) or 0
-  
+
   local function clear ()
     local now = os.time()
     local last = dev: variable_get (service, "LastTrip") .value
