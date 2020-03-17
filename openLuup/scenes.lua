@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2020.03.08",
+  VERSION       = "2020.03.16",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -68,6 +68,7 @@ local ABOUT = {
 -- 2020.01.27   start implementing object-oriented scene changes
 -- 2020.01.28   move openLuup structure to scene metatable
 -- 2020.03.08   add optional timestamp to create()
+-- 2020.03.16   ensure numeric room number in create() (thanks @rafale77)
 
 
 local logs      = require "openLuup.logs"
@@ -208,6 +209,8 @@ local function scene_rename (self, name, room)  -- 2020.01.27
   devutil.new_userdata_dataversion ()
   name = tostring (name or self.description)
   room = tonumber (room or self.room_num)
+  _debug ("Scene rename name: " .. (name or '?'))
+  _debug ("Scene rename room: " .. (room or '?'))
   local scene = self.definition
   -- change the scene definition
   scene.name = name
@@ -410,10 +413,12 @@ end
 -- scene.create() - returns compiled scene object given json string containing group / timers / lua / ...
 --
 local function create (scene_json, timestamp)
+  _debug "Scene Create"
   local scene, err
   if type(scene_json) == "table" then         -- it's not actually JSON
     scene = scene_json                        -- ...assume it's Lua
   else
+    _debug (scene_json)
     scene, err = json.decode (scene_json)     -- or decode the JSON
   end
   if not scene then return nil, err end
@@ -423,7 +428,9 @@ local function create (scene_json, timestamp)
   if err then return nil, err end
 
   -- ensure VALID values for some essential variables...
-    
+  
+  scene.room = tonumber (scene.room)      -- 2020.03.16  ensure numeric room number (thanks @rafale77)
+  
   scene.Timestamp   = timestamp or scene.Timestamp or os.time()   -- creation time stamp
   scene.favorite    = scene.favorite or false
   scene.groups      = scene.groups or {}
