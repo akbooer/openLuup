@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.03.11",
+  VERSION       = "2020.03.18",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -1312,8 +1312,6 @@ do -- add font-awesome icon SVGs
     local new_icon = table.concat {icon, '-', suffix or colour}
     manifest [name: format (new_icon)] = svg: format (colour, fa[icon])
   end
---  for n,v in pairs (fa) do manifest [name: format(n)] = svg: format ("royalblue", v) end
---  for n,v in pairs (fa) do manifest [name: format(n)] = svg: format ("steelblue", v) end
   for n,v in pairs (fa) do manifest [name: format(n)] = svg: format ("cornflowerblue", v) end
   colorize ("trash-alt", "crimson", "red")
   colorize ("car-side-solid", "grey")
@@ -1324,13 +1322,6 @@ do -- add font-awesome icon SVGs
   colorize ("pause-solid", "grey")
   colorize ("circle-regular", "grey")
   colorize ("trigger", "grey")
---  colorize ("play-solid",  "cornflowerblue")
---  colorize ("play-solid",  "cadetblue")
---  colorize ("play-solid",  "darkcyan")
---  colorize ("play-solid",  "peru")
---  colorize ("play-solid",  "firebrick", "red")
---  colorize ("play-solid",  "indianred", "red")
---  colorize ("play-solid",  "lightcoral", "red")
   colorize ("play-solid",  "crimson", "red")
   colorize ("clock", "grey")
 end

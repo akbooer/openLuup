@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.03.10",
+  VERSION       = "2020.03.19",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -77,6 +77,8 @@ ABOUT = {
 -- 2020.02.19  fix missing discontiguous items in xselect() menu choices
 -- 2020.03.08  added creation time to scenes table (thanks @DesT)
 -- 2020.03.10  add "Move to Trash" button for orphaned historian files
+-- 2020.03.17  remove autocomplete from action form parameters (passwords, etc...)
+-- 2020.03.19  colour device panel header according to status
 
 
 --  WSAPI Lua CGI implementation
@@ -1618,7 +1620,11 @@ local function device_panel (self)          -- 2019.05.12
     
     local battery = (((self.services[SID.ha] or empty) .variables or empty) .BatteryLevel or empty) .value
     battery = battery and (battery .. '%') or ' '
-    top_panel = div {class="top-panel", 
+    local state = self: status_get()
+    -- states correspond to the scheduler job states
+    -- colours to their AltUI (possibly Vera) representations
+    local cs = {[0] = "-cyan", "-green", "-red", "-red", "-green", "-cyan", "-cyan", "-cyan"}
+    top_panel = div {class="top-panel" .. (cs[state] or ''),
       bookmark, ' ', truncate (devname (id)), span{style="float: right;", battery }}
   end
   
@@ -1836,12 +1842,17 @@ function pages.actions (p)
             if (v.direction or ''): match "in" then 
               args[#args+1] = xhtml.div {
                 xhtml.label {class= "w3-small", v.name},
-                xhtml.input {class="w3-input w3-border w3-hover-border-red", type="text", size= 40, name = v.name} }
+                xhtml.input {class="w3-input w3-border w3-hover-border-red", 
+                  type="text", autocomplete="off", size= 40, name = v.name} }  -- 2020.03.17 no autocomplete
             end
           end
         end
       end
     end
+--    local function service_menu () return filter_menu ({"All Services","Defined Services"},'', "svc=") end
+--    local sortmenu = sidebar (p, service_menu, device_sort)
+--    local rdiv = xhtml.div {sortmenu, xhtml.div {class="w3-rest w3-panel", t} }
+--    return title .. " - implemented actions", rdiv
     return title .. " - implemented actions", t
   end)
 end
@@ -2978,7 +2989,10 @@ function run (wsapi_env)
     .tim-panel {width:240px; float:left; }
     .trg-panel {width:240px; float:left; }
     .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    .top-panel-red {background:IndianRed; border-bottom:1px solid Grey; margin:0; padding:4px;}
     .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    .top-panel-cyan {background:PaleTurquoise; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    .top-panel-green {background:LightGreen; border-bottom:1px solid Grey; margin:0; padding:4px;}
   ]]},
     
     h.script {

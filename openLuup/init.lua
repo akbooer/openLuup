@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2019.10.14",
+  VERSION       = "2020.03.18",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@ local ABOUT = {
 -- 2019.06.14  add Console options
 -- 2019.07.31  use new server module (name reverted from http)
 -- 2019.10.14  set HTTP client port with client.start()
+
+-- 2020.03.18  report correct HTTP port in startup error message
 
 
 local logs  = require "openLuup.logs"
@@ -265,11 +267,12 @@ end
 
 local status
 
-do -- SERVERs and SCHEDULER
-  local s = server.start (config.HTTP)      -- start the port 3480 Web server
+do --	 SERVERs and SCHEDULER
+  local port = config.HTTP.Port or 3480     -- port 3480 is default
+  local s = server.start (config.HTTP)      -- start the Web server
   client.start (config.HTTP)                -- and tell the client which ACTUAL port to use!
   if not s then 
-    error "openLuup - is another copy already running?  Unable to start HTTP port 3480 server" 
+    error ("openLuup - is another copy already running?  Unable to start HTTP server on port " .. port)
   end
 
   if config.SMTP then smtp.start (config.SMTP) end
