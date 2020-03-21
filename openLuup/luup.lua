@@ -1,9 +1,9 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2020.03.14",
+  VERSION       = "2020.03.21",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2012 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
@@ -75,6 +75,7 @@ local ABOUT = {
 -- 2020.01.27  use object-oriented scene: rename() rather than scene.rename()
 -- 2020.02.14  add room.lookup() to find room by name
 -- 2020.03.14  disable special Tripped processing on Vera bridged devices ONLY (ie. not Z-Way)
+-- 2020.03.21  disable special Tripped processing for ANY security sensor with 'host' attribute
 
 
 local logs          = require "openLuup.logs"
@@ -373,7 +374,7 @@ local function variable_set (service, name, value, device, startup)
   -- 2018.06.17  special Tripped processing for security devices, has to be synchronous with variable change
 
   local security  = "urn:micasaverde-com:serviceId:SecuritySensor1"
-  if (name ~= "Tripped") or (service ~= security) or (dev.attributes.host == "Vera") then return end   -- not interested 
+  if (name ~= "Tripped") or (service ~= security) or dev.attributes.host then return end  -- not interested 
 
   set ("LastTrip", tostring(os.time()))
 

@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2019.08.08",
+  VERSION       = "2020.03.20",
   DESCRIPTION   = "XML utilities (HTML, SVG) and DOM-style parser/serializer",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ local ABOUT = {
 --                to share serializer, parser, and Node methods between XML, HTML, and SVG
 --                and provide new factory methods for XML, HTML, and SVG documents
 
+-- 2020.03.20  trow() function for generic HTML table rows (allows intervening HTML)
 
 --[[
 
@@ -425,23 +426,26 @@ end
 
 local HtmlConvenience = {}      -- HTML document convenience methods
 
+-- create a table row, head indicates a header row
+function HtmlConvenience.trow (r, head)
+  local typ = head and "th" or "td"
+  local items = {}
+  for _, x in ipairs (r or {}) do
+    items[#items+1] = createElement (typ, 
+      (type(x) ~= "table" or x[0])    -- x[0] has element name
+        and {x}                       -- simple element (eg. string), or
+        or x)                         -- else it's got some attributes
+  end
+  return createElement ("tr", items)
+end
+   
 function HtmlConvenience.table (attr)
-  
   local rows = 0
   local tbl = createElement ("table", attr)
   
-  local function make_row (typ, r)
-    local items = {}
-    for _, x in ipairs (r or {}) do
-      local y
-      if type(x) ~= "table" or x[0] then    -- x[0] has element name
-        y = createElement (typ, {x})
-      else
-        y = createElement (typ, x)  -- else it's got some attributes
-      end
-      items[#items+1] = y 
-    end
-    local tr = createElement ("tr", items)
+  -- create a table row, head indicates a header row
+  local function make_row (...)
+    local tr = HtmlConvenience.trow (...)
     tbl[#tbl+1] = tr
     return tr
   end
@@ -449,8 +453,8 @@ function HtmlConvenience.table (attr)
   -- convenience methods for headers and rows
   -- note that these can be called with colon (:) or dot (.) notation for compatibility
   
-  local function header (h1, h2) return make_row ("th", h2 or h1) end  
-  local function row (r1, r2)    rows = rows + 1; return make_row ("td", r2 or r1) end
+  local function header (h1, h2) return make_row (h2 or h1, true) end  
+  local function row (r1, r2)    rows = rows + 1; return make_row (r2 or r1) end
   local function length ()       return rows end
   
   rawset (tbl,-3, {header = header, row = row, length = length})   -- add specific metamethods to table element

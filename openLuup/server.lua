@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.http",
-  VERSION       = "2019.11.29",
+  VERSION       = "2020.03.20",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -45,6 +45,8 @@ Many people have contributed to finding and fixing bugs over the years, in parti
 -- 2019.11.29   add client socket to servlet.execute() parameter list
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263
 
+-- 2020.03.20   make module fully reentrant to allow multiple servers (on different ports)
+
 
 local url       = require "socket.url"
 
@@ -62,8 +64,6 @@ local _log = logs.register (ABOUT)
 
 local CHUNKED_LENGTH            = 16000     -- size of chunked transfers
 local MAX_HEADER_LINES          = 100       -- limit lines to help mitigate DOS attack or other client errors
-
-local PORT -- filled in during start()
 
 -- TABLES
 
@@ -306,12 +306,12 @@ end
 -- returns list of utility function(s)
 -- 
 local function start (config)
-  PORT = tostring(config.Port or 3480)
+  local port = tostring(config.Port or 3480)
   
   -- start(), create HTTP server
   return ioutil.server.new {
-      port      = PORT,                                 -- incoming port
-      name      = "HTTP",                               -- server name
+      port      = port,                                 -- incoming port
+      name      = "HTTP:" .. port,                      -- server name
       backlog   = config.Backlog or 2000,               -- queue length
       idletime  = config.CloseIdleSocketAfter or 90,    -- connect timeout
       servlet   = HTTPservlet,                          -- our own servlet
