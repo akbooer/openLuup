@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.03.19",
+  VERSION       = "2020.03.21",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -1637,9 +1637,12 @@ local function device_panel (self)          -- 2019.05.12
       main_panel = div {line1 or '', xhtml.br{}, line2 or ''}
     else
       local switch, slider = device_controls(self)
+      local time = self: variable_get (SID.security, "LastTrip")
+      time = time and div {class = "w3-tiny w3-display-bottomright", todate(time.value) or ''} or nil
       main_panel = div {
         div {class="w3-display-topright w3-padding-small", switch},
-        div {class="w3-display-bottommiddle", slider}}
+        div {class="w3-display-bottommiddle", slider},
+        time}
     end
   end
   

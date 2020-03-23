@@ -96,11 +96,11 @@ local panels = {
 -- Motion Sensor
 --
 
-  MotionSensor = {
-    panel = function (devNo)
-      local time  = luup.variable_get (sid.security, "LastTrip", devNo)
-      return div {class = "w3-tiny w3-display-bottomright", time and todate(time) or ''}
-    end},
+--  MotionSensor = {
+--    panel = function (devNo)
+--      local time  = luup.variable_get (sid.security, "LastTrip", devNo)
+--      return div {class = "w3-tiny w3-display-bottomright", time and todate(time) or ''}
+--    end},
 
 --
 -- Netatmo
