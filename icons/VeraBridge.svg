@@ -1,0 +1,10 @@
+<svg width="60" xmlns="http://www.w3.org/2000/svg" height="60" style="border: 1; margin: 0; background-color:White" viewBox="-24 -24 48 48">
+ <g style="fill:none; stroke-width:3; stroke:#504035;">
+  <circle cy="5" cx="0" r="17.5"/>
+  <circle cy="5" cx="0" r="23"/></g>
+ <g style="fill:White; stroke-width:0; stroke:White;">
+  <polygon points="-24.0,32.0 -24.0,-24.0 -16.0,-24.0 0.0,11.0 16.0,-24.0 24.0,-24.0 24.0,32.0 "/></g>
+ <g style="fill:Green; stroke-width:0; stroke:Green;">
+  <polygon points="-8.0,-5.0 8.0,-5.0 0.0,11.0 "/></g>
+ <g style="fill:#504035; stroke-width:0; stroke:#504035;">
+  <polygon points="-16.5,-5.0 -11.0,-5.0 0.0,17.0 11.0,-5.0 16.5,-5.0 3.5,20.5 -3.5,20.5 "/></g></svg>
