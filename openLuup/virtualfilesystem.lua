@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.03.18",
+  VERSION       = "2020.03.28",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -1172,7 +1172,7 @@ local altui_console_menus_json = [==[
     ["Scenes"],
     ["Tables", ["Rooms Table","Plugins Table", "Devices Table", "Scenes Table", "Triggers Table"] ],
     ["Utilities", ["Reload Luup Engine", "hr", "Lua Startup","Lua Shutdown", "Lua Test", 
-                       "hr", "Backups", "Images", "Trash"] ],
+                       "hr", "App Store", "Backups", "Images", "Trash"] ],
     ["Logs",      ["Log", "hr", "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "hr", "Startup Log"] ]
   ]
 }

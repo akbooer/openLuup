@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.03.21",
+  VERSION       = "2020.03.28",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -181,6 +181,7 @@ server.add_callback_handlers {XMLHttpRequest =
 
 local SID = {
   altui     = "urn:upnp-org:serviceId:altui1",                    -- 'DisplayLine1' and 'DisplayLine2'
+  appstore  = "urn:upnp-org:serviceId:AltAppStore1",
   ha        = "urn:micasaverde-com:serviceId:HaDevice1", 		      -- 'BatteryLevel'
   switch    = "urn:upnp-org:serviceId:SwitchPower1",              -- on/off control
   dimming   = "urn:upnp-org:serviceId:Dimming1",                  -- slider control
@@ -214,7 +215,7 @@ local page_groups = {
     ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
     ["Servers"]   = {"sockets", "http", "smtp", "pop3", "udp", "file_cache"},
-    ["Utilities"] = {"backups", "images", "trash"},
+    ["Utilities"] = {"app_store", "backups", "images", "trash"},
     ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3"},
     ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "scenes_table", "triggers_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
@@ -441,7 +442,8 @@ end
 -- build a vertical menu for the sidebar
 local function filter_menu (items, current_item, request)
   local menu = xhtml.div {class = "w3-margin-bottom  w3-border w3-border-grey"}
-  for i, name in ipairs (items) do
+  for i, item in ipairs (items) do
+    local name = (type(item) == "table") and item[1] or item  -- can be string or HTML element
     local colour = (name == current_item) and "w3-grey" or "w3-light-gray"
     menu[i] = xhtml.a {class = "w3-bar-item w3-button "..colour, href = selfref (request, name), name }
   end
@@ -684,7 +686,9 @@ end
 -- action=update_plugin&plugin=openLuup&update=version
 function actions.update_plugin (_, req)
   local q = req.params
-  requests.update_plugin ('', {Plugin=q.plugin, Version=q.version})
+  local v = q.version
+  v = (#v > 0) and v or "master"
+  requests.update_plugin ('', {Plugin=q.plugin, Version=v})
   -- actual update is asynchronous, so return is not useful
 end
 
@@ -693,9 +697,9 @@ function actions.call_action (_, req)
   local q = req.POST    -- it must be a post in order to loop through the params
   if q then
     local act, srv, dev = q.act, q.srv, q.dev
-    q.act, q.srv, q.dev = nil, nil, nil         -- remove these from the request and use the rest of the parameter list
-    -- action returns: error, message, jobNo, arrguments
+    q.act, q.srv, q.dev = nil, nil, nil     -- remove these and use the rest of the parameter list
 --    print ("ACTION", act, srv, dev)
+    -- action returns: error, message, jobNo, arguments
     local e,m,j,a = luup.call_action  (srv, act, q, tonumber (dev))
     local _ = {e,m,j,a}   -- TODO: write status return to message?
   end
@@ -1968,20 +1972,22 @@ end
   body = {middle = ..., topright = ..., bottomright = ...},
   widgets = { w1, w2, ... },
 --]]
-local function generic_panel (x)
+local function generic_panel (x, panel_type)
+  panel_type = panel_type or "tim-panel"
   local div = xhtml.div
-      local widgets = xhtml.span {class="w3-wide"}
-      for i,w in ipairs (x.widgets or empty) do widgets[i] = w end
-      return xhtml.div {class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card tim-panel",
-        div {class="top-panel", 
-          truncate (x.top_line.left or ''), 
-          xhtml.span{style="float: right;", x.top_line.right or '' } }, 
-        div {class = "w3-display-container", style = table.concat {"height:", x.height, "px;"},
+  local widgets = xhtml.span {class="w3-wide"}
+  for i,w in ipairs (x.widgets or empty) do widgets[i] = w end
+  local class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card " .. panel_type
+  return xhtml.div {class = class,
+    div {class="top-panel", 
+      truncate (x.top_line.left or ''), 
+      xhtml.span{style="float: right;", x.top_line.right or '' } }, 
+    div {class = "w3-display-container", style = table.concat {"height:", x.height, "px;"},
 --          div {class="w3-padding-small w3-margin-left w3-display-left ", x.icon } , 
-          div {class="w3-margin-left w3-display-left ", x.icon } , 
-          div {class="w3-display-middle", x.body.middle},
-          div {class="w3-padding-small w3-display-topright", x.body.topright } ,
-          div {class="w3-padding-small w3-display-bottomright", x.widgets and div(x.widgets) or x.body.bottomright } 
+      div {class="w3-margin-left w3-display-left ", x.icon } , 
+      div {class="w3-display-middle", x.body.middle},
+      div {class="w3-padding-small w3-display-topright", x.body.topright } ,
+      div {class="w3-padding-small w3-display-bottomright", x.widgets and div(x.widgets) or x.body.bottomright } 
           }  } 
 end
 
@@ -2745,8 +2751,7 @@ function pages.plugins_table (_, req)
   for _, p in ipairs (IP2) do
     -- http://apps.mios.com/plugin.php?id=8246
     local src = p.Icon or ''
-    local mios_plugin = src: match "^plugins/icons/"
-    if mios_plugin then src = "http://apps.mios.com/" .. src end
+    src  = src: gsub ("^/?plugins/", "http://apps.mios.com/plugins/")
     local icon = xhtml.img {src=src, alt="no icon", height=35, width=35} 
     local version = table.concat ({p.VersionMajor or '?', p.VersionMinor}, '.')
     local files = {}
@@ -2783,6 +2788,171 @@ function pages.plugins_table (_, req)
     href = selfref "page=plugin", "+ Create", title="create new plugin"}
   return page_wrapper ("Plugins", create, t)
 end
+
+local function load_appstore ()
+  local A = {}
+  _log "loading app database..."
+--  local fname = "AltAppStore/data/plugins.json"
+--  local f = io.open (fname)
+--  if not f then return end
+--  local j = f:read "*a"
+--  f: close()
+  local _,j = luup.inet.wget "https://raw.githubusercontent.com/akbooer/AltAppStore/data/J_AltAppStore.json"
+
+  local apps, errmsg = json.decode (j)
+  if errmsg then _log (errmsg) end
+  
+  if apps then
+    _log "...done"
+    
+    for _, a in ipairs (apps) do
+      local reps = a.Repositories 
+      if type(reps) == "table" then
+        for _, rep in ipairs (reps) do
+          if rep.type == "GitHub" then
+            a.repository = rep          -- this is the GitHub repository
+            a.Repositories = nil        -- remove the others
+            A[#A+1] = a
+            break
+          end
+        end
+      else
+  --      print ("No Git", a.Title, tostring(reps), a.Title)
+      end
+    end
+  end
+
+  table.sort (A, function (a,b) return a.Title < b.Title end)
+  return A
+end
+
+local APPS
+
+local function app_panel (app)
+  local icon = (app.Icon or ''): gsub ("^/?plugins/", "http://apps.mios.com/plugins/")
+--  print (app.Title, icon)
+  local title = app.Description or ''
+  local repository = app.repository
+  local source = repository.source or ''
+  local onclick = "alert ('%s')"
+  icon = xhtml.img {title=title, onclick = onclick: format(title),
+    src=icon, alt="no icon", height=64, width=64}
+  local GitHub_Mark = "https://raw.githubusercontent.com/akbooer/openLuup/development/icons/GitHub-Mark-64px.png"
+  local github = xhtml.a {href="https://github.com/"  .. source, target="_blank", class="w3-button w3-round",
+    xhtml.img {title="go to GitHub repository", src=GitHub_Mark, alt="GitHub", height=32, width=32} }
+  
+  -- show releases
+  local choice = {style="width:12em;", name="release"} 
+  local versions = repository.versions
+  
+  local vs = {}
+  for _,x in pairs (versions) do vs[#vs+1] = tostring(x.release) end
+  table.sort (vs, function(a,b) return a > b end)
+  for _, release in ipairs (vs) do
+    choice[#choice+1] = xhtml.option {value=release, release} 
+  end
+
+  local panel = generic_panel ({
+    height = 90,
+    top_line = {
+      left = xhtml.span {truncate (app.Title)}, right = xhtml.select (choice)},
+    icon = xhtml.div {class="w3-padding-small w3-display-left ", icon },
+    body = {
+      bottomright = xhtml.div {github, 
+        xhtml.input {class="w3-button w3-round w3-border w3-green ", type="submit", value="Install" } } },
+      }, "app-panel")
+  
+  return xhtml.form {action=selfref(), method="POST",
+    xhtml.input {hidden=1, name="app", value=app.id},
+    panel}
+end
+
+function pages.app_store (p, req)
+  APPS = APPS or load_appstore()
+  
+  local function install_app (app, release)
+    local meta = {plugin = {} }
+    for n,v in pairs (app) do
+      if type (v) == "table" then -- for some reason the AltAppStore wrapped these to lowercase (@Vosmont??)
+        meta[n: lower()] = v
+      else
+        meta.plugin[n] = v
+      end
+    end
+    
+    -- some more fix-ups (this really is a mess due to committee decisions!)
+    meta.versions = nil
+    meta.versionid = release
+    meta.version = {major = "GitHub", minor = release}
+    
+    -- shallow copy the repository to preserve original for UI version selection
+    local repository = {}
+    for n,v in pairs (meta.repository) do repository[n] = v end
+    repository.versions = {[release] = {release = release}}  -- others are not relevant to the install
+    meta.repository = repository
+    
+    local metadata = json.encode (meta) 
+--    print (metadata)
+    
+    local sid = SID.appstore
+    local act = "update_plugin"
+    local arg = {metadata = metadata}
+    local dev
+    -- find the AltAppStore plugin
+    for devNo, d in pairs (luup.devices) do
+      if (d.device_type == "urn:schemas-upnp-org:device:AltAppStore:1") then
+        dev = devNo
+        break
+      end
+    end
+    
+    -- returns: error (number), error_msg (string), job (number), arguments (table)
+    local e, errmsg, j, a = luup.call_action (sid, act, arg, dev)       -- actual install
+    print ((json.encode {e,errmsg,j,a}))
+    _log ((json.encode(a or empty)))
+    if errmsg then _log (errmsg) end
+    
+    -- NOTE: that the above action executes asynchronously and the function call
+    --       returns immediately, so you CAN'T do a luup.reload() here !!
+    --       (it's done at the end of the <job> part of the called action)
+  end
+  
+  local q = req.POST
+  local install = q.app   -- request to install this app
+  local release = q.release
+  
+  -- construct letter groups index
+  local a_z = {"abc", "def", "ghi", "jkl","mno", "pqrs", "tuv", "wxyz"}
+  local a_z_idx = {}
+  for _, abc in ipairs (a_z) do
+    for letter in abc: gmatch "." do a_z_idx[letter] = abc end
+  end
+    
+--  local abc_menu = {xhtml.div{"All Apps", xhtml.span {class="w3-badge w3-right", 42} } }
+  local All_Apps = "All Apps"
+  local abc_menu = {All_Apps}
+  for _, abc in ipairs (a_z) do
+    abc_menu[#abc_menu+1] = abc
+  end
+  
+  local wanted = p.abc_sort
+  local subset = xhtml.div{class = "w3=panel"}
+  for _, app in ipairs(APPS) do
+    if app.id == install then install_app (app, release) end
+    local letter = (app.Title or '') :sub(1,1) :lower()
+    local grp = a_z_idx[letter]
+    if wanted == All_Apps or wanted == grp then
+      subset[#subset+1] = app_panel(app)
+    end
+  end
+  
+  local function service_menu () return filter_menu (abc_menu, wanted, "abc_sort=") end
+  local sortmenu = sidebar (p, service_menu)
+  local rdiv = xhtml.div {sortmenu, xhtml.div {class="w3-rest w3-panel", subset } }
+  
+  return page_wrapper ("Alt App Store", rdiv)  
+end
+
 
 function pages.about () 
   local function embedded_links (t)   -- replace embedded http reference with real links
@@ -2941,7 +3111,8 @@ function run (wsapi_env)
   if page_groups[P] then p.page = page_groups[P][1] end     -- replace group name with first page in group
   
   local cookies = {page = "about", previous = "about",      -- cookie defaults
-    device = "2", scene = "1", room = "All Rooms", dev_sort = "Sort by Name", scn_sort = "All Scenes"}
+    device = "2", scene = "1", room = "All Rooms", 
+    abc_sort="abc", dev_sort = "Sort by Name", scn_sort = "All Scenes"}
   for cookie in pairs (cookies) do
     if p[cookie] then 
       res: set_cookie (cookie, p[cookie])                   -- update cookie with URL parameter
@@ -2991,6 +3162,7 @@ function run (wsapi_env)
     .scn-panel {width:240px; float:left; }
     .tim-panel {width:240px; float:left; }
     .trg-panel {width:240px; float:left; }
+    .app-panel {width:320px; float:left; }
     .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
     .top-panel-red {background:IndianRed; border-bottom:1px solid Grey; margin:0; padding:4px;}
     .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}

@@ -1,19 +1,21 @@
 ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2020.03.03",
+  VERSION       = "2020.03.28",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2020",
   DOCUMENTATION = "https://github.com/akbooer/AltAppStore",
+  DEBUG         = false,
+  LICENSE       = [[
+  This program is free software: you can redistribute it and/or modify
+  it under the condition that it is for private or home useage and 
+  this whole comment is reproduced in the source code file.
+  Commercial utilisation is not authorized without the appropriate written agreement.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE . 
+]]
 }
-
--- // This program is free software: you can redistribute it and/or modify
--- // it under the condition that it is for private or home useage and 
--- // this whole comment is reproduced in the source code file.
--- // Commercial utilisation is not authorized without the appropriate written agreement.
--- // This program is distributed in the hope that it will be useful,
--- // but WITHOUT ANY WARRANTY; without even the implied warranty of
--- // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE . 
 
 -- Plugin for Vera and openLuup
 --
@@ -50,6 +52,7 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 -- 2018.06.28   correct non-alphanumeric handling in download directory 
 
 -- 2020.03.03   add log output of request metadata (for diagnostics)
+-- 2020.03.28   fix recent release error handling
 
 
 local https     = require "ssl.https"
@@ -93,6 +96,8 @@ local icon_folder = icon_directories[(luup.version_minor == 0 ) or luup.version_
 local ludl_folder = ludl_directories[(luup.version_minor == 0 ) or luup.version_major]
 
 local _log = function (...) luup.log (table.concat ({ABOUT.NAME, ':', ...}, ' ')) end
+
+local _debug = function (...) if ABOUT.DEBUG then _log (...) end; end
 
 local pathSeparator = '/'
 
@@ -187,6 +192,7 @@ function GitHub (archive)     -- global for access by other modules
     _log ("GitHub request: " .. request)
     if r then 
       decoded, errmsg = json.decode (response)
+      _debug (response)
     else
       errmsg = c
       _log ("ERROR: " .. (errmsg or "unknown"))
@@ -470,7 +476,7 @@ function update_plugin_run(args)
     return false                            -- failure
   end
   
-  _log (args.metadata)    -- 2020.03.03
+  _debug ((json.encode(meta)))
 
   local d = meta.devices
   local p = meta.plugin
@@ -483,15 +489,8 @@ function update_plugin_run(args)
   end
   
   local t = r.type
-  local versionid = meta.versionid or ''
-  -----
-  -- 2020.03.03 allow versionid to override missing release information
-  versionid = #versionid > 0 and versionid or "master"
-  local w = (r.versions or {}) [versionid] or {}
-  local rev = w.release or ''
-  rev = #rev > 0 and rev or versionid
-  --
-  -----
+  local w = (r.versions or {}) [meta.versionid] or {}
+  local rev = w.release
   if not (t == "GitHub" and type(rev) == "string") then
     _log "invalid metadata: missing GitHub release"
     return false

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2020.03.03",
+  VERSION       = "2020.03.25",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -210,8 +210,7 @@ local preinstalled = {
     {
       AllowMultiple   = "0",
       Title           = "openLuup",
---      Icon            = "https://avatars.githubusercontent.com/u/4962913",
-      Icon            = "icons/openLuup.svg",
+      Icon            = "https://avatars.githubusercontent.com/u/4962913",  -- AltUI seems to need HTTPS
       Instructions    = "https://community.getvera.com/c/plugins-and-plugin-development/openluup",
       AutoUpdate      = "0",
       VersionMajor    = '',
@@ -274,7 +273,7 @@ local preinstalled = {
     {
       AllowMultiple   = "0",
       Title           = "Alternate App Store",
-      Icon            = "icons/AltAppStore.svg",
+      Icon            = "https://raw.githubusercontent.com/akbooer/AltAppStore/master/AltAppStore.png",
       Instructions    = "https://github.com/akbooer/AltAppStore",
       AutoUpdate      = "0",
       VersionMajor    = '',
@@ -306,8 +305,7 @@ local preinstalled = {
     {
       AllowMultiple   = "1",
       Title           = "VeraBridge",
---      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
-      Icon            = "icons/VeraBridge.svg",
+      Icon            = "https://raw.githubusercontent.com/akbooer/openLuup/master/icons/VeraBridge.png",
       Instructions    = "http://forum.micasaverde.com/index.php/board,79.0.html",
       AutoUpdate      = "0",
       VersionMajor    = "not",
