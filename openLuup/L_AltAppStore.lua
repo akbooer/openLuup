@@ -53,6 +53,7 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 
 -- 2020.03.03   add log output of request metadata (for diagnostics)
 -- 2020.03.28   fix recent release error handling
+-- 2020.03.28   RB; use curl to get files from github. On PI (Debian) https request gives 301 redirect probably due to LuaSec vs. openSSL version issues.
 
 
 local https     = require "ssl.https"
@@ -181,20 +182,18 @@ function GitHub (archive)     -- global for access by other modules
 
   local function git_request (request)
     local decoded
-    local response = {}
     local errmsg
-    local r, c = https.request {
-      url = request,
-      sink = ltn12.sink.table(response),
-      protocol = "tlsv1_2"
-    }
-    response = table.concat (response)
+    os.execute("curl ".. request .. " > /tmp/git.json")
+    local fd = io.open("/tmp/git.json")
+    local response = fd:read("*a")
+    fd:close()
+    os.execute("rm /tmp/git.json")
     _log ("GitHub request: " .. request)
-    if r then 
+    if response ~= "" then
       decoded, errmsg = json.decode (response)
       _debug (response)
     else
-      errmsg = c
+      errmsg = "could not read git file"
       _log ("ERROR: " .. (errmsg or "unknown"))
     end
     return decoded, errmsg
