@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2020.03.25",
+  VERSION       = "2020.03.29",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -392,9 +392,9 @@ local preinstalled = {
 
 local default_plugins = {
     preinstalled.openLuup,
-    preinstalled.AltUI,
     preinstalled.AltAppStore,
     preinstalled.VeraBridge,
+    preinstalled.AltUI,
     preinstalled.ZWay,
     preinstalled.MySensors,
   }

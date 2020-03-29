@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.03.28",
+  VERSION       = "2020.03.29",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -2764,6 +2764,9 @@ function pages.plugins_table (_, req)
       xhtml.input {hidden=1, name="page", value="viewer"},
       xhtml.select (choice)}
 --    local auto_update = p.AutoUpdate == '1' and unicode.check_mark or ''
+    
+    local ignore = {AltAppStore = '', VeraBridge = ''}
+    
     local edit = xhtml.a {href=selfref "page=plugin&plugin="..p.id, title="edit",
       xhtml.img {src="/icons/edit.svg", alt="edit", height=24, width=24} }
     local help = xhtml.a {href=p.Instructions or '', target="_blank", title="help",
@@ -2771,7 +2774,9 @@ function pages.plugins_table (_, req)
     local info = xhtml.a {target="_blank", title="info",
       href=table.concat {"http://github.com/",p.Repository.source or '',"#readme"}, 
       xhtml.img {src="/icons/info-circle-solid.svg", alt="info", height=24, width=24} }
-    local update = xhtml.form {
+    local actions = ignore[p.id] or xhtml.span{edit, help, info}
+    
+    local update = ignore[p.id] or xhtml.form {
       action = selfref(), method="post",
       xhtml.input {hidden=1, name="action", value="update_plugin"},
       xhtml.input {hidden=1, name="plugin", value=p.id},
@@ -2780,13 +2785,16 @@ function pages.plugins_table (_, req)
         xhtml.input {class="w3-hover-border-red", type = "text", autocomplete="off", name="version", value=''},
         xhtml.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
           title="update", alt='', height=28, width=28} } }
-    local trash_can = p.id == "openLuup" and '' or delete_link ("plugin", p.id)
+    ignore.openLuup = ''
+    local trash_can = ignore[p.id] or delete_link ("plugin", p.id)
     t.row {icon, p.Title, version, files, 
-      xhtml.span{edit, help, info}, update, '', trash_can} 
+      actions, update, '', trash_can} 
   end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=plugin", "+ Create", title="create new plugin"}
-  return page_wrapper ("Plugins", create, t)
+  local appstore = xhtml.a {class="w3-button w3-round w3-amber", 
+    href = selfref "page=app_store", "App Store", title="go to App Store"}
+  return page_wrapper ("Plugins", create, appstore, t)
 end
 
 local function load_appstore ()
@@ -2908,7 +2916,7 @@ function pages.app_store (p, req)
     
     -- returns: error (number), error_msg (string), job (number), arguments (table)
     local e, errmsg, j, a = luup.call_action (sid, act, arg, dev)       -- actual install
-    print ((json.encode {e,errmsg,j,a}))
+--    print ((json.encode {e,errmsg,j,a}))
     _log ((json.encode(a or empty)))
     if errmsg then _log (errmsg) end
     

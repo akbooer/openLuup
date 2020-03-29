@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2020.03.28",
+  VERSION       = "2020.03.29",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2020",
@@ -53,6 +53,8 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 
 -- 2020.03.03   add log output of request metadata (for diagnostics)
 -- 2020.03.28   fix recent release error handling
+-- 2020.03.29   incorporate modified version of @reneboer's GitHub access fix
+--              see: https://github.com/akbooer/openLuup/pull/21
 
 
 local https     = require "ssl.https"
@@ -178,7 +180,7 @@ local _ = {
 function GitHub (archive)     -- global for access by other modules
 
   -- get and decode GitHub url
-
+--[[
   local function git_request (request)
     local decoded
     local response = {}
@@ -192,14 +194,58 @@ function GitHub (archive)     -- global for access by other modules
     _log ("GitHub request: " .. request)
     if r then 
       decoded, errmsg = json.decode (response)
-      _debug (response)
+      _debug ("GitHub RESPONSE: " .. response)
     else
       errmsg = c
       _log ("ERROR: " .. (errmsg or "unknown"))
     end
     return decoded, errmsg
   end
+ --]]
   
+  -- get and decode GitHub url
+  local function git_request (request)
+    local decoded
+--    local response = {}
+    local errmsg
+
+    local fd = io.popen ("curl ".. request)
+    local response = fd:read("*a")
+    fd:close()
+    
+    _log ("GitHub request: " .. request)
+    if response ~= "" then
+      decoded, errmsg = json.decode (response)
+    else
+      errmsg = c
+      _log ("ERROR: " .. (errmsg or "unknown"))
+    end
+    return decoded, errmsg
+  end
+ 
+--[[
+  -- get and decode GitHub url
+  local function git_request (request)
+    local decoded
+--    local response = {}
+    local errmsg
+
+        os.execute("curl ".. request .. " > trash/git.json")
+        local fd = io.open("trash/git.json")
+        local response = fd:read("*a")
+    fd:close()
+        os.execute("rm trash/git.json")
+    _log ("GitHub request: " .. request)
+    if response ~= "" then
+      decoded, errmsg = json.decode (response)
+    else
+      errmsg = c
+      _log ("ERROR: " .. (errmsg or "unknown"))
+    end
+    return decoded, errmsg
+  end
+ --]]
+ 
   -- return a table of tagged releases, indexed by name, 
   -- with GitHub structure including commit info
   local function get_tags ()
