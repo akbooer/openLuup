@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.03.29",
+  VERSION       = "2020.03.31",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -208,7 +208,6 @@ local function short_name(name)
 end
  
 local page_groups = {
---    ["House Mode"]= {"home", "away", "night", "vacation"},
     ["Historian"] = {"summary", "cache", "database", "orphans"},
     ["System"]    = {"parameters", "top_level", "all_globals", "states", "sandboxes", "RELOAD"},
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "globals", "user_data"},
@@ -219,6 +218,7 @@ local page_groups = {
     ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3"},
     ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "scenes_table", "triggers_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
+--    ["Apps"]      = {"app_json"},
   }
 
 local page_groups_index = {}        -- groups indexed by page name
@@ -2747,12 +2747,8 @@ function pages.plugins_table (_, req)
   end
   ---
   local t = xhtml.table {class = "w3-bordered"}
-  t.header {'', "Name","Version", "Files", "Actions", "Update", '', "Unistall"}
+  t.header {'', "Name","Version", "Files", "GitHub", "Update", '', "Unistall"}
   for _, p in ipairs (IP2) do
-    -- http://apps.mios.com/plugin.php?id=8246
-    local src = p.Icon or ''
-    src  = src: gsub ("^/?plugins/", "http://apps.mios.com/plugins/")
-    local icon = xhtml.img {src=src, alt="no icon", height=35, width=35} 
     local version = table.concat ({p.VersionMajor or '?', p.VersionMinor}, '.')
     local files = {}
     for _, f in ipairs (p.Files or empty) do files[#files+1] = f.SourceName end
@@ -2763,18 +2759,12 @@ function pages.plugins_table (_, req)
     files = xhtml.form {action=selfref(), 
       xhtml.input {hidden=1, name="page", value="viewer"},
       xhtml.select (choice)}
---    local auto_update = p.AutoUpdate == '1' and unicode.check_mark or ''
     
     local ignore = {AltAppStore = '', VeraBridge = ''}
     
-    local edit = xhtml.a {href=selfref "page=plugin&plugin="..p.id, title="edit",
-      xhtml.img {src="/icons/edit.svg", alt="edit", height=24, width=24} }
-    local help = xhtml.a {href=p.Instructions or '', target="_blank", title="help",
-      xhtml.img {src="/icons/question-circle-solid.svg", alt="help", height=24, width=24} }
-    local info = xhtml.a {target="_blank", title="info",
-      href=table.concat {"http://github.com/",p.Repository.source or '',"#readme"}, 
-      xhtml.img {src="/icons/info-circle-solid.svg", alt="info", height=24, width=24} }
-    local actions = ignore[p.id] or xhtml.span{edit, help, info}
+    local GitHub_Mark = "https://raw.githubusercontent.com/akbooer/openLuup/development/icons/GitHub-Mark-64px.png"
+    local github = xhtml.a {href="https://github.com/"  .. (p.Repository.source or ''), target="_blank", 
+      xhtml.img {title="go to GitHub repository", src=GitHub_Mark, alt="GitHub", height=32, width=32} }
     
     local update = ignore[p.id] or xhtml.form {
       action = selfref(), method="post",
@@ -2785,10 +2775,14 @@ function pages.plugins_table (_, req)
         xhtml.input {class="w3-hover-border-red", type = "text", autocomplete="off", name="version", value=''},
         xhtml.input {class="w3-display-right", type="image", src="/icons/retweet.svg", 
           title="update", alt='', height=28, width=28} } }
+    
     ignore.openLuup = ''
+    local src = p.Icon or ''
+    src  = src: gsub ("^/?plugins/", "http://apps.mios.com/plugins/")  -- http://apps.mios.com/plugin.php?id=...
+    local icon = xhtml.img {src=src, alt="no icon", height=35, width=35}
+    icon = ignore[p.id] and icon or xhtml.a {href=selfref "page=plugin&plugin="..p.id, title="edit", icon}
     local trash_can = ignore[p.id] or delete_link ("plugin", p.id)
-    t.row {icon, p.Title, version, files, 
-      actions, update, '', trash_can} 
+    t.row {icon, p.Title, version, files, github, update, '', trash_can} 
   end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=plugin", "+ Create", title="create new plugin"}
@@ -2797,8 +2791,14 @@ function pages.plugins_table (_, req)
   return page_wrapper ("Plugins", create, appstore, t)
 end
 
+
+--
+-- APP Store
+--
+local APPS = {}
+
 local function load_appstore ()
-  local A = {}
+  if #APPS > 0 then return end
   _log "loading app database..."
 --  local fname = "AltAppStore/data/plugins.json"
 --  local f = io.open (fname)
@@ -2820,7 +2820,8 @@ local function load_appstore ()
           if rep.type == "GitHub" then
             a.repository = rep          -- this is the GitHub repository
             a.Repositories = nil        -- remove the others
-            A[#A+1] = a
+            APPS[#APPS+1] = a
+            APPS[tostring(a.id)] = a    -- add index by ID
             break
           end
         end
@@ -2830,13 +2831,18 @@ local function load_appstore ()
     end
   end
 
-  table.sort (A, function (a,b) return a.Title < b.Title end)
-  return A
+  table.sort (APPS, function (a,b) return a.Title < b.Title end)
 end
 
-local APPS
+function pages.app_json (p)
+  local readonly = true
+  local info = json.encode (APPS[p.plugin] or empty)
+  return page_wrapper ("Alt App Store - JSON definition",
+      xhtml.div {code_editor (info, 500, "json", readonly)})
+end
 
-local function app_panel (app)
+-- info parameter is non-nil in the case of an install
+local function app_panel (app, info)
   local icon = (app.Icon or ''): gsub ("^/?plugins/", "http://apps.mios.com/plugins/")
 --  print (app.Title, icon)
   local title = app.Description or ''
@@ -2848,7 +2854,9 @@ local function app_panel (app)
   local GitHub_Mark = "https://raw.githubusercontent.com/akbooer/openLuup/development/icons/GitHub-Mark-64px.png"
   local github = xhtml.a {href="https://github.com/"  .. source, target="_blank", class="w3-button w3-round",
     xhtml.img {title="go to GitHub repository", src=GitHub_Mark, alt="GitHub", height=32, width=32} }
-  
+  local jlink = xhtml.a {href=selfref ("page=app_json&plugin=" .. app.id), 
+    class="w3-button w3-round", title="view App Store JSON", "JSON"}
+
   -- show releases
   local choice = {style="width:12em;", name="release"} 
   local versions = repository.versions
@@ -2866,7 +2874,8 @@ local function app_panel (app)
       left = xhtml.span {truncate (app.Title)}, right = xhtml.select (choice)},
     icon = xhtml.div {class="w3-padding-small w3-display-left ", icon },
     body = {
-      bottomright = xhtml.div {github, 
+      topright = info,
+      bottomright = xhtml.div {jlink, github, 
         xhtml.input {class="w3-button w3-round w3-border w3-green ", type="submit", value="Install" } } },
       }, "app-panel")
   
@@ -2876,7 +2885,7 @@ local function app_panel (app)
 end
 
 function pages.app_store (p, req)
-  APPS = APPS or load_appstore()
+  load_appstore()
   
   local function install_app (app, release)
     local meta = {plugin = {} }
@@ -2915,14 +2924,16 @@ function pages.app_store (p, req)
     end
     
     -- returns: error (number), error_msg (string), job (number), arguments (table)
-    local e, errmsg, j, a = luup.call_action (sid, act, arg, dev)       -- actual install
+    local _, errmsg, _, a = luup.call_action (sid, act, arg, dev)       -- actual install
 --    print ((json.encode {e,errmsg,j,a}))
-    _log ((json.encode(a or empty)))
+    local result = json.encode (a or {ERROR = errmsg})
+    _log (result)
     if errmsg then _log (errmsg) end
     
     -- NOTE: that the above action executes asynchronously and the function call
     --       returns immediately, so you CAN'T do a luup.reload() here !!
     --       (it's done at the end of the <job> part of the called action)
+    return result
   end
   
   local q = req.POST
@@ -2946,11 +2957,12 @@ function pages.app_store (p, req)
   local wanted = p.abc_sort
   local subset = xhtml.div{class = "w3=panel"}
   for _, app in ipairs(APPS) do
-    if app.id == install then install_app (app, release) end
+    local info
+    if app.id == install then info = "INSTALLING..." .. install_app (app, release) end
     local letter = (app.Title or '') :sub(1,1) :lower()
     local grp = a_z_idx[letter]
     if wanted == All_Apps or wanted == grp then
-      subset[#subset+1] = app_panel(app)
+      subset[#subset+1] = app_panel(app, info)
     end
   end
   
@@ -2961,6 +2973,7 @@ function pages.app_store (p, req)
   return page_wrapper ("Alt App Store", rdiv)  
 end
 
+-----
 
 function pages.about () 
   local function embedded_links (t)   -- replace embedded http reference with real links

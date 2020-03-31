@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "AltAppStore",
-  VERSION       = "2020.03.29",
+  VERSION       = "2020.03.30",
   DESCRIPTION   = "update plugins from Alternative App Store",
   AUTHOR        = "@akbooer / @amg0 / @vosmont",
   COPYRIGHT     = "(c) 2013-2020",
@@ -59,7 +59,7 @@ and partially modelled on the InstalledPlugins2 structure in Vera user_data.
 
 local https     = require "ssl.https"
 local lfs       = require "lfs"
-local ltn12     = require "ltn12"
+--local ltn12     = require "ltn12"
 
 local json
 local Vera = luup.attr_get "SvnVersion"
@@ -205,46 +205,18 @@ function GitHub (archive)     -- global for access by other modules
   
   -- get and decode GitHub url
   local function git_request (request)
-    local decoded
---    local response = {}
-    local errmsg
-
-    local fd = io.popen ("curl ".. request)
-    local response = fd:read("*a")
+    _log ("GitHub request: " .. request)
+    
+    local fd = io.popen ("curl " .. request)
+    local response = fd:read "*a"
     fd:close()
     
-    _log ("GitHub request: " .. request)
-    if response ~= "" then
-      decoded, errmsg = json.decode (response)
-    else
-      errmsg = c
-      _log ("ERROR: " .. (errmsg or "unknown"))
-    end
-    return decoded, errmsg
+    if response then return json.decode (response) end
+    
+    local errmsg = "ERROR: reading GitHub file"
+    _log (errmsg)
+    return nil, errmsg
   end
- 
---[[
-  -- get and decode GitHub url
-  local function git_request (request)
-    local decoded
---    local response = {}
-    local errmsg
-
-        os.execute("curl ".. request .. " > trash/git.json")
-        local fd = io.open("trash/git.json")
-        local response = fd:read("*a")
-    fd:close()
-        os.execute("rm trash/git.json")
-    _log ("GitHub request: " .. request)
-    if response ~= "" then
-      decoded, errmsg = json.decode (response)
-    else
-      errmsg = c
-      _log ("ERROR: " .. (errmsg or "unknown"))
-    end
-    return decoded, errmsg
-  end
- --]]
  
   -- return a table of tagged releases, indexed by name, 
   -- with GitHub structure including commit info
