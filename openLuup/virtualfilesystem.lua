@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.03.28",
+  VERSION       = "2020.04.02",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -1136,32 +1136,7 @@ local unknown_wsp = [[
           0,                      0
 ]]
 
--- console menu structure
-local classic_console_menus_json = [==[
-{
-  "comment":"JSON to define CLASSIC console menu structure",
-  "menus":[
-    ["openLuup",  ["About", "hr", "Parameters", "Historian", "hr", "Globals", "States"] ],
-    ["Files",     ["Backups", "Images", "Database", "File Cache", "Trash"] ],
-    ["Scheduler", ["Running", "Delays", "Watches", "Sockets", "Sandboxes", "Plugins"] ],
-    ["Servers",   ["HTTP", "SMTP", "POP3", "UDP"] ],
-    ["Logs",      ["Log", "hr", "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "hr", "Startup Log"] ]
-  ]
-}
-]==]
-
-local default_console_menus_json = [==[
-{
-  "comment":"JSON to define standard console menu structure",
-  "menus":[
-    ["openLuup",  ["About", "hr", "System", "Historian", "Lua Code", "hr", "Utilities", "Scheduler","Servers"] ],
-    ["Files",     ["Backups", "Images", "Trash"] ],
-    ["Scheduler", ["Running", "Completed", "Startup", "Plugins", "Delays", "Watches"] ],
-    ["Servers",   ["HTTP", "SMTP", "POP3", "UDP", "hr", "Sockets", "File Cache"] ],
-    ["Logs",      ["Log", "hr", "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "hr", "Startup Log"] ]
-  ]
-}
-]==]
+-- openLuup console menu structure
 
 local altui_console_menus_json = [==[
 {
@@ -1177,6 +1152,22 @@ local altui_console_menus_json = [==[
   ]
 }
 ]==]
+
+
+local openLuup_menus_json = json.encode {
+  comment = "JSON to define AltUI-style console menu structure",
+  menus = {
+    {"openLuup",  {"About", "hr", "System", "Historian", "Scheduler", "Servers"} },
+    {"Devices"},
+    {"Scenes"},
+    {"Tables", {"Rooms Table", "Devices Table", "Scenes Table", "Triggers Table",
+                        "hr","Plugins Table", "App Store", "Luup Files"} },
+    {"Utilities", {"Reload Luup Engine", "hr", "Lua Startup","Lua Shutdown", "Lua Test", "Command Line", 
+                       "hr", "Backups", "Images", "Trash"} },
+    {"Logs",      {"Log", "hr", "Log.1","Log.2", "Log.3", "Log.4", "Log.5", "hr", "Startup Log"} }
+  }
+}
+
 
 
 ----- font-awesome
@@ -1279,9 +1270,8 @@ local manifest = {
     ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
     ["S_ZWay.xml"]  = S_ZWay_svc,
     
-    ["built-in/default_console_menus.json"] = default_console_menus_json,
-    ["built-in/classic_console_menus.json"] = classic_console_menus_json,
     ["built-in/altui_console_menus.json"]   = altui_console_menus_json,
+    ["built-in/openLuup_menus.json"]   = openLuup_menus_json,
     
     ["built-in/D_BinaryLight1.xml"]  = D_BinaryLight1_xml,
     ["built-in/D_BinaryLight1.json"] = D_BinaryLight1_json,

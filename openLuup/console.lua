@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.03.31",
+  VERSION       = "2020.04.02",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -197,7 +197,7 @@ local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run
 local script_name  -- name of this CGI script
   
 -- switch dynamically between different menu styles
-local menu_json = options.Menu ~= '' and options.Menu or "altui_console_menus.json"
+local menu_json = options.Menu ~= '' and options.Menu or "openLuup_menus.json"
 
 -- remove spaces from multi-word names and create index
 local short_name_index = {}       -- long names indexed by short names
@@ -208,17 +208,17 @@ local function short_name(name)
 end
  
 local page_groups = {
+    ["Apps"]      = {"plugins_table", "app_store", "luup_files"},
     ["Historian"] = {"summary", "cache", "database", "orphans"},
     ["System"]    = {"parameters", "top_level", "all_globals", "states", "sandboxes", "RELOAD"},
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "globals", "user_data"},
     ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
     ["Servers"]   = {"sockets", "http", "smtp", "pop3", "udp", "file_cache"},
-    ["Utilities"] = {"app_store", "backups", "images", "trash"},
+    ["Utilities"] = {"backups", "images", "trash"},
     ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3"},
-    ["Tables"]    = {"rooms_table", "plugins_table", "devices_table", "scenes_table", "triggers_table"},
+    ["Tables"]    = {"rooms_table", "devices_table", "scenes_table", "triggers_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
---    ["Apps"]      = {"app_json"},
   }
 
 local page_groups_index = {}        -- groups indexed by page name
@@ -252,9 +252,17 @@ local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", 
 local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
 local function todate_ms (epoch) return ("%s.%03d"): format (todate (epoch),  math.floor(1000*(epoch % 1))) end
 
+-- truncate to given length
+-- if maxlength is negative, truncate the middle of the string
 local function truncate (s, maxlength)
   maxlength = maxlength or 22
-  if #s > maxlength then s = s: sub(1, maxlength) .. "..." end
+  if maxlength < 0 then
+    maxlength = math.floor (maxlength / -2)
+    local nc = string.rep('.', maxlength)
+    s = table.concat {s: match ('^'..nc), "...", s:match (nc..'$')}
+  else
+    if #s > maxlength then s = s: sub(1, maxlength) .. "..." end
+  end
   return s
 end
 
@@ -2534,7 +2542,7 @@ function pages.devices_table (p, req)
   for d in sorted_by_id_or_name (p, luup.devices) do
     local devNo = d.attributes.id
     if wanted(d) then 
-      local altid = d.id
+      local altid = truncate (d.id, -22)    -- drop off the middle of the string
       local trash_can = devNo == 2 and '' or delete_link ("dev", devNo, "device")
       local bookmark = xhtml.span{class="w3-display-right", d.attributes.bookmark == '1' and unicode.black_star or ''}
       local link = xlink ("page=control&device="..devNo)
@@ -2786,9 +2794,9 @@ function pages.plugins_table (_, req)
   end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=plugin", "+ Create", title="create new plugin"}
-  local appstore = xhtml.a {class="w3-button w3-round w3-amber", 
-    href = selfref "page=app_store", "App Store", title="go to App Store"}
-  return page_wrapper ("Plugins", create, appstore, t)
+--  local appstore = xhtml.a {class="w3-button w3-round w3-amber", 
+--    href = selfref "page=app_store", "App Store", title="go to App Store"}
+  return page_wrapper ("Plugins", create, t)
 end
 
 
@@ -2971,6 +2979,52 @@ function pages.app_store (p, req)
   local rdiv = xhtml.div {sortmenu, xhtml.div {class="w3-rest w3-panel", subset } }
   
   return page_wrapper ("Alt App Store", rdiv)  
+end
+
+function pages.luup_files (p)
+  local ftype = p.filetype or "All"
+  local function filematch (x) return table.concat {'^', x, "_.+%..+"} end
+  local filetypes = {"All", "Device", "Implementation", "JavaScript", "Lua", "Service", "other"}
+  local filters =   {'.',   'D',      'I',              'J',          'L',   'S',       "[^DIJLS]"}
+  local filepattern = {}
+  for i,n in ipairs(filetypes) do filepattern[n] = filematch (filters[i]) end
+  local function file_menu () return filter_menu (filetypes, ftype, "filetype=") end
+  local typemenu = sidebar (p, file_menu)
+  local filenames = {}
+  for f in loader.dir (filepattern[ftype] or '') do
+    filenames[#filenames+1] = xhtml.a {href=selfref ("page=viewer&file="..f), f}   -- single element
+  end
+  local n = math.floor((#filenames+1) / 2)
+  for i = 1,n do
+    filenames[i] = {filenames[i], filenames[i+n]}     -- two column rows
+  end
+  filenames[n+1] = nil
+  local t = create_table_from_data ({{colspan=2, "filename (click to view)"}}, filenames)
+  local rdiv = xhtml.div {typemenu, xhtml.div {class="w3-rest w3-panel", t } }
+  return page_wrapper ("Luup files", rdiv)  
+end
+
+-----
+
+-- command line
+function pages.command_line (_, req)
+  local output
+  local command = req.POST.command
+  if command then
+    local f = io.popen (command)
+    if f then output = f: read "*a"
+      f: close()
+    end
+  end
+  local h = xhtml
+  local window = h.div {
+    html5_title "Output:", 
+    h.pre {style="height: 500px; border:1px grey; background-color:white; overflow:scroll", output} }
+  local form = h.form {action= selfref (), method="post",
+    h.input {class="w3-button w3-round w3-green w3-margin", value="Submit", type = "submit"},
+    h.input {type = "text", style="width: 80%;", name ="command", 
+      autocomplete="off", placeholder="command line", autofocus=1}}
+  return h.div {class="w3-container", window, form}
 end
 
 -----
