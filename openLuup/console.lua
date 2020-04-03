@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.04.02",
+  VERSION       = "2020.04.03",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -79,6 +79,7 @@ ABOUT = {
 -- 2020.03.10  add "Move to Trash" button for orphaned historian files
 -- 2020.03.17  remove autocomplete from action form parameters (passwords, etc...)
 -- 2020.03.19  colour device panel header according to status
+-- 2020.04.02  add App Store
 
 
 --  WSAPI Lua CGI implementation
@@ -259,7 +260,8 @@ local function truncate (s, maxlength)
   if maxlength < 0 then
     maxlength = math.floor (maxlength / -2)
     local nc = string.rep('.', maxlength)
-    s = table.concat {s: match ('^'..nc), "...", s:match (nc..'$')}
+    local pattern = "^(%s)(..-)(%s)$"
+    s = s: gsub(pattern: format(nc,nc), "%1...%3")
   else
     if #s > maxlength then s = s: sub(1, maxlength) .. "..." end
   end
@@ -453,7 +455,7 @@ local function filter_menu (items, current_item, request)
   for i, item in ipairs (items) do
     local name = (type(item) == "table") and item[1] or item  -- can be string or HTML element
     local colour = (name == current_item) and "w3-grey" or "w3-light-gray"
-    menu[i] = xhtml.a {class = "w3-bar-item w3-button "..colour, href = selfref (request, name), name }
+    menu[i] = xhtml.a {class = "w3-bar-item w3-button "..colour, href = selfref (request, name), item }
   end
   return xhtml.div {class="w3-bar-block w3-col", style="width:12em;", menu}
 end
@@ -2542,7 +2544,7 @@ function pages.devices_table (p, req)
   for d in sorted_by_id_or_name (p, luup.devices) do
     local devNo = d.attributes.id
     if wanted(d) then 
-      local altid = truncate (d.id, -22)    -- drop off the middle of the string
+      local altid = xhtml.div {title=d.id, truncate (d.id, -22)}    -- drop off the middle of the string
       local trash_can = devNo == 2 and '' or delete_link ("dev", devNo, "device")
       local bookmark = xhtml.span{class="w3-display-right", d.attributes.bookmark == '1' and unicode.black_star or ''}
       local link = xlink ("page=control&device="..devNo)
@@ -2950,18 +2952,14 @@ function pages.app_store (p, req)
   
   -- construct letter groups index
   local a_z = {"abc", "def", "ghi", "jkl","mno", "pqrs", "tuv", "wxyz"}
+  local All_Apps = "All Apps"
   local a_z_idx = {}
+  local n_in_group = {}
   for _, abc in ipairs (a_z) do
     for letter in abc: gmatch "." do a_z_idx[letter] = abc end
+    n_in_group[abc] = 0
   end
-    
---  local abc_menu = {xhtml.div{"All Apps", xhtml.span {class="w3-badge w3-right", 42} } }
-  local All_Apps = "All Apps"
-  local abc_menu = {All_Apps}
-  for _, abc in ipairs (a_z) do
-    abc_menu[#abc_menu+1] = abc
-  end
-  
+
   local wanted = p.abc_sort
   local subset = xhtml.div{class = "w3=panel"}
   for _, app in ipairs(APPS) do
@@ -2969,9 +2967,16 @@ function pages.app_store (p, req)
     if app.id == install then info = "INSTALLING..." .. install_app (app, release) end
     local letter = (app.Title or '') :sub(1,1) :lower()
     local grp = a_z_idx[letter]
+    n_in_group[grp] = n_in_group[grp] + 1
     if wanted == All_Apps or wanted == grp then
       subset[#subset+1] = app_panel(app, info)
     end
+  end
+  
+  local abc_menu = {xhtml.div{All_Apps, xhtml.span {class="w3-badge w3-right w3-red", #APPS} } }
+  for _, abc in ipairs (a_z) do
+    abc_menu[#abc_menu+1] = 
+      xhtml.div{abc, xhtml.span {class="w3-badge w3-right w3-dark-grey", n_in_group[abc]} } 
   end
   
   local function service_menu () return filter_menu (abc_menu, wanted, "abc_sort=") end
