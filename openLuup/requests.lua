@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2020.03.08",
+  VERSION       = "2020.04.14",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -75,6 +75,7 @@ local ABOUT = {
 -- 2020.01.27  object-oriented scene:rename() rather than scene.rename()
 -- 2020.02.05  object-oriented dev:rename() in device request
 -- 2020.03.08  add new scene creation date
+-- 2020.04.14  modify &id=actions to enumerate ALL actions in the service data (thanks @rigpapa)
 
 
 local client        = require "openLuup.client"
@@ -278,11 +279,12 @@ local function actions (_, p)
     return "BAD_DEVICE", "text/plain"
   end
   
-  for s, srv in spairs (dev.services) do
+  for _, svc in ipairs (dev.serviceList) do
     local A = {}
+    local s = svc.serviceId
     S[#S+1] = {serviceId = s, actionList = A}
 --      local implemented_actions = srv.actions
-    for _, act in spairs ((loader.service_data[s] or {}).actions or {}) do
+    for _, act in pairs ((loader.service_data[s] or {}).actions or {}) do
       local args = {}
       for i, arg in ipairs (act.argumentList or {}) do
           args[i] = {name = arg.name, dataType = arg.dataType}    -- TODO: dataType not in arg?
