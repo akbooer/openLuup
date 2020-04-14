@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.04.03",
+  VERSION       = "2020.04.04",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -453,7 +453,7 @@ end
 local function filter_menu (items, current_item, request)
   local menu = xhtml.div {class = "w3-margin-bottom  w3-border w3-border-grey"}
   for i, item in ipairs (items) do
-    local name = (type(item) == "table") and item[1] or item  -- can be string or HTML element
+    local name = (type(item) == "table") and item[1] or item  -- can be string or list
     local colour = (name == current_item) and "w3-grey" or "w3-light-gray"
     menu[i] = xhtml.a {class = "w3-bar-item w3-button "..colour, href = selfref (request, name), item }
   end
@@ -2757,7 +2757,7 @@ function pages.plugins_table (_, req)
   end
   ---
   local t = xhtml.table {class = "w3-bordered"}
-  t.header {'', "Name","Version", "Files", "GitHub", "Update", '', "Unistall"}
+  t.header {'', "Name","Version", "Files", '', "Update", "Unistall"}
   for _, p in ipairs (IP2) do
     local version = table.concat ({p.VersionMajor or '?', p.VersionMinor}, '.')
     local files = {}
@@ -2792,7 +2792,7 @@ function pages.plugins_table (_, req)
     local icon = xhtml.img {src=src, alt="no icon", height=35, width=35}
     icon = ignore[p.id] and icon or xhtml.a {href=selfref "page=plugin&plugin="..p.id, title="edit", icon}
     local trash_can = ignore[p.id] or delete_link ("plugin", p.id)
-    t.row {icon, p.Title, version, files, github, update, '', trash_can} 
+    t.row {icon, p.Title, version, files, github, update, trash_can} 
   end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
     href = selfref "page=plugin", "+ Create", title="create new plugin"}
@@ -3009,8 +3009,6 @@ function pages.luup_files (p)
   return page_wrapper ("Luup files", rdiv)  
 end
 
------
-
 -- command line
 function pages.command_line (_, req)
   local output
@@ -3023,7 +3021,7 @@ function pages.command_line (_, req)
   end
   local h = xhtml
   local window = h.div {
-    html5_title "Output:", 
+    html5_title ("Output: ", h.span {style="font-family:Monaco; font-size:11pt;", command} ),
     h.pre {style="height: 500px; border:1px grey; background-color:white; overflow:scroll", output} }
   local form = h.form {action= selfref (), method="post",
     h.input {class="w3-button w3-round w3-green w3-margin", value="Submit", type = "submit"},

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2020.03.18",
+  VERSION       = "2020.04.03",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -59,6 +59,7 @@ local ABOUT = {
 -- 2019.10.14  set HTTP client port with client.start()
 
 -- 2020.03.18  report correct HTTP port in startup error message
+-- 2020.04.03  use optional arg[2] to define HTTP server port
 
 
 local logs  = require "openLuup.logs"
@@ -268,7 +269,8 @@ end
 local status
 
 do --	 SERVERs and SCHEDULER
-  local port = config.HTTP.Port or 3480     -- port 3480 is default
+  local port = tonumber(arg[2]) or config.HTTP.Port or 3480     -- port 3480 is default
+  config.HTTP.Port = port
   local s = server.start (config.HTTP)      -- start the Web server
   client.start (config.HTTP)                -- and tell the client which ACTUAL port to use!
   if not s then 
