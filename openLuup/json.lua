@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.json",
-  VERSION       = "2020.04.14",
+  VERSION       = "2020.04.15",
   DESCRIPTION   = "JSON encode/decode with unicode escapes to UTF-8 encoding and pretty-printing",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -35,6 +35,7 @@ local ABOUT = {
 
 -- 2020.04.12   streamline encode() and decode(), use cjson.decode() if installed (10x faster!)
 -- 2020.04.14   provide access to both Lua and C implementations (if installed)
+-- 2020.04.15   compress encode buffer with metatable function
 
 
   local is_cj, cjson = pcall (require, "cjson")
@@ -50,27 +51,37 @@ local ABOUT = {
     
   -- encode (), Lua to JSON
   local function encode (Lua)
-
-    local buffer = {}
-    local function p(x) buffer[#buffer+1] = x end   -- add item
-    local function q(x) buffer[#buffer]   = x end   -- overwrite last item
-        
-    local function json_error (text)  error ("JSON encode error : " .. text , 0) end
+ 
+    -- the buffer is a smart stack which concatenates single character pushes with the current top
+    -- and caches the result so that a subsequent string pair only takes one slot
+    -- this significantly reduces (typically to 60%) the final size of the buffer
+  
+    local buffer = {''}
+--    local bn, hits = 0, 0
     
-    local value               -- forward function reference
-    local depth = 1           -- for pretty printing
-    local encoding = {}       -- set of tables currently being encoded (to avoid infinite self reference loop)
-    
-    local function null    ()    p "null"    end           --  nil
-    local function boolean (x)   p (tostring(x)) end       --  true or false
-    
-    local function number (x)
-      if x ~= x then  x = "null"                           --  NaN
-      elseif x >=  math.huge then x =  default.huge        -- +infinity
-      elseif x <= -math.huge then x = '-' .. tostring(default.huge) end    -- -infinity
-      p (x) 
+    local function make_concat (str)  -- makes a concatenator table for a particular string
+      return setmetatable ({}, 
+        {__index = function (tbl, idx) local v = idx..str; rawset (tbl,idx,v) return v end})
     end
-
+    
+    local concatenator = setmetatable ({},  -- returns a concatenator table for any given string
+      {__index = function (tbl, idx) local v = make_concat (idx); rawset (tbl,idx,v) return v end})
+    
+    local function p(x)   -- add item
+      local blen = #buffer
+      if #x == 1 then 
+--        hits = hits + 1
+        local top = buffer[blen]        -- the last buffered string
+        local cache = concatenator[x]   -- the concat cache for the char being pushed
+        buffer[blen] = cache[top]       -- the new concat string overwrites buffer top
+      else
+        buffer[blen+1] = x              -- just push onto the buffer stack
+      end
+    end
+    
+    -- string handling is slightly tricky because of escaped character and UTF-8 codes
+    -- escape and quoted strings are also cached to reduce computation time
+ 
     local replace = {
          ['"']  = '\\"',    -- double quote
 --         ['/']  = '\\/',    -- solidus          2016.06.19
@@ -89,57 +100,80 @@ local ABOUT = {
     local ctrl_chars = "%z\001-\031"              -- whole range of control characters
 --    local old = '[' .. '"' .. '/' .. '\\' .. ctrl_chars .. ']'
     local old = table.concat {'[', '"', '\\', ctrl_chars, ']'}      -- 2016.06.19
-        
---    local str_hit = {}                            -- log of cache hits
-    local str_cache = {}                          -- cache storage for encoded strings
-    local function string (x)
---      str_hit[x] = (str_hit[x] or 0) + 1          -- count cache hits
-      str_cache[x] = str_cache[x] or                -- use cached result if available
-        table.concat {'"', x:gsub (old, new), '"'}  -- deal with escapes, etc. 
-      p (str_cache[x])
+    
+    local str_cache = setmetatable ({},   -- cache storage deals with string escapes, etc. 
+      {__index = function (tbl, idx) 
+          local v = table.concat {'"', idx:gsub (old, new), '"'}
+          rawset (tbl,idx,v) return v 
+          end})
+    
+    local function string (x) p (str_cache[x]) end
+   
+    -- numbers require bounds checking for max / min and a special check for NaN
+    -- Nan is the only number which is not equal to itself (in IEEE arithmetic!)
+    -- the only allowed literals are true, false, and null
+    
+    local function null    ()    p "null"    end           --  nil
+    local function boolean (x)   p (tostring(x)) end       --  true or false
+    
+    local function number (x)
+      if x ~= x then  x = "null"                                          --  NaN
+      elseif x >=  math.huge then x =  default.huge                       -- +infinity
+      elseif x <= -math.huge then x = '-' .. tostring(default.huge) end   -- -infinity
+      p (tostring(x)) 
     end
     
+    -- arrays require bounds checking - should really check for sparseness
+    -- tables have their keys sorted, and are indented, for pretty printing
+    
+    local value               -- forward function reference
+    local depth = 1           -- for pretty printing
+    local encoding = {}       -- set of tables currently being encoded (to avoid infinite self reference loop)
+        
+    local function json_error (text) error ("JSON encode error : " .. text , 0) end
+    
     local function array (x, index)
-      local items = {}
-      table.sort (index)                  -- to find min and max, numeric indices guaranteed 
-      local min = index[1] or 1           -- index may be zero length
+      local min = index[1] or 1           -- index is already sorted, may be zero length
       local max = index[#index] or 0      -- max less than min for empty matrix
       if min < 1                        then json_error 'array start index is less than 1' end
       if max > default.max_array_length then json_error 'array final index is too large'   end 
       p '['
       for i = 1, max do
-        items[i] = value (x[i])         -- may contain nulls
-        p ','
+        value (x[i])                      -- may contain nulls
+        if i ~= max then p ',' end
       end
-      q ']'   -- overwrite last comma
+      p ']'
     end
-     
+    
+    local nl_cache = setmetatable ({},  -- cache the indents to save time
+        {__index = function (x,n) local v = '\n'..('  '):rep(n); rawset (x,n,v) return v end})
+          
     local function object (x, index)  
-      local function nl (d) return '\n'..('  '):rep (d), '\n'..('  '):rep (d-1) end
+      local n = #index
       local nl1, nl2 = '', ''
-      table.sort (index)                -- nice ordering, string indices guaranteed 
-      if #index > 1 then nl1, nl2 = nl(depth) end
+      if n > 1 then 
+        nl1 = nl_cache[depth]
+        nl2 = nl_cache[depth-1]
+      end
       local nl3 = ','..nl1
       depth = depth + 1
-      p '{'
-      p (nl1)
-      for _,j in ipairs (index) do
+      p ('{' .. nl1)
+      for i,j in ipairs (index) do
         string(j)
         p ':'
         value (x[j])
-        p (nl3)
+        if i ~= n then p (nl3) end
       end
-      q (nl2)   -- overwrite last comma
-      p '}'
+      p (nl2 .. '}')
       depth = depth - 1
     end
-  
+ 
     local function object_or_array (x)
       if x == json_null then return "null" end
-      local index = {}
       local only_numbers, only_strings = true, true
       if encoding[x] then json_error "table structure has self-reference" end
       encoding[x] = true
+      local index = {}
       for i in pairs (x) do
         index[#index+1] = i
         local  kind = type (i)
@@ -148,6 +182,7 @@ local ABOUT = {
         else   json_error ("invalid table index type '" .. kind ..'"') end
       end
       if #index == 0 then p "[]" return end   -- special case
+      table.sort (index)                      -- nice ordering, just number or string indices guaranteed 
       if only_numbers then array (x, index) 
       elseif only_strings then object (x, index) 
       else json_error "table has mixed numeric and string indices" end
@@ -167,9 +202,9 @@ local ABOUT = {
     function value (x) (lua_type [type(x)] or err) (x) end     -- already declared local
     
     -- encode()
-    
     local json
     local ok, message = pcall (value, Lua)
+--    print ("buffer", #buffer, "singles", bn, "hits", hits)
     if ok then json = table.concat (buffer) end
     return json, message
     
@@ -348,6 +383,7 @@ local ABOUT = {
     return try2, msg or try1      -- use our message or the one from cjson error
   end
 
+    
 return {
   
     ABOUT = ABOUT,

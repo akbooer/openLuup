@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2020.04.14",
+  VERSION       = "2020.04.15",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -279,7 +279,7 @@ local function actions (_, p)
     return "BAD_DEVICE", "text/plain"
   end
   
-  for _, svc in ipairs (dev.serviceList) do
+  for _, svc in ipairs (dev.serviceList or {}) do
     local A = {}
     local s = svc.serviceId
     S[#S+1] = {serviceId = s, actionList = A}
