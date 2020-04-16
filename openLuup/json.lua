@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.json",
-  VERSION       = "2020.04.15",
+  VERSION       = "2020.04.16",
   DESCRIPTION   = "JSON encode/decode with unicode escapes to UTF-8 encoding and pretty-printing",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -57,7 +57,7 @@ local ABOUT = {
     -- this significantly reduces (typically to 60%) the final size of the buffer
   
     local buffer = {''}
---    local bn, hits = 0, 0
+--    local hits = 0       -- ***
     
     local function make_concat (str)  -- makes a concatenator table for a particular string
       return setmetatable ({}, 
@@ -70,7 +70,7 @@ local ABOUT = {
     local function p(x)   -- add item
       local blen = #buffer
       if #x == 1 then 
---        hits = hits + 1
+--        hits = hits + 1                 -- ***
         local top = buffer[blen]        -- the last buffered string
         local cache = concatenator[x]   -- the concat cache for the char being pushed
         buffer[blen] = cache[top]       -- the new concat string overwrites buffer top
@@ -133,6 +133,7 @@ local ABOUT = {
     local function json_error (text) error ("JSON encode error : " .. text , 0) end
     
     local function array (x, index)
+      table.sort (index)                  -- nice ordering, just number indices guaranteed 
       local min = index[1] or 1           -- index is already sorted, may be zero length
       local max = index[#index] or 0      -- max less than min for empty matrix
       if min < 1                        then json_error 'array start index is less than 1' end
@@ -149,7 +150,8 @@ local ABOUT = {
         {__index = function (x,n) local v = '\n'..('  '):rep(n); rawset (x,n,v) return v end})
           
     local function object (x, index)  
-      local n = #index
+     table.sort (index)                   -- nice ordering, just string indices guaranteed 
+     local n = #index
       local nl1, nl2 = '', ''
       if n > 1 then 
         nl1 = nl_cache[depth]
@@ -157,14 +159,14 @@ local ABOUT = {
       end
       local nl3 = ','..nl1
       depth = depth + 1
-      p ('{' .. nl1)
+      p '{' p(nl1)
       for i,j in ipairs (index) do
         string(j)
         p ':'
         value (x[j])
         if i ~= n then p (nl3) end
       end
-      p (nl2 .. '}')
+      p (nl2) p '}'
       depth = depth - 1
     end
  
@@ -182,29 +184,26 @@ local ABOUT = {
         else   json_error ("invalid table index type '" .. kind ..'"') end
       end
       if #index == 0 then p "[]" return end   -- special case
-      table.sort (index)                      -- nice ordering, just number or string indices guaranteed 
       if only_numbers then array (x, index) 
       elseif only_strings then object (x, index) 
       else json_error "table has mixed numeric and string indices" end
       encoding [x] = nil          -- finished encoding this structure
     end
 
-    local lua_type  = {           -- dispatch table for different types
+    local lua_type  = setmetatable ({           -- dispatch table for different types
           table   = object_or_array,
           string  = string,
           number  = number,
           boolean = boolean,
           ["nil"] = null,
-        }
-
-    local function err(x) json_error ("can't encode type '".. type(x) .."'" ) end
+        }, {__index = function (_,x) json_error ("can't encode type '".. x .."'" ) end})
     
-    function value (x) (lua_type [type(x)] or err) (x) end     -- already declared local
+    function value (x) lua_type [type(x)] (x) end     -- already declared local
     
     -- encode()
     local json
     local ok, message = pcall (value, Lua)
---    print ("buffer", #buffer, "singles", bn, "hits", hits)
+--    print ("buffer", #buffer, "hits", hits)    -- ***
     if ok then json = table.concat (buffer) end
     return json, message
     
@@ -382,7 +381,7 @@ local ABOUT = {
     try2, msg = decode (json)
     return try2, msg or try1      -- use our message or the one from cjson error
   end
-
+    
     
 return {
   
