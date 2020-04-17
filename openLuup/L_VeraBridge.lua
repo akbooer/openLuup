@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2020.03.14",
+  VERSION       = "2020.04.17",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -117,6 +117,7 @@ ABOUT = {
 -- 2020.02.05   Put missing devices into Room 101 (retaining them in scene triggers and actions)  (for @DesT)
 -- 2020.02.12   use existing Bridge offset, if defined (thanks @reneboer.)  New luup.openLuup.bridge.*()
 -- 2020.03.14   add 'host' attribute to all children to show that they come from a Vera
+-- 2020.04.17   fix rogue references to /port_3480, use RemotePort instead, thanks @propHAed
 
 
 local devNo                      -- our device number
@@ -146,7 +147,9 @@ local BuildVersion                -- ...of remote machine
 local PK_AccessPoint              -- ... ditto
 local LoadTime                    -- ... ditto
 
-local RemotePort                  -- port to access remote machine ("/port_3480" for Vera, ":3480" for openLuup)
+local RemotePort                  -- port to access remote machine 
+                                  -- "/port_3480" for newer Veras, ":3480" for older ones, and openLuup
+
 local AsyncPoll, AsyncTimeout     -- asynchronous polling
 local CheckAllEveryNth            -- periodic status request for all variables
 
@@ -222,7 +225,7 @@ local function convert_to_set (s)
   return set
 end
 
--- remote request to port_3480
+-- remote request to port 3480
 local function remote_request (request)    -- 2018.01.11
   return luup.inet.wget (table.concat {"http://", ip, RemotePort, request})
 end
@@ -437,7 +440,7 @@ local function create_scenes (remote_scenes, room)
   luup.log "linking to remote scenes..."
   
   local action = "RunScene"
-  local wget = 'luup.inet.wget "http://%s/port_3480/data_request?id=action&serviceId=%s&action=%s&SceneNum=%d"' 
+  local wget = 'luup.inet.wget "http://%s%s/data_request?id=action&serviceId=%s&action=%s&SceneNum=%d"' 
   
   for _, s in pairs (remote_scenes) do
     local id = s.id + OFFSET             -- retain old number, but just offset it
@@ -449,7 +452,7 @@ local function create_scenes (remote_scenes, room)
           id = id,
           name = s.name,
           room = room,
-          lua = wget:format (ip, SID.hag, action, s.id)   -- trigger the remote scene
+          lua = wget:format (ip, RemotePort, SID.hag, action, s.id)   -- trigger the remote scene
           }
         luup.scenes[new.id] = scenes.create (new)
         luup.log (("scene [%d] %s"): format (new.id, new.name))
@@ -718,12 +721,14 @@ function GetVeraFiles (params)
 
   local function get_files_from (path, filename, dest, url_prefix)
     dest = dest or '.'
-    url_prefix = url_prefix or "/port_3480/"
+    url_prefix = url_prefix or ''
     luup.log ("getting files from " .. path)
     local info = get_directory (path, filename)
+    local wget = "http://%s%s/%s%s" 
     for x in info: gmatch "%C+" do
       local fname = x:gsub ("%.lzo",'')   -- remove unwanted extension for compressed files
-      local status, content = luup.inet.wget ("http://" .. ip .. url_prefix .. fname)
+--      local status, content = luup.inet.wget ("http://" .. ip .. url_prefix .. fname)
+      local status, content = luup.inet.wget (wget: format (ip, RemotePort, url_prefix, fname))
       if status == 0 then
         luup.log (table.concat {#content, ' ', fname})
         
@@ -740,8 +745,8 @@ function GetVeraFiles (params)
   lfs.mkdir "files"
   local pattern = params.Files or '*'   -- 2018.07.04
   pattern = pattern: gsub ('*', ".*")   -- convert wildcard to Lua search pattern
-  get_files_from ("/etc/cmh-ludl/", pattern, "files", "/port_3480/")
-  get_files_from ("/etc/cmh-lu/", pattern, "files", "/port_3480/")
+  get_files_from ("/etc/cmh-ludl/", pattern, "files")
+  get_files_from ("/etc/cmh-lu/", pattern, "files")
   luup.log "...end of device files"
   
   -- icons
@@ -757,9 +762,9 @@ function GetVeraFiles (params)
  
   if major then  
     if major > 5 then     -- UI7
-      get_files_from (icon_directories[7], pattern, "icons", "/cmh/skins/default/img/devices/device_states/")
+      get_files_from (icon_directories[7], pattern, "icons", "cmh/skins/default/img/devices/device_states/")
     else                  -- UI5
-      get_files_from (icon_directories[5], pattern, "icons", "/cmh/skins/default/icons/")
+      get_files_from (icon_directories[5], pattern, "icons", "cmh/skins/default/icons/")
     end
     luup.log "...end of icon files"  
   end
