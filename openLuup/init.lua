@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2020.04.03",
+  VERSION       = "2020.04.23",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -60,6 +60,7 @@ local ABOUT = {
 
 -- 2020.03.18  report correct HTTP port in startup error message
 -- 2020.04.03  use optional arg[2] to define HTTP server port
+-- 2020.04.23  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js
 
 
 local logs  = require "openLuup.logs"
@@ -135,7 +136,7 @@ do -- set attributes, possibly decoding if required
     },
     Console = {
       Menu = "",           -- add user-defined menu JSON definition file here
-      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.5/ace.js",
+      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js",
       EditorTheme = "eclipse",
     },
     DataStorageProvider = {

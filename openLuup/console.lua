@@ -121,7 +121,7 @@ end
 local options = luup.attr_get "openLuup.Console" or {}   -- get configuration parameters
 --[[
       Menu ="",           -- add menu JSON definition file here
-      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.3/ace.js",
+      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js",
       EditorTheme = "eclipse",
 ]]
 --

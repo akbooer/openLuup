@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2020.04.17",
+  VERSION       = "2020.04.30",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -118,6 +118,7 @@ ABOUT = {
 -- 2020.02.12   use existing Bridge offset, if defined (thanks @reneboer.)  New luup.openLuup.bridge.*()
 -- 2020.03.14   add 'host' attribute to all children to show that they come from a Vera
 -- 2020.04.17   fix rogue references to /port_3480, use RemotePort instead, thanks @propHAed
+-- 2020.04.30   implement @propHAed's fix for remote action problems (restore 'X' implementation file)
 
 
 local devNo                      -- our device number
@@ -309,8 +310,11 @@ local function create_new (cloneId, dev, room)
     json_file       = dev.device_json,
     description     = dev.name,
     upnp_file       = dev.device_file,
---    upnp_impl       = 'X',              -- override device file's implementation definition... musn't run here!
-    upnp_impl       = dev.impl_file,
+--
+-- 2020.04.30
+    upnp_impl       = 'X',              -- override device file's implementation definition... musn't run here!
+--    upnp_impl       = dev.impl_file,
+--
     parent          = devNo,
     password        = dev.password,
     room            = room, 
