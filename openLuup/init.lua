@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2020.04.23",
+  VERSION       = "2020.05.01",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -61,6 +61,7 @@ local ABOUT = {
 -- 2020.03.18  report correct HTTP port in startup error message
 -- 2020.04.03  use optional arg[2] to define HTTP server port
 -- 2020.04.23  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js
+-- 2020.05.01  log json module version info (thanks @a-lurker)
 
 
 local logs  = require "openLuup.logs"
@@ -87,6 +88,18 @@ local json          = require "openLuup.json"
 local historian     = require "openLuup.historian"
 
 local mime  = require "mime"
+
+logs.banner (compress.ABOUT)    -- doesn't announce itself
+logs.banner (timers.ABOUT)      -- ditto
+logs.banner (logs.ABOUT)        -- ditto
+
+logs.banner (json.ABOUT)
+if json.C then 
+  local cjson_banner = "using Cjson %s for fast decoding"
+  _log (cjson_banner: format (json.C._VERSION or "(unknown version)")) 
+else
+  _log ("Cjson not installed - using openLuup.json.Lua.decode() instead")
+end
 
 -- heartbeat monitor for memory usage and checkpointing
 local chkpt = 1
