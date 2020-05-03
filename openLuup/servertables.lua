@@ -174,7 +174,7 @@ local cgi_alias = setmetatable ({
     ["render"]              = graphite_cgi,
   },
   
-  -- special handling of Zway requests (all directed to same handler)
+  -- TODO: REMOVE special handling of Zway requests (all directed to same handler)
   { __index = function (_, path)
       if path: match "^ZWaveAPI"
       or path: match "^ZAutomation" then
