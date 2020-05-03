@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.05.03",
+  VERSION       = "2020.05.03b",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -2807,6 +2807,7 @@ end
 --
 local APPS = {}
 local APP_loadtime = 0
+local database_creation_time = 0
 
 local function load_appstore ()
   local timenow = os.time()
@@ -2819,6 +2820,7 @@ local function load_appstore ()
   
   if apps then
     _log "...done"
+    APPS = {}
     APP_loadtime = timenow
     
     for _, a in ipairs (apps) do
@@ -2840,7 +2842,7 @@ local function load_appstore ()
   end
 
   table.sort (APPS, function (a,b) return a.Title < b.Title end)
-  return (APPS[1] or {}) .loadtime or 0
+  database_creation_time = (APPS[1] or {}) .loadtime or 0
 end
 
 function pages.app_json (p)
@@ -2894,7 +2896,7 @@ local function app_panel (app, info)
 end
 
 function pages.app_store (p, req)
-  local loadtime = load_appstore()
+  load_appstore()
   
   local function install_app (app, release)
     local meta = {plugin = {} }
@@ -2982,7 +2984,7 @@ function pages.app_store (p, req)
   local sortmenu = sidebar (p, service_menu)
   local rdiv = xhtml.div {sortmenu, xhtml.div {class="w3-rest w3-panel", subset } }
   
-  return page_wrapper ("Alt App Store (as of " .. todate(loadtime) .. ')', rdiv)  
+  return page_wrapper ("Alt App Store (as of " .. todate(database_creation_time) .. ')', rdiv)
 end
 
 function pages.luup_files (p)
