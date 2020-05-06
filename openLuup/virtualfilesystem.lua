@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.04.03",
+  VERSION       = "2020.05.06",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -918,6 +918,18 @@ local I_openLuupCamera1_xml = [[
       if ip then
         smtp.register_handler (openLuupCamera, ip)     -- receive mail from camera IP
       end
+      local function ensure (name, sid)
+        if not sid then
+          if not luup.attr_get (name, devNo) then luup.attr_set (name, '', devNo) end
+        else
+          if not luup.variable_get (sid, name, devNo) then luup.variable_set (sid, name, '', devNo) end
+        end
+      end
+      ensure "username"
+      ensure "password"
+      local Csid = "urn:micasaverde-com:serviceId:Camera1"
+      ensure ("URL", Csid)
+      ensure ("DirectStreamingURL", Csid)
       return true, "OK", "I_openLuupCamera1"
     end
   </functions>
