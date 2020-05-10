@@ -5,7 +5,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.05.03b",
+  VERSION       = "2020.05.10",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -2988,28 +2988,45 @@ function pages.app_store (p, req)
 end
 
 function pages.luup_files (p)
+  local fnames = setmetatable ({}, {__index = function (x,a) local t={} rawset(x,a,t) return t end})
+  local function add(a, f) fnames[a][#fnames[a]+1] = f end
+  for f in loader.dir() do
+    local letter, extension = f: match "^(%a)_.+%.(%a+)$"
+    if letter then
+      add ('a', f)
+      add (letter: match "[DIJLS]" and letter or 'o', f)                      -- 'o' is "other"
+      if letter == 'D' then add (extension == "xml" and 'x' or 'j', f) end    -- assume .json if not .xml
+    end
+  end
+  
   local ftype = p.filetype or "All"
-  local function filematch (x) 
-    if #x == 1 then x = table.concat {'^', x, "_.+%..+"} end
-    return x
+  local filetypes = {"All", "D_.*", "D_.xml", "D_.json",
+    "I_.xml", "J_.js", "L_.lua", "S_.xml", "other"}
+  local index = {'a', 'D', 'x', 'j','I', 'J', 'L', 'S', 'o'}
+  
+  local class = "w3-badge w3-right w3-red"
+  local f_menu = {} 
+  local selected = 'a'
+  for i, f in ipairs (filetypes) do
+    local idx = index[i]
+    if f == ftype then selected = idx end
+    f_menu[#f_menu+1] = 
+      xhtml.div {f, xhtml.span {class=class, #fnames[idx]} } 
+      class = "w3-badge w3-right w3-dark-grey"
   end
-  local filetypes = {"All", "Device (xml/json)", "Device (xml)", "Device (json)",
-    "Implementation", "JavaScript", "Lua", "Service", "other"}
-  local filters =   {'.', 'D', "^D_.-%.xml$", "^D_.-%.json$", 'I', 'J', 'L', 'S', "^[^DIJLS]_"}
-  local filepattern = {}
-  for i,n in ipairs(filetypes) do filepattern[n] = filematch (filters[i]) end
-  local function file_menu () return filter_menu (filetypes, ftype, "filetype=") end
+  local function file_menu () return filter_menu (f_menu, ftype, "filetype=") end
   local typemenu = sidebar (p, file_menu)
-  local filenames = {}
-  for f in loader.dir (filepattern[ftype] or '') do
-    filenames[#filenames+1] = xhtml.a {href=selfref ("page=viewer&file="..f), f}   -- single element
+  
+  fnames = fnames[selected]     -- pick the group we want
+  for i, f in ipairs(fnames) do
+    fnames[i] = xhtml.a {href=selfref ("page=viewer&file="..f), f}   -- single element
   end
-  local n = math.floor((#filenames+1) / 2)
+  local n = math.floor((#fnames+1) / 2)
   for i = 1,n do
-    filenames[i] = {filenames[i], filenames[i+n]}     -- two column rows
+    fnames[i] = {fnames[i], fnames[i+n]}     -- two column rows
   end
-  filenames[n+1] = nil
-  local t = create_table_from_data ({{colspan=2, "filename (click to view)"}}, filenames)
+  fnames[n+1] = nil
+  local t = create_table_from_data ({{colspan=2, "filename (click to view)"}}, fnames)
   local rdiv = xhtml.div {typemenu, xhtml.div {class="w3-rest w3-panel", t } }
   return page_wrapper ("Luup files", rdiv)  
 end

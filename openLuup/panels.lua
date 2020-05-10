@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2019.12.26",
+  VERSION       = "2020.05.07",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -42,6 +42,9 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2019.07.14  use new HTML constructor methods
 -- 2019.11.14  move into separate file
 
+-- 2020.05.07  add simple camera control panel showing video stream
+
+
 local xml = require "openLuup.xml"
 
 local h = xml.createHTMLDocument ()    -- for factory methods
@@ -51,6 +54,7 @@ local p = h.p
 local sid = {
     althue    = "urn:upnp-org:serviceId:althue1",
     altui     = "urn:upnp-org:serviceId:altui1",
+    camera    = "urn:micasaverde-com:serviceId:Camera1",
     energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
     netatmo   = "urn:akbooer-com:serviceId:Netatmo1",
     scene     = "urn:micasaverde-com:serviceId:SceneController1",
@@ -73,7 +77,6 @@ local panels = {
     end},
 
 --
---
 -- AltHue
 --
 
@@ -92,6 +95,16 @@ local panels = {
       return h.span (v or '')
     end},
     
+--
+-- Camera
+--
+  DigitalSecurityCamera = {
+    control = function (devNo)
+      local ip = luup.attr_get ("ip", devNo) or ''
+      local stream = luup.variable_get (sid.camera, "DirectStreamingURL", devNo) or ''
+      local src = table.concat {"http://", ip, stream}
+      return div {class = "w3-panel", h.iframe {src = src, width="300", height="200"}}
+  end},
 --
 -- Motion Sensor
 --

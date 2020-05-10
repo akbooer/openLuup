@@ -930,6 +930,7 @@ local I_openLuupCamera1_xml = [[
       local Csid = "urn:micasaverde-com:serviceId:Camera1"
       ensure ("URL", Csid)
       ensure ("DirectStreamingURL", Csid)
+      luup.attr_set ("category_num", 6, devNo)
       return true, "OK", "I_openLuupCamera1"
     end
   </functions>
