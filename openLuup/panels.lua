@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2020.05.07",
+  VERSION       = "2020.05.12",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -70,10 +70,15 @@ local panels = {
 -- openLuup
 --
   openLuup = {
-    control = function() return 
-      '<div><a class="w3-text-blue", href="https://www.justgiving.com/DataYours/" target="_blank">' ..
-        "If you like openLuup, you could DONATE to Cancer Research UK right here</a>" ..
-        "<p>...or from the link in the page footer below</p></div>" 
+    control = function(devNo) 
+      local forum = luup.devices[devNo].environment.ABOUT.FORUM
+      return [[
+      <div>
+        <p><a class="w3-text-blue" href="https://smarthome.community" target="_blank">
+          smarthome.community - an independent place for smart home users to share experience</a></p>
+        <p><a class="w3-text-blue" href="https://www.justgiving.com/DataYours/" target="_blank">
+          If you like openLuup, you could DONATE to Cancer Research UK right here</a></p>
+        <p>...or from the link in the page footer below</p></div>]]
     end},
 
 --

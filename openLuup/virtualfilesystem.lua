@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.05.06",
+  VERSION       = "2020.05.12",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -155,6 +155,10 @@ local D_openLuup_json = json.encode {
         Label ("console", '<a href="openLuup" target="_blank">CONSOLE interface</a>')),
       ControlGroup (2, "label", 0,4,
         Display (50,200, 75,20),
+        Label ("forum", '<a href="https://smarthome.community" target="_blank">' ..
+                "smarthome.community - an independent place for smart home users to share experience</a>")),
+      ControlGroup (2, "label", 0,4,
+        Display (50,240, 75,20),
         Label ("donate", '<a href="https://www.justgiving.com/DataYours/" target="_blank">' ..
                 "If you like openLuup, you could DONATE to Cancer Research UK right here</a>")),
    }}},

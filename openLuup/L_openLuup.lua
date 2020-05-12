@@ -1,10 +1,11 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2020.05.10",
+  VERSION       = "2020.05.12",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
+  FORUM         = "https://smarthome.community",
   DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2020 AK Booer

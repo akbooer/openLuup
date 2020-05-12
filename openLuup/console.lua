@@ -2,10 +2,9 @@
 
 module(..., package.seeall)
 
-
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.05.10",
+  VERSION       = "2020.05.12",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -26,6 +25,8 @@ ABOUT = {
   limitations under the License.
 ]]
 }
+
+local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
 
 -- 2017.04.26  HTML menu improvement by @explorer (thanks!)
 -- 2017.07.05  add user_data, status and sdata to openLuup menu
@@ -3072,7 +3073,6 @@ function pages.about ()
     for i = 2,#s,2 do s[i] = xhtml.a {href=s[i], target="_blank", s[i]} end  -- add link
     return s
   end
-  local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about, not console
   local t = xhtml.table {class = "w3-table-all w3-cell w3-card"}
   for a,b in sorted (ABOUTopenLuup) do
     t.row { xhtml.b {a},  xhtml.pre (embedded_links(b))}
@@ -3239,13 +3239,16 @@ function run (wsapi_env)
   local donate = xhtml.a {
     title = "If you like openLuup, you could DONATE to Cancer Research UK right here",
     href="https://www.justgiving.com/DataYours/", target="_blank", " [donate] "}
+  local forum = xhtml.a {class = "w3-text-blue",
+    title = "An independent place for smart home users to share experience", 
+    href=ABOUTopenLuup.FORUM, target="_blank", " [smarthome.community] "}
                 
   body = {
     static_menu,
     h.div {
       formatted_page,
       h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", 
-        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate} }
+        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate, forum} }
     }}
   
   h.documentElement[1]:appendChild {  -- the <HEAD> element
