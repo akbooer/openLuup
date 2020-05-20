@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.json",
-  VERSION       = "2020.04.16",
+  VERSION       = "2020.05.20",
   DESCRIPTION   = "JSON encode/decode with unicode escapes to UTF-8 encoding and pretty-printing",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -36,6 +36,7 @@ local ABOUT = {
 -- 2020.04.12   streamline encode() and decode(), use cjson.decode() if installed (10x faster!)
 -- 2020.04.14   provide access to both Lua and C implementations (if installed)
 -- 2020.04.15   compress encode buffer with metatable function
+-- 2020.05.20   fix for cjson.null in decoded structures (thanks @reneboer)
 
 
   local is_cj, cjson = pcall (require, "cjson")
@@ -372,11 +373,24 @@ local ABOUT = {
 
   end  -- decode ()
 
+  local function clean_cjson_nulls (x)    -- 2020.05.20  replace any cjson.null with nil
+    for n,v in pairs (x) do
+      if type(v) == "table" then 
+        clean_cjson_nulls (v) 
+      elseif v == cjson.null then 
+        x[n] = nil
+      end
+    end
+  end
+
   local function decode_wrapper (json)
     local ok, msg, try1, try2
     if is_cj then                          -- 2020.04.12  use cjson module, if available
       ok, try1 = pcall (cjson.decode, json)
-      if ok then return try1 end
+      if ok then 
+        clean_cjson_nulls (try1)
+        return try1 
+      end
     end
     try2, msg = decode (json)
     return try2, msg or try1      -- use our message or the one from cjson error
