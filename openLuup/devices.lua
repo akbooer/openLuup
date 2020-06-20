@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2019.12.11",
+  VERSION       = "2020.06.20",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2018 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -51,6 +51,8 @@ local ABOUT = {
 -- 2019.12.10  add sl_ prefix special case for variable history caching
 --             see: https://community.getvera.com/t/reactor-on-altui-openluup-variable-updates-condition/211412/16
 -- 2019.12.11  correct nil parameter handling in variable_watch() - thanks @rigpapa
+
+-- 2020.06.20  fix nil attribute name in attr_set()
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -535,7 +537,7 @@ local function new (devNo)
   --
   -- Sets the top level attribute(s) for the device to value(s). 
   local function attr_set (self, attribute, value)
-    if type (attribute) ~= "table" then attribute = {[attribute] = value} end
+    if type (attribute) ~= "table" then attribute = {[attribute or '?'] = value} end    -- 2020.06.20
     for name, value in pairs (attribute) do 
       if not attributes[name] then new_userdata_dataversion() end   -- structure has changed
       new_dataversion ()                              -- say value has changed
