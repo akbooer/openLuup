@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2020.03.21",
+  VERSION       = "2020.06.28",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -76,6 +76,7 @@ local ABOUT = {
 -- 2020.02.14  add room.lookup() to find room by name
 -- 2020.03.14  disable special Tripped processing on Vera bridged devices ONLY (ie. not Z-Way)
 -- 2020.03.21  disable special Tripped processing for ANY security sensor with 'host' attribute
+-- 2020.06.28  add luup.openLuup.cpu_table with dynamic plugin CPU usage
 
 
 local logs          = require "openLuup.logs"
@@ -1075,6 +1076,44 @@ local ir = {
 
 -----
 --
+-- openLuup.cpu_table
+-- 2020.06.28
+--
+-- returns an object with current plugin CPU times
+-- allow pretty printing and the difference '-' operator
+
+local function cpu_table ()
+  local array
+  local function sub(a,b)
+    local s, b = array {}, b or {}
+    for n,v in pairs(a) do s[n] = b[n] and v - b[n] or nil end
+    return s
+  end
+  local function str(x)
+    local con = table.concat
+    local time, info = "%8.3f", "%12s %8s %s"
+    local b = {info: format ("(s.ms)", "[#]", "device name")}
+    local devs = {}
+    for n in pairs(x) do devs[#devs+1] = n end
+    table.sort (devs)
+    for _,n in ipairs(devs) do 
+      local v = x[n]
+      local name = luup.devices[n].description: match "%s*(.*)"
+      b[#b+1] = info: format (time: format(v), con{'[', n, ']'}, name)
+    end
+    b[#b+1] = ''
+    return con (b, '\n')
+  end
+  function array (x) setmetatable (x, {__sub = sub, __tostring = str}) return x end
+  local t = array {}
+  for i, d in pairs (luup.devices) do t[i] = d.attributes["cpu(s)"] end
+  return t
+end
+
+
+
+-----
+--
 -- export values and methods
 --
 
@@ -1086,10 +1125,16 @@ return {
   
     -- constants: really not expected to be changed dynamically
     
-    openLuup = {   -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate not a Vera (for plugin developers)
+    openLuup = setmetatable ({   -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate not a Vera (for plugin developers)
       -- openLuup-specific API extensions go here...
       bridge = chdev.bridge, -- 2020.02.12  Bridge utilities 
-    },
+    },{
+      __index = function (self, name) -- 2020.06.28
+        local dispatch = {cpu_table = cpu_table}
+        local fct = dispatch[name]
+        if fct then return fct() end
+      end
+    }),
     
     hw_key              = "--hardware key--",
     event_server        = '',   

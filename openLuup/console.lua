@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.05.12",
+  VERSION       = "2020.06.28",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -81,6 +81,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2020.03.17  remove autocomplete from action form parameters (passwords, etc...)
 -- 2020.03.19  colour device panel header according to status
 -- 2020.04.02  add App Store
+-- 2020.06.28  add shared environment to pages.all_globals(), and pages.lua_globals() (thanks @a-lurker)
 
 
 --  WSAPI Lua CGI implementation
@@ -218,7 +219,7 @@ local page_groups = {
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
     ["Servers"]   = {"sockets", "http", "smtp", "pop3", "udp", "file_cache"},
     ["Utilities"] = {"backups", "images", "trash"},
-    ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3"},
+    ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3", "lua_globals"},
     ["Tables"]    = {"rooms_table", "devices_table", "scenes_table", "triggers_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
   }
@@ -917,27 +918,43 @@ end
 
 -- plugin globals
 function pages.all_globals ()
-  local columns = {'', "device", "variable", "value"}
-  local data = {}
-  local ignored = {"ABOUT", "_NAME", "lul_device"}
   local ignore = {}
+  local ignored = {"ABOUT", "_NAME", "lul_device"}
   for _, name in pairs (ignored) do ignore[name] = true end
-  for dno,d in pairs (luup.devices) do
-    local env = d.environment
-    if env then
-      local x = {}
-      for n,v in pairs (env or empty) do 
-        if not _G[n] and not ignore[n] and type(v) ~= "function" then x[n] = v end
-      end
-      if next(x) then
-        local dname = devname (dno)
-        data[#data+1] = {xlink ("page=globals&device=" .. dno),{xhtml.strong {dname}, colspan = #columns-1}}
-        for n,v in sorted (x) do
-          data[#data+1] = {'','', n, tostring(v)}
-        end
-      end
+  local function globals_in_env (env)
+    local x = {}
+    for n,v in pairs (env or empty) do 
+      if not _G[n] and not ignore[n] and type(v) ~= "function" then x[n] = v end
     end
+    return x
+  end  
+  
+  local data = {}
+  local columns = {'', "device", "variable", "value"}
+  local function add_globals_to_data (x)
+    for n,v in sorted (x) do
+      data[#data+1] = {'','', n, tostring(v)}
+    end
+  end
+  
+  local function if_any_globals (g, link, title)
+    if next(g) then 
+      data[#data+1] = {link,{xhtml.strong {title}, colspan = #columns-1}}
+      add_globals_to_data (g)
+    end
+  end
+  
+  -- loader.shared_environment
+  local g = globals_in_env (loader.shared_environment)
+  if_any_globals (g, xlink ("page=lua_globals"), "Shared environment (Startup / Shutdown / Test / Scenes...)")
+  
+  -- devices
+  for dno,d in pairs (luup.devices) do
+    local dname = devname (dno)
+    local g = globals_in_env (d.environment)
+    if_any_globals (g, xlink ("page=globals&device=" .. dno), dname)
   end 
+  
   local tbl = create_table_from_data (nil, data)
   return page_wrapper("Plugin Globals (excluding functions)", tbl)
 end
@@ -1894,18 +1911,23 @@ function pages.events (p)
   end)
 end
 
+-- make an HTML table with any non-standard globals defined in the given environment
+local function non_standard_globals (env)
+  local pretty = loader.shared_environment.pretty
+  local x = {}
+  for n,v in sorted (env) do
+    if not _G[n] and type(v) ~= "function" then
+      x[#x+1] = {n, xhtml.pre {pretty(v)}}
+    end
+  end
+  local t = create_table_from_data ({"name", "value"}, x)
+  t.class = (t.class or '') .. " w3-hoverable"
+  return t  
+end
+
 function pages.globals (p)
   return device_page (p, function (d, title)
-    local env = d.environment
-    local pretty = loader.shared_environment.pretty
-    local x = {}
-    for n,v in sorted (env) do
-      if not _G[n] and type(v) ~= "function" then
-        x[#x+1] = {n, xhtml.pre {pretty(v)}}
-      end
-    end
-    local t = create_table_from_data ({"name", "value"}, x)
-    t.class = (t.class or '') .. " w3-hoverable"
+    local t = non_standard_globals (d.environment)
     return title .. " - plugin globals (excluding functions)", xhtml.div {class="w3-row", t}
   end)
 
@@ -2387,6 +2409,14 @@ end
 pages["lua_test"]   = function () return lua_exec ("LuaTestCode",  "Lua Test Code")    end
 pages["lua_test2"]  = function () return lua_exec ("LuaTestCode2", "Lua Test Code #2") end
 pages["lua_test3"]  = function () return lua_exec ("LuaTestCode3", "Lua Test Code #3") end
+
+function pages.lua_globals ()
+  local t = non_standard_globals (loader.shared_environment)
+  return page_wrapper (
+    "Lua Globals (excluding functions)", 
+    xhtml.div {class="w3-panel", 
+          xhtml.h6 "Shared environment: Startup / Shutdown / Test / Scenes...", t})
+end
 
 -- read-only view of files
 function pages.viewer (_, req)
