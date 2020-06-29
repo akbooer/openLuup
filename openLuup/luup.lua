@@ -76,7 +76,8 @@ local ABOUT = {
 -- 2020.02.14  add room.lookup() to find room by name
 -- 2020.03.14  disable special Tripped processing on Vera bridged devices ONLY (ie. not Z-Way)
 -- 2020.03.21  disable special Tripped processing for ANY security sensor with 'host' attribute
--- 2020.06.28  add luup.openLuup.cpu_table with dynamic plugin CPU usage
+-- 2020.06.28  add luup.openLuup.cpu_table  with dynamic plugin CPU usage
+-- 2020.06.29  add luup.openLuup.wall_table with dynamic plugin wall-clock usage
 
 
 local logs          = require "openLuup.logs"
@@ -1076,13 +1077,13 @@ local ir = {
 
 -----
 --
--- openLuup.cpu_table
--- 2020.06.28
+-- openLuup.cpu_table,   2020.06.28
+-- openLuup.wall_table,  2020.06.29
 --
--- returns an object with current plugin CPU times
+-- returns an object with current plugin CPU / WALL-CLOCK times
 -- allow pretty printing and the difference '-' operator
 
-local function cpu_table ()
+local function time_table (what)
   local array
   local function sub(a,b)
     local s, b = array {}, b or {}
@@ -1106,10 +1107,9 @@ local function cpu_table ()
   end
   function array (x) setmetatable (x, {__sub = sub, __tostring = str}) return x end
   local t = array {}
-  for i, d in pairs (luup.devices) do t[i] = d.attributes["cpu(s)"] end
+  for i, d in pairs (luup.devices) do t[i] = d.attributes[what] end
   return t
 end
-
 
 
 -----
@@ -1130,7 +1130,10 @@ return {
       bridge = chdev.bridge, -- 2020.02.12  Bridge utilities 
     },{
       __index = function (self, name) -- 2020.06.28
-        local dispatch = {cpu_table = cpu_table}
+        local dispatch = {
+          cpu_table  = function() return time_table "cpu(s)"  end,
+          wall_table = function() return time_table "wall(s)" end,
+        }
         local fct = dispatch[name]
         if fct then return fct() end
       end

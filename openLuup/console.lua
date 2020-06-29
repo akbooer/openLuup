@@ -783,29 +783,36 @@ function pages.plugins ()
   local i = 0
   local data = {}
   for n, dev in pairs (luup.devices) do
-    local cpu = dev.attributes["cpu(s)"]
-    if cpu then 
+    local cpu  = dev.attributes["cpu(s)"]
+    local wall = dev.attributes["wall(s)"]
+    if cpu and wall then 
       i = i + 1
-      data[i] = {i, n, dev.status, cpu, dev.description:match "%s*(.+)", dev.status_message or ''} 
+      local ratio = wall / (cpu + 1e-6)         -- microsecond resolution (avoid / 0)
+      data[i] = {i, n, dev.status, cpu, wall, ratio, dev.description:match "%s*(.+)", dev.status_message or ''} 
     end
   end
   -----
-  local columns = {'#', "device", "status", "hh:mm:ss.sss", "name", "message"}
+  local columns = {'#', "device", "status", "hh:mm:ss.sss", "hh:mm:ss.sss", "wall/cpu", "name", "message"}
+  local timecol = {'', '', '', rhs "(cpu)", rhs "(wall-clock)"}
   table.sort (data, function (a,b) return a[2] < b[2] end)
   -----
   local milli = true
+  local one_dp = "%0.1f"
   local cpu = scheduler.system_cpu()
   local uptime = timers.timenow() - timers.loadtime
   local percent = cpu * 100 / uptime
-  percent = ("%0.1f"): format (percent)
+  percent = one_dp: format (percent)
   local tbl = xhtml.table {class = "w3-small"}
   tbl.header (columns)
+  tbl.header (timecol)
   for _, row in ipairs(data) do
     row[4] = rhs (dhms(row[4], nil, milli))
+    row[5] = rhs (dhms(row[5], nil, milli))
+    row[6] = rhs(one_dp: format (row[6]))
     tbl.row (row) 
   end
-  local title = "Plugin CPU usage (" .. percent .. "% system load)"
-  return page_wrapper(title, tbl)
+  local title = "Plugin CPU usage (%s%% system load, total uptime %s)"
+  return page_wrapper(title: format (percent, dhms(uptime, true)), tbl)
 end
 
 
@@ -2413,9 +2420,8 @@ pages["lua_test3"]  = function () return lua_exec ("LuaTestCode3", "Lua Test Cod
 function pages.lua_globals ()
   local t = non_standard_globals (loader.shared_environment)
   return page_wrapper (
-    "Lua Globals (excluding functions)", 
-    xhtml.div {class="w3-panel", 
-          xhtml.h6 "Shared environment: Startup / Shutdown / Test / Scenes...", t})
+    "Lua Globals in Startup / Shutdown / Test / Scenes... (excluding functions)", 
+    xhtml.div {class="w3-panel", t})
 end
 
 -- read-only view of files

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2020.01.25",
+  VERSION       = "2020.06.29",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -65,6 +65,7 @@ local ABOUT = {
 -- 2019.11.08  use numerical priority (0 high, inf low, nil lowest), add jobNo to job structure
 
 -- 2020.01.25  improve watch callback log message, adding device contaxt and callback name
+-- 2020.06.29  measure wall-clock time used by device
 
 
 local logs      = require "openLuup.logs"
@@ -161,6 +162,8 @@ local function socket_unwatch (sock)
   socket_list[sock] = nil
 end
 
+local CPU, WALL = 0, 0    -- hold cpu and wall-clock times for most recent context switch
+
 -- context_switch (devNo, fct, parameters, ...)
 -- system-wide routine to pass control to different device code
 -- basically a pcall, which sets and restores current_context to given devNo
@@ -169,13 +172,19 @@ end
 local function context_switch (devNo, fct, ...)
   local old = current_device                    -- save current device context
   current_device = devNo or old
-  local cpu = cpu_clock()                       -- 2019.05.01   measure cpu time used by device
+  local cpu  = cpu_clock()                      -- 2019.05.01   measure cpu time used by device
+  local wall = timenow()                        -- 2020.06.29   measure wall-clock time used by device
   local function restore (ok, msg, ...) 
     local dev = luup.devices[current_device] 
-    cpu = cpu_clock() - cpu                     -- elapsed cpu
-    cpu = cpu - cpu % 1e-6                      -- truncate to microsecond resolution
+    cpu  = cpu_clock() - cpu                    -- elapsed cpu
+    cpu  = cpu - cpu % 1e-6                     -- truncate to microsecond resolution
+    wall = timenow() - wall
+    wall = wall - wall % 1e-6
+    CPU, WALL = cpu, wall         -- sorry, use upvalues, since return parameters are all spoken for
     if dev then
-      dev.attributes["cpu(s)"] = (dev.attributes["cpu(s)"] or 0) + cpu 
+      local attr = dev.attributes
+      attr["cpu(s)"]  = (attr["cpu(s)"]  or 0) + cpu 
+      attr["wall(s)"] = (attr["wall(s)"] or 0) + wall 
     else
       total_cpu = total_cpu + cpu   
     end
@@ -346,11 +355,12 @@ end
 -- dispatch a task
 local function dispatch (job, method)
   job.logging.invocations = job.logging.invocations + 1  -- how do I run thee?  Let me count the ways.
-  local cpu = cpu_clock()
+--  local cpu = cpu_clock()
   local ok, status, timeout = context_switch (job.devNo, job.tag[method] or missing(method), 
                                                   job.target, job.arguments, job) 
-  cpu = cpu_clock() - cpu
-  job.logging.cpu = job.logging.cpu + cpu         -- 2019.04.26
+--  cpu = cpu_clock() - cpu
+  job.logging.cpu  = job.logging.cpu  + CPU         -- 2019.04.26, 2020.06.29 use CPU upvalue to save re-calculation
+  job.logging.wall = job.logging.wall + WALL        -- 2020.06.29, add wall-clock time to logging record
   timeout = tonumber (timeout) or 0
   if ok then 
     status = status or state.Done                 -- 2018.03.21  add default exit state to jobs
@@ -416,6 +426,7 @@ local function create_job (action, arguments, devNo, target_device, priority)
       logging = {
         created     = timenow(),
         cpu         = 0,          -- 2019.04.26
+        wall        = 0,          -- 2020.06.29 wall-clock time
         invocations = 0,          -- number of times invoked
       },
       -- dispatcher
