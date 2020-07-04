@@ -66,8 +66,6 @@ local ABOUT = {
 -- 2019.07.14  use new XML Document methods
 -- 2019.11.07  add do_not_implement parameter to assemble_device_from_files() for child devices
 
--- 2020.07.04  add proxy for require()
-
 
 ------------------
 --
@@ -118,7 +116,6 @@ local xml = require "openLuup.xml"
 local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
 
 local static_data = {}          -- cache for decoded static JSON data, indexed by filename
-
 
 ----
 --
@@ -179,17 +176,6 @@ end
 
 
 --  utilities
-
--- 2020.07.04  require proxy
-local G_require = require
-local req_table = {}
-local function require (module, ...)
-  local dev = scheduler.current_device() or 0
-  local reqs = req_table[dev] or {}
-  reqs[module] = (reqs[module] or 0) + 1
-  req_table[dev] = reqs
-  return G_require (module, ...)
-end
 
 ----------------------------
 --
@@ -819,9 +805,8 @@ end
 return {
   ABOUT = ABOUT,
   
-  -- tables
+  -- tables  
   cat_by_dev          = cat_by_dev,         -- 2019.06.02
-  req_table           = req_table,          -- 2020.07.04
   service_data        = service_data,
   shared_environment  = shared_environment,
   static_data         = static_data,  
@@ -841,7 +826,6 @@ return {
   read_device         = read_device,
   read_impl           = read_impl,
   read_json           = read_json,
-  require             = require,           -- 2020.07.04   
   
   -- module
   xml = xml,

@@ -62,7 +62,7 @@ local ABOUT = {
 -- 2020.04.03  use optional arg[2] to define HTTP server port
 -- 2020.04.23  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js
 -- 2020.05.01  log json module version info (thanks @a-lurker)
--- 2020.07.04  use loader.require() proxy for require()
+-- 2020.07.04  use proxy for require()
 
 
 local logs  = require "openLuup.logs"
@@ -73,17 +73,32 @@ local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 _log (lfs.currentdir(),":: openLuup STARTUP ")
 logs.banner (ABOUT)   -- for version control
 
+local scheduler             -- forward reference
+local req_table = {}
+
+local G_require = require
+
+function require (module, ...)
+  local dev = scheduler and scheduler.current_device() or 0
+  local reqs = req_table[dev] or {}
+  reqs[module] = (reqs[module] or 0) + 1
+  req_table[dev] = reqs
+  return G_require (module, ...)
+end
+
 local loader = require "openLuup.loader"  -- keep this first... it prototypes the global environment
 
-require = loader.require
+---------------
 
 luup = require "openLuup.luup"            -- here's the GLOBAL luup environment
 
-local client        = require "openLuup.client"   -- HTTP client
-local server        = require "openLuup.server"   -- HTTP server
+luup.openLuup.req_table = req_table       -- make the require table accessible
+
+      scheduler     = require "openLuup.scheduler"  -- already declared local
+local client        = require "openLuup.client"     -- HTTP client
+local server        = require "openLuup.server"     -- HTTP server
 local smtp          = require "openLuup.smtp"
 local pop3          = require "openLuup.pop3"
-local scheduler     = require "openLuup.scheduler"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local compress      = require "openLuup.compression"
