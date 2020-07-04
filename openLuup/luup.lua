@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2020.06.28",
+  VERSION       = "2020.07.04",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -1133,6 +1133,7 @@ return {
         local dispatch = {
           cpu_table  = function() return time_table "cpu(s)"  end,
           wall_table = function() return time_table "wall(s)" end,
+          req_table  = function() return loader.req_table     end,
         }
         local fct = dispatch[name]
         if fct then return fct() end

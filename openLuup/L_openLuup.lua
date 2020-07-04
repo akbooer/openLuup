@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2020.06.29",
+  VERSION       = "2020.07.04",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -60,6 +60,7 @@ ABOUT = {
 -- 2019.04.18  remove generic plugin_configuration functionality (no longer required)
 
 -- 2020.02.20  add EmptyRoom101 service action
+-- 2020.07.04  UK Covid-19 Independence Day edition!
 
 
 local json        = require "openLuup.json"

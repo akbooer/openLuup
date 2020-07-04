@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2020.05.01",
+  VERSION       = "2020.07.04",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -62,6 +62,7 @@ local ABOUT = {
 -- 2020.04.03  use optional arg[2] to define HTTP server port
 -- 2020.04.23  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js
 -- 2020.05.01  log json module version info (thanks @a-lurker)
+-- 2020.07.04  use loader.require() proxy for require()
 
 
 local logs  = require "openLuup.logs"
@@ -73,6 +74,8 @@ _log (lfs.currentdir(),":: openLuup STARTUP ")
 logs.banner (ABOUT)   -- for version control
 
 local loader = require "openLuup.loader"  -- keep this first... it prototypes the global environment
+
+require = loader.require
 
 luup = require "openLuup.luup"            -- here's the GLOBAL luup environment
 

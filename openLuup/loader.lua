@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2019.11.07",
+  VERSION       = "2020.07.04",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -65,6 +65,8 @@ local ABOUT = {
 -- 2019.06.16  add loader.dir() to walk search path
 -- 2019.07.14  use new XML Document methods
 -- 2019.11.07  add do_not_implement parameter to assemble_device_from_files() for child devices
+
+-- 2020.07.04  add proxy for require()
 
 
 ------------------
@@ -178,9 +180,20 @@ end
 
 --  utilities
 
+-- 2020.07.04  require proxy
+local G_require = require
+local req_table = {}
+local function require (module, ...)
+  local dev = scheduler.current_device() or 0
+  local reqs = req_table[dev] or {}
+  reqs[module] = (reqs[module] or 0) + 1
+  req_table[dev] = reqs
+  return G_require (module, ...)
+end
+
+----------------------------
+--
 -- 2019.06.11 add pretty() to shared environment:
-
-
 -- pretty (), 
 -- pretty-print for Lua
 -- 2014.06.26   @akbooer
@@ -192,9 +205,6 @@ end
 -- 2016.02.26   use rawget to investigate array numeric indices, preload enc[_G] = _G only
 -- 2016.03.10   fix for {nil,nil, 3,nil,5}
 -- 2019.06.25   fix for out of order discontiguous numeric indices {nil,nil,3, [42]=42, nil,nil,nil,7,8,9}
-
-----------------------------
-
 
 function shared_environment.pretty (Lua)        -- 2014 - 2019.06.25   @akbooer
   local L, N_NILS = {}, 2                       -- number of allowed nils between contiguous numeric indices
@@ -811,6 +821,7 @@ return {
   
   -- tables
   cat_by_dev          = cat_by_dev,         -- 2019.06.02
+  req_table           = req_table,          -- 2020.07.04
   service_data        = service_data,
   shared_environment  = shared_environment,
   static_data         = static_data,  
@@ -830,6 +841,7 @@ return {
   read_device         = read_device,
   read_impl           = read_impl,
   read_json           = read_json,
+  require             = require,           -- 2020.07.04   
   
   -- module
   xml = xml,

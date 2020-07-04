@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.06.28",
+  VERSION       = "2020.07.04",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -82,6 +82,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2020.03.19  colour device panel header according to status
 -- 2020.04.02  add App Store
 -- 2020.06.28  add shared environment to pages.all_globals(), and pages.lua_globals() (thanks @a-lurker)
+-- 2020.07.04  UK Covid-19 Independence Day edition! (add required_files page)
 
 
 --  WSAPI Lua CGI implementation
@@ -211,7 +212,7 @@ local function short_name(name)
 end
  
 local page_groups = {
-    ["Apps"]      = {"plugins_table", "app_store", "luup_files"},
+    ["Apps"]      = {"plugins_table", "app_store", "luup_files", "required_files"},
     ["Historian"] = {"summary", "cache", "database", "orphans"},
     ["System"]    = {"parameters", "top_level", "all_globals", "states", "sandboxes", "RELOAD"},
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "globals", "user_data"},
@@ -3066,6 +3067,21 @@ function pages.luup_files (p)
   local t = create_table_from_data ({{colspan=2, "filename (click to view)"}}, fnames)
   local rdiv = xhtml.div {typemenu, xhtml.div {class="w3-rest w3-panel", t } }
   return page_wrapper ("Luup files", rdiv)  
+end
+
+function pages.required_files ()      -- 2020.07.04
+  local r = luup.openLuup.req_table
+  local t = xhtml.table {class="w3-small"}
+  t.header {"Plugin", "#", "Module"}
+  for plugin, reqs in sorted (r) do
+    if plugin ~= 0 then
+      t.row {devname (plugin)}
+      for module, number in sorted (reqs) do
+        t.row {'', rhs(number), module}
+      end
+    end
+  end
+  return page_wrapper ("Required modules by Plugin:", t)
 end
 
 -- command line
