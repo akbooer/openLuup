@@ -83,6 +83,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2020.04.02  add App Store
 -- 2020.06.28  add shared environment to pages.all_globals(), and pages.lua_globals() (thanks @a-lurker)
 -- 2020.07.04  UK Covid-19 Independence Day edition! (add required_files page)
+-- 2020.07.19  add cookie for plugin number (persistence with plugin JSON page, thanks @a-lurker)
 
 
 --  WSAPI Lua CGI implementation
@@ -220,7 +221,7 @@ local page_groups = {
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
     ["Servers"]   = {"sockets", "http", "smtp", "pop3", "udp", "file_cache"},
     ["Utilities"] = {"backups", "images", "trash"},
-    ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_test", "lua_test2", "lua_test3", "lua_globals"},
+    ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_globals", "lua_test", "lua_test2", "lua_test3"},
     ["Tables"]    = {"rooms_table", "devices_table", "scenes_table", "triggers_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
   }
@@ -3264,6 +3265,7 @@ function run (wsapi_env)
   
   local cookies = {page = "about", previous = "about",      -- cookie defaults
     device = "2", scene = "1", room = "All Rooms", 
+    plugin = '',    -- 2020.07.19
     abc_sort="abc", dev_sort = "Sort by Name", scn_sort = "All Scenes"}
   for cookie in pairs (cookies) do
     if p[cookie] then 
