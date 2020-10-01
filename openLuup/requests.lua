@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2020.04.15",
+  VERSION       = "2020.10.01",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -76,6 +76,7 @@ local ABOUT = {
 -- 2020.02.05  object-oriented dev:rename() in device request
 -- 2020.03.08  add new scene creation date
 -- 2020.04.14  modify &id=actions to enumerate ALL actions in the service data (thanks @rigpapa)
+-- 2020.10.01  add &id=run_scene&SceneNum=n short cut (for Shelly, etc.)
 
 
 local client        = require "openLuup.client"
@@ -93,6 +94,7 @@ local xml           = require "openLuup.xml"          -- for xml.encode()
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
 
+local hag   = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
 
 -- Utility functions
 
@@ -225,7 +227,6 @@ end
 local function invoke (_, p)
   -- produces a page with hot links to each device and scene, or, ...
   -- ...if a device number is given, produces a list of device services and actions
-  local hag   = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
   
   local html    = [[<!DOCTYPE html> <head><title>Remote Control</title></head> <body>%s</body> </html>]]
   local Device  = [[<a href="data_request?id=lu_invoke&DeviceNum=%d"> #%d %s</a><br>]]
@@ -997,6 +998,13 @@ local function test (r,p,f,c)
   return table.concat (d,'\n')
 end
 
+-- easy HTTP request to run a scene
+local function run_scene (_,p) 
+  -- returns: error (number), error_msg (string), job (number), arguments (table)
+  local _,_, job = luup.call_action(hag, "RunScene", p, 0)
+  return [[{"Job": ]] .. (job or 0) ..[[}]], "application/json"
+end
+
 -- easy HTTP request to force a download of AltUI
 local function altui (_,p) return update_plugin (_, {PluginNum = "8246", Version= p.Version}) end
 
@@ -1045,6 +1053,7 @@ local luup_requests = {
 }
 
 local openLuup_specials = {
+  run_scene           = run_scene,          -- does what it says on the tin
   altui               = altui,              -- download AltUI version from GitHub
   debug               = debug,              -- toggle debug flag
   exit                = exit,               -- shutdown
