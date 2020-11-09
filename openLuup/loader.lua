@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2020.07.04",
+  VERSION       = "2020.11.09",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -66,6 +66,7 @@ local ABOUT = {
 -- 2019.07.14  use new XML Document methods
 -- 2019.11.07  add do_not_implement parameter to assemble_device_from_files() for child devices
 
+-- 2020.11.09  return implementation compilation failure to caller (create_device) (thanks @imro2)
 
 ------------------
 --
@@ -757,12 +758,9 @@ local function assemble_device_from_files (devNo, device_type, upnp_file, upnp_i
       local ok
       ok, code, error_msg = scheduler.context_switch (devNo,
           compile_lua, i.source_code, name)  -- load, compile, instantiate    
-      if error_msg and ABOUT.DEBUG then
-        local f = io.open ("DUMP_" .. ((name: match "[^%.]+") or "XXX") .. ".lua", 'w')
-        if f then
-          f: write (i.source_code)
-          f: close ()
-        end
+      -- 2020.11.09 return compilation failure to caller (create_device)
+      if not ok or error_msg then
+        return nil, error_msg or code
       end
     end
     

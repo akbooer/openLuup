@@ -1,4 +1,4 @@
-local VERSION = "2020.10.01"
+local VERSION = "2020.10.27"
 
 -- mimetypes
 -- 2016/04/14
@@ -151,8 +151,11 @@ local cgi_prefix = {
     "metrics",      -- ditto
     "render",       -- ditto
     
-    "relay",        -- for Shelly-like api
+    "shelly",       -- for Shelly-like api
+    "relay",        -- ditto
     "scene",        -- ditto
+    "status",       -- ditto
+    "settings",     -- ditto
     
     "ZWaveAPI",     -- Z-Wave.me Advanced API (requires Z-Way plugin)
     "ZAutomation",  -- Z-Wave.me Virtual Device API
@@ -179,8 +182,11 @@ local cgi_alias = setmetatable ({
   
   { __index = function (_, path)
       -- Shelly-like API for switches and scenes
-      if path: match "^relay"
-      or path: match "^scene" then
+      if path: match "^shelly"
+      or path: match "^relay"
+      or path: match "^scene" 
+      or path: match "^settings" 
+      or path: match "^status" then
         return "openLuup/shelly_cgi.lua"
         
       -- TODO: REMOVE special handling of Zway requests (all directed to same handler)

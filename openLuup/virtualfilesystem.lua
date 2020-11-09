@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.08.21",
+  VERSION       = "2020.11.09",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -1003,6 +1003,18 @@ local I_Crash_xml = [[
   </implementation>
 ]]
 
+local I_CompileFail_xml = [[
+<?xml version="1.0"?>
+  <implementation>
+    <functions>
+      function Fail (...)
+        false true   -- invalid syntax
+      end
+    </functions>
+    <startup>Fail</startup>
+  </implementation>
+]]
+
 -----
 --
 -- DataYours schema and aggregation definitions for AltUI DataStorage Provider
@@ -1305,6 +1317,7 @@ local manifest = {
     ["I_openLuupCamera1.xml"]   = I_openLuupCamera1_xml,
     ["I_openLuupSecurity1.xml"] = I_openLuupSecurity1_xml,
     ["I_Crash.xml"]             = I_Crash_xml,
+    ["I_CompileFail.xml"]       = I_CompileFail_xml,
     ["I_Dummy.xml"]             = I_Dummy_xml,
     
     ["index.html"]            = index_html,

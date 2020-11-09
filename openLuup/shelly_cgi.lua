@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2020.10.02",
+  VERSION       = "2020.10.27",
   DESCRIPTION   = "Shelly-like API for relays and scenes",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020 AKBooer",
@@ -34,6 +34,7 @@ ABOUT = {
 
 local json = require "openLuup.json"
 local luup = require "openLuup.luup"
+local requests = require "openLuup.requests"
 
 local SID = {
     hag     = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",   -- run scene
@@ -52,6 +53,7 @@ local function scene (info)
   if luup.scenes[info.id] then
     call_action(info, SID.hag, "RunScene", {SceneNum = info.id}, 0)
   end
+  return info
 end
 
 -- easy HTTP request to switch a switch
@@ -61,21 +63,41 @@ local turn = {
     toggle  = function (info) call_action (info, SID.toggle, "ToggleState", {}, info.id) end,
   }
   
+local function init(info)
+  local p = info.parameters
+  for _, ip in ipairs(p.ip) do
+    print(ip)
+  end
+  info.status = -1
+  info.message = table.concat (p.ip or {}, ', ')
+  return info
+end
+  
 local function relay (info)
   local op = info.parameters.turn
   local fct = turn[op]
-  local id = luup.devices[info.id]
-  if fct and id then fct(info) end
+  local d = luup.devices[info.id]
+  if fct and d then fct(info) end
+  return info
+end
+
+local function status (info)
+  local result = requests.status (nil, {DeviceNum = info.id})   -- already JSON encoded
+  return (result == "Bad Device") and info or result            -- info has default error message
 end
 
 local function unknown (info)
   info.status = -1
   info.message = "invalid action request"
+  return info
 end
 
 local dispatch = {
-    relay = relay,
-    scene = scene,
+    shelly = init,
+    relay  = relay,
+    scene  = scene,
+    status = status,
+    settings = unknown,   -- todo: settings
   }
   
 function run(wsapi_env)
@@ -91,9 +113,11 @@ function run(wsapi_env)
   local fct = dispatch[action] or unknown
   
   unknown(info)   -- set default error message (to be over-written)
-  fct(info)       -- input and output parameters in info
   
-  local reply, err = json.encode (info) 
+  local reply, err = fct(info)       -- input and output parameters also returned (unencoded) in info
+  if type(reply) == "table" then
+    reply, err = json.encode(reply)
+  end
   res: write (reply or err)
   res:content_type "application/json"
   
