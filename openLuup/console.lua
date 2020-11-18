@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.07.04",
+  VERSION       = "2020.11.17",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -84,6 +84,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2020.06.28  add shared environment to pages.all_globals(), and pages.lua_globals() (thanks @a-lurker)
 -- 2020.07.04  UK Covid-19 Independence Day edition! (add required_files page)
 -- 2020.07.19  add cookie for plugin number (persistence with plugin JSON page, thanks @a-lurker)
+-- 2020.11.17  use textarea rather than input for variables (for @therealdb)
 
 
 --  WSAPI Lua CGI implementation
@@ -607,10 +608,21 @@ end
 
 -- form to allow variable value updates
 -- {table of hidden form parameters}, value to display and change
+--local function editable_text (hidden, value)
+--  local form = xhtml.form{method="post", style="float:left", action=selfref(),
+--    xhtml.input {class="w3-border w3-hover-border-red",type="text", size=28, 
+--      name="value", value=nice(value, 99), autocomplete="off", onchange="this.form.submit()"} }
+--  for n,v in pairs (hidden) do form[#form+1] = xhtml.input {hidden=1, name=n, value=v} end
+--  return form
+--end
+
+-- 2020.11.17  resizable textbox
 local function editable_text (hidden, value)
+  local text = nice(value, 99)
+  local _, nrows = text: gsub ("\n","\n") 
   local form = xhtml.form{method="post", style="float:left", action=selfref(),
-    xhtml.input {class="w3-border w3-hover-border-red",type="text", size=28, 
-      name="value", value=nice(value, 99), autocomplete="off", onchange="this.form.submit()"} }
+    xhtml.textarea {class="w3-border w3-hover-border-red akb-resize", cols="50", rows=tostring(math.min(nrows+1,20)),
+      name="value", autocomplete="off", onchange="this.form.submit()", text} }
   for n,v in pairs (hidden) do form[#form+1] = xhtml.input {hidden=1, name=n, value=v} end
   return form
 end
@@ -3075,12 +3087,12 @@ function pages.required_files ()      -- 2020.07.04
   local t = xhtml.table {class="w3-small"}
   t.header {"Plugin", "#", "Module"}
   for plugin, reqs in sorted (r) do
-    if plugin ~= 0 then
+--    if plugin ~= 0 then
       t.row {devname (plugin)}
       for module, number in sorted (reqs) do
         t.row {'', rhs(number), module}
       end
-    end
+--    end
   end
   return page_wrapper ("Required modules by Plugin:", t)
 end
@@ -3325,6 +3337,11 @@ function run (wsapi_env)
     .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
     .top-panel-cyan {background:PaleTurquoise; border-bottom:1px solid Grey; margin:0; padding:4px;}
     .top-panel-green {background:LightGreen; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    textarea.akb-resize {
+      min-height: 20px;
+      max-height: 400px;
+      max-width: 600px;
+    }
   ]]},
     
     h.script {
