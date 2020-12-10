@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2020.04.30",
+  VERSION       = "2020.12.10",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -119,6 +119,7 @@ ABOUT = {
 -- 2020.03.14   add 'host' attribute to all children to show that they come from a Vera
 -- 2020.04.17   fix rogue references to /port_3480, use RemotePort instead, thanks @propHAed
 -- 2020.04.30   implement @propHAed's fix for remote action problems (restore 'X' implementation file)
+-- 2020.12.10   fix get_files_from() icon access
 
 
 local devNo                      -- our device number
@@ -723,7 +724,7 @@ function GetVeraFiles (params)
     return info or ''
   end
 
-  local function get_files_from (path, filename, dest, url_prefix)
+  local function get_files_from (path, filename, dest, url_prefix, port)
     dest = dest or '.'
     url_prefix = url_prefix or ''
     luup.log ("getting files from " .. path)
@@ -732,7 +733,7 @@ function GetVeraFiles (params)
     for x in info: gmatch "%C+" do
       local fname = x:gsub ("%.lzo",'')   -- remove unwanted extension for compressed files
 --      local status, content = luup.inet.wget ("http://" .. ip .. url_prefix .. fname)
-      local status, content = luup.inet.wget (wget: format (ip, RemotePort, url_prefix, fname))
+      local status, content = luup.inet.wget (wget: format (ip, port or RemotePort, url_prefix, fname))
       if status == 0 then
         luup.log (table.concat {#content, ' ', fname})
         
@@ -766,7 +767,8 @@ function GetVeraFiles (params)
  
   if major then  
     if major > 5 then     -- UI7
-      get_files_from (icon_directories[7], pattern, "icons", "cmh/skins/default/img/devices/device_states/")
+      -- path, filename, dest, url_prefix, port
+      get_files_from (icon_directories[7], pattern, "icons", "cmh/skins/default/img/devices/device_states/", '')  -- 2020.12.10
     else                  -- UI5
       get_files_from (icon_directories[5], pattern, "icons", "cmh/skins/default/icons/")
     end
