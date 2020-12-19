@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2020.03.07",
+  VERSION       = "2020.12.19",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -67,6 +67,7 @@ local ABOUT = {
 -- 2020.02.09  add newindex() to keep integrity of visible luup.device[] structure
 -- 2020.02.12  add Bridge utilities (mapped to luup.openLuup.bridge.*)
 -- 2020.03.07  add ZWay bridge to device startup priorities
+-- 2020.12.19  allow luup.chdev.append() to change device name (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -118,6 +119,7 @@ local function varlist_to_table (statevariables)
   return vars
 end
 
+local function non_empty(x) return x and x:match "%S" and x end
   
 -- 
 -- function: create (x)
@@ -185,7 +187,6 @@ local function create (x)
   local priority = job_priority[device_type]
   
   -- schedule device startup code
-  local function non_empty(x) return x and x:match "%S" and x end
   local device_name = non_empty (x.description) 
                         or d.friendly_name or "Device_" .. x.devNo  -- 2019.08.29 check non-empty name
   if d.entry_point then 
@@ -526,8 +527,14 @@ local function append (device, ptr, altid, description, device_type, device_file
   assert (not ptr.seen[altid], "duplicate altid in chdev.append()")  -- no return status, so raise error
   ptr.seen[altid] = true
  
-  if ptr.old[altid] then 
+  local dno = ptr.old[altid]
+  if dno then 
     ptr.old[altid] = nil        -- it existed already
+    if non_empty(description) then      -- 2020.12.19
+      local dev = luup.devices[dno]
+      dev.description = description
+      dev.attributes.name = description
+    end
   else
     ptr.reload = true           -- we will need a reload 
     room = tonumber(room) or 0
