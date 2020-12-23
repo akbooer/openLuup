@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2020.12.19",
+  VERSION       = "2020.12.23",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -68,6 +68,7 @@ local ABOUT = {
 -- 2020.02.12  add Bridge utilities (mapped to luup.openLuup.bridge.*)
 -- 2020.03.07  add ZWay bridge to device startup priorities
 -- 2020.12.19  allow luup.chdev.append() to change device name (thanks @rigpapa)
+-- 2020.12.23  add Ezlo bridge to scheduler startup priorities (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -181,6 +182,7 @@ local function create (x)
   local job_priority = {
     openLuup = 1, 
     ["urn:schemas-upnp-org:device:altui:1"] = 3, 
+    ["urn:schemas-rboer-com:device:EzloBridge:1"] = 5,
     VeraBridge = 5,
     ZWay = 5}         -- 2020.03.07
   local cat_num = tonumber (x.category_num or d.category_num or loader.cat_by_dev[device_type])   -- 2019.06.02
