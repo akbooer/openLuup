@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2020.10.01",
+  VERSION       = "2020.12.26",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -77,6 +77,7 @@ local ABOUT = {
 -- 2020.03.08  add new scene creation date
 -- 2020.04.14  modify &id=actions to enumerate ALL actions in the service data (thanks @rigpapa)
 -- 2020.10.01  add &id=run_scene&SceneNum=n short cut (for Shelly, etc.)
+-- 2020.12.26  make status request honour dataversion number for variables (thanks @rigpapa)
 
 
 local client        = require "openLuup.client"
@@ -405,7 +406,7 @@ local function status_devices_table (device_list, data_version)
 --    dev_dv = d:version_get() or 0
     if d:version_get() > dv or dev_status ~= -1 then    -- TODO:  IS THIS CORRECT ? 2019.05.06
       info = info or {}                                 -- create table if not present
-      local states = d: state_table ()                  -- 2019.05.12
+      local states = d: state_table (dv)                -- 2019.05.12, 2020.12.26
 --      local states = {}
 --      for i,item in ipairs(d.variables) do
 --        states[i] = {

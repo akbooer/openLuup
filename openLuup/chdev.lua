@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2020.12.23",
+  VERSION       = "2020.12.26",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -69,6 +69,7 @@ local ABOUT = {
 -- 2020.03.07  add ZWay bridge to device startup priorities
 -- 2020.12.19  allow luup.chdev.append() to change device name (thanks @rigpapa)
 -- 2020.12.23  add Ezlo bridge to scheduler startup priorities (thanks @rigpapa)
+-- 2020.12.26  make status request honour dataversion number for variables (thanks @rigpapa)
 
 
 local logs      = require "openLuup.logs"
@@ -316,15 +317,19 @@ local function create (x)
   -- this is the basic user_data for the device variables
   -- the id=user_data and id=status requests embellish this in different ways
   -- used by userdata.devices_table() and requests.status_devices_table()
-  function dev:state_table ()      -- 2019.05.12
+  function dev:state_table (dv)       -- 2019.05.12
+    dv = dv or 0                      -- 2020.12.26  implement versioning
     local states = {}
     for i,item in ipairs(self.variables) do
-      states[i] = {
-        id = item.id, 
-        service = item.srv,
-        variable = item.name,
-        value = item.value or '',
-      }
+      local version = item.version or dv + 1
+      if version > dv then
+        states[#states+1] = {
+          id = item.id, 
+          service = item.srv,
+          variable = item.name,
+          value = item.value or '',
+        }
+      end
     end
     return states
   end
