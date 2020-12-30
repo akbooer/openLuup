@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2020.06.29",
+  VERSION       = "2020.12.30",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -66,6 +66,7 @@ local ABOUT = {
 
 -- 2020.01.25  improve watch callback log message, adding device contaxt and callback name
 -- 2020.06.29  measure wall-clock time used by device
+-- 2020.12.30  evaluate function extra_return parameters in run_job()
 
 
 local logs      = require "openLuup.logs"
@@ -491,7 +492,10 @@ local function run_job (action, arguments, devNo, target_device)
   end
   
   -- 2017.02.22 add any extra (non-device-variable) returns
-  for a,b in pairs (action.extra_returns or {}) do return_arguments[a] = b end
+  for a,b in pairs (action.extra_returns or {}) do 
+    if type(b) == "function" then b = b() end         -- 2020.12.30  evaluate function extra_return parameters
+    return_arguments[a] = b 
+  end
 
   return error, error_msg or '', jobNo, return_arguments
 end
