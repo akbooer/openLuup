@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.11.17",
+  VERSION       = "2020.12.31",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -85,6 +85,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2020.07.04  UK Covid-19 Independence Day edition! (add required_files page)
 -- 2020.07.19  add cookie for plugin number (persistence with plugin JSON page, thanks @a-lurker)
 -- 2020.11.17  use textarea rather than input for variables (for @therealdb)
+-- 2020.12.31  add scene clone functionality (thanks @a-lurker)
 
 
 --  WSAPI Lua CGI implementation
@@ -621,7 +622,7 @@ local function editable_text (hidden, value)
   local text = nice(value, 99)
   local _, nrows = text: gsub ("\n","\n") 
   local form = xhtml.form{method="post", style="float:left", action=selfref(),
-    xhtml.textarea {class="w3-border w3-hover-border-red akb-resize", cols="50", rows=tostring(math.min(nrows+1,20)),
+    xhtml.textarea {class="w3-border w3-hover-border-red akb-resize", cols="40", rows=tostring(math.min(nrows+1,20)),
       name="value", autocomplete="off", onchange="this.form.submit()", text} }
   for n,v in pairs (hidden) do form[#form+1] = xhtml.input {hidden=1, name=n, value=v} end
   return form
@@ -2081,7 +2082,7 @@ local function scene_panel (self)
                 xhtml.img {width=d, height=d, title="run scene", src="icons/play-solid.svg"} }
   
   local w1 = widget_link ("page=header&scene="  .. id, "view/edit scene", "icons/edit.svg")
-  local w2 = widget_link ("action=clone&scene=" .. id, "clone scene",     "icons/clone.svg")
+  local w2 = widget_link ("page=new_scene&clone=" .. id, "clone scene",     "icons/clone.svg")
   local w3 = widget_link ("page=history&scene=" .. id, "scene history",   "icons/calendar-alt-regular.svg")
   
   local flag = utab.favorite and unicode.black_star or unicode.white_star
@@ -2613,34 +2614,37 @@ end
 
 function pages.scene_created (_,req)
   local q = req.params
-  local name = q.name or ''
-  if not name:match "%w" then name = "_New_Scene_" end
-  local div
-  if q.name ~= '' then
-    local scn = scenes.create {name = name}
-    local scnNo = scn.definition.id
-    local msg = "Scene #%d '%s' created"
-    if scnNo then     -- offer to go there
-      luup.scenes[scnNo] = scn      -- insert into scene table
-      div = xhtml.div {
-        xhtml.p (msg: format (scnNo,name)),
-        xhtml.a {class="w3-button w3-green w3-round", 
-          href=selfref "page=scene&scene=" .. scnNo, "Go to new scene page"}}
-    else
-      div = xhtml.p "Error creating scene"
-    end
-  end
+  local clone = tonumber(q.clone)  
+  local scn = (clone) and luup.scenes[clone]: clone() or scenes.create {}
+  local scnNo = scn.definition.id
+  luup.scenes[scnNo] = scn            -- insert into scene table
+  scn: rename(q.name or "_New_Scene_")
+  
+  local msg = "Scene #%d '%s' created"
+  local div = xhtml.div {
+      xhtml.p (msg: format (scnNo, q.name)),
+      xhtml.a {class="w3-button w3-green w3-round", 
+        href=selfref "page=scene&scene=" .. scnNo, "Go to new scene page"}}
+  
   return div
 end
 
-function pages.create_scene ()
+-- create new (empty) or cloned scene, allowing choice of name
+function pages.new_scene (p)
+   local subtitle, name, value = "Making a new scene", '', ''
+   if p.clone then
+     subtitle = table.concat {"Cloning scene #", p.clone}
+     name = luup.scenes[tonumber(p.clone)].description .. " - COPY"
+     value = p.clone
+   end 
    local form = xhtml.form {class = "w3-container w3-form w3-third", 
     action = selfref "page=scene_created", method="post",
     xhtml.label {"Scene name"},
-    xhtml.input {class="w3-input w3-border w3-hover-border-red", type="text", name="name", autocomplete="off", },
+    xhtml.input {hidden=1, name="clone", value=value},    -- 2020.12.30
+    xhtml.input {class="w3-input w3-border w3-hover-border-red", type="text", name="name", value = name, autocomplete="off", },
     xhtml.input {class="w3-button w3-round w3-red w3-margin", type="submit", value="Create Scene"},
   }
-  return xhtml.div {class="w3.card", form} 
+  return page_wrapper (subtitle, xhtml.div {class="w3.card", form} )
 end
 
 function pages.scenes_table (p, req)
@@ -2658,7 +2662,7 @@ function pages.scenes_table (p, req)
     s: rename (nil, num)
   end
   local create = xhtml.a {class="w3-button w3-round w3-green", 
-    href = selfref "page=create_scene", "+ Create", title="create new scene"}
+    href = selfref "page=new_scene", "+ Create", title="create new scene"}
   local scn = {}
   local wanted = room_wanted(p)        -- get function to filter by room  
   local ymdhms = "%y-%m-%d %X"
