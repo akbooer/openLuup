@@ -1,13 +1,13 @@
 ABOUT = {
   NAME          = "VeraBridge",
-  VERSION       = "2020.12.10",
+  VERSION       = "2021.01.03",
   DESCRIPTION   = "VeraBridge plugin for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -120,6 +120,8 @@ ABOUT = {
 -- 2020.04.17   fix rogue references to /port_3480, use RemotePort instead, thanks @propHAed
 -- 2020.04.30   implement @propHAed's fix for remote action problems (restore 'X' implementation file)
 -- 2020.12.10   fix get_files_from() icon access
+
+-- 2021.01.03   don't create new devices is already existing (thus preserving device watches, thanks @reneboer, @rigpapa)
 
 
 local devNo                      -- our device number
@@ -373,6 +375,14 @@ end
 
 -- create the child devices managed by the bridge
 local function create_children (devices, room_0)
+  -- note that many remote device attributes should NOT be cloned!
+  local update_attr = {"category_num", "device_file", "device_type", "ip", "subcategory_num"}
+  local function update_attributes (cloneId, dev)
+    local attr = luup.devices[cloneId].attributes
+    for _,a in ipairs (update_attr) do
+      attr[a] = dev[a] or ''
+    end
+  end
   local N = 0
   local list = {}           -- list of created or deleted devices (for logging)
   local something_changed = false
@@ -385,6 +395,7 @@ local function create_children (devices, room_0)
       local cloneId = local_by_remote_id (dev.id)
       if not current[cloneId] then 
         something_changed = true
+        create_new (cloneId, dev, room) -- recreate the device anyway to set current attributes and variables
       else
         local new_room
         local remote_room = tonumber(dev.room)
@@ -395,7 +406,7 @@ local function create_children (devices, room_0)
         end
         room = (new_room ~= 0) and new_room or room_0   -- use room number
       end
-      create_new (cloneId, dev, room) -- recreate the device anyway to set current attributes and variables
+      update_attributes (cloneId, dev)      -- 2021.01.03
       list[#list+1] = cloneId
       current[cloneId] = nil
     end
@@ -770,7 +781,7 @@ function GetVeraFiles (params)
       -- path, filename, dest, url_prefix, port
       get_files_from (icon_directories[7], pattern, "icons", "cmh/skins/default/img/devices/device_states/", '')  -- 2020.12.10
     else                  -- UI5
-      get_files_from (icon_directories[5], pattern, "icons", "cmh/skins/default/icons/")
+      get_files_from (icon_directories[5], pattern, "icons", "cmh/skins/default/icons/", '')  -- 2020.12.11
     end
     luup.log "...end of icon files"  
   end
