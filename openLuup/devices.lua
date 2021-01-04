@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2020.06.20",
+  VERSION       = "2021.01.04",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -53,6 +53,9 @@ local ABOUT = {
 -- 2019.12.11  correct nil parameter handling in variable_watch() - thanks @rigpapa
 
 -- 2020.06.20  fix nil attribute name in attr_set()
+
+-- 2021.01.04  add devNo to device structure - required for missing service/variable creation (for watches)
+--             allow watches to be set on undefined services/variables (thanks @rigpapa)
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -337,6 +340,7 @@ end
 -- Adds the function to the list(s) of watchers
 -- If variable is nil, function will be called whenever any variable in the service is changed. 
 -- If device is nil see: http://forum.micasaverde.com/index.php/topic,34567.0.html
+-- now: https://community.getvera.com/t/openluup-and-luup-variable-watch/189487
 -- thanks @vosmont for clarification of undocumented feature
 --
 
@@ -352,16 +356,22 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
     -- a specfic device
     if serviceId then
       local srv = dev.services[serviceId]
-      if srv then 
-        if variable then                                 -- set the watch on the variable
-          local var = srv.variables[variable] 
-          if var then var.watchers[#var.watchers+1] = callback end
-        else                                        -- set the watch on the service
-          srv.watchers[#srv.watchers+1] = callback
+      if not srv then                               -- 2021.01.04  create missing service (so watch is actually set)
+        srv = service.new (serviceId, dev.devNo)
+        dev.services[serviceId] = srv
+      end
+      if variable then 
+        local var = srv.variables[variable] 
+        if not var then                             -- 2021.01.04  create missing variable (so watch is actually set)
+          var = srv: variable_set (variable)
+          srv.variables[variable]  = var
         end
+        var.watchers[#var.watchers+1] = callback    -- set the watch on the variable
+      else                                      
+        srv.watchers[#srv.watchers+1] = callback    -- set the watch on the service
       end
     else
-      dev.watchers[#dev.watchers+1] = callback     -- set the watch on the device
+      dev.watchers[#dev.watchers+1] = callback      -- set the watch on the device
     end
   else
     -- ALL devices
@@ -455,7 +465,7 @@ local function new (devNo)
         scheduler.watch_callback {var = var, watchers = sys[name]} 
       end 
       if #dev.watchers > 0 then           -- flag as device value change to watchers
-        scheduler.watch_callback {var = var, watchers = watchers} 
+        scheduler.watch_callback {var = var, watchers = dev.watchers}     -- 2020.12.27  changed to dev.watcher (for style)
       end 
       if #srv.watchers > 0 then       -- flag as service value change to watchers
         scheduler.watch_callback {var = var, watchers = srv.watchers} 
@@ -568,6 +578,8 @@ local function new (devNo)
    
   device_list[devNo] =  {
       -- data structures
+      
+      devNo               = devNo,         -- 2021.01.04  required for missing service/variable creation
       
       attributes          = attributes,
       services            = services,
