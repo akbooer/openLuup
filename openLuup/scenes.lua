@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2020.03.16",
+  VERSION       = "2021.01.08",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -69,6 +69,9 @@ local ABOUT = {
 -- 2020.01.28   move openLuup structure to scene metatable
 -- 2020.03.08   add optional timestamp to create()
 -- 2020.03.16   ensure numeric room number in create() (thanks @rafale77)
+-- 2020.12.30   add clone() for scene duplication
+
+-- 2021.01.08   add openLuup device watch triggers (enabled through openLuup plugin template)
 
 
 local logs      = require "openLuup.logs"
@@ -86,7 +89,7 @@ local _log_altui_scene  = logs.altui_scene
 
 Whilst 'actions' and 'timers' are straight-forward, the 'trigger' functionality of Luup is severely flawed, IMHO, through the close connection to UPnP service files and .json files.  
 
-The goal would be to have an interface like HomeSeer, with extremely intuitive syntax to define triggers and conditions.  To support this at the openLuup engine level, all trigger conditions are handled through a standard initial luup.variable_watch call - so no new infrastructure is needed - to a handler which then evaulates the condition and, if true, continues to evaluate further states required for the scene to run.
+The goal would be to have an interface like HomeSeer, with extremely intuitive syntax to define triggers and conditions.  To support this at the openLuup engine level, all trigger conditions are handled through a standard initial luup.variable_watch call - so no new infrastructure is needed - to a handler which then evaluates the condition and, if true, continues to evaluate further states required for the scene to run.  (note that as of mid-2019 the Reactor plugin now provides such functionality.)
 
 Sept 2015 - ALTUI now provides this functionality through its own variable watch callback 
 which then triggers scenes if some Lua boolean expression is true
@@ -112,17 +115,54 @@ local function newindex (self, ...) rawset (getmetatable(self).__index, ...) end
 
 local function jsonify (x) return (json.encode (x.definition)) or '?' end             -- return JSON scene representation
 
-local function load_lua_code (lua, id)
+-- format includes variables for main scene name, Lua code, and triggers
+local sceneLuaTemplate = [[
+  %s = setmetatable (
+    {
+      scene = function (lul_scene, lul_trigger, lul_timer, lul_params)
+        %s
+      end,
+      %s
+    },{
+      __call = function(self, ...) return self.scene(...) end
+    })
+]]
+
+-- format to individual Lua trigger code, includes trigger id format parameter
+-- parameters are as for luup.variable_watch() callback function
+-- plus additional time parameter with _actual_ time of variable change
+local sceneLuaTrigger = [[
+  [%s] = function (lul_device, lul_service, lul_variable, lul_value_old, lul_value_new, lul_time)
+    local old, new = lul_value_old, lul_value_new   -- for compatibility with AltUI variable watch code
+    %s
+  end,
+]]
+
+-- 2021.01.08  add scene trigger code to compiled scene Lua
+local function load_lua_code (scene)
+  local lua = scene.lua or ''
+  local id = scene.id or (#luup.scenes + 1)
   local scene_lua, error_msg, code
   if lua then
     local scene_name = "scene_" .. id
-    local wrapper = table.concat ({"function ", scene_name, " (lul_scene, lul_trigger, lul_timer)", lua, "end"}, '\n')  -- 2017.01.05, 2017.07.20
+    -- 2021.01.08
+    local triggers = {}
+    for id, t in ipairs (scene.triggers or {}) do
+      if t.device == 2 then                         -- 2019.06.10  it is an openLuup variable watch trigger
+        triggers[id] = sceneLuaTrigger: format (id, t.lua)
+      end
+    end
+    triggers = table.concat(triggers)
+    --
+    local wrapper = sceneLuaTemplate: format (scene_name, lua, triggers)    -- 2017.01.05, 2017.07.20, 2021.01.08
     local name = "scene_" .. id .. "_lua"
     code, error_msg = loader.compile_lua (wrapper, name, scene_environment) -- load, compile, instantiate
     scene_lua = (code or {}) [scene_name]
+    scene_environment[scene_name] = nil       -- remove scene name from shared environment
   end
   return scene_lua, error_msg
 end
+
 
 local function verify_all()
   for _,s in pairs(luup.scenes) do
@@ -150,43 +190,7 @@ local function runs_in_current_mode (scene)
 end
 
 --[[
--- called when watched device variable changes
-local function scene_watcher (devNo, service, variable, value_old, value_new)
-  local device = luup.devices[devNo]
-  if device then
---    _log ("device #" .. devNo, "luup.scenes.watch")
-  local _,_,_,_ = service, variable, value_old, value_new   -- unused at present
-    -- for each affected scene
-    -- get expected state
-    -- compare with current state
-    -- set running flag as necessary
-  end
-end
 
--- start_watching_devices(),  possibly add new devices to watched list
-local function start_watching_devices(dlist)
-  for devNo in pairs(dlist) do
-    if not watched_devices[devNo] then    -- need to start watching this device
-      watched_devices[devNo] = devNo
-      -- start device watch
-      local silent = true
-      local device = luup.devices[devNo]
-      if device then 
-        devutil.variable_watch (device, scene_watcher, nil, nil, "scene_watcher", silent) 
-      end
-    end
-  end
-end
-
--- called when trigger device variable changes
-local function trigger_watcher (devNo, service, variable, value_old, value_new)
-  local _,_,_,_,_ = devNo, service, variable, value_old, value_new   --TODO: trigger_watcher
-end
-
--- start_watching_triggers(),  possibly add new triggers to watched list
-local function start_watching_triggers(dlist)
-  local _ = dlist   --TODO: start_watching_triggers
-end
 
 -- get_actioned_devices()  returns a table of devices used by a scene
 local function get_actioned_devices(self)      -- 2019.05.15
@@ -203,6 +207,17 @@ end
 
 --]]
 
+-- clone scene
+local function scene_clone(self)
+  local desc = self.definition
+  local info = json.encode(desc)          -- make a (json) version of the scene definition
+  desc = json.decode(info)                -- ...and use it to clone the definition...
+  desc.name = desc.name .. " - CLONE"     -- ...which can now be safely modified
+  desc.Timestamp = os.time()
+  desc.last_run = nil
+  desc.id = nil
+  return desc
+end
 
 -- rename scene
 local function scene_rename (self, name, room)  -- 2020.01.27
@@ -287,6 +302,32 @@ local function start_timers (self)
   end
 end
 
+-- start scene trigger watchers
+local function start_watchers (self)      -- 2021.01.06
+  local function noop() end
+  local triggers = self.definition.triggers
+  local params = {"dev", "srv", "var"}
+  for id, trigger in ipairs (triggers) do
+    if trigger.device == 2 then          -- this is an openLuup variable watch trigger
+      local function scene_watcher (...)
+--        _log((jsonify {params = {...}, trigger=trigger}))
+        if trigger.enabled == 1 and not self.paused then
+          local trigger_lua = self.compiled[id] or noop     -- code returns false to stop run
+          if trigger_lua(...) ~= false then
+            self: run (trigger, nil, {actor= "trigger: " .. (trigger.name or '?'), watch = {...}}) 
+          end
+        end
+      end
+      local w = {}
+      for _, arg in ipairs (trigger.arguments) do
+        w[params[tonumber(arg.id)]] = arg.value
+      end
+      local dev = luup.devices[tonumber(w.dev)]
+      devutil.variable_watch (dev, scene_watcher, w.srv, w.var, "openLuupVariableTrigger")
+    end
+  end
+end
+
 -- stop scene (prior to deleting)
 local function scene_stopper (self)
   local scene = self.definition
@@ -347,7 +388,8 @@ local function scene_runner (self, t, next_time, params)              -- called 
   
   local ok, del
   if self.compiled then
-    ok, user_finalizer, del = self.compiled (scene.id, lul_trigger, lul_timer)    -- 2017.01.05, 2017.07.20, 2018.01.17
+    -- 2017.01.05, 2017.07.20, 2018.01.17, 2021.01.06
+    ok, user_finalizer, del = self.compiled (scene.id, lul_trigger, lul_timer, params)
     if ok == false then
       _log (scene.name .. " prevented from running by local scene Lua")
       return    -- LOCAL cancel
@@ -424,7 +466,7 @@ local function create (scene_json, timestamp)
   if not scene then return nil, err end
   
   local lua_code
-  lua_code, err = load_lua_code (scene.lua or '', scene.id or (#luup.scenes + 1))   -- load the Lua
+  lua_code, err = load_lua_code (scene)       -- load the Lua
   if err then return nil, err end
 
   -- ensure VALID values for some essential variables...
@@ -469,6 +511,7 @@ local function create (scene_json, timestamp)
     },
     
     -- methods
+    clone       = function (self) return create(scene_clone(self)) end,
     rename      = scene_rename,
     run         = scene_runner,
     stop        = scene_stopper,
@@ -483,6 +526,7 @@ local function create (scene_json, timestamp)
   
   luup_scene: verify()                  -- check that non-existent devices are not referenced
   start_timers (luup_scene)             -- start the timers
+  start_watchers (luup_scene)           -- start the trigger watchers
   devutil.new_userdata_dataversion ()   -- say something has changed
   
   return luup_scene

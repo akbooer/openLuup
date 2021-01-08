@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2020.11.09",
+  VERSION       = "2021.01.08",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -67,6 +67,9 @@ local ABOUT = {
 -- 2019.11.07  add do_not_implement parameter to assemble_device_from_files() for child devices
 
 -- 2020.11.09  return implementation compilation failure to caller (create_device) (thanks @imro2)
+
+-- 2021.01.08  remove shared_environment.pretty_old()
+
 
 ------------------
 --
@@ -244,42 +247,6 @@ function shared_environment.pretty (Lua)        -- 2014 - 2019.06.25   @akbooer
   end
   val(Lua, 0, '_') 
   return table.concat(L) 
-end 
-
- 
-function shared_environment.pretty_old (Lua)    -- 2014 - 2016.03.10   @akbooer
-  local con, tab, enc = table.concat, '  ', {[_G] = "_G"}                -- don't expand global environment
-  local function ctrl(y) return ("\\%03d"): format (y:byte ()) end       -- deal with escapes, etc.
-  local function str_obj(x) return '"' .. x:gsub ("[\001-\031]", ctrl) .. '"' end
-  local function brk_idx(x) return '[' .. tostring(x) .. ']' end
-  local function str_idx(x) return x:match "^[%a_][%w_]*$" or brk_idx(str_obj (x)) end
-  local function nl (d,x) if x then return '\n'..tab:rep (d),'\n'..tab:rep (d-1) else return '','' end end
-  local function val (x, depth, name) 
-    if enc[x] then return enc[x] end                                    -- previously encoded
-    local t = type(x)
-    if t ~= "table" then return (({string = str_obj})[t] or tostring) (x) end
-    enc[x] = name                                                       -- start encoding this table
-    local idx, its, y = {}, {}, {rawget (x,1) or rawget (x,2) and true}
-    for i in pairs(x) do                                                -- fix isolated nil numeric indices
-      y[i] = true; if (type(i) == "number") and rawget(x,i+2) then y[i+1] = true end
-    end
-    for i in ipairs(y) do                                               -- contiguous numeric indices
-      y[i] = nil; its[i] = val (rawget(x,i), depth+1, con {name,'[',i,']'}) 
-    end
-    if #its > 0 then its = {con (its, ',')} end                         -- collapse to single line
-    for i in pairs(y) do 
-      if (rawget(x,i) ~= nil) then idx[#idx+1] = i end                  -- list and sort remaining non-nil indices
-    end
-    table.sort (idx, function (a,b) return tostring(a) < tostring(b) end)
-    for _,j in ipairs (idx) do                                          -- remaining indices
-      local fmt_idx = (({string = str_idx})[type(j)] or brk_idx) (j)
-      its[#its+1] = fmt_idx .." = ".. val (x[j], depth+1, name..'.'..fmt_idx) 
-    end
-    enc[x] = nil                                                        -- finish encoding this table
-    local nl1, nl2 = nl(depth, #idx > 1)                                -- indent multiline tables 
-    return con {'{', nl1, con {con (its, ','..nl1) }, nl2, '}'}         -- put it all together
-  end
-  return val(Lua, 1, '_') 
 end 
 
 
