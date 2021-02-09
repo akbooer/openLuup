@@ -1,4 +1,4 @@
-local VERSION = "2020.10.27"
+local VERSION = "2021.01.31"
 
 -- mimetypes
 -- 2016/04/14
@@ -138,6 +138,17 @@ local smtp_codes = {
   [555] = "MAIL FROM/RCPT TO parameters not recognized or not implemented",
   [556] = "Domain does not accept mail",
 }
+
+-- MQTT Connection Return Codes
+local mqtt_codes = {
+  [0] = "Connection Accepted",
+  [1] = "Connection Refused, unacceptable protocol version",
+  [2] = "Connection Refused, identifier rejected",
+  [3] = "Connection Refused, Server unavailable",
+  [4] = "Connection Refused, bad user name or password",
+  [5] = "Connection Refused, not authorized",
+}
+
 
 -- CGI prefixes: HTTP requests with any of these path roots are treated as CGIs
 local cgi_prefix = {

@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2020.02.12",
+  VERSION       = "2021.02.03",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-19 AK Booer
+  Copyright 2013-21 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ local ABOUT = {
 -- 2019.04.18  remove TidyCache daemon (now done implicitly at variable creation in devices module)
 
 -- 2020.02.12  move get_bridge_info to luup.openLuup.bridge.get_info()
+
+-- 2021.02.03 avoid non-existent file whisper error in write_thru()
 
 
 local logs    = require "openLuup.logs"
@@ -496,6 +498,7 @@ local function write_thru (dev, svc, var, old, value, timestamp)
   if NoSchema[short_metric] then return end                             -- not interested
   
   local path, filename = Metrics.dsv2filepath (dev, short_svc, var)
+  if not path then return end                   -- 2021.02.03 avoid non-existent file whisper error
   if not whisper.info (path) then               -- it's not there, we need to create it
     local schema = create_historian_file (short_metric, path) 
     NoSchema[short_metric] = not schema 

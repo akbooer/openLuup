@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2020.07.04",
+  VERSION       = "2021.01.31",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -64,6 +64,8 @@ local ABOUT = {
 -- 2020.05.01  log json module version info (thanks @a-lurker)
 -- 2020.07.04  use proxy for require()
 
+-- 2021.01.30  add MQTT server and Shelly bridge
+
 
 local logs  = require "openLuup.logs"
 local lfs   = require "lfs"
@@ -99,6 +101,7 @@ local client        = require "openLuup.client"     -- HTTP client
 local server        = require "openLuup.server"     -- HTTP server
 local smtp          = require "openLuup.smtp"
 local pop3          = require "openLuup.pop3"
+local mqtt          = require "openLuup.mqtt"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local compress      = require "openLuup.compression"
@@ -113,10 +116,10 @@ logs.banner (logs.ABOUT)        -- ditto
 
 logs.banner (json.ABOUT)
 if json.C then 
-  local cjson_banner = "using Cjson %s for fast decoding"
+  local cjson_banner = "using Cjson %s for fast JSON decoding"
   _log (cjson_banner: format (json.C._VERSION or "(unknown version)")) 
 else
-  _log ("Cjson not installed - using openLuup.json.Lua.decode() instead")
+  _log ("using openLuup.json.Lua.decode() for JSON decoding (Cjson not installed)")
 end
 
 -- heartbeat monitor for memory usage and checkpointing
@@ -209,6 +212,12 @@ do -- set attributes, possibly decoding if required
       CloseIdleSocketAfter = 600,         -- RFC 1939 minimum value for autologout timer
       Port = 11011,
     },
+-- not, by default, enabled
+--    MQTT = {
+--      Backlog = 100,
+--      CloseIdleSocketAfter = 120,
+--      Port = 1883,
+--    },
     Scenes = {
       -- Prolog/Epilog are global function names to run before/after ALL scenes
       Prolog = '',                        -- name of global function to call before any scene
@@ -308,12 +317,19 @@ do --	 SERVERs and SCHEDULER
   if not s then 
     error ("openLuup - is another copy already running?  Unable to start HTTP server on port " .. port)
   end
-
+  
   if config.SMTP then smtp.start (config.SMTP) end
 
   if config.POP3 then pop3.start (config.POP3) end
-  
+
   if config.Historian then historian.start (config.Historian) end
+
+  luup.inet.wget "/shelly"        -- 2021.02.01  start the Shelly bridge (new CGI-style of bridge) BEFORE MQTT server
+  
+  if config.MQTT then 
+    mqtt.start (config.MQTT) 
+    luup.openLuup.mqtt = mqtt
+  end
   
   -- start the heartbeat
   timers.call_delay(openLuupPulse, 6 * 60, '', "first checkpoint")      -- it's alive! it's alive!!

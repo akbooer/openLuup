@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2020.12.30",
+  VERSION       = "2021.01.16",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -67,6 +67,8 @@ local ABOUT = {
 -- 2020.01.25  improve watch callback log message, adding device contaxt and callback name
 -- 2020.06.29  measure wall-clock time used by device
 -- 2020.12.30  evaluate function extra_return parameters in run_job()
+
+-- 2021.01.16  add state_names (moved from console)
 
 
 local logs      = require "openLuup.logs"
@@ -218,6 +220,9 @@ local state =  {
     InProgressPendingData=7,
  }
  
+
+local state_name =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
+
 local valid_state = {}
 for _,s in pairs (state) do valid_state[s] = s end
 
@@ -713,6 +718,7 @@ return {
     
     -- constants
     state             = state,
+    state_name        = state_name,
     error_state       = error_state,
     exit_state        = exit_state,
     run_state         = run_state,

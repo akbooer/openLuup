@@ -4,13 +4,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2020.12.31",
+  VERSION       = "2021.02.09",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-20 AK Booer
+  Copyright 2013-21 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -87,6 +87,8 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2020.11.17  use textarea rather than input for variables (for @therealdb)
 -- 2020.12.31  add scene clone functionality (thanks @a-lurker)
 
+-- 2021.01.09  developing scene UI
+-- 2021.01.31  add MQTT server
 
 --  WSAPI Lua CGI implementation
 
@@ -99,6 +101,7 @@ local userdata  = require "openLuup.userdata"     -- for device user_data
 local server    = require "openLuup.server"       -- for HTTP server stats
 local smtp      = require "openLuup.smtp"
 local pop3      = require "openLuup.pop3"
+local mqtt      = require "openLuup.mqtt"
 local ioutil    = require "openLuup.io"
 local scenes    = require "openLuup.scenes"
 local hist      = require "openLuup.historian"    -- for disk archive stats   
@@ -221,7 +224,7 @@ local page_groups = {
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "globals", "user_data"},
     ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
-    ["Servers"]   = {"sockets", "http", "smtp", "pop3", "udp", "file_cache"},
+    ["Servers"]   = {"sockets", "http", "mqtt", "smtp", "pop3", "udp", "file_cache"},
     ["Utilities"] = {"backups", "images", "trash"},
     ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_globals", "lua_test", "lua_test2", "lua_test3"},
     ["Tables"]    = {"rooms_table", "devices_table", "scenes_table", "triggers_table"},
@@ -239,7 +242,7 @@ end
 -- look for user-defined device panels
 -- named U_xxx.lua, derived from trailing word of device type:
 -- urn:schemas-micasaverde-com:device:TemperatureSensor:1, would be U_TemperatureSensor.lua
-local user_defined = panels
+local user_defined = panels.device_panel
 --local user_defined = {
 --    openLuup = {control = function() return 
 --        '<div><a class="w3-text-blue", href="https://www.justgiving.com/DataYours/" target="_blank">' ..
@@ -254,7 +257,7 @@ end
 
 local function selfref (...) return table.concat {script_name, '?', ...} end   -- for use in hrefs
 
-local state =  {[-1] = "No Job", [0] = "Wait", "Run", "Error", "Abort", "Done", "Wait", "Requeue", "Pending"} 
+local state =  scheduler.state_name
 
 local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
 local function todate_ms (epoch) return ("%s.%03d"): format (todate (epoch),  math.floor(1000*(epoch % 1))) end
@@ -466,17 +469,6 @@ local function filter_menu (items, current_item, request)
   return xhtml.div {class="w3-bar-block w3-col", style="width:12em;", menu}
 end
 
-local function scene_filter (p)
-  return filter_menu ({"All Scenes", "Runnable", "Paused"}, p.scn_sort, "scn_sort=")
-end
-
-local function device_sort (p)
-  return filter_menu ({"Sort by Name", "Sort by Id"}, p.dev_sort, "dev_sort=")
-end
-
-local function scene_sort (p)
-  return filter_menu ({"Sort by Name", "Sort by Id", "Sort by Date"}, p.dev_sort, "dev_sort=")
-end
 
 -- returns an iterator which sorts items, key= "Sort by Name" or "Sort by Id" 
 -- works for devices, scenes, and variables
@@ -741,12 +733,24 @@ function actions.delete (p)
   elseif p.scn then
 --    requests.scene ('', {action = "delete", scene = p.scn})
     scenes.delete (tonumber(p.scn))    -- 2020.01.27
-  elseif p.plugin then
-    requests.delete_plugin ('', {PluginNum = p.plugin})
   elseif p.var then
     local dev = luup.devices[tonumber (p.device)]
     if dev then dev: delete_single_var(tonumber(p.var)) end
+  elseif p.plugin then
+    requests.delete_plugin ('', {PluginNum = p.plugin})
   end
+end
+
+local function scene_filter (p)
+  return filter_menu ({"All Scenes", "Runnable", "Paused"}, p.scn_sort, "scn_sort=")
+end
+
+local function device_sort (p)
+  return filter_menu ({"Sort by Name", "Sort by Id"}, p.dev_sort, "dev_sort=")
+end
+
+local function scene_sort (p)
+  return filter_menu ({"Sort by Name", "Sort by Id", "Sort by Date"}, p.dev_sort, "dev_sort=")
 end
 
 -- Pages
@@ -1123,6 +1127,7 @@ function pages.sockets ()
   connectionsTable (x, "SMTP", smtp.iprequests)
   connectionsTable (x, "POP3", pop3.iprequests)
   connectionsTable (x, "UDP",  ioutil.udp.iprequests) 
+  connectionsTable (x, "MQTT", mqtt.iprequests)
   local h2 = xhtml.h4 "Received connections"
   local t2 = create_table_from_data (c2, x)
   return page_wrapper ("Server sockets watched for incoming connections", t, h2, t2)
@@ -1173,6 +1178,25 @@ function pages.http (p)
       selection,
       xhtml.div {class="w3-rest w3-panel", 
         requestTable (tbl, {"request", "#requests  ","status"}) } }
+end
+
+function pages.mqtt (p)
+  local data = {}
+  for topic, subscribers in sorted (mqtt.subscribers) do
+    local internal, external = {}, {}
+    for _, subs in ipairs (subscribers) do
+      internal[#internal+1] = subs.devNo
+      external[#external+1] = (subs.client or empty) .ip
+    end
+    data[#data+1] = {topic, table.concat (internal, ', '), table.concat (external, ', ')}
+  end
+  local tbl = create_table_from_data ({"topic", "plugin subscribers", "ip subscribers" }, data)
+  
+  return xhtml.div {
+      html5_title "MQTT QoS 0 server",
+--      selection,
+      xhtml.div {class="w3-rest w3-panel", tbl} }
+
 end
 
 function pages.smtp (p)
@@ -2116,20 +2140,11 @@ function pages.header (p)
   end)
 end
 
---[[
-{
-           "name": "temp_over_80",
-           "enabled": 1,
-           "template": 2,
-           "device": 79,
-           "arguments": [
-               {
-                   "id": 1,
-                   "value": "80"
-               }
-           ]
-       },
---]]
+
+function pages.create_trigger (p)
+  
+end
+
 function pages.triggers (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
@@ -2182,6 +2197,10 @@ function pages.triggers (p)
       href = selfref "page=create_trigger", "+ Create", title="create new trigger"}
     return title .. " - scene triggers", xhtml.div {class="w3-panel", create}, T
   end)
+end
+
+function pages.create_timer (p)
+  
 end
 
 function pages.timers (p)

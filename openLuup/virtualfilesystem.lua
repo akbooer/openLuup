@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2020.11.09",
+  VERSION       = "2021.02.05",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ local xml   = require "openLuup.xml"              -- for XML device file encodin
 
 local SID = {
     AltUI           = "urn:upnp-org:serviceId:altui1",
+    ShellyBridge    = "urn:akbooer-com:serviceId:ShellyBridge1",
     VeraBridge      = "urn:akbooer-com:serviceId:VeraBridge1",
     ZwaveNetwork    = "urn:micasaverde-com:serviceId:ZWaveNetwork1",
     ZWay            = "urn:akbooer-com:serviceId:ZWay1",
@@ -614,22 +615,6 @@ local D_ZWay_json = json.encode {
         Label ("configure", '<a href="/cgi/zway_cgi.lua" target="_blank">Configure ZWay child devices</a>')),
       }}}}
 
-
-local I_ZWay_xml = [[
-<?xml version="1.0"?>
-<implementation>
-  <handleChildren>1</handleChildren>
-  <functions>
-    local M = require "L_ZWay"
-    ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
-    function startup (...)
-      return M.init (...)
-    end
-  </functions>
-  <startup>startup</startup>
-</implementation>
-]]
-
 local I_ZWay2_xml do
   local x = xml.createDocument ()
   local function action (S,N, JorR)
@@ -675,6 +660,148 @@ local S_ZWay_svc do
 end
 
 
+
+-----
+--
+-- Shelly support
+--
+
+local D_ShellyBridge_xml = Device {
+        deviceType   = "ShellyBridge",
+        Category_Num = "1",
+        friendlyName = "Shelly Bridge",
+        manufacturer = "akbooer",
+        handleChildren  = "1",
+        staticJson   = "D_ShellyBridge.json",
+        serviceList     = { 
+          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+        implementationList = {"I_ShellyBridge.xml"}}
+      }
+
+
+local D_ShellyBridge_json = json.encode {
+  default_icon = "https://pbs.twimg.com/profile_images/1317058087929450505/Vw2yKX4S.jpg",
+  DeviceType = "ShellyBridge",
+  Tabs = {{
+--      Label = Label ("tabname_control", "Control"),
+--			Position = "0",
+--			TabType = "flash",
+--			ControlGroup = { {id = "1",scenegroup = "1"} },
+--			SceneGroup = { {id = "1", top = "1.5", left = "0.25", x = "1.5",y ="2"} },
+    
+--    Control = {
+--      ControlGroup (1, "variable", 0,0,
+--        Display (50,40, 75,20, SID.AltUI, "DisplayLine1")),
+--      ControlGroup (1, "variable", 0,1,
+--        Display (50,60, 75,20, SID.AltUI, "DisplayLine2")),
+--      ControlGroup (2, "variable", 0,3,
+--        Display (50,100, 75,20, SID.ZWay,"Version")),
+--      ControlGroup (2, "label", 0,4, 
+--        Display (50,160, 75,20),
+--        Label ("configure", '<a href="/cgi/zway_cgi.lua" target="_blank">Configure ZWay child devices</a>')),
+--      }
+    }}}
+
+local I_ShellyBridge_impl do
+  local x = xml.createDocument ()
+  local function action (S,N, JorR)
+    return x.action {x.serviceId (S), x.name (N), JorR}
+  end
+    x: appendChild {
+      x.implementation {
+        x.functions [[
+--          local M = require "L_ShellyBridge"
+--          init = M.init
+-- module(..., package.seeall)
+
+-- 2020.02.01  Shelly Bridge - control API only (ie. action requests)
+
+local SID = {
+    switch    = "urn:upnp-org:serviceId:SwitchPower1",                          
+    hadevice  = "urn:micasaverde-com:serviceId:HaDevice1",
+    bridge    = "urn:akbooer-com:serviceId:ShellyBridge1",
+  }
+
+local devNo             -- bridge device number (set on startup)
+
+local function setVar (name, value, service, device)
+  service = service or SID.bridge
+  device = device or devNo
+  local old = luup.variable_get (service, name, device)
+  if tostring(value) ~= old then 
+   luup.variable_set (service, name, value, device)
+  end
+end
+
+local function SetTarget (dno, args)
+  local val = tonumber (args.newTargetValue)
+  luup.variable_set (SID.switch, "Target", val, dno)
+  local on_off = val == 1 and "on" or "off"
+
+  local id = luup.attr_get ("altid", dno)
+  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
+  if relay then
+    shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
+    luup.openLuup.mqtt.publish (shelly, on_off)
+  end
+end
+
+local function ToggleState (dno)
+  local val = luup.variable_get (SID.switch, "Status", dno)
+  SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
+end
+
+local function generic_action (serviceId, action)
+  local function noop(lul_device)
+    local message = "service/action not implemented: %d.%s.%s"
+    luup.log (message: format (lul_device, serviceId, action))
+    return false
+  end
+
+  local SRV = {
+      [SID.switch]    = {SetTarget = SetTarget},
+      [SID.hadevice]  = {ToggleState = ToggleState},
+    }
+  
+  local service = SRV[serviceId] or {}
+  local act = service [action] or noop
+  if type(act) == "function" then act = {run = act} end
+  return act
+end
+
+function init (lul_device)   -- Shelly Bridge device entry point
+  devNo = tonumber (lul_device)
+	luup.devices[devNo].action_callback (generic_action)    -- catch all undefined action calls
+  luup.set_failure (0)
+  return true, "OK", "Shelly Bridge IMPL file"
+end
+
+-----
+        ]],
+        x.startup "init",
+--        x.actionList {
+--          action (SID.ShellyBridge,    "DeleteAllVariables",      x.job "DeleteAllVariables (lul_settings)"),
+--        }
+        }}
+  I_ShellyBridge_impl = tostring(x)
+end
+
+
+local S_ShellyBridge_svc do
+  local x = xml.createDocument ()
+  local function argument (N,D)
+    return x.argument {x.name (N), x.direction (D or "in")}
+  end
+    x: appendChild {
+      x.scpd {xmlns="urn:schemas-upnp-org:service-1-0",
+        x.specVersion {x.major "1", x.minor "0"},
+        x.actionList {
+          x.action {x.name "DeleteAllVariables",
+            x.argumentList {
+              argument "AreYouSure"}},
+         }}}
+  S_ShellyBridge_svc = tostring(x)
+end
 
 -----
 
@@ -1008,7 +1135,9 @@ local I_CompileFail_xml = [[
   <implementation>
     <functions>
       function Fail (...)
-        false true   -- invalid syntax
+      --  false true   -- invalid syntax
+        local arg
+        arg[42] = false
       end
     </functions>
     <startup>Fail</startup>
@@ -1301,9 +1430,12 @@ local manifest = {
     
     ["D_ZWay.xml"]  = D_ZWay_xml,
     ["D_ZWay.json"] = D_ZWay_json,
-    ["I_ZWay.xml"]  = I_ZWay_xml,
-    ["I_ZWay2.xml"] = I_ZWay2_xml,    -- TODO: remove after development
+    ["I_ZWay2.xml"] = I_ZWay2_xml,
     ["S_ZWay.xml"]  = S_ZWay_svc,
+    
+    ["D_ShellyBridge.xml"]  = D_ShellyBridge_xml,
+    ["D_ShellyBridge.json"] = D_ShellyBridge_json,
+    ["I_ShellyBridge.xml"]  = I_ShellyBridge_impl,
     
     ["built-in/altui_console_menus.json"]   = altui_console_menus_json,
     ["built-in/openLuup_menus.json"]   = openLuup_menus_json,

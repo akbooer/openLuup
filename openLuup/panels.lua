@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2020.05.12",
+  VERSION       = "2021.01.20",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -43,6 +43,8 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2019.11.14  move into separate file
 
 -- 2020.05.07  add simple camera control panel showing video stream
+
+-- 2021.01.20  add panel utility functions
 
 
 local xml = require "openLuup.xml"
@@ -217,5 +219,7 @@ local panels = {
 panels.DoorSensor = panels.MotionSensor
 
 
-return panels
+return {
+    device_panel = panels,
+  }
 

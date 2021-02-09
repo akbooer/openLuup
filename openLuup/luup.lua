@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2020.07.04",
+  VERSION       = "2021.02.03",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -79,6 +79,9 @@ local ABOUT = {
 -- 2020.06.28  add luup.openLuup.cpu_table  with dynamic plugin CPU usage
 -- 2020.06.29  add luup.openLuup.wall_table with dynamic plugin wall-clock usage
 
+-- 2021.01.31  add MQTT to register_handler() protocol
+-- 2021.02.03  add luup.openLuup.find_device() by attribute: name / id / altid / etc...
+
 
 local logs          = require "openLuup.logs"
 
@@ -91,6 +94,7 @@ local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local loader        = require "openLuup.loader"     -- for shared environment and compiler
 local smtp          = require "openLuup.smtp"       -- for register_handler to work with email
+local mqtt          = require "openLuup.mqtt"       -- for register_handler to work with MQTT
 local historian     = require "openLuup.historian"  -- for luup.variable_get() to work with historian
 
 -- luup sub-modules
@@ -790,12 +794,13 @@ local function register_handler (...)
     _log (msg, "luup.register_handler")
     
     -- 2018.04.18  optional alphameric protocol prefix in register_handler request
-    local protocol, address = request_name: match "^(%a+):([^:]+)$"     --  abc:xxx
+    local protocol, address = request_name: match "^(%a+):%s*([^:]+)$"     --  abc:xxx
     if protocol then
       local valid = {                 -- 2018.04.23  format for easier reading
           ["mailto"]  = smtp, 
           ["smtp"]    = smtp, 
           ["udp"]     = ioutil.udp,
+          ["mqtt"]    = mqtt,
         }
       local scheme = valid[protocol: lower()]
       if scheme then 
@@ -1111,6 +1116,16 @@ local function time_table (what)
   return t
 end
 
+-- 2021.02.03  find device by attribute: name / id / altid / etc...
+local function find_device (request)
+  if type (request) ~= "table" then return end
+  local name, value = next (request)
+  for n, d in pairs (devices) do
+    if d.attributes[name] == value then
+      return n
+    end
+  end
+end
 
 -----
 --
@@ -1128,6 +1143,7 @@ return {
     openLuup = setmetatable ({    -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate not a Vera (for plugin developers)
       -- openLuup-specific API extensions go here...
       bridge = chdev.bridge,      -- 2020.02.12  Bridge utilities 
+      find_device = find_device,  -- 2021.02.03  find device by attribute: name / id / altid / etc...
       req_table  = nil,           -- 2020.07.04  set in init.lua
     },{
       __index = function (self, name) -- 2020.06.28

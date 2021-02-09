@@ -4,15 +4,15 @@ module(..., package.seeall)
 
 local wsapi = require "openLuup.wsapi" 
 
-ABOUT = {
+local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2020.10.27",
-  DESCRIPTION   = "Shelly-like API for relays and scenes",
+  VERSION       = "2021.02.09",
+  DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2020 AKBooer",
+  COPYRIGHT     = "(c) 2020-2021 AKBooer",
   DOCUMENTATION = "",
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -32,16 +32,46 @@ ABOUT = {
 -- see: https://shelly-api-docs.shelly.cloud/#shelly-family-overview
 -- see: http://keplerproject.github.io/wsapi/libraries.html
 
-local json = require "openLuup.json"
-local luup = require "openLuup.luup"
-local requests = require "openLuup.requests"
+-- 2020.02.01  add Shelly Bridge
+
+--local socket    = require "socket"
+local json      = require "openLuup.json"
+local luup      = require "openLuup.luup"
+local requests  = require "openLuup.requests"         -- for data_request?id=status response
+local chdev     = require "openLuup.chdev"            -- to create new bridge devices
 
 local SID = {
-    hag     = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",   -- run scene
-    switch  = "urn:upnp-org:serviceId:SwitchPower1",                          
-    toggle  = "urn:micasaverde-com:serviceId:HaDevice1",
+    hag       = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",   -- run scene
+    switch    = "urn:upnp-org:serviceId:SwitchPower1",                          
+    toggle    = "urn:micasaverde-com:serviceId:HaDevice1",
+    scene     = "urn:micasaverde-com:serviceId:SceneController1",
+    energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
+    
+    sBridge   = "urn:akbooer-com:serviceId:ShellyBridge1",
+    shellies  = "shellies",
   }
-  
+
+
+local settings =       -- complete device settings
+  {
+    device = {
+      name  = "openLuup_shelly_server",
+      fw    = ABOUT.VERSION,
+    },
+    mqtt = {
+      enable = true,
+      port = 1883,
+      keep_alive = 60,
+    },
+    lat = luup.latitude,
+    lng = luup.longitude,
+  }
+ 
+-------------------------------------------
+--
+-- Shelly-like CGI API for all openLuup devices
+--
+
 -- perform generic luup action
 local function call_action (info, ...)
   -- returns: error (number), error_msg (string), job (number), arguments (table)
@@ -63,14 +93,12 @@ local turn = {
     toggle  = function (info) call_action (info, SID.toggle, "ToggleState", {}, info.id) end,
   }
   
-local function init(info)
-  local p = info.parameters
-  for _, ip in ipairs(p.ip) do
-    print(ip)
-  end
-  info.status = -1
-  info.message = table.concat (p.ip or {}, ', ')
-  return info
+local function shelly()
+  local d = settings.device
+  return {
+    type  = d.name,
+    fw    = d.fw,
+  }
 end
   
 local function relay (info)
@@ -86,20 +114,37 @@ local function status (info)
   return (result == "Bad Device") and info or result            -- info has default error message
 end
 
+local function update_dynamic_settings ()
+  local t = os.time()
+  settings.unixtime = t
+  settings.time = os.date ("%H:%M", t)
+end
+
+local function config (info)
+  local p = info.parameters
+  
+--  if p["mqtt.enable"] == "true" then MQTT.init () end
+  update_dynamic_settings ()
+  return settings
+end
+
 local function unknown (info)
   info.status = -1
   info.message = "invalid action request"
   return info
 end
 
+
 local dispatch = {
-    shelly = init,
-    relay  = relay,
-    scene  = scene,
-    status = status,
-    settings = unknown,   -- todo: settings
+    shelly    = shelly,
+    relay     = relay,
+    scene     = scene,
+    status    = status,
+    settings  = config,
   }
   
+-- CGI entry point
+
 function run(wsapi_env)
   
   local req = wsapi.request.new(wsapi_env)
@@ -123,5 +168,251 @@ function run(wsapi_env)
   
   return res:finish()
 end
+
+--
+-- END of Shelly CGI
+--
+--------------------------------------------------
+
+
+--------------------------------------------------
+--
+-- Shelly MQTT Bridge
+--
+
+local devices = {}      -- gets filled with device info on MQTT connection
+local devNo             -- bridge device number (set on startup)
+
+
+local DEV = {
+  light       = "D_BinaryLight1.xml",
+  dimmer      = "D_DimmableLight1.xml",
+  thermos     = "D_HVAC_ZoneThermostat1.xml",
+  motion      = "D_MotionSensor1.xml",
+  controller  = "D_SceneController1.xml",
+  combo       = "D_ComboDevice1.xml",
+  rgb         = "D_DimmableRGBLight1.xml",
+}
+
+
+
+----------------------
+--
+-- device specific variable updaters
+--
+-- NB: only called if variable has changed value
+--
+
+local function generic() end
+
+--[[
+  for switch in "momentary" mode: 
+  input_event/n = {"event":"S","event_cnt":11}
+		S = shortpush 	
+		L = longpush 	
+		SS = double shortpush 	
+		SSS = triple shortpush 	
+		SL = shortpush + longpush 	
+		LS = longpush + shortpush 	
+
+--]]
+local function ix3 (dno, var, value) 
+--  luup.log ("ix3 - update: " .. var)
+  -- look for change of value of input/n [n = 0,1,2]
+  local button = var: match "^input/(%d)"
+  if button then
+    luup.variable_set (SID.scene, "sl_SceneActivated", button, dno)
+    luup.variable_set (SID.scene, "LastSceneTime", os.time(), dno)
+  end
+end
+
+local function sw2_5(dno, var, value) 
+--  luup.log ("sw2.5 - update: " .. var)
+  local child, attr = var: match "^relay/(%d)/?(.*)"
+  if child then
+    local altid = luup.attr_get ("altid", dno)
+    local cdno = luup.openLuup.find_device {altid = table.concat {altid, '/', child} }
+    if cdno then
+      if attr == '' then
+        luup.variable_set (SID.switch, "Status", value == "on" and '1' or '0', cdno)
+      elseif attr == "power" then
+        luup.variable_set (SID.energy, "Watts", value, cdno)
+      elseif attr == "energy" then
+        luup.variable_set (SID.energy, "KWH", math.floor (value / 60) / 1000, cdno)  -- convert Wmin to kWh
+      end
+    end
+  end
+end
+
+
+
+----------------------
+
+local function model_info (upnp, updater, children)
+  return {upnp = upnp, updater = updater, children = children}
+end
+
+local unknown_model = model_info (DEV.controller, generic)
+local models = setmetatable (
+  {
+    ["SHIX3-1"] = model_info (DEV.controller, ix3),
+    ["SHSW-25"] = model_info (DEV.combo, sw2_5, {DEV.light, DEV.light})      -- two child devices
+  },{
+    __index = function () return unknown_model end
+  })
+
+
+local function _log (msg)
+  luup.log (msg, "luup.shelly")
+end
+
+local function setVar (name, value, service, device)
+  value = tostring(value)
+  service = service or SID.sBridge
+  device = device or devNo
+  local old = luup.variable_get (service, name, device)
+  if value ~= old then 
+    luup.variable_set (service, name, value, device)
+    return true        -- say it changed
+  end
+end
+
+local function update_shelly (topic, message)
+  local shelly, var = topic: match "^shellies/(.-)/(.+)"
+  local child = devices[shelly]
+  if not child then return end
+  
+  local changed = setVar (var, message, shelly, child)      -- update the shelly mimic variable
+--  child: variable_set (shelly, var, message, true)          -- not logged, but 'true' enables variable watch
+
+  if changed then
+    local model = luup.attr_get ("model", child)
+    models[model].updater (child, var, message)
+  end
+end
+
+
+local function create_device(info)
+  local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
+
+  local offset = luup.variable_get (SID.sBridge, "Offset", devNo)
+                    or
+                      luup.openLuup.bridge.nextIdBlock()
+  
+  setVar ("Offset", offset)
+  local dno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
+  
+  local name, altid, ip = info.id, info.id, info.ip
+  
+  local _, s = luup.inet.wget ("http://" .. ip .. "/settings")
+  if s then
+    s = json.decode (s)
+    if s then name = s.name or name end
+  else 
+    _log "no Shelly settings name found"
+  end
+  
+  local upnp_file = models[info.model].upnp
+  
+  local dev = chdev.create {
+    devNo = dno,
+    internal_id = altid,
+    description = name,
+    upnp_file = upnp_file,
+--    json_file = json_file,
+    parent = devNo,
+    room = room,
+    ip = info.ip,                           -- include ip address of Shelly device
+    mac = info.mac,                         -- ditto mac
+    manufacturer = "Allterco Robotics",
+  }
+  
+  dev.handle_children = true                -- ensure that any child devices are handled
+  luup.devices[dno] = dev                   -- add to Luup devices
+  
+  -- create extra child devices if required
+  
+  local children = models[info.model].children or {}
+  local childID = "%s/%s"
+  for i, upnp_file2 in ipairs (children) do
+    local cdno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
+    local cdev = chdev.create {
+      devNo = cdno,
+      internal_id = childID: format (altid, i-1),
+      description = childID: format (name, i-1),
+      upnp_file = upnp_file2,
+  --    json_file = json_file,
+      parent = dno,
+      room = room,
+    }
+    
+    luup.devices[cdno] = cdev                   -- add to Luup devices
+  end
+  
+  return dno
+end
+
+local function init_device (info)
+  
+  local altid = info.id
+  if devices[info.id] then return end       -- device already registered
+
+  _log ("New Shelly announced: " .. altid)
+  local dno = luup.openLuup.find_device {altid = altid} 
+                or 
+                  create_device (info)
+                  
+  luup.devices[dno].handle_children = true  -- ensure that it handles child requests
+  devices[altid] = dno                      -- save the device number, indexed by id
+  
+  -- update info, it may have changed
+  -- info = {"id":"xxx","model":"SHSW-25","mac":"hhh","ip":"...","new_fw":false,"fw_ver":"..."}
+  luup.ip_set (info.ip, dno)
+  luup.mac_set (info.mac, dno)
+  luup.attr_set ("model", info.model, dno)
+  luup.attr_set ("firmware", info.fw_ver, dno)
+  
+end
+
+-- the bridge is a standard Luup plugin
+local function create_ShellyBridge()
+  local internal_id, ip, mac, hidden, invisible, parent, room, pluginnum 
+
+  local statevariables
+  
+  return luup.create_device (
+            "ShellyBridge",         -- device_type
+            internal_id,
+            "Shelly",               -- description
+            "D_ShellyBridge.xml",   -- upnp_file
+            "I_ShellyBridge.xml",   -- upnp_impl
+            
+            ip, mac, hidden, invisible, parent, room, pluginnum, 
+            
+            statevariables)  
+end
+
+-----
+--
+-- MQTT callbacks
+--
+
+function _G.Shelly_MQTT_Handler (topic, message)
+  if topic == "shellies/announce" then
+    local info, err = json.decode (message)
+    if not info then _log ("Announce JSON error: " .. (err or '?')) return end
+    init_device (info)
+  else
+    update_shelly (topic, message)
+  end
+end
+
+-- ensure that ShellyBridge device exists
+
+devNo = luup.openLuup.find_device {device_type = "ShellyBridge"}
+          or
+            create_ShellyBridge ()
+
+luup.register_handler ("Shelly_MQTT_Handler", "mqtt:#")   -- * * * * MQTT wildcard subscription * * * *
 
 -----
