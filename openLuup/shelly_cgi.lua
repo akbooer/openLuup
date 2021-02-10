@@ -121,9 +121,6 @@ local function update_dynamic_settings ()
 end
 
 local function config (info)
-  local p = info.parameters
-  
---  if p["mqtt.enable"] == "true" then MQTT.init () end
   update_dynamic_settings ()
   return settings
 end
@@ -216,7 +213,7 @@ local function generic() end
 		LS = longpush + shortpush 	
 
 --]]
-local function ix3 (dno, var, value) 
+local function ix3 (dno, var) 
 --  luup.log ("ix3 - update: " .. var)
   -- look for change of value of input/n [n = 0,1,2]
   local button = var: match "^input/(%d)"
@@ -266,26 +263,14 @@ local function _log (msg)
   luup.log (msg, "luup.shelly")
 end
 
-local function setVar (name, value, service, device)
-  value = tostring(value)
-  service = service or SID.sBridge
-  device = device or devNo
-  local old = luup.variable_get (service, name, device)
-  if value ~= old then 
-    luup.variable_set (service, name, value, device)
-    return true        -- say it changed
-  end
-end
-
 local function update_shelly (topic, message)
   local shelly, var = topic: match "^shellies/(.-)/(.+)"
   local child = devices[shelly]
   if not child then return end
   
-  local changed = setVar (var, message, shelly, child)      -- update the shelly mimic variable
---  child: variable_set (shelly, var, message, true)          -- not logged, but 'true' enables variable watch
-
-  if changed then
+  local old = luup.variable_get (shelly, var, child)
+  if message ~= old then
+    luup.devices[child]: variable_set (shelly, var, message, true)          -- not logged, but 'true' enables variable watch
     local model = luup.attr_get ("model", child)
     models[model].updater (child, var, message)
   end
@@ -296,10 +281,10 @@ local function create_device(info)
   local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
 
   local offset = luup.variable_get (SID.sBridge, "Offset", devNo)
-                    or
-                      luup.openLuup.bridge.nextIdBlock()
-  
-  setVar ("Offset", offset)
+  if not offset then 
+    offset = luup.openLuup.bridge.nextIdBlock()  
+    luup.variable_set (SID.sBridge, "Offset", offset, devNo)
+  end
   local dno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
   local name, altid, ip = info.id, info.id, info.ip

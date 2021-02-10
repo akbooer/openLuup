@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2021.02.05",
+  VERSION       = "2021.02.10",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -724,25 +724,17 @@ local SID = {
 
 local devNo             -- bridge device number (set on startup)
 
-local function setVar (name, value, service, device)
-  service = service or SID.bridge
-  device = device or devNo
-  local old = luup.variable_get (service, name, device)
-  if tostring(value) ~= old then 
-   luup.variable_set (service, name, value, device)
-  end
-end
-
 local function SetTarget (dno, args)
-  local val = tonumber (args.newTargetValue)
-  luup.variable_set (SID.switch, "Target", val, dno)
-  local on_off = val == 1 and "on" or "off"
-
   local id = luup.attr_get ("altid", dno)
   local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
   if relay then
+    local val = tonumber (args.newTargetValue)
+    luup.variable_set (SID.switch, "Target", val, dno)
+    local on_off = val == 1 and "on" or "off"
     shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
     luup.openLuup.mqtt.publish (shelly, on_off)
+  else 
+    return false
   end
 end
 
