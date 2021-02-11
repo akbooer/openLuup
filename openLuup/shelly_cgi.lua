@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2021.02.09",
+  VERSION       = "2021.02.11",
   DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -189,15 +189,27 @@ local DEV = {
   controller  = "D_SceneController1.xml",
   combo       = "D_ComboDevice1.xml",
   rgb         = "D_DimmableRGBLight1.xml",
+  shelly      = "D_GenericShellyDevice.xml",
+
 }
 
-
+-- option for allowing variable to be set with or without logging
+local function variable_set (sid, var, val, dno, log)
+  local d = luup.devices[dno]
+  if d then
+    if log == false then                            -- note that nil will allow logging
+      d: variable_set (sid, var, val, true)         -- not logged, but 'true' enables variable watch
+    else
+      luup.variable_set (sid, var, val, dno)
+    end
+  end
+end
 
 ----------------------
 --
 -- device specific variable updaters
 --
--- NB: only called if variable has changed value
+-- NB: only called if variable has CHANGED value
 --
 
 local function generic() end
@@ -218,8 +230,8 @@ local function ix3 (dno, var)
   -- look for change of value of input/n [n = 0,1,2]
   local button = var: match "^input/(%d)"
   if button then
-    luup.variable_set (SID.scene, "sl_SceneActivated", button, dno)
-    luup.variable_set (SID.scene, "LastSceneTime", os.time(), dno)
+    variable_set (SID.scene, "sl_SceneActivated", button, dno)
+    variable_set (SID.scene, "LastSceneTime", os.time(), dno)
   end
 end
 
@@ -231,11 +243,11 @@ local function sw2_5(dno, var, value)
     local cdno = luup.openLuup.find_device {altid = table.concat {altid, '/', child} }
     if cdno then
       if attr == '' then
-        luup.variable_set (SID.switch, "Status", value == "on" and '1' or '0', cdno)
+        variable_set (SID.switch, "Status", value == "on" and '1' or '0', cdno)
       elseif attr == "power" then
-        luup.variable_set (SID.energy, "Watts", value, cdno)
+        variable_set (SID.energy, "Watts", value, cdno, false)    -- don't log power updates
       elseif attr == "energy" then
-        luup.variable_set (SID.energy, "KWH", math.floor (value / 60) / 1000, cdno)  -- convert Wmin to kWh
+        variable_set (SID.energy, "KWH", math.floor (value / 60) / 1000, cdno, false)  -- convert Wmin to kWh, don't log
       end
     end
   end
@@ -253,7 +265,7 @@ local unknown_model = model_info (DEV.controller, generic)
 local models = setmetatable (
   {
     ["SHIX3-1"] = model_info (DEV.controller, ix3),
-    ["SHSW-25"] = model_info (DEV.combo, sw2_5, {DEV.light, DEV.light})      -- two child devices
+    ["SHSW-25"] = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light})      -- two child devices
   },{
     __index = function () return unknown_model end
   })
@@ -283,7 +295,7 @@ local function create_device(info)
   local offset = luup.variable_get (SID.sBridge, "Offset", devNo)
   if not offset then 
     offset = luup.openLuup.bridge.nextIdBlock()  
-    luup.variable_set (SID.sBridge, "Offset", offset, devNo)
+    variable_set (SID.sBridge, "Offset", offset, devNo)
   end
   local dno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   

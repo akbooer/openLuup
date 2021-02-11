@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2021.02.10",
+  VERSION       = "2021.02.11",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -680,33 +680,12 @@ local D_ShellyBridge_xml = Device {
 
 
 local D_ShellyBridge_json = json.encode {
-  default_icon = "https://pbs.twimg.com/profile_images/1317058087929450505/Vw2yKX4S.jpg",
-  DeviceType = "ShellyBridge",
-  Tabs = {{
---      Label = Label ("tabname_control", "Control"),
---			Position = "0",
---			TabType = "flash",
---			ControlGroup = { {id = "1",scenegroup = "1"} },
---			SceneGroup = { {id = "1", top = "1.5", left = "0.25", x = "1.5",y ="2"} },
-    
---    Control = {
---      ControlGroup (1, "variable", 0,0,
---        Display (50,40, 75,20, SID.AltUI, "DisplayLine1")),
---      ControlGroup (1, "variable", 0,1,
---        Display (50,60, 75,20, SID.AltUI, "DisplayLine2")),
---      ControlGroup (2, "variable", 0,3,
---        Display (50,100, 75,20, SID.ZWay,"Version")),
---      ControlGroup (2, "label", 0,4, 
---        Display (50,160, 75,20),
---        Label ("configure", '<a href="/cgi/zway_cgi.lua" target="_blank">Configure ZWay child devices</a>')),
---      }
-    }}}
+    default_icon = "https://pbs.twimg.com/profile_images/1317058087929450505/Vw2yKX4S.jpg",
+    DeviceType = "ShellyBridge",
+  }
 
 local I_ShellyBridge_impl do
   local x = xml.createDocument ()
-  local function action (S,N, JorR)
-    return x.action {x.serviceId (S), x.name (N), JorR}
-  end
     x: appendChild {
       x.implementation {
         x.functions [[
@@ -779,21 +758,16 @@ end
 end
 
 
-local S_ShellyBridge_svc do
-  local x = xml.createDocument ()
-  local function argument (N,D)
-    return x.argument {x.name (N), x.direction (D or "in")}
-  end
-    x: appendChild {
-      x.scpd {xmlns="urn:schemas-upnp-org:service-1-0",
-        x.specVersion {x.major "1", x.minor "0"},
-        x.actionList {
-          x.action {x.name "DeleteAllVariables",
-            x.argumentList {
-              argument "AreYouSure"}},
-         }}}
-  S_ShellyBridge_svc = tostring(x)
-end
+local D_GenericShellyDevice_xml = Device {
+        deviceType   = "GenericShellyDevice",
+        staticJson   = "D_GenericShellyDevice.json",
+      }
+
+local D_GenericShellyDevice_json = json.encode {
+        default_icon = "https://cdn6.aptoide.com/imgs/6/a/c/6acc4942157e022670fa153739730cf9_icon.png",
+--        default_icon = "https://pbs.twimg.com/profile_images/1317058087929450505/Vw2yKX4S.jpg",
+        DeviceType = "GenericShellyDevice",
+      }
 
 -----
 
@@ -1428,6 +1402,9 @@ local manifest = {
     ["D_ShellyBridge.xml"]  = D_ShellyBridge_xml,
     ["D_ShellyBridge.json"] = D_ShellyBridge_json,
     ["I_ShellyBridge.xml"]  = I_ShellyBridge_impl,
+    
+    ["D_GenericShellyDevice.xml"]  = D_GenericShellyDevice_xml,
+    ["D_GenericShellyDevice.json"] = D_GenericShellyDevice_json,
     
     ["built-in/altui_console_menus.json"]   = altui_console_menus_json,
     ["built-in/openLuup_menus.json"]   = openLuup_menus_json,

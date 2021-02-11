@@ -1,4 +1,4 @@
-local VERSION = "2021.01.31"
+local VERSION = "2021.02.11"
 
 -- mimetypes
 -- 2016/04/14
@@ -27,6 +27,8 @@ local VERSION = "2021.01.31"
 -- 2019.04.08  added image/svg+xml to mimetypes
 -- 2019.04.18  remove historian in-memory cache rules (now implemented in devices module)
 -- 2019.06.11  cache control definitions moved here from servlet module
+
+-- 2021.01.31  MQTT codes added
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -253,7 +255,7 @@ local archive_rules = {
       },
     },{
       schema   = "every_20m", 
-      patterns = {"*.*EnergyMetering*.{KWH,Watts,kWh24}"},
+      patterns = {"*.*EnergyMetering*.{KWH,Watts,kWh24, Voltage, Current}"},
     },{
       schema   = "every_1h", 
       patterns = {},
@@ -273,6 +275,9 @@ local archive_rules = {
 --
 
 return {
+  
+    VERSION = VERSION,
+    
     myIP            = myIP (),
     cgi_prefix      = cgi_prefix,
     cgi_alias       = cgi_alias,
@@ -280,6 +285,7 @@ return {
     mimetypes       = mimetypes,
     smtp_codes      = smtp_codes,         -- SMTP
     status_codes    = status_codes,       -- HTTP
+    mqtt_codes      = mqtt_codes,         -- MQTT
     cache_control   = cache_control,      -- for file servlet
     archive_rules   = archive_rules,      -- for historian
   }

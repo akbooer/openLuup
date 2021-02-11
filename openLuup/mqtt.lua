@@ -247,7 +247,7 @@ end
 local function start (config)
   
   local function DISCONNECT(client)
-    _log "DISCONNECT"
+    _debug "DISCONNECT"
     
     -- After sending a DISCONNECT Packet the Client MUST close the Network Connection [MQTT-3.14.4-1]
     socket.try (client: close())
@@ -255,7 +255,7 @@ local function start (config)
   end
   
   local function CONNECT(client, message)
-    _log "CONNECT"
+    _debug "CONNECT"
     --  the first Packet sent from the Client to the Server MUST be a CONNECT Packet [MQTT-3.1.0-1]    
     
     -- VARIABLE HEADER
@@ -319,11 +319,11 @@ local function start (config)
   --   Client Identifier, Will Topic, Will Message, User Name, Password [MQTT-3.1.3-1]
 
   -- The Client Identifier (ClientId) MUST be present and MUST be the first field in the CONNECT packet payload [MQTT-3.1.3-3]
-    _log ("ClientId: " .. ClientId)
-    _log ("WillTopic: " .. (WillTopic or ''))
-    _log ("WillMessage: " .. (WillMessage or ''))
-    _log ("UserName: " .. (UserName or ''))
-    _log ("Password: " .. (Password or ''))
+    _debug ("ClientId: " .. ClientId)
+    _debug ("WillTopic: " .. (WillTopic or ''))
+    _debug ("WillMessage: " .. (WillMessage or ''))
+    _debug ("UserName: " .. (UserName or ''))
+    _debug ("Password: " .. (Password or ''))
     
     -- ACKNOWLEDGEMENT
 
@@ -371,12 +371,10 @@ local function start (config)
   end
   
   local function PINGREQ(client)
---    luup.log "MQTT PINGREQ"
-
+    _debug "MQTT PINGREQ"
     -- The Server MUST send a PINGRESP Packet in response to a PINGREQ packet [MQTT-3.12.4-1]
     local pingresp = string.char (13 * 0x10, 0)
     socket.try (client: send (pingresp))
---    luup.log "MQTT: PINGRESP sent"
   end
   
   local function PINGRESP()
@@ -384,7 +382,7 @@ local function start (config)
   end
   
   local function SUBSCRIBE (client, message)
-    _log "SUBSCRIBE"
+    _debug "SUBSCRIBE"
      
     -- Bits 3,2,1 and 0 of the fixed header of the SUBSCRIBE Control Packet are reserved 
     -- and MUST be set to 0,0,1 and 0 respectively [MQTT-3.8.1-1]
@@ -410,7 +408,7 @@ local function start (config)
     repeat
       local topic = message: read_string()
       topics[#topics+1] =topic
-      _log ("Topic: " .. topic)
+      _debug ("Topic: " .. topic)
       local RequestedQoS
       RequestedQoS = message: read_bytes(1) :byte()
 --      _log ("Requested QoS: " .. RequestedQoS)
