@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.02.16",
+  VERSION       = "2021.02.17",
   DESCRIPTION   = "MQTT QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -28,6 +28,8 @@ local ABOUT = {
 --
 
 -- 2021.01.31   original version
+-- 2021.02.17   add login credentials
+
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
 -- Each conformance statement has been assigned a reference in the format [MQTT-x.x.x-y]
@@ -43,19 +45,31 @@ local _log, _debug = logs.register (ABOUT)
 
 local iprequests = {}
 
+local credentials = {
+    Username = '',        -- possibly modified by start()
+    Password = '',
+  }
+
 local subscribers = {}    -- list of subscribers, indexed by topic
 
-local function close_and_unsubscribe_from_all (client)
+local function unsubscribe_client_from_topic (client, topic)
   local name = tostring(client)
-  client: close()
   local message = "Unsubscribed from %s %s"
-  for topic, subs in pairs (subscribers) do
-    for i = #subs, 1, -1 do
-      if subs[i] == client then 
-        table.remove (subs, i)
-        _log (message: format (topic, name))
-      end
+  local subs = subscribers[topic] 
+  if not subs then return end
+  for i = #subs, 1, -1 do
+    if subs[i] == client then 
+      table.remove (subs, i)
+      _log (message: format (topic, name))
     end
+  end
+end
+
+local function close_and_unsubscribe_from_all (client, log_message)
+  client: close()
+  if log_message then _log (table.concat {log_message, ' ', tostring(client)}) end
+  for topic in pairs (subscribers) do
+    unsubscribe_client_from_topic (client, topic)
   end
 end
 
@@ -70,6 +84,22 @@ end
     Variable header, present in some MQTT Control Packets 
     Payload, present in some MQTT Control Packets
 --]]
+
+-- control packet names: an ordered list, 1 - 15.
+local packet_name = {
+    "CONNECT", "CONNACK", "PUBLISH", 
+    "PUBACK", "PUBREC", "PUBREL", "PUBCOMP", 
+    "SUBSCRIBE", "SUBACK", "UNSUBSCRIBE", "UNSUBACK", 
+    "PINGREQ", "PINGRESP",
+    "DISCONNECT"
+  }
+
+-- packet type
+local ptype = {}
+for i, name in ipairs (packet_name) do
+  ptype[name] = i
+end
+
 
 -- split flag char into individual boolean bits (default is 8 bits)
 local function parse_flags (x, n)
@@ -137,6 +167,7 @@ end
 local function encode_message (packet_type, control_flags, variable_header, payload)
   variable_header = variable_header or ''
   payload = payload or ''
+  packet_type = ptype[packet_type] or packet_type   -- convert to number if string type
   local length = #variable_header + #payload
   
   local nibble = 0x10
@@ -156,12 +187,11 @@ end
 
 -- receive returns result or throws error
 local function receive (client)
-  local function try_read (length)
+  local function try_read (length)    
 --    luup.log ("TRY_READ: " .. length)
     local ok, err = client: receive(length)
     if not ok then
-      _log (err)
-      close_and_unsubscribe_from_all (client)
+      close_and_unsubscribe_from_all (client, err)
     end
     return ok, err
   end
@@ -204,8 +234,7 @@ end
 local function send_to_client (client, message)
   local ok, err = client: send (message)
   if not ok then
-    _log (message)
-    close_and_unsubscribe_from_all (client)
+    close_and_unsubscribe_from_all (client, err)
   end
   return ok, err
 end
@@ -214,8 +243,8 @@ end
 local function publish (client, TopicName, ApplicationMessage)
   
   -- FIXED HEADER
-  local packet_type = 3
-  local control_flags = 0   -- QoS = 0
+  local packet_type = "PUBLISH"
+  local control_flags = 0               -- QoS = 0
   
   -- VARIABLE HEADER
   local variable_header = encode_utf8 (TopicName)   -- No packetId, since QoS = 0
@@ -271,31 +300,37 @@ local function deliver (TopicName, ApplicationMessage)
   
 end
 
--- control packet names: an ordered list, 1 - 15.
-local packet_name = {
-    "CONNECT", "CONNACK", "PUBLISH", 
-    "PUBACK", "PUBREC", "PUBREL", "PUBCOMP", 
-    "SUBSCRIBE", "SUBACK", "UNSUBSCRIBE", "UNSUBACK", 
-    "PINGREQ", "PINGRESP",
-    "DISCONNECT"
-  }
+local send = {}       -- only implement functionality required by server
 
-local send = {}
+function send.CONNECT () end          -- client only
 
-function send.CONNECT () end
-
-function send.CONNACK (client, SessionPresent)    -- TODO: implement SessionPresent 
--- If CONNECT validation is successful the Server MUST acknowledge the CONNECT Packet 
--- with a CONNACK Packet containing a zero return code [MQTT-3.1.4-4]     
--- If the Server does not have stored Session state, it MUST set Session Present to 0 in the CONNACK packet [MQTT-3.2.2-3]
---    local connack = string.char (2 * 0x10, 2, 0, 0)   -- SessionPresent = 0
-  local packet_type, control_flags = 2, 0 
-  local variable_header = string.char (0, 0)           -- SessionPresent = 0, Connection accepted 
+--[[
+    MQTT Connection Return Codes
+    [0] = "Connection Accepted",
+    [1] = "Connection Refused, unacceptable protocol version",
+    [2] = "Connection Refused, identifier rejected",
+    [3] = "Connection Refused, Server unavailable",
+    [4] = "Connection Refused, bad user name or password",
+    [5] = "Connection Refused, not authorized",
+--]]
+function send.CONNACK (client, ConnectReturnCode)
+  -- If CONNECT validation is successful the Server MUST acknowledge the CONNECT Packet 
+  -- with a CONNACK Packet containing a zero return code [MQTT-3.1.4-4]     
+  -- If the Server does not have stored Session state, it MUST set Session Present to 0 in the CONNACK packet [MQTT-3.2.2-3]
+  local packet_type, control_flags = "CONNACK", 0 
+  
+  local SessionPresent = 0                      -- QoS 0 means that there will be no Session State
+  ConnectReturnCode = ConnectReturnCode or 0
+  local variable_header = string.char (SessionPresent, ConnectReturnCode)
   
   local connack = encode_message (packet_type, control_flags, variable_header)    -- connack has no payload
---    luup.log "MQTT: sending connack"
-    send_to_client (client, connack)
---    luup.log "MQTT: connack sent"
+  send_to_client (client, connack)
+  
+  -- If a server sends a CONNACK packet containing a non-zero return code it MUST then close the Network Connection [MQTT-3.2.2-5]
+  if ConnectReturnCode ~= 0 then
+    _log (table.concat {"Closing client connect, return code: ", ConnectReturnCode, ' ', tostring(client)})
+    client: close()
+  end
 end
 
 function send.PUBLISH () end
@@ -305,21 +340,23 @@ function send.PUBREC ()  end          -- ditto
 function send.PUBREL ()  end          -- ditto
 function send.PUBCOMP () end          -- ditto
 
-function send.SUBSCRIBE () end
+function send.SUBSCRIBE () end        -- client only
 
 function send.SUBACK (client, QoS_list, msb, lsb) 
   -- When the Server receives a SUBSCRIBE Packet from a Client, the Server MUST respond with a SUBACK Packet [MQTT-3.8.4-1]
   -- The SUBACK Packet MUST have the same Packet Identifier as the SUBSCRIBE Packet that it is acknowledging [MQTT-3.8.4-2]
-  local nt = #QoS_list
-  local suback = string.char (9 * 0x10, 2 + nt, msb, lsb)
-  suback = suback .. QoS_list
+  local control_flags = 0
+  local variable_header = string.char (msb, lsb)      -- PacketID
+  local payload = QoS_list
+  local suback = encode_message ("SUBACK", control_flags, variable_header, payload)
   send_to_client (client, suback)
-  end
+end
 
-function send.UNSUBSCRIBE () end
+function send.UNSUBSCRIBE () end      -- client only
+
 function send.UNSUBACK () end
 
-function send.PINGREQ () end
+function send.PINGREQ () end          -- client only
 
 function send.PINGRESP (client) 
   -- The Server MUST send a PINGRESP Packet in response to a PINGREQ packet [MQTT-3.12.4-1]
@@ -327,19 +364,17 @@ function send.PINGRESP (client)
   send_to_client (client, pingresp)
 end
 
-function send.DISCONNECT () end
+function send.DISCONNECT () end      -- client only
 
 local rcv = {}
 
 
 function rcv.DISCONNECT(client)
-  _debug "DISCONNECT"
   -- After sending a DISCONNECT Packet the Client MUST close the Network Connection [MQTT-3.14.4-1]
-  close_and_unsubscribe_from_all (client)
+  close_and_unsubscribe_from_all (client, "Disconnect received from client")
 end
 
 function rcv.CONNECT(client, message)
-  _debug "CONNECT"
   --  the first Packet sent from the Client to the Server MUST be a CONNECT Packet [MQTT-3.1.0-1]    
   
   -- VARIABLE HEADER
@@ -347,28 +382,26 @@ function rcv.CONNECT(client, message)
   -- If the protocol name is incorrect the Server MAY disconnect the Client
   local ProtocolName = message: read_string()                     -- bytes 1-6
   if ProtocolName ~= "MQTT" then 
-    _log ("Unknown protocol name: '" .. ProtocolName .. "'")
-    close_and_unsubscribe_from_all (client) 
+    close_and_unsubscribe_from_all (client, "Unknown protocol name: '" .. ProtocolName .. "'") 
     return 
   end
   
   -- protocol level should be 4 for MQTT 3.1.1
   local protocol_level = message: read_bytes (1) : byte()         -- byte 7
   if protocol_level ~= 4 then 
-    _log "Protocol level is not 3.1.1"
-    close_and_unsubscribe_from_all (client) 
+    close_and_unsubscribe_from_all (client, "Protocol level is not 3.1.1") 
     return 
   end
   
   local connect_flags = parse_flags (message: read_bytes(1))      -- byte 8
   
-  local KeepAlive, UserName, Password, 
+  local KeepAlive, Username, Password, 
           WillRetain, WillQoSmsb, WillQoSlsb, WillFlag,
           Clean, Reserved, WillQoS
   
   KeepAlive = message: read_word()                                -- bytes 9-10
   
-  UserName, Password, 
+  Username, Password, 
           WillRetain, WillQoSmsb, WillQoSlsb, WillFlag, 
           Clean, Reserved
             = unpack (connect_flags)
@@ -378,21 +411,21 @@ function rcv.CONNECT(client, message)
   -- The Server MUST validate that the reserved flag in the CONNECT Control Packet is set to zero 
   -- and disconnect the Client if it is not zero.[MQTT-3.1.2-3]
   if Reserved ~= 0 then   
-    _log "Reserved flag is not zero"
-    close_and_unsubscribe_from_all (client) 
+    close_and_unsubscribe_from_all (client, "Reserved flag is not zero") 
     return 
   end
   
   -- PAYLOAD
   
+  local ConnectReturnCode = 0                       -- default to success
   local ClientId, WillTopic, WillMessage
   
   ClientId    = message: read_string()              -- always present
   
-  WillTopic   = WillFlag == 1 and message: read_string()
-  WillMessage = WillFlag == 1 and message: read_string()
-  UserName    = UserName == 1 and message: read_string()
-  Password    = Password == 1 and message: read_string()
+  WillTopic   = WillFlag == 1 and message: read_string() or ''
+  WillMessage = WillFlag == 1 and message: read_string() or ''
+  Username    = Username == 1 and message: read_string() or ''
+  Password    = Password == 1 and message: read_string() or ''
   
 -- If the User Name Flag is set to 0, a user name MUST NOT be present in the payload [MQTT-3.1.2-18]
 -- If the User Name Flag is set to 1, a user name MUST be present in the payload [MQTT-3.1.2-19]
@@ -404,14 +437,19 @@ function rcv.CONNECT(client, message)
 
 -- The Client Identifier (ClientId) MUST be present and MUST be the first field in the CONNECT packet payload [MQTT-3.1.3-3]
   _debug ("ClientId: " .. ClientId)
-  _debug ("WillTopic: " .. (WillTopic or ''))
-  _debug ("WillMessage: " .. (WillMessage or ''))
-  _debug ("UserName: " .. (UserName or ''))
-  _debug ("Password: " .. (Password or ''))
+  _debug ("WillTopic: " .. WillTopic)
+  _debug ("WillMessage: " .. WillMessage)
+  _debug ("UserName: " .. Username)
+  _debug ("Password: " .. Password)
   
   -- ACKNOWLEDGEMENT
 
-  send.CONNACK (client)
+  if Username ~= credentials.Username 
+  or Password ~= credentials.Password then
+    ConnectReturnCode = 4                   -- "Connection Refused, bad user name or password"
+  end
+
+  send.CONNACK (client, ConnectReturnCode)
 end
 
 function rcv.CONNACK()
@@ -419,7 +457,6 @@ function rcv.CONNACK()
 end
 
 function rcv.PUBLISH(_, message)
---    _log "PUBLISH"
   
   local flags = message.control_flags
   local DUP, QoSmsb, QoSlsb, RETAIN
@@ -444,25 +481,21 @@ function rcv.PUBLISH(_, message)
   deliver (TopicName, ApplicationMessage)
 end
 
-function rcv.PINGREQ(client)
-  _debug "MQTT PINGREQ"
+function rcv.PINGREQ (client)
   -- The Server MUST send a PINGRESP Packet in response to a PINGREQ packet [MQTT-3.12.4-1]
   send.PINGRESP (client)
 end
 
-function rcv.PINGRESP()
+function rcv.PINGRESP ()
   -- unlikely, since we don't send PINGREQ
 end
 
-function rcv.SUBSCRIBE (client, message)
-  _debug "SUBSCRIBE"
-   
+function rcv.SUBSCRIBE (client, message)   
   -- Bits 3,2,1 and 0 of the fixed header of the SUBSCRIBE Control Packet are reserved 
   -- and MUST be set to 0,0,1 and 0 respectively [MQTT-3.8.1-1]
   local Reserved  = table.concat (message.control_flags) 
   if Reserved ~= "0010" then
-    _log ("Unexpected reserved flag bits: " .. Reserved)
-    close_and_unsubscribe_from_all (client)
+    close_and_unsubscribe_from_all (client, "Unexpected reserved flag bits: " .. Reserved)
     return
   end
   
@@ -489,12 +522,11 @@ function rcv.SUBSCRIBE (client, message)
   
   -- The payload of a SUBSCRIBE packet MUST contain at least one Topic Filter / QoS pair [MQTT-3.8.3-3]
   if #topics == 0 then
-    _log "No topics found in SUBSCRIBE payload"
-    close_and_unsubscribe_from_all (client)
+    close_and_unsubscribe_from_all (client, "No topics found in SUBSCRIBE payload")
     return
   end
   
-  -- subscribe as external clients
+  -- subscribe as external (IP) clients
   for _, topic in ipairs (topics) do
     subscribe {
       client = client, 
@@ -523,8 +555,9 @@ local function start (config)
      -- incoming() is called by the io.server when there is data to read
     local function incoming ()
       local message = receive (client)
---      luup.log ("MQTT INCOMING: packet type " .. message.packet_type)
-      local fct = rcv[packet_name[message.packet_type]]
+      local pname = packet_name[message.packet_type] or "RESERVED"
+      _debug (table.concat {pname, ' ', tostring(client)})
+      local fct = rcv[pname]
       do (fct or reserved) (client, message) end
     end
     return incoming
@@ -533,6 +566,8 @@ local function start (config)
   
   -- start()
   ABOUT.DEBUG = config.DEBUG 
+  credentials.Username = config.Username or ''
+  credentials.Password = config.Password or ''
   
   -- returned server object has stop method, but we'll not be using it
   local port = config.Port or 1883

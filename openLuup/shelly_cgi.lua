@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2021.02.11",
+  VERSION       = "2021.02.18",
   DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -32,7 +32,9 @@ local ABOUT = {
 -- see: https://shelly-api-docs.shelly.cloud/#shelly-family-overview
 -- see: http://keplerproject.github.io/wsapi/libraries.html
 
--- 2020.02.01  add Shelly Bridge
+-- 2021.02.01  add Shelly Bridge
+-- 2021.02.17  add LastUpdate time to individual devices
+
 
 --local socket    = require "socket"
 local json      = require "openLuup.json"
@@ -42,6 +44,7 @@ local chdev     = require "openLuup.chdev"            -- to create new bridge de
 
 local SID = {
     hag       = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",   -- run scene
+    hadevice  = "urn:micasaverde-com:serviceId:HaDevice1",                -- LastUpdate
     switch    = "urn:upnp-org:serviceId:SwitchPower1",                          
     toggle    = "urn:micasaverde-com:serviceId:HaDevice1",
     scene     = "urn:micasaverde-com:serviceId:SceneController1",
@@ -280,9 +283,12 @@ local function update_shelly (topic, message)
   local child = devices[shelly]
   if not child then return end
   
+  local dev = luup.devices[child]
+  dev: variable_set (SID.hadevice, "LastUpdate", os.time(), true)   -- not logged, but 'true' enables variable watch
+  
   local old = luup.variable_get (shelly, var, child)
   if message ~= old then
-    luup.devices[child]: variable_set (shelly, var, message, true)          -- not logged, but 'true' enables variable watch
+    dev: variable_set (shelly, var, message, true)                  -- not logged, but 'true' enables variable watch
     local model = luup.attr_get ("model", child)
     models[model].updater (child, var, message)
   end
@@ -395,6 +401,8 @@ end
 --
 
 function _G.Shelly_MQTT_Handler (topic, message)
+  luup.devices[devNo]: variable_set (SID.hadevice, "LastUpdate", os.time(), true)   -- not logged, but watchable
+
   if topic == "shellies/announce" then
     local info, err = json.decode (message)
     if not info then _log ("Announce JSON error: " .. (err or '?')) return end

@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.02.09",
+  VERSION       = "2021.02.17",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1180,7 +1180,7 @@ function pages.http (p)
         requestTable (tbl, {"request", "#requests  ","status"}) } }
 end
 
-function pages.mqtt (p)
+function pages.mqtt ()
   local data = {}
   for topic, subscribers in sorted (mqtt.subscribers) do
     local internal, external = {}, {}
@@ -1188,9 +1188,10 @@ function pages.mqtt (p)
       internal[#internal+1] = subs.devNo
       external[#external+1] = (subs.client or empty) .ip
     end
-    data[#data+1] = {topic, table.concat (internal, ', '), table.concat (external, ', ')}
+--    data[#data+1] = {topic, table.concat (internal, ', '), table.concat (external, ', ')}
+    data[#data+1] = {topic, #internal, #external}
   end
-  local tbl = create_table_from_data ({"topic", "plugin subscribers", "ip subscribers" }, data)
+  local tbl = create_table_from_data ({"topic", "#internal subscribers", "#external subscribers" }, data)
   
   return xhtml.div {
       html5_title "MQTT QoS 0 server",
