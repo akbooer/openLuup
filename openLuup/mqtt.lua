@@ -1,7 +1,7 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.02.17",
-  DESCRIPTION   = "MQTT QoS 0 server",
+  VERSION       = "2021.02.20",
+  DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
@@ -38,7 +38,6 @@ local logs      = require "openLuup.logs"
 local tables    = require "openLuup.servertables"     -- for myIP
 local ioutil    = require "openLuup.io"               -- for core server functions
 local scheduler = require "openLuup.scheduler"
---local socket    = require "socket"
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
@@ -73,154 +72,6 @@ local function close_and_unsubscribe_from_all (client, log_message)
   end
 end
 
--------------------------------------------
---
--- MQTT servlet
---
-
---[[
-  Structure of an MQTT Control Packet:
-    Fixed header, present in all MQTT Control Packets 
-    Variable header, present in some MQTT Control Packets 
-    Payload, present in some MQTT Control Packets
---]]
-
--- control packet names: an ordered list, 1 - 15.
-local packet_name = {
-    "CONNECT", "CONNACK", "PUBLISH", 
-    "PUBACK", "PUBREC", "PUBREL", "PUBCOMP", 
-    "SUBSCRIBE", "SUBACK", "UNSUBSCRIBE", "UNSUBACK", 
-    "PINGREQ", "PINGRESP",
-    "DISCONNECT"
-  }
-
--- packet type
-local ptype = {}
-for i, name in ipairs (packet_name) do
-  ptype[name] = i
-end
-
-
--- split flag char into individual boolean bits (default is 8 bits)
-local function parse_flags (x, n)
-  n = n or 8
-  if type(x) == "string" then x = x:byte() end    -- convert to number
-  local bits = {}
-  for i = n,1,-1 do
-    local b = x % 2
-    x = (x - b) / 2
-    bits[i] = b 
-  end
-  return bits
-end
-
-local function parse_packet_type (header)
-  -- byte 1: MQTT Control Packet type / Flags specific to each MQTT Control Packet type
-  local a = string.byte (header)
-  local nibble = 0x10
-  local packet_type = math.floor (a / nibble)
-  local flags = parse_flags (a % nibble, 4)
-  return packet_type, flags
-end
-
-local function bytes2word (bytes)
-  local msb, lsb = bytes: byte (1, 2)
-  return msb * 0x100 + lsb
-end
-
--- return 16-bit word as a two-byte string
-local function word2bytes (word)
-  word = word % 0x10000
-  local msb = math.floor (word / 0x100)
-  local lsb = word % 0x100
-  return string.char (msb, lsb)
-end
-
-local function read_word (msg)
-  return bytes2word (msg: read_bytes (2))
-end
-
--- prepend a string (assumed UTF-8) with its length
-local function encode_utf8 (txt)
-  local length = word2bytes (#txt)
-  return length .. txt
-end
-
--- read string from message
-local function read_utf8 (msg)
-  local n = msg: read_word ()      -- length of this string
-  return msg: read_bytes (n)
-end
-
--- read next n bytes from message
-local function read_bytes (msg, n)
-  local i = msg.ptr + 1
-  local j = msg.ptr + n
-  local b = msg.body
-  if #b >= j then
-    msg.ptr = j
-    return b: sub (i,j)
-  end
-end
-  
--- prepare message for transmission
-local function encode_message (packet_type, control_flags, variable_header, payload)
-  variable_header = variable_header or ''
-  payload = payload or ''
-  packet_type = ptype[packet_type] or packet_type   -- convert to number if string type
-  local length = #variable_header + #payload
-  
-  local nibble = 0x10
-  local byte1 = (packet_type % nibble) * nibble + (control_flags % nibble)
-  local bytes = {string.char (byte1)}       -- first part of fixed header
-  repeat
-    local encodedByte = length % 128
-    length = math.floor (length / 128)
-    -- if there are more data to encode, set the top bit of this byte 
-    bytes[#bytes+1] = string.char (encodedByte + (length > 0 and 128 or 0))
-  until length == 0
-  local fixed_header = table.concat (bytes)
-  
-  return table.concat {fixed_header, variable_header, payload}
-end
-
-
--- receive returns result or throws error
-local function receive (client)
-  local function try_read (length)    
---    luup.log ("TRY_READ: " .. length)
-    local ok, err = client: receive(length)
-    if not ok then
-      close_and_unsubscribe_from_all (client, err)
-    end
-    return ok, err
-  end
-  
-  local fixed_header_byte1 = try_read(1)
-  local packet_type, control_flags = parse_packet_type (fixed_header_byte1)
-
-  local length = 0
-  for i = 0, 2 do                   -- maximum of 3 bytes encode remaining length, LSB first
-    local b = try_read(1)
-    b = b: byte()
-    local n = b % 128               -- seven significant bits
-    length = length + n * 128 ^ i
-    if b < 128 then break end
-  end
-  
-  local body = (length > 0) and try_read(length) or ''
-  
-  return {
-      packet_type   = packet_type,
-      control_flags = control_flags,
-      body          = body,           -- may include variable header and payload
-      ptr           = 0,              -- pointer to parse position in body
-      read_bytes    = read_bytes,
-      read_word     = read_word,
-      read_string   = read_utf8,
-    }
-end
-
 -- register an internal (openLuup), or external, subscriber to a topic
 -- wildcards not (yet) implemented
 local function subscribe(subscription)
@@ -231,6 +82,171 @@ local function subscribe(subscription)
   return 1
 end
 
+-------------------------------------------
+--
+-- MQTT servlet
+--
+
+local MQTT_packet = {}
+
+--[[
+  Structure of an MQTT Control Packet:
+    Fixed header, present in all MQTT Control Packets 
+    Variable header, present in some MQTT Control Packets 
+    Payload, present in some MQTT Control Packets
+--]]
+
+do -- MQTT Packet methods
+
+  -- control packet names: an ordered list, 1 - 15.
+  local pname = {
+      "CONNECT", "CONNACK", "PUBLISH", 
+      "PUBACK", "PUBREC", "PUBREL", "PUBCOMP", 
+      "SUBSCRIBE", "SUBACK", "UNSUBSCRIBE", "UNSUBACK", 
+      "PINGREQ", "PINGRESP",
+      "DISCONNECT"
+    }
+
+  -- packet type
+  local ptype = {}
+  for i, name in ipairs (pname) do
+    ptype[name] = i
+  end
+
+  -- split flag char into individual boolean bits (default is 8 bits)
+  local function parse_flags (x, n)
+    n = n or 8
+    if type(x) == "string" then x = x:byte() end    -- convert to number
+    local bits = {}
+    for i = n,1,-1 do
+      local b = x % 2
+      x = (x - b) / 2
+      bits[i] = b 
+    end
+    return bits
+  end
+
+  local function parse_packet_type (header)
+    -- byte 1: MQTT Control Packet type / Flags specific to each MQTT Control Packet type
+    local a = string.byte (header)
+    local nibble = 0x10
+    local packet_type = math.floor (a / nibble)
+    local flags = parse_flags (a % nibble, 4)
+    return packet_type, flags
+  end
+  
+  local function bytes2word (bytes)
+    local msb, lsb = bytes: byte (1, 2)
+    return msb * 0x100 + lsb
+  end
+
+  -- return 16-bit word as a two-byte string
+  local function word2bytes (word)
+    word = word % 0x10000
+    local msb = math.floor (word / 0x100)
+    local lsb = word % 0x100
+    return string.char (msb, lsb)
+  end
+
+  local function read_flag_byte (msg)
+      return parse_flags (msg: read_bytes(1))      -- byte 8
+  end
+  
+  local function read_word (msg)
+    return bytes2word (msg: read_bytes (2))
+  end
+
+  -- read string from message
+  local function read_utf8 (msg)
+    local n = msg: read_word ()      -- length of this string
+    return msg: read_bytes (n)
+  end
+
+  -- read next n bytes from message
+  local function read_bytes (msg, n)
+    local i = msg.ptr + 1
+    local j = msg.ptr + n
+    local b = msg.body
+    if #b >= j then
+      msg.ptr = j
+      return b: sub (i,j)
+    end
+  end
+
+  -- prepend a string (assumed UTF-8) with its length
+  function MQTT_packet.encode_utf8 (txt)
+    local length = word2bytes (#txt)
+    return length .. txt
+  end
+    
+  -- prepare message for transmission
+  function MQTT_packet.encode (packet_type, control_flags, variable_header, payload)
+    variable_header = variable_header or ''
+    payload = payload or ''
+    packet_type = ptype[packet_type] or packet_type   -- convert to number if string type
+    local length = #variable_header + #payload
+    
+    local nibble = 0x10
+    local byte1 = (packet_type % nibble) * nibble + (control_flags % nibble)
+    local bytes = {string.char (byte1)}       -- first part of fixed header
+    repeat
+      local encodedByte = length % 128
+      length = math.floor (length / 128)
+      -- if there are more data to encode, set the top bit of this byte 
+      bytes[#bytes+1] = string.char (encodedByte + (length > 0 and 128 or 0))
+    until length == 0
+    local fixed_header = table.concat (bytes)
+    
+    return table.concat {fixed_header, variable_header, payload}
+  end
+
+
+  -- receive returns messsage object
+  function MQTT_packet.receive (client)
+    local function try_read (length)    
+  --    luup.log ("TRY_READ: " .. length)
+      local ok, err = client: receive(length)
+      if not ok then
+        close_and_unsubscribe_from_all (client, err)
+      end
+      return ok, err
+    end
+    
+    local fixed_header_byte1 = try_read(1)
+    local packet_type, control_flags = parse_packet_type (fixed_header_byte1)
+
+    local length = 0
+    for i = 0, 2 do                   -- maximum of 3 bytes encode remaining length, LSB first
+      local b = try_read(1)
+      b = b: byte()
+      local n = b % 128               -- seven significant bits
+      length = length + n * 128 ^ i
+      if b < 128 then break end
+    end
+    
+    local body = (length > 0) and try_read(length) or ''
+    local pname = pname[packet_type] or "RESERVED"
+    
+    return {
+        -- variables
+        packet_type     = packet_type,
+        control_flags   = control_flags,
+        body            = body,           -- may include variable header and payload
+        ptr             = 0,              -- pointer to parse position in body
+        packet_name     = pname,          -- string name of packet type
+
+        -- methods
+        read_bytes      = read_bytes,
+        read_flag_byte  = read_flag_byte, -- converting ovyesy to 8 separate flag bits
+        read_word       = read_word,
+        read_string     = read_utf8,
+      }
+  end
+
+end
+
+
+
 local function send_to_client (client, message)
   local ok, err = client: send (message)
   if not ok then
@@ -239,66 +255,10 @@ local function send_to_client (client, message)
   return ok, err
 end
 
--- publish to MQTT client socket (with QoS = 0)
-local function publish (client, TopicName, ApplicationMessage)
-  
-  -- FIXED HEADER
-  local packet_type = "PUBLISH"
-  local control_flags = 0               -- QoS = 0
-  
-  -- VARIABLE HEADER
-  local variable_header = encode_utf8 (TopicName)   -- No packetId, since QoS = 0
-  
-  -- PAYLOAD
-  local payload = ApplicationMessage
-  
-  local message = encode_message (packet_type, control_flags, variable_header, payload)
-  local ok, err = send_to_client (client, message)
-  
-  return ok, err
-end
-
--- register an openLuup-side subscriber to a topic
-local function register_handler (callback, topic)
-  subscribe {
-        callback = callback, 
-        devNo = scheduler.current_device (),
-        topic = topic,
-        count = 0,
-      }
-  return 1
-end
-
--- publish message to all subscribers
-local function publish_to_all (subscribers, TopicName, ApplicationMessage)
-  for _, subscriber in ipairs (subscribers or {}) do
-    local s = subscriber
-    s.count = (s.count or 0) + 1
-    local ok, err
-    if s.callback then
-      ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage)
-    elseif s.client then
-      ok, err = publish (s.client, TopicName, ApplicationMessage) -- publish to external subscribers
-    end
-
-    if not ok then
-      _log (table.concat {"ERROR publishing application message for mqtt:", TopicName, " : ", err})
-    else
---      _log ("Successfully published: " .. TopicName)
-    end
-  end
-end
-
--- deliver message to all subscribers
-local function deliver (TopicName, ApplicationMessage)
---  _log ("TopicName: " .. TopicName)
---  _log ("ApplicationMessage: ".. (ApplicationMessage or ''))
-  
-  publish_to_all (subscribers[TopicName], TopicName, ApplicationMessage)    -- topic subscribers
-  
-  publish_to_all (subscribers['#'], TopicName, ApplicationMessage)          -- wildcards
-  
-end
+-------------------------------------------
+--
+-- Send MQTT packets
+--
 
 local send = {}       -- only implement functionality required by server
 
@@ -323,7 +283,7 @@ function send.CONNACK (client, ConnectReturnCode)
   ConnectReturnCode = ConnectReturnCode or 0
   local variable_header = string.char (SessionPresent, ConnectReturnCode)
   
-  local connack = encode_message (packet_type, control_flags, variable_header)    -- connack has no payload
+  local connack = MQTT_packet.encode (packet_type, control_flags, variable_header)    -- connack has no payload
   send_to_client (client, connack)
   
   -- If a server sends a CONNACK packet containing a non-zero return code it MUST then close the Network Connection [MQTT-3.2.2-5]
@@ -333,7 +293,24 @@ function send.CONNACK (client, ConnectReturnCode)
   end
 end
 
-function send.PUBLISH () end
+function send.PUBLISH (client, TopicName, ApplicationMessage) 
+  -- publish to MQTT client socket (with QoS = 0)
+  
+  -- FIXED HEADER
+  local packet_type = "PUBLISH"
+  local control_flags = 0               -- QoS = 0
+  
+  -- VARIABLE HEADER
+  local variable_header = MQTT_packet.encode_utf8 (TopicName)   -- No packetId, since QoS = 0
+  
+  -- PAYLOAD
+  local payload = ApplicationMessage
+  
+  local message = MQTT_packet.encode (packet_type, control_flags, variable_header, payload)
+  local ok, err = send_to_client (client, message)
+  
+  return ok, err
+end
 
 function send.PUBACK ()  end          -- not implemented (only required for QoS > 0)
 function send.PUBREC ()  end          -- ditto
@@ -348,33 +325,80 @@ function send.SUBACK (client, QoS_list, msb, lsb)
   local control_flags = 0
   local variable_header = string.char (msb, lsb)      -- PacketID
   local payload = QoS_list
-  local suback = encode_message ("SUBACK", control_flags, variable_header, payload)
+  local suback = MQTT_packet.encode ("SUBACK", control_flags, variable_header, payload)
   send_to_client (client, suback)
 end
 
 function send.UNSUBSCRIBE () end      -- client only
 
-function send.UNSUBACK () end
+function send.UNSUBACK (client, msb, lsb)
+  local control_flags = 0
+  local variable_header = string.char (msb, lsb)      -- PacketID
+  local unsuback = MQTT_packet.encode ("UNSUBACK", control_flags, variable_header)    -- no payload
+  send_to_client (client, unsuback)
+end
 
 function send.PINGREQ () end          -- client only
 
 function send.PINGRESP (client) 
   -- The Server MUST send a PINGRESP Packet in response to a PINGREQ packet [MQTT-3.12.4-1]
+  --  local control_flags = 0
+  --  local pingresp = MQTT_packet.encode ("PINGRESP", control_flags)  -- no variable_header or payload 
   local pingresp = string.char (13 * 0x10, 0)
   send_to_client (client, pingresp)
 end
 
 function send.DISCONNECT () end      -- client only
 
-local rcv = {}
+-------------------------------------------
 
 
-function rcv.DISCONNECT(client)
+-- publish message to all subscribers
+local function publish_to_all (subscribers, TopicName, ApplicationMessage)
+  for _, subscriber in ipairs (subscribers or {}) do
+    local s = subscriber
+    s.count = (s.count or 0) + 1
+    local ok, err
+    if s.callback then
+      ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage)
+    elseif s.client then
+      ok, err = send.PUBLISH (s.client, TopicName, ApplicationMessage) -- publish to external subscribers
+    end
+
+    if not ok then
+      _log (table.concat {"ERROR publishing application message for mqtt:", TopicName, " : ", err})
+    else
+--      _log ("Successfully published: " .. TopicName)
+    end
+  end
+end
+
+-- deliver message to all subscribers
+local function deliver (TopicName, ApplicationMessage)
+--  _log ("TopicName: " .. TopicName)
+--  _log ("ApplicationMessage: ".. (ApplicationMessage or ''))
+  
+  publish_to_all (subscribers[TopicName], TopicName, ApplicationMessage)    -- topic subscribers
+  
+  publish_to_all (subscribers['#'], TopicName, ApplicationMessage)          -- wildcards
+  
+end
+
+
+-------------------------------------------
+--
+-- Parse and process MQTT packets
+--
+
+local parse = {}
+
+
+function parse.DISCONNECT(client)
   -- After sending a DISCONNECT Packet the Client MUST close the Network Connection [MQTT-3.14.4-1]
   close_and_unsubscribe_from_all (client, "Disconnect received from client")
 end
 
-function rcv.CONNECT(client, message)
+function parse.CONNECT(client, message)
   --  the first Packet sent from the Client to the Server MUST be a CONNECT Packet [MQTT-3.1.0-1]    
   
   -- VARIABLE HEADER
@@ -393,7 +417,7 @@ function rcv.CONNECT(client, message)
     return 
   end
   
-  local connect_flags = parse_flags (message: read_bytes(1))      -- byte 8
+  local connect_flags = message: read_flag_byte()                 -- byte 8
   
   local KeepAlive, Username, Password, 
           WillRetain, WillQoSmsb, WillQoSlsb, WillFlag,
@@ -452,11 +476,11 @@ function rcv.CONNECT(client, message)
   send.CONNACK (client, ConnectReturnCode)
 end
 
-function rcv.CONNACK()
+function parse.CONNACK()
   -- don't expect to receive a connack, since we don't connect to a server
 end
 
-function rcv.PUBLISH(_, message)
+function parse.PUBLISH(_, message)
   
   local flags = message.control_flags
   local DUP, QoSmsb, QoSlsb, RETAIN
@@ -481,16 +505,16 @@ function rcv.PUBLISH(_, message)
   deliver (TopicName, ApplicationMessage)
 end
 
-function rcv.PINGREQ (client)
+function parse.PINGREQ (client)
   -- The Server MUST send a PINGRESP Packet in response to a PINGREQ packet [MQTT-3.12.4-1]
   send.PINGRESP (client)
 end
 
-function rcv.PINGRESP ()
+function parse.PINGRESP ()
   -- unlikely, since we don't send PINGREQ
 end
 
-function rcv.SUBSCRIBE (client, message)   
+function parse.SUBSCRIBE (client, message)   
   -- Bits 3,2,1 and 0 of the fixed header of the SUBSCRIBE Control Packet are reserved 
   -- and MUST be set to 0,0,1 and 0 respectively [MQTT-3.8.1-1]
   local Reserved  = table.concat (message.control_flags) 
@@ -538,33 +562,99 @@ function rcv.SUBSCRIBE (client, message)
   -- ACKNOWLEDGEMENT
   -- When the Server receives a SUBSCRIBE Packet from a Client, the Server MUST respond with a SUBACK Packet [MQTT-3.8.4-1]
   -- The SUBACK Packet MUST have the same Packet Identifier as the SUBSCRIBE Packet that it is acknowledging [MQTT-3.8.4-2]
+  -- The SUBACK Packet sent by the Server to the Client MUST contain a return code for each Topic Filter/QoS pair. 
+  --   This return code MUST either show the maximum QoS that was granted for that Subscription 
+  --   or indicate that the subscription failed [MQTT-3.8.4-5]
+  -- The Server might grant a lower maximum QoS than the subscriber requested. 
+  --   The QoS of Payload Messages sent in response to a Subscription MUST be the minimum of the QoS 
+  --   of the originally published message and the maximum QoS granted by the Server [MQTT-3.8.4-6]
+  
   local nt = #topics
-  local QoS_list = string.char(0): rep (nt)
+  local QoS_list = string.char(0): rep (nt)   -- regardless of RequestedQoS, we're using QoS = 0 for everything
   send.SUBACK (client, QoS_list, msb, lsb)
 end
 
+function parse.UNSUBSCRIBE (client, message)
+  -- Bits 3,2,1 and 0 of the fixed header of the UNSUBSCRIBE Control Packet are reserved 
+  -- and MUST be set to 0,0,1 and 0 respectively [MQTT-3.10.1-1]
+  local Reserved  = table.concat (message.control_flags) 
+  if Reserved ~= "0010" then
+    close_and_unsubscribe_from_all (client, "Unexpected reserved flag bits: " .. Reserved)
+    return
+  end
+  
+  -- VARIABLE HEADER
+  
+  local bytes = message: read_bytes (2)
+  local msb, lsb = bytes: byte (1, 2)
+  local PacketId
+  PacketId = msb * 0x100 + lsb
+  _debug ("Packet Id: " .. PacketId)
+  
+  -- PAYLOAD
+  
+  local topics = {}
+  repeat
+    local topic = message: read_string()
+    topics[#topics+1] =topic
+    _debug ("Topic: " .. topic)
+  until message.ptr >= #message.body
+ 
+  --  The Payload of an UNSUBSCRIBE packet MUST contain at least one Topic Filter. 
+  --  An UNSUBSCRIBE packet with no payload is a protocol violation [MQTT-3.10.3-2]
+  if #topics == 0 then
+    close_and_unsubscribe_from_all (client, "No topics found in SUBSCRIBE payload")
+    return
+  end
+  
+  -- unsubscribe external (IP) clients
+  for _, topic in ipairs (topics) do
+    unsubscribe_client_from_topic (client, topic)
+  end
+
+  -- ACKNOWLEDGEMENT
+  -- The Server MUST respond to an UNSUBSUBCRIBE request by sending an UNSUBACK packet. 
+  -- The UNSUBACK Packet MUST have the same Packet Identifier as the UNSUBSCRIBE Packet [MQTT-3.10.4-4]
+  send.UNSUBACK (client, msb, lsb)
+
+end
+
+-------------------------------------------
+--
+-- MQTT server
+--
+
+-- register an openLuup-side subscriber to a topic
+local function register_handler (callback, topic)
+  subscribe {
+        callback = callback, 
+        devNo = scheduler.current_device (),
+        topic = topic,
+        count = 0,
+      }
+  return 1
+end
+
+local function reserved(_, message)
+  _log ("UNIMPLEMENTED packet type: " .. message.packet_type)
+  _log (message.body)
+end
+
+local function MQTTservlet (client)
+  local receive = MQTT_packet.receive
+   -- incoming() is called by the io.server when there is data to read
+  local function incoming ()
+    local message = receive (client)
+    local pname = message.packet_name
+    _debug (table.concat {pname, ' ', tostring(client)})
+    local fct = parse[pname]
+    do (fct or reserved) (client, message) end
+  end
+  return incoming
+end
   
 local function start (config)
 
-  local function reserved(_, message)
-    _log ("UNIMPLEMENTED packet type: " .. message.packet_type)
-    _log (message.body)
-  end
-  
-  local function MQTTservlet (client)
-     -- incoming() is called by the io.server when there is data to read
-    local function incoming ()
-      local message = receive (client)
-      local pname = packet_name[message.packet_type] or "RESERVED"
-      _debug (table.concat {pname, ' ', tostring(client)})
-      local fct = rcv[pname]
-      do (fct or reserved) (client, message) end
-    end
-    return incoming
-  end
-
-  
-  -- start()
   ABOUT.DEBUG = config.DEBUG 
   credentials.Username = config.Username or ''
   credentials.Password = config.Password or ''
@@ -588,9 +678,7 @@ return {
     ABOUT = ABOUT,
     
     TEST = {          -- for testing only
-      bytes2word  = bytes2word,
-      encode_utf8 = encode_utf8,
-      encode_message = encode_message,
+      MQTT_packet = MQTT_packet,
     },
     
     -- constants

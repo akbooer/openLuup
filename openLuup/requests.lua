@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.requests",
-  VERSION       = "2020.12.26",
+  VERSION       = "2021.02.20",
   DESCRIPTION   = "Luup Requests, as documented at http://wiki.mios.com/index.php/Luup_Requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -78,6 +78,8 @@ local ABOUT = {
 -- 2020.04.14  modify &id=actions to enumerate ALL actions in the service data (thanks @rigpapa)
 -- 2020.10.01  add &id=run_scene&SceneNum=n short cut (for Shelly, etc.)
 -- 2020.12.26  make status request honour dataversion number for variables (thanks @rigpapa)
+
+-- 2021.02.20  &id=reload, delay luup.reload() until after request completes (thanks @DesT)
 
 
 local client        = require "openLuup.client"
@@ -982,7 +984,10 @@ local function file (_,p)
 end
 
 -- reload openLuup
-local function reload () luup.reload () end
+--local function reload () luup.reload () end
+local function reload ()
+  scheduler.run_job {job = luup.reload}  -- 2021.02.20  delay luup.reload() until after request completes
+end
 
 --
 -- openLuup additions
