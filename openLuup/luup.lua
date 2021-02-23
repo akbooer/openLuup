@@ -376,8 +376,12 @@ local function variable_set (service, name, value, device, startup)
   local security  = "urn:micasaverde-com:serviceId:SecuritySensor1"
   if (name ~= "Tripped") or (service ~= security) or dev.attributes.host then return end  -- not interested 
 
-  if dev:attr_get ("device_json") ~= "D_MotionSensor1.json" or value == '1' then
-    set ("LastTrip", tostring(os.time()))
+  set ("LastTrip", tostring(os.time()))
+  
+  if value == '1' then
+      set ("LastTripTime", tostring(os.time()))
+  else
+      set ("LastUntripTime", tostring(os.time()))
   end
   
   -- 2018.08.05  AutoUntrip functionality (thanks for the suggestion @rigpapa)
