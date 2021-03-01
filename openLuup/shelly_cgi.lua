@@ -97,7 +97,7 @@ local turn = {
     toggle  = function (info) call_action (info, SID.toggle, "ToggleState", {}, info.id) end,
   }
   
-local function shelly()
+local function simple()
   local d = settings.device
   return {
     type  = d.name,
@@ -137,7 +137,7 @@ end
 
 
 local dispatch = {
-    shelly    = shelly,
+    shelly    = simple,
     relay     = relay,
     scene     = scene,
     status    = status,

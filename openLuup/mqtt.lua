@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.01",
+  VERSION       = "2021.03.01b",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -631,7 +631,11 @@ local subscriptions = {} do
       publish_to_all (subscribers, TopicName, ApplicationMessage)     -- topic subscribers
     end
     
-    publish_to_all (self['#'], TopicName, ApplicationMessage)          -- TODO: better wildcards
+    
+    subscribers = self['#']          -- TODO: better wildcards
+    if subscribers then
+      publish_to_all (subscribers, TopicName, ApplicationMessage)
+    end
   end
   
   -- note that each subscription has a separate metatable, but shares the __index table of methods
