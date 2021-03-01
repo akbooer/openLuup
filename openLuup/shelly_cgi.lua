@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2021.02.18",
+  VERSION       = "2021.03.01",
   DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -34,6 +34,7 @@ local ABOUT = {
 
 -- 2021.02.01  add Shelly Bridge
 -- 2021.02.17  add LastUpdate time to individual devices
+-- 2021.03.01  don't start Shelly bridge until first "shellies/..." MQTT message
 
 
 --local socket    = require "socket"
@@ -278,23 +279,6 @@ local function _log (msg)
   luup.log (msg, "luup.shelly")
 end
 
-local function update_shelly (topic, message)
-  local shelly, var = topic: match "^shellies/(.-)/(.+)"
-  local child = devices[shelly]
-  if not child then return end
-  
-  local dev = luup.devices[child]
-  dev: variable_set (SID.hadevice, "LastUpdate", os.time(), true)   -- not logged, but 'true' enables variable watch
-  
-  local old = luup.variable_get (shelly, var, child)
-  if message ~= old then
-    dev: variable_set (shelly, var, message, true)                  -- not logged, but 'true' enables variable watch
-    local model = luup.attr_get ("model", child)
-    models[model].updater (child, var, message)
-  end
-end
-
-
 local function create_device(info)
   local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
 
@@ -401,22 +385,40 @@ end
 --
 
 function _G.Shelly_MQTT_Handler (topic, message)
-  luup.devices[devNo]: variable_set (SID.hadevice, "LastUpdate", os.time(), true)   -- not logged, but watchable
-
-  if topic == "shellies/announce" then
+  
+  local shellies = topic: match "^shellies/(.+)"
+  if not shellies then return end
+  
+  devNo = devNo       -- ensure that ShellyBridge device exists
+            or
+              luup.openLuup.find_device {device_type = "ShellyBridge"}
+                or
+                  create_ShellyBridge ()
+  
+  if shellies == "announce" then
     local info, err = json.decode (message)
     if not info then _log ("Announce JSON error: " .. (err or '?')) return end
     init_device (info)
-  else
-    update_shelly (topic, message)
+  end
+  
+  local timenow = os.time()
+  luup.devices[devNo]: variable_set (SID.hadevice, "LastUpdate", timenow, true)   -- not logged, but watchable
+
+  local  shelly, var = shellies: match "^(.-)/(.+)"
+
+  local child = devices[shelly]
+  if not child then return end
+  
+  local dev = luup.devices[child]
+  dev: variable_set (SID.hadevice, "LastUpdate", timenow, true)     -- not logged, but 'true' enables variable watch
+  
+  local old = luup.variable_get (shelly, var, child)
+  if message ~= old then
+    dev: variable_set (shelly, var, message, true)                  -- not logged, but 'true' enables variable watch
+    local model = luup.attr_get ("model", child)
+    models[model].updater (child, var, message)
   end
 end
-
--- ensure that ShellyBridge device exists
-
-devNo = luup.openLuup.find_device {device_type = "ShellyBridge"}
-          or
-            create_ShellyBridge ()
 
 luup.register_handler ("Shelly_MQTT_Handler", "mqtt:#")   -- * * * * MQTT wildcard subscription * * * *
 
