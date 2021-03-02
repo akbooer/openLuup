@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.01b",
+  VERSION       = "2021.03.02",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -29,6 +29,7 @@ local ABOUT = {
 
 -- 2021.01.31   original version
 -- 2021.02.17   add login credentials
+-- 2021.03.02   handle all wildcards ending with #
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -565,6 +566,7 @@ local subscriptions = {} do
   -- wildcards not (yet) implemented
   function method: subscribe(subscription)
     local topic = subscription.topic
+    getmetatable(self).wildcards[topic] = topic: match "^(.-)#$" or nil   -- save it in the special list if it's a wildcard
     local subs = self[topic] or {}
     self[topic] = subs
     subs[#subs+1] = subscription
@@ -626,20 +628,25 @@ local subscriptions = {} do
     end
     if #TopicName == 0 then return end
     
+    -- simple topic match
     local subscribers = self[TopicName]
     if subscribers then
       publish_to_all (subscribers, TopicName, ApplicationMessage)     -- topic subscribers
     end
     
-    
-    subscribers = self['#']          -- TODO: better wildcards
-    if subscribers then
-      publish_to_all (subscribers, TopicName, ApplicationMessage)
+    -- wildcards ending in #
+    for wildcard, pattern in pairs (getmetatable(self).wildcards) do
+      if TopicName: sub(1, #pattern) == pattern then
+        subscribers = self[wildcard]
+        if subscribers then
+          publish_to_all (subscribers, TopicName, ApplicationMessage)
+        end
+      end
     end
   end
   
   -- note that each subscription has a separate metatable, but shares the __index table of methods
-  -- TODO: wildcard subscriptions are held in the metatable.wildcards variable
+  -- wildcard subscriptions are held in the metatable.wildcards table
   
   function method.new ()
     return setmetatable ({}, {__index = method, wildcards = {}})    -- list of subscribers, indexed by topic

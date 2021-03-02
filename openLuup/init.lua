@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.01.31",
+  VERSION       = "2021.03.02",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -65,6 +65,7 @@ local ABOUT = {
 -- 2020.07.04  use proxy for require()
 
 -- 2021.01.30  add MQTT server and Shelly bridge
+-- 2021.03.02  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js
 
 
 local logs  = require "openLuup.logs"
@@ -170,7 +171,7 @@ do -- set attributes, possibly decoding if required
     },
     Console = {
       Menu = "",           -- add user-defined menu JSON definition file here
-      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js",
+      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js",
       EditorTheme = "eclipse",
     },
     DataStorageProvider = {

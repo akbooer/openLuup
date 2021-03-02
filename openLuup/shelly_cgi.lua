@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2021.03.01",
+  VERSION       = "2021.03.02",
   DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -420,6 +420,6 @@ function _G.Shelly_MQTT_Handler (topic, message)
   end
 end
 
-luup.register_handler ("Shelly_MQTT_Handler", "mqtt:#")   -- * * * * MQTT wildcard subscription * * * *
+luup.register_handler ("Shelly_MQTT_Handler", "mqtt:shellies/#")   -- * * * * MQTT wildcard subscription * * * *
 
 -----
