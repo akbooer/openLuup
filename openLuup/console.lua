@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.02.17",
+  VERSION       = "2021.03.04",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1184,7 +1184,7 @@ function pages.mqtt ()
   local data = {}
   for topic, subscribers in sorted (mqtt.subscribers) do
     local internal, external = {}, {}
-    for _, subs in ipairs (subscribers) do
+    for _, subs in pairs (subscribers) do
       internal[#internal+1] = subs.devNo
       external[#external+1] = (subs.client or empty) .ip
     end

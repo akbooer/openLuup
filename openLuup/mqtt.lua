@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.02",
+  VERSION       = "2021.03.04",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -164,14 +164,10 @@ do -- MQTT Packet methods
     return table.concat {fixed_header, variable_header, payload}
   end
 
-
   -- receive returns messsage object, or error message
   function MQTT_packet.receive (client)
-    local err
-    local fixed_header_byte1
-    fixed_header_byte1, err = client: receive (1)
-      if not fixed_header_byte1 then return nil, err end
-    local packet_type, control_flags = parse_packet_type (fixed_header_byte1)
+    local fixed_header_byte1, err = client: receive (1)
+    if not fixed_header_byte1 then return nil, err end
 
     local length = 0
     for i = 0, 2 do                   -- maximum of 3 bytes encode remaining length, LSB first
@@ -189,33 +185,73 @@ do -- MQTT Packet methods
       if not body then return nil, err end
     end
     
+    local packet_type, control_flags = parse_packet_type (fixed_header_byte1)
     local pname = pname[packet_type] or "RESERVED"
     
-    return {
+    return 
+      {
         -- variables
         packet_type     = packet_type,
         control_flags   = control_flags,
         body            = body,           -- may include variable header and payload
         ptr             = 0,              -- pointer to parse position in body
         packet_name     = pname,          -- string name of packet type
-
         -- methods
         read_bytes      = read_bytes,
         read_flag_byte  = read_flag_byte, -- converting octet to 8 separate flag bits
         read_word       = read_word,
         read_string     = read_utf8,
       }
+
   end
 
   -------------------------------------------
   --
   -- Construct MQTT packets
   --
-  -- only implement functionality required by server
-  --
 
-  function MQTT_packet.CONNECT () end          -- client only
 
+  function MQTT_packet.CONNECT (credentials)               -- CLIENT ONLY
+    
+    local C = credentials
+    
+    -- VARIABLE HEADER
+    
+    local ProtocolName = encode_utf8 "MQTT"                 -- bytes 1-6
+    local ProtocolLevel = string.char(4)                    -- byte 7, set to 4 for MQTT 3.1.1
+    
+    local Username = C.Username and 1 or 0
+    local Password = C.Password and 1 or 0
+    local WillRetain = 0
+    local WillQoSmsb, WillQoSlsb = 0, 0
+    local WillFlag = C.WillTopic and C.WillMessage and 1 or 0
+    local Clean = 1
+    local Reserved = 0
+
+    local ConnectFlags =                                    -- byte 8
+      {Username, Password, WillRetain, WillQoSmsb, WillQoSlsb, WillFlag, Clean, Reserved}
+    ConnectFlags = string.char(tonumber(table.concat(ConnectFlags), 2))
+     
+    local KeepAlive = word2bytes (C.KeepAlive or 0)         -- bytes 9-10
+    
+    local variable_header = table.concat {ProtocolName, ProtocolLevel, ConnectFlags, KeepAlive}
+    
+    -- PAYLOAD
+    
+    local ClientId    = encode_utf8 (C.ClientId or '')
+    local WillTopic   = WillFlag == 1 and encode_utf8 (C.WillTopic)   or ''
+    local WillMessage = WillFlag == 1 and encode_utf8 (C.WillMessage) or ''
+    Username          = Username == 1 and encode_utf8 (C.Username)    or ''
+    Password          = Password == 1 and encode_utf8 (C.Password)    or ''
+    
+    local payload = table.concat {ClientId, WillTopic, WillMessage, Username, Password}
+    
+    local packet_type = "CONNECT"
+    local control_flags = 0
+    local connect = encode (packet_type, control_flags, variable_header, payload)
+    return connect
+  end
+  
   function MQTT_packet.CONNACK (ConnectReturnCode)
     local packet_type, control_flags = "CONNACK", 0 
     
@@ -545,12 +581,9 @@ local subscriptions = {} do
     local name = tostring(client)
     local message = "Unsubscribed from %s %s"
     local subs = self[topic] 
-    if not subs then return end
-    for i = #subs, 1, -1 do
-      if subs[i] == client then 
-        table.remove (subs, i)
-        _log (message: format (topic, name))
-      end
+    if subs and subs[client] then
+      subs[client] = nil
+      _log (message: format (topic, name))
     end
   end
 
@@ -568,8 +601,9 @@ local subscriptions = {} do
     local topic = subscription.topic
     getmetatable(self).wildcards[topic] = topic: match "^(.-)#$" or nil   -- save it in the special list if it's a wildcard
     local subs = self[topic] or {}
+    local key = subscription.client or (#subs + 1)    -- use numeric key for internal (since callback not unique)
     self[topic] = subs
-    subs[#subs+1] = subscription
+    subs[key] = subscription
     return 1
   end
 
@@ -608,7 +642,7 @@ local subscriptions = {} do
     -- publish message to all subscribers
     local function publish_to_all (subscribers, TopicName, ApplicationMessage)
       local message
-      for _, subscriber in ipairs (subscribers) do
+      for _, subscriber in pairs (subscribers) do
         local s = subscriber
         s.count = (s.count or 0) + 1
         local ok, err
@@ -790,12 +824,10 @@ end
 return {
     ABOUT = ABOUT,
     
-    TEST = setmetatable ({}, {          -- for testing only
-      MQTT_packet = MQTT_packet,
+    TEST = {          -- for testing only
       packet = MQTT_packet,
       parse = parse,
-      subscriptions = subscriptions,
-    }),
+    },
     
     -- constants
     myIP = tables.myIP,
