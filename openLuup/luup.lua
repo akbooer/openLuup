@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2021.02.03",
+  VERSION       = "2021.03.05",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -81,6 +81,7 @@ local ABOUT = {
 
 -- 2021.01.31  add MQTT to register_handler() protocol
 -- 2021.02.03  add luup.openLuup.find_device() by attribute: name / id / altid / etc...
+-- 2021.03.05  add luup.openLuup.find_scene()
 
 
 local logs          = require "openLuup.logs"
@@ -1117,13 +1118,21 @@ local function time_table (what)
 end
 
 -- 2021.02.03  find device by attribute: name / id / altid / etc...
-local function find_device (request)
-  if type (request) ~= "table" then return end
-  local name, value = next (request)
+local function find_device (attribute)
+  if type (attribute) ~= "table" then return end
+  local name, value = next (attribute)
   for n, d in pairs (devices) do
     if d.attributes[name] == value then
       return n
     end
+  end
+end
+
+-- 2021.03.05  find scene id by name - find_scene {name = xxx}
+local function find_scene (attribute)
+  local name = attribute.name       -- currently, only 'name' is supported
+  for id, s in pairs (scenes) do
+    if s.description == name then return id end
   end
 end
 
@@ -1144,6 +1153,7 @@ return {
       -- openLuup-specific API extensions go here...
       bridge = chdev.bridge,      -- 2020.02.12  Bridge utilities 
       find_device = find_device,  -- 2021.02.03  find device by attribute: name / id / altid / etc...
+      find_scene = find_scene,    -- 2021.03.05  find scene by name
       req_table  = nil,           -- 2020.07.04  set in init.lua
     },{
       __index = function (self, name) -- 2020.06.28

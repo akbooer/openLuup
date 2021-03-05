@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2021.01.20",
+  VERSION       = "2021.03.05",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -45,6 +45,7 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2020.05.07  add simple camera control panel showing video stream
 
 -- 2021.01.20  add panel utility functions
+-- 2021.03.05  start Shelly control panel construction
 
 
 local xml = require "openLuup.xml"
@@ -164,6 +165,15 @@ local panels = {
       return "<p>Scene Controller displays</p>"
     end},
     
+--
+-- Shellies
+--
+  GenericShellyDevice = {
+    control = function (_)  
+      return div {"Generic Shelly Device"}
+    end,
+  },
+  
 --
 -- Weather (NB. this is the device type for the DarkSkyWeather plugin)
 --

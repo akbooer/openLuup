@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2021.03.02",
+  VERSION       = "2021.03.05",
   DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -35,6 +35,7 @@ local ABOUT = {
 -- 2021.02.01  add Shelly Bridge
 -- 2021.02.17  add LastUpdate time to individual devices
 -- 2021.03.01  don't start Shelly bridge until first "shellies/..." MQTT message
+-- 2021.03.05  allow /relay/xxx and /scene/xxx to have id OR name
 
 
 --local socket    = require "socket"
@@ -155,6 +156,20 @@ function run(wsapi_env)
   local command = req.script_name
   local action, path = command: match "/(%w+)/?(.*)"
   local id = tonumber(path: match "^%d+")
+  
+  local ol = luup.openLuup
+  local finders = { 
+      relay = ol.find_device,
+      scene = ol.find_scene,
+    }
+  local finder = finders[action]
+    
+  if not id and finder then         -- try device/scene by name
+    local name = wsapi.util.url_decode (path: match "^[^/%?]+")
+    id = finder {name = name}
+    print ("name:", name, "id:", id, type(id))
+  end
+  
   local info = {command = command, id = id, parameters = req.GET}
   local fct = dispatch[action] or unknown
   
