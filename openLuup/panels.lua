@@ -45,7 +45,7 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2020.05.07  add simple camera control panel showing video stream
 
 -- 2021.01.20  add panel utility functions
--- 2021.03.05  start Shelly control panel construction
+-- 2021.03.05  generic Shelly control panel
 
 
 local xml = require "openLuup.xml"
@@ -169,8 +169,11 @@ local panels = {
 -- Shellies
 --
   GenericShellyDevice = {
-    control = function (_)  
-      return div {"Generic Shelly Device"}
+    control = function (devNo)  
+      local ip = luup.attr_get ("ip", devNo) or ''
+      local src = table.concat {"http://", ip}
+      return div {class = "w3-panel", h.iframe {src = src, width="500", height="300"}}
+--      return div {"Generic Shelly Device"}
     end,
   },
   
