@@ -173,7 +173,6 @@ local panels = {
       local ip = luup.attr_get ("ip", devNo) or ''
       local src = table.concat {"http://", ip}
       return div {class = "w3-panel", h.iframe {src = src, width="500", height="300"}}
---      return div {"Generic Shelly Device"}
     end,
   },
   

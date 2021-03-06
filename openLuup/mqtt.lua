@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.04",
+  VERSION       = "2021.03.06",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -380,8 +380,8 @@ function parse.CONNECT(message, credentials)
   
   ClientId    = message: read_string()              -- always present
   
-  WillTopic   = WillFlag == 1 and message: read_string() or ''
-  WillMessage = WillFlag == 1 and message: read_string() or ''
+  WillTopic   = WillFlag == 1 and message: read_string() or nil
+  WillMessage = WillFlag == 1 and message: read_string() or nil
   Username    = Username == 1 and message: read_string() or ''
   Password    = Password == 1 and message: read_string() or ''
   
@@ -394,9 +394,17 @@ function parse.CONNECT(message, credentials)
 --   Client Identifier, Will Topic, Will Message, User Name, Password [MQTT-3.1.3-1]
 
 -- The Client Identifier (ClientId) MUST be present and MUST be the first field in the CONNECT packet payload [MQTT-3.1.3-3]
+  local payload = {
+      ClientId = ClientId,
+      WillTopic = WillTopic,
+      WillMessage = WillMessage,
+      UserName = Username,
+      Password = Password,
+    }
+  
   _debug ("ClientId: " .. ClientId)
-  _debug ("WillTopic: " .. WillTopic)
-  _debug ("WillMessage: " .. WillMessage)
+  _debug ("WillTopic: " .. (WillTopic or ''))
+  _debug ("WillMessage: " .. (WillMessage or ''))
   _debug ("UserName: " .. Username)
   _debug ("Password: " .. Password)
   
@@ -426,7 +434,7 @@ function parse.CONNECT(message, credentials)
   if ConnectReturnCode ~= 0 then
     err = "Closing client connect, return code: " .. ConnectReturnCode
   end
-  return connack, err
+  return connack, err, payload
 end
 
 function parse.CONNACK()
@@ -444,6 +452,15 @@ function parse.PUBLISH(message)
   
   -- The Topic Name MUST be present as the first field in the PUBLISH Packet Variable header [MQTT-3.3.2-1]
   local TopicName = message: read_string ()
+  -- All Topic Names and Topic Filters MUST be at least one character long [MQTT-4.7.3-1]
+  if #TopicName == 0 then
+    return nil, "PUBLISH topic MUST be at least one character long"
+  end
+  -- The Topic Name in the PUBLISH Packet MUST NOT contain wildcard characters [MQTT-3.3.2-2]
+  -- Topic Names and Topic Filters MUST NOT include the null character (Unicode U+0000) [MQTT-4.7.3-2]
+  if TopicName: match "%#%+%$%z" then           -- also disallow ordinary client from using '$'
+    return nil, "PUBLISH topic contains wildcard (or null): " .. TopicName
+  end
   
   -- PUBLISH (in cases where QoS > 0) Control Packets MUST contain a non-zero 16-bit Packet Identifier [MQTT-2.3.1-1]
   -- A PUBLISH Packet MUST NOT contain a Packet Identifier if its QoS value is set to 0 [MQTT-2.3.1-5]
@@ -579,11 +596,11 @@ local subscriptions = {} do
   
   function method: unsubscribe_client_from_topic (client, topic)
     local name = tostring(client)
-    local message = "Unsubscribed from %s %s"
+    local message = "%s UNSUBSCRIBE from %s %s"
     local subs = self[topic] 
     if subs and subs[client] then
       subs[client] = nil
-      _log (message: format (topic, name))
+      _log (message: format (client.MQTT_connect_payload.ClientId or '?', topic, name))
     end
   end
 
@@ -630,7 +647,12 @@ local subscriptions = {} do
   end
 
   function method: send_to_client (client, message)
-    local ok, err = client: send (message)
+    local ok, err
+    if client.closed then           -- client.closed is created by io.server
+      ok, err = false, "trying to send to closed socket " .. tostring(client)
+    else
+      ok, err = client: send (message)
+    end
     if not ok then
       self: close_and_unsubscribe_from_all (client, err)
     end
@@ -668,9 +690,12 @@ local subscriptions = {} do
       publish_to_all (subscribers, TopicName, ApplicationMessage)     -- topic subscribers
     end
     
-    -- wildcards ending in #
+    -- TODO: '+' wildcards
+    -- wildcards ending in '#'
     for wildcard, pattern in pairs (getmetatable(self).wildcards) do
       if TopicName: sub(1, #pattern) == pattern then
+        -- TODO: The Server MUST NOT match Topic Filters starting with a wildcard character (# or +) 
+        --       with Topic Names beginning with a $ character.
         subscribers = self[wildcard]
         if subscribers then
           publish_to_all (subscribers, TopicName, ApplicationMessage)
@@ -742,6 +767,11 @@ local function incoming (client, credentials, subscriptions)
         for _, t in ipairs (topic) do
           subscriptions: unsubscribe_client_from_topic (client, t)
         end
+        
+      elseif pname == "CONNECT" then
+        
+        -- save connect payload in client object
+        client.MQTT_connect_payload = topic
 
       end
     end
