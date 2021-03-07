@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.06",
+  VERSION       = "2021.03.07",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -378,22 +378,20 @@ function parse.CONNECT(message, credentials)
   local ConnectReturnCode = 0                       -- default to success
   local ClientId, WillTopic, WillMessage
   
-  ClientId    = message: read_string()              -- always present
+  -- These fields, if present, MUST appear in the order 
+  --   Client Identifier, Will Topic, Will Message, User Name, Password [MQTT-3.1.3-1]
+  -- The Client Identifier (ClientId) MUST be present and MUST be the first field in the CONNECT packet payload [MQTT-3.1.3-3]
+  ClientId    = message: read_string() 
   
+  -- If the User Name Flag is set to 0, a user name MUST NOT be present in the payload [MQTT-3.1.2-18]
+  -- If the User Name Flag is set to 1, a user name MUST be present in the payload [MQTT-3.1.2-19]
+  -- If the Password Flag is set to 0, a password MUST NOT be present in the payload [MQTT-3.1.2-20]
+  -- If the Password Flag is set to 1, a password MUST be present in the payload [MQTT-3.1.2-21]
   WillTopic   = WillFlag == 1 and message: read_string() or nil
   WillMessage = WillFlag == 1 and message: read_string() or nil
   Username    = Username == 1 and message: read_string() or ''
   Password    = Password == 1 and message: read_string() or ''
   
--- If the User Name Flag is set to 0, a user name MUST NOT be present in the payload [MQTT-3.1.2-18]
--- If the User Name Flag is set to 1, a user name MUST be present in the payload [MQTT-3.1.2-19]
--- If the Password Flag is set to 0, a password MUST NOT be present in the payload [MQTT-3.1.2-20]
--- If the Password Flag is set to 1, a password MUST be present in the payload [MQTT-3.1.2-21]
-
--- These fields, if present, MUST appear in the order 
---   Client Identifier, Will Topic, Will Message, User Name, Password [MQTT-3.1.3-1]
-
--- The Client Identifier (ClientId) MUST be present and MUST be the first field in the CONNECT packet payload [MQTT-3.1.3-3]
   local payload = {
       ClientId = ClientId,
       WillTopic = WillTopic,
@@ -647,13 +645,12 @@ local subscriptions = {} do
   end
 
   function method: send_to_client (client, message)
-    local ok, err
-    if client.closed then           -- client.closed is created by io.server
-      ok, err = false, "trying to send to closed socket " .. tostring(client)
-    else
-      ok, err = client: send (message)
+    local ok, err = true
+    local closed = client.closed            -- client.closed is created by io.server
+    if not closed then
+      ok, err = client: send (message)      -- don't try to send to closed socket
     end
-    if not ok then
+    if closed or not ok then
       self: close_and_unsubscribe_from_all (client, err)
     end
     return ok, err
