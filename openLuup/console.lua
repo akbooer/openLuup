@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.04",
+  VERSION       = "2021.03.11",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -89,6 +89,8 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 
 -- 2021.01.09  developing scene UI
 -- 2021.01.31  add MQTT server
+-- 2021.03.11 @rafale77 change to slider position variable
+
 
 --  WSAPI Lua CGI implementation
 

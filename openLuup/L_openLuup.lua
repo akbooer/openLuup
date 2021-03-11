@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2021.03.11",
+  VERSION       = "2021.03.11b",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -483,8 +483,6 @@ local function mqtt_round_robin ()
     if dd then
       local message = mqtt_dev_json (dd)
       mqtt.publish ("openLuup/status", message)
-      print "------"
-      print (message)
     end
   end
   timers.call_delay (mqtt_round_robin, dt, '', "MQTT openLuup/status")
