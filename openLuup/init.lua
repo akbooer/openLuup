@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.03.02",
+  VERSION       = "2021.03.11",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -66,6 +66,7 @@ local ABOUT = {
 
 -- 2021.01.30  add MQTT server and Shelly bridge
 -- 2021.03.02  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js
+-- 2021.03.11  add devutil.PublishVariableUpdates (true)
 
 
 local logs  = require "openLuup.logs"
@@ -108,6 +109,7 @@ local userdata      = require "openLuup.userdata"
 local compress      = require "openLuup.compression"
 local json          = require "openLuup.json"
 local historian     = require "openLuup.historian"
+local devutil       = require "openLuup.devices"      -- for devutil.PublishVariableUpdates()
 
 local mime  = require "mime"
 
@@ -330,6 +332,9 @@ do --	 SERVERs and SCHEDULER
   if config.MQTT then 
     mqtt.start (config.MQTT) 
     luup.openLuup.mqtt = mqtt
+    if config.MQTT.PublishVariableUpdates == "true" then
+      devutil.publish_variable_updates (true)
+    end
   end
   
   -- start the heartbeat

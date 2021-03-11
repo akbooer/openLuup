@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2021.01.04",
+  VERSION       = "2021.03.11",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -56,9 +56,13 @@ local ABOUT = {
 
 -- 2021.01.04  add devNo to device structure - required for missing service/variable creation (for watches)
 --             allow watches to be set on undefined services/variables (thanks @rigpapa)
+-- 2021.03.09  add pathname to each variable, and publish instant updates over MQTT
+-- 2021.03.10  fix benign error in delete_single_var()
+-- 2021.03.11  add publish_variable_updates() method to toggle flag
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
+local publish   = require "openLuup.mqtt" .publish    -- for instant status
 
 --
 -- SYSTEM data versions
@@ -85,6 +89,12 @@ local sys_watchers = {}         -- list of system-wide (ie. non-device-specific)
 local history_watchers = {}     -- for data historian watchers
 
 local CacheSize = 1000          -- default value over-ridden by initalisation configuration
+
+local PublishVariableUpdates = false
+
+local function publish_variable_updates(flag)
+  PublishVariableUpdates = flag
+end
 
 -----
 --
@@ -230,6 +240,8 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
   
   new_userdata_dataversion ()                     -- say structure has changed
 
+  local pathname = table.concat ({devNo, shortSid, name}, '/')   -- 2021.03.09
+  
   vars[varID + 1] =                               -- 2018.01.31
   setmetatable (                                  -- 2018.05.25 add history methods 
     {
@@ -237,9 +249,11 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       dev       = devNo,
       id        = varID,                          -- unique ID
       name      = name,                           -- name (unique within service)
+      pathname  = pathname,                       -- dev.srv.var (for Historian and MQTT)
       srv       = serviceId,
-      shortSid  = serviceId: match "[^:]+$" or serviceId,
+      shortSid  = shortSid,
       silent    = nil,                            -- set to true to mute logging
+      mqtt      = true,                           -- set to false to disable MQTT updates
       watchers  = {},                             -- callback hooks
       -- history
       history   = history,                        -- set to nil to disable history
@@ -257,6 +271,12 @@ function variable:set (value)
   local t = scheduler.timenow()                   -- time to millisecond resolution
   value = tostring(value or '')                   -- all device variables are strings
   
+  -- 2021.03.09 instant status updates over MQTT
+  local changed = value ~= self.value
+  if changed and PublishVariableUpdates and self.mqtt then
+    publish ("openLuup/update/" .. self.pathname, self.value)
+  end
+  
   -- 2018.04.25 'VariableWithHistory'
   -- history is implemented as a circular buffer, limited to CacheSize time/value pairs
   local history = self.history 
@@ -264,7 +284,7 @@ function variable:set (value)
     local v = tonumber(value)                     -- only numeric values
     if v then
       local epoch = v > 1234567890                -- cheap way to identify recent epochs? (and other big numbers!)
-      if ((value ~= self.value)                   -- only cache changes
+      if (changed                                 -- only cache changes
       or  (self.name: sub(1,3) == "sl_"))         -- 2019.12.10 sl_ prefix special case
       and not epoch then
         local hipoint = (self.hipoint or 0) % (self.hicache or CacheSize) + 1
@@ -441,7 +461,7 @@ local function new (devNo)
     local svc = dev.services[var.srv]           -- this is its service
     table.remove (v, id+1)                      -- remove from device variables array 
     for i, x in ipairs (v) do x.id = i-1 end    -- renumber the whole array
-    svc[var.name] = nil                         -- remove from service variables
+    svc.variables[var.name] = nil               -- remove from service variables (fixed missing .variables 2021.03.10)
     dev: touch()                                -- say we changed something
   end
   
@@ -624,7 +644,8 @@ return {
   variable_watch            = variable_watch,
   new_dataversion           = new_dataversion,
   new_userdata_dataversion  = new_userdata_dataversion,
-  
+  publish_variable_updates  = publish_variable_updates,
+
   set_cache_size  = function(s) CacheSize = s end,
   
 }

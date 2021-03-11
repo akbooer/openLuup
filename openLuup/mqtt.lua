@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.07",
+  VERSION       = "2021.03.11",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -169,10 +169,12 @@ do -- MQTT Packet methods
     local fixed_header_byte1, err = client: receive (1)
     if not fixed_header_byte1 then return nil, err end
 
+    local nb = 1
     local length = 0
     for i = 0, 2 do                   -- maximum of 3 bytes encode remaining length, LSB first
       local b, err = client: receive (1)
       if not b then return nil, err end
+      nb = nb + 1
       b = b: byte()
       local n = b % 128               -- seven significant bits
       length = length + n * 128 ^ i
@@ -183,6 +185,7 @@ do -- MQTT Packet methods
     if length > 0 then
       body, err = (length > 0) and client: receive (length)
       if not body then return nil, err end
+      nb = nb + length
     end
     
     local packet_type, control_flags = parse_packet_type (fixed_header_byte1)
@@ -191,6 +194,7 @@ do -- MQTT Packet methods
     return 
       {
         -- variables
+        length          = nb,             -- byte count for statistics
         packet_type     = packet_type,
         control_flags   = control_flags,
         body            = body,           -- may include variable header and payload
@@ -332,7 +336,7 @@ local parse = {}
 
 function parse.DISCONNECT()
   -- After sending a DISCONNECT Packet the Client MUST close the Network Connection [MQTT-3.14.4-1]
-  return nil, "Disconnect received from client"
+  return nil, "Disconnected from client"
 end
 
 function parse.CONNECT(message, credentials)
@@ -513,17 +517,19 @@ function parse.SUBSCRIBE (message)
   -- PAYLOAD
   
   local topics = {}
+  local nt = 0
   repeat
     local topic = message: read_string()
-    topics[#topics+1] =topic
+    topics[topic] = topic
     _debug ("Topic: " .. topic)
+    nt = nt + 1
     local RequestedQoS
     RequestedQoS = message: read_bytes(1) :byte()
 --      _log ("Requested QoS: " .. RequestedQoS)
   until message.ptr >= #message.body
   
   -- The payload of a SUBSCRIBE packet MUST contain at least one Topic Filter / QoS pair [MQTT-3.8.3-3]
-  if #topics == 0 then
+  if nt == 0 then
     return nil, "No topics found in SUBSCRIBE payload"
   end
   
@@ -537,7 +543,6 @@ function parse.SUBSCRIBE (message)
   --   The QoS of Payload Messages sent in response to a Subscription MUST be the minimum of the QoS 
   --   of the originally published message and the maximum QoS granted by the Server [MQTT-3.8.4-6]
   
-  local nt = #topics
   local QoS_list = string.char(0): rep (nt)   -- regardless of RequestedQoS, we're using QoS = 0 for everything
   local suback = MQTT_packet.SUBACK (QoS_list, PacketId)
   return suback, nil, topics
@@ -560,16 +565,18 @@ function parse.UNSUBSCRIBE (message)
   -- PAYLOAD
   
   local topics = {}
+  local nt = 0
   repeat
     local topic = message: read_string()
-    topics[#topics+1] =topic
+    topics[topic] = topic
     _debug ("Topic: " .. topic)
+    nt = nt + 1
   until message.ptr >= #message.body
  
   --  The Payload of an UNSUBSCRIBE packet MUST contain at least one Topic Filter. 
   --  An UNSUBSCRIBE packet with no payload is a protocol violation [MQTT-3.10.3-2]
-  if #topics == 0 then
-    return nil, "No topics found in SUBSCRIBE payload"
+  if nt == 0 then
+    return nil, "No topics found in UNSUBSCRIBE payload"
   end
   
   -- ACKNOWLEDGEMENT
@@ -589,32 +596,53 @@ local subscriptions = {} do
   
   -- meta methods
   -- these have to be in the metatable because we don't want their names to appear in the subscriptions list
+  local methods = {}
+    
+  local function new_metatable ()
+    local meta = {
+      wildcards = {}, 
+      stats = {
+        ["bytes/received"] = 0,             -- bytes received since the broker started.
+        ["bytes/sent"] = 0,                 -- bytes sent since the broker started.
+        ["clients/connected"] = 0,          -- currently connected clients.
+        ["clients/maximum"] = 0,            -- maximum number of clients that have been connected to the broker at the same time.
+        ["clients/total"] = 0,              -- active and inactive clients currently connected and registered.
+        ["messages/received"] = 0,          -- messages of any type received since the broker started.
+        ["messages/sent"] = 0,              -- messages of any type sent since the broker started.
+        ["publish/messages/received"] = 0,  -- PUBLISH messages received since the broker started.
+        ["publish/messages/sent"] = 0,      -- PUBLISH messages sent since the broker started.
+      },
+    }
+    
+    for n,v in pairs (methods) do   -- add methods
+      meta[n] = v
+    end
+    
+    return {__index = meta}
+  end
   
-  local method = {}
-  
-  function method: unsubscribe_client_from_topic (client, topic)
+  function methods: unsubscribe_client_from_topics (client, topics)
     local name = tostring(client)
     local message = "%s UNSUBSCRIBE from %s %s"
-    local subs = self[topic] 
-    if subs and subs[client] then
-      subs[client] = nil
-      _log (message: format (client.MQTT_connect_payload.ClientId or '?', topic, name))
+    for topic in pairs (topics) do
+      local subs = self[topic] 
+      if subs and subs[client] then
+        subs[client] = nil
+        _log (message: format (client.MQTT_connect_payload.ClientId or '?', topic, name))
+      end
     end
   end
 
-  function method: close_and_unsubscribe_from_all (client, log_message)
+  function methods: close_and_unsubscribe_from_all (client, log_message)
     client: close()
     if log_message then _log (table.concat {log_message, ' ', tostring(client)}) end
-    for topic in pairs (self) do
-      self: unsubscribe_client_from_topic (client, topic)
-    end
+    self: unsubscribe_client_from_topics (client, self)     -- self is a table of all topics!
   end
 
   -- register an internal (openLuup), or external, subscriber to a topic
-  -- wildcards not (yet) implemented
-  function method: subscribe(subscription)
+  function methods: subscribe(subscription)
     local topic = subscription.topic
-    getmetatable(self).wildcards[topic] = topic: match "^(.-)#$" or nil   -- save it in the special list if it's a wildcard
+    self.wildcards[topic] = topic: match "^(.-)#$" or nil   -- save it in the special table if it's a wildcard
     local subs = self[topic] or {}
     local key = subscription.client or (#subs + 1)    -- use numeric key for internal (since callback not unique)
     self[topic] = subs
@@ -623,7 +651,7 @@ local subscriptions = {} do
   end
 
   -- register an openLuup-side subscriber to a single topic
-  function method: register_handler (callback, topic)
+  function methods: register_handler (callback, topic)
     self: subscribe {
       callback = callback, 
       devNo = scheduler.current_device (),
@@ -634,17 +662,20 @@ local subscriptions = {} do
   end
 
   -- subscribe as external (IP) clients
-  function method: subscribe_to_topics (client, topics)
-    for _, topic in ipairs (topics) do
+  function methods: subscribe_client_to_topics (client, topics)
+    local name = tostring(client)
+    local message = "%s SUBSCRIBE to %s %s"
+    for topic in pairs (topics) do
       self: subscribe {
         client = client, 
         topic = topic,
         count = 0,
       }
+      _log (message: format (client.MQTT_connect_payload.ClientId or '?', topic, name))
     end
   end
 
-  function method: send_to_client (client, message)
+  function methods: send_to_client (client, message)
     local ok, err = true
     local closed = client.closed            -- client.closed is created by io.server
     if not closed then
@@ -652,12 +683,20 @@ local subscriptions = {} do
     end
     if closed or not ok then
       self: close_and_unsubscribe_from_all (client, err)
+    else
+      -- statistics
+      local stats = self.stats
+      stats["bytes/sent"] = stats["bytes/sent"] + #message
+      stats["messages/sent"] = stats["messages/sent"]  + 1    
     end
     return ok, err
   end
 
   -- deliver message to all subscribers
-  function method: publish (TopicName, ApplicationMessage)
+  function methods: publish (TopicName, ApplicationMessage)
+    -- statistics
+    local stats = self.stats
+    stats["publish/messages/received"] = stats["publish/messages/received"] + 1
     -- publish message to all subscribers
     local function publish_to_all (subscribers, TopicName, ApplicationMessage)
       local message
@@ -670,6 +709,9 @@ local subscriptions = {} do
         elseif s.client then
           message = message or MQTT_packet.PUBLISH (TopicName, ApplicationMessage)
           ok, err = self: send_to_client (s.client, message) -- publish to external subscribers
+          if ok then 
+            stats["publish/messages/sent"] = stats["publish/messages/sent"] + 1
+          end
         end
 
         if not ok then
@@ -689,13 +731,16 @@ local subscriptions = {} do
     
     -- TODO: '+' wildcards
     -- wildcards ending in '#'
-    for wildcard, pattern in pairs (getmetatable(self).wildcards) do
+    local dollar = TopicName: sub(1,1) == '$'
+    for wildcard, pattern in pairs (self.wildcards) do
       if TopicName: sub(1, #pattern) == pattern then
-        -- TODO: The Server MUST NOT match Topic Filters starting with a wildcard character (# or +) 
-        --       with Topic Names beginning with a $ character.
-        subscribers = self[wildcard]
-        if subscribers then
-          publish_to_all (subscribers, TopicName, ApplicationMessage)
+        -- The Server MUST NOT match Topic Filters starting with a wildcard character (# or +) 
+        -- with Topic Names beginning with a $ character [MQTT-4.7.2-1]
+        if not (dollar and wildcard == '#') then
+          subscribers = self[wildcard]
+          if subscribers then
+            publish_to_all (subscribers, TopicName, ApplicationMessage)
+          end
         end
       end
     end
@@ -704,11 +749,11 @@ local subscriptions = {} do
   -- note that each subscription has a separate metatable, but shares the __index table of methods
   -- wildcard subscriptions are held in the metatable.wildcards table
   
-  function method.new ()
-    return setmetatable ({}, {__index = method, wildcards = {}})    -- list of subscribers, indexed by topic
+  function methods.new ()
+    return setmetatable ({}, new_metatable())    -- list of subscribers, indexed by topic
   end
 
-  setmetatable (subscriptions, {__index = method, wildcards = {}})
+  setmetatable (subscriptions, new_metatable())
   
 end
 
@@ -730,6 +775,11 @@ local function incoming (client, credentials, subscriptions)
   if message then
     pname = message.packet_name
     _debug (table.concat {pname, ' ', tostring(client)})
+    
+    -- statistics
+    local stats = subscriptions.stats
+    stats["bytes/received"] = stats["bytes/received"] + message.length
+    stats["messages/received"] = stats["messages/received"] + 1    
     
     -- analyze the message
     local topic, app_message
@@ -755,21 +805,18 @@ local function incoming (client, credentials, subscriptions)
       
       elseif pname == "SUBSCRIBE" then
         
-        -- add any subscriber to list of topics
-        subscriptions: subscribe_to_topics (client, topic)
+        -- add any subscriber to table of topics
+        subscriptions: subscribe_client_to_topics (client, topic)
         
       elseif pname == "UNSUBSCRIBE" then
         
         -- unsubscribe external (IP) clients
-        for _, t in ipairs (topic) do
-          subscriptions: unsubscribe_client_from_topic (client, t)
-        end
+        subscriptions: unsubscribe_client_from_topics (client, topic)
         
       elseif pname == "CONNECT" then
         
-        -- save connect payload in client object
+        -- save connect payload in client object (chiefly for accessing the ClientId)
         client.MQTT_connect_payload = topic
-
       end
     end
   end
@@ -808,11 +855,11 @@ local function new (config)
         backlog   = config.Backlog or 100,                -- queue length
         idletime  = config.CloseIdleSocketAfter or 120,   -- connect timeout
         servlet   = servlet,                              -- our own servlet
-        connects  = iprequests,                           -- use our own table for info
       }
   end
   
   return {
+      statistics = subscribers.stats,
       -- note that these instance methods should be called with the colon syntax
       subscribe = function (_, ...) subscribers: register_handler (...) end,     -- callback for subscribed messages
       publish = function (_, ...) subscribers: publish (...) end,                -- publish from within openLuup
@@ -842,7 +889,7 @@ local function start (config)
       backlog   = config.Backlog or 100,                -- queue length
       idletime  = config.CloseIdleSocketAfter or 120,   -- connect timeout
       servlet   = MQTTservlet,                          -- our own servlet
-      connects  = iprequests,                           -- use our own table for info
+      connects  = iprequests,                           -- use our own table for console info
     }
 end
 
@@ -869,5 +916,6 @@ return {
     -- variables
     iprequests  = iprequests,
     subscribers = subscriptions,
+    statistics = subscriptions.stats,
 
 }

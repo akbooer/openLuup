@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2020.03.31",
+  VERSION       = "2021.03.11",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -72,6 +72,8 @@ local ABOUT = {
 -- 2020.01.28   replace scene:user_table() with scene.definition, following object changes in scenes
 -- 2020.03.03   update ZWay implementation file to I_ZWay2.xml
 -- 2020.03.31   improve plugin loading and ordering
+
+-- 2021.03.11   remove commented out code
 
 
 local json    = require "openLuup.json"
@@ -592,7 +594,7 @@ local function load_user_data (user_data_json)
     _log "loading scenes..."
     local Nscn = 0
     for _, scene in ipairs (user_data.scenes or {}) do
-      if tonumber(scene.id) < 1e5 then        -- 2017.0719 ignore temporary "high numbered" scenes (VeraBridge)
+      if scene.id and tonumber(scene.id) < 1e5 then        -- 2017.0719 ignore temporary "high numbered" scenes (VeraBridge)
         local new, msg = scenes.create (scene)
         if new and scene.id then
           Nscn = Nscn + 1
@@ -654,15 +656,6 @@ local function devices_table (device_list)
   for _,dnum in ipairs (devs) do 
     local d = device_list[dnum] 
     local states = d: state_table()   -- 2019.05.12
---    local states = {}
---    for i,item in ipairs(d.variables) do
---      states[i] = {
---        id = item.id, 
---        service = item.srv,
---        variable = item.name,
---        value = item.value or '',
---      }
---    end
     local curls 
     if d.serviceList then         -- add the ControlURLs
       curls = {}
