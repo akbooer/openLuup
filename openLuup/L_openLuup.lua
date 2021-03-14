@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2021.03.11b",
+  VERSION       = "2021.03.14",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -475,16 +475,17 @@ end
 
 local function mqtt_round_robin ()
   local mqtt = luup.openLuup.mqtt
-  local dt = luup.attr_get "openLuup.MQTT.PublishDeviceStatus"
+  local dt = luup.attr_get "openLuup.MQTT.PublishDeviceStatus" or "0"
   if dt == "0" then 
-    dt = 1    -- set default delay time
-  else
+    dt = 10    -- set default delay time to check for changes
+  elseif mqtt then
     local dd = get_next_dev ()
     if dd then
       local message = mqtt_dev_json (dd)
       mqtt.publish ("openLuup/status", message)
     end
   end
+  dt = tonumber (dt)
   timers.call_delay (mqtt_round_robin, dt, '', "MQTT openLuup/status")
 end
 

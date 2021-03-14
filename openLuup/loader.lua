@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2021.01.08",
+  VERSION       = "2021.03.14",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -69,6 +69,7 @@ local ABOUT = {
 -- 2020.11.09  return implementation compilation failure to caller (create_device) (thanks @imro2)
 
 -- 2021.01.08  remove shared_environment.pretty_old()
+-- 2021.03.14  make openLuup structure visible in _G environment
 
 
 ------------------
@@ -619,8 +620,11 @@ local function compile_lua (source_code, name, old)
   local env
   if a then
     env = old or new_environment (name)  -- use existing environment if supplied
-    env.luup = shallow_copy (luup)       -- add a COPY of the global luup table
+    env.luup =                           -- add a COPY of the global luup table
     -- ... so that luup.device can be unique for each environment
+      setmetatable (shallow_copy (luup), getmetatable(luup))    -- 2021.03.14 move to metatable
+    env.openLuup = luup.openLuup                                -- 2021.03.14 expose at top level
+    --
     setfenv (a, env)                     -- Lua 5.1 specific function environment handling
     a, error_msg = pcall(a)              -- instantiate it
     if not a then env = nil end          -- erase if in error

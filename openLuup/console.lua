@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.11",
+  VERSION       = "2021.03.14",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1195,10 +1195,18 @@ function pages.mqtt ()
   end
   local tbl = create_table_from_data ({"topic", "#internal subscribers", "#external subscribers" }, data)
   
+  local broker = {}
+  for n, v in sorted (mqtt.statistics) do
+    broker[#broker+1] = {n, v}
+  end
+  local stats = create_table_from_data ({}, broker)
   return xhtml.div {
       html5_title "MQTT QoS 0 server",
 --      selection,
-      xhtml.div {class="w3-rest w3-panel", tbl} }
+    xhtml.div {class="w3-rest w3-panel", 
+      xhtml.h5 "Server statistics: (up to 60 seconds latency)", stats,
+      xhtml.h5 "Subscribed topics:", 
+      tbl }}
 
 end
 

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.11",
+  VERSION       = "2021.03.14",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -30,6 +30,9 @@ local ABOUT = {
 -- 2021.01.31   original version
 -- 2021.02.17   add login credentials
 -- 2021.03.02   handle all wildcards ending with #
+-- 2021.03.14   add TryPrivate flag in connection protocol for server bridging with Mosquitto (thanks @Buxton)
+--              see: https://smarthome.community/topic/316/openluup-mqtt-server/74
+--              and: https://mosquitto.org/man/mosquitto-conf-5.html
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -352,6 +355,9 @@ function parse.CONNECT(message, credentials)
   
   -- protocol level should be 4 for MQTT 3.1.1
   local protocol_level = message: read_bytes (1) : byte()         -- byte 7
+  
+  local TryPrivate = math.floor (protocol_level / 128)            -- 2021.03.14 mask off bit #7 used by Mosquitto
+  protocol_level = protocol_level % 128  
   if protocol_level ~= 4 then 
     return nil, "Protocol level is not 3.1.1"
   end
@@ -402,6 +408,7 @@ function parse.CONNECT(message, credentials)
       WillMessage = WillMessage,
       UserName = Username,
       Password = Password,
+      TryPrivate = TryPrivate,        -- 2021.03.14
     }
   
   _debug ("ClientId: " .. ClientId)
@@ -772,6 +779,8 @@ local function incoming (client, credentials, subscriptions)
   local pname = "RECEIVE ERROR"
   local message, errmsg = MQTT_packet.receive (client)
   
+--  client:settimeout(2)    -- don't hang on read or send
+  
   if message then
     pname = message.packet_name
     _debug (table.concat {pname, ' ', tostring(client)})
@@ -895,13 +904,8 @@ end
 
 
 --- return module variables and methods
-return {
+return setmetatable ({
     ABOUT = ABOUT,
-    
-    TEST = {          -- for testing only
-      packet = MQTT_packet,
-      parse = parse,
-    },
     
     -- constants
     myIP = tables.myIP,
@@ -914,8 +918,20 @@ return {
     new = new,       -- create another new MQTT server
     
     -- variables
-    iprequests  = iprequests,
-    subscribers = subscriptions,
     statistics = subscriptions.stats,
 
-}
+  },{
+  
+  -- hide some of the more esoteric data structures, only used internally by openLuup
+  
+    __index = {
+          
+    TEST = {          -- for testing only
+        packet = MQTT_packet,
+        parse = parse,
+      },
+    
+    iprequests  = iprequests,
+    subscribers = subscriptions,
+    
+  }})
