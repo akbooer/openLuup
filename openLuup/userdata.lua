@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2021.03.11",
+  VERSION       = "2021.03.14",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -74,6 +74,7 @@ local ABOUT = {
 -- 2020.03.31   improve plugin loading and ordering
 
 -- 2021.03.11   remove commented out code
+-- 2021.03.14   add ThousandsSeparator top-level attribute
 
 
 local json    = require "openLuup.json"
@@ -194,6 +195,8 @@ luup.log "startup code completed"
   LuaTestCode  = '',    -- 2019.06.11
   LuaTestCode2 = '',
   LuaTestCode3 = '',
+  
+  ThousandsSeparator = ',',   -- 2021.03.14
 
 }
 

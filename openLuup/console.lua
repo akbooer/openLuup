@@ -292,6 +292,13 @@ local function nice (x, maxlength)
   return truncate (s, maxlength or 50)
 end
 
+-- add thousands comma to numbers
+local ThousandsSeparator = luup.attr_get "ThousandsSeparator" or ','
+local function commas (n, ...)
+  local a, b = tostring (n or 0): match "(%d-)(%d?%d?%d)$"
+  return a ~= '' and commas (a, b, ...) or table.concat ({b, ...}, ThousandsSeparator)
+end
+
 local function dev_or_scene_name (d, tbl)
   d = tonumber(d) or 0
   local name = (tbl[d] or empty).description or 'system'
@@ -1197,7 +1204,7 @@ function pages.mqtt ()
   
   local broker = {}
   for n, v in sorted (mqtt.statistics) do
-    broker[#broker+1] = {n, v}
+    broker[#broker+1] = {n, commas (v)}
   end
   local stats = create_table_from_data ({}, broker)
   return xhtml.div {
