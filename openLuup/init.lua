@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.03.11",
+  VERSION       = "2021.03.17",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -220,6 +220,7 @@ do -- set attributes, possibly decoding if required
 --      Backlog = 100,
 --      CloseIdleSocketAfter = 120,
 --      Port = 1883,
+--      Bridge_UDP = 2883,
 --    },
     Scenes = {
       -- Prolog/Epilog are global function names to run before/after ALL scenes
@@ -329,9 +330,9 @@ do --	 SERVERs and SCHEDULER
 
   luup.inet.wget "/shelly"        -- 2021.02.01  start the Shelly bridge (new CGI-style of bridge) BEFORE MQTT server
   
+  luup.openLuup.mqtt = mqtt
   if config.MQTT then 
     mqtt.start (config.MQTT) 
-    luup.openLuup.mqtt = mqtt
     if config.MQTT.PublishVariableUpdates == "true" then
       devutil.publish_variable_updates (true)
     end

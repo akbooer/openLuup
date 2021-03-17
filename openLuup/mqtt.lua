@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.14",
+  VERSION       = "2021.03.17",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -33,6 +33,7 @@ local ABOUT = {
 -- 2021.03.14   add TryPrivate flag in connection protocol for server bridging with Mosquitto (thanks @Buxton)
 --              see: https://smarthome.community/topic/316/openluup-mqtt-server/74
 --              and: https://mosquitto.org/man/mosquitto-conf-5.html
+-- 2021.03.17   add UDP -> MQTT bridge
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -886,6 +887,20 @@ local function start (config)
       Password = config.Password or '',
     }
 
+  -- callback function is called with (port, {datagram = ..., ip = ...}, "udp")
+  -- datagram format is topic/=/message
+  local function UDP_MQTT_bridge (_, data)
+    local topic, message = data.datagram: match "^(.-)/=/(.+)"
+    if topic then 
+      subscriptions: publish (topic, message) 
+    end
+
+  end
+  
+  if tonumber (config.Bridge_UDP) then                  -- start UDP-MQTT bridge
+    ioutil.udp.register_handler (UDP_MQTT_bridge, config.Bridge_UDP)
+  end
+  
   local function MQTTservlet (client)
     return function () incoming (client, credentials, subscriptions) end
   end 

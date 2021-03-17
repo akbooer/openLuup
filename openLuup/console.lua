@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.14",
+  VERSION       = "2021.03.15",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1211,7 +1211,7 @@ function pages.mqtt ()
       html5_title "MQTT QoS 0 server",
 --      selection,
     xhtml.div {class="w3-rest w3-panel", 
-      xhtml.h5 "Server statistics: (up to 60 seconds latency)", stats,
+      xhtml.h5 "Server statistics:", stats,
       xhtml.h5 "Subscribed topics:", 
       tbl }}
 
