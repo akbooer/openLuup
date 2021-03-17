@@ -89,7 +89,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 
 -- 2021.01.09  developing scene UI
 -- 2021.01.31  add MQTT server
--- 2021.03.11 @rafale77 change to slider position variable
+-- 2021.03.11  @rafale77 change to slider position variable
 
 
 --  WSAPI Lua CGI implementation

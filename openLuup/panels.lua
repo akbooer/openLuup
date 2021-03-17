@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2021.03.05",
+  VERSION       = "2021.03.17",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -46,6 +46,7 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 
 -- 2021.01.20  add panel utility functions
 -- 2021.03.05  generic Shelly control panel
+-- 2021.03.17  generic sensor device (for @ArcherS)
 
 
 local xml = require "openLuup.xml"
@@ -59,6 +60,7 @@ local sid = {
     altui     = "urn:upnp-org:serviceId:altui1",
     camera    = "urn:micasaverde-com:serviceId:Camera1",
     energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
+    generic   = "urn:micasaverde-com:serviceId:GenericSensor1",
     netatmo   = "urn:akbooer-com:serviceId:Netatmo1",
     scene     = "urn:micasaverde-com:serviceId:SceneController1",
     security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
@@ -176,6 +178,15 @@ local panels = {
     end,
   },
   
+--
+-- Generic Sensor
+--
+  GenericSensor = {
+    panel = function (devNo)
+      local v = luup.variable_get (sid.generic, "CurrentValue", devNo)
+      return h.span (v or '')
+    end,
+  },
 --
 -- Weather (NB. this is the device type for the DarkSkyWeather plugin)
 --
