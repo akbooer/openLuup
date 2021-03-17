@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2021.03.17",
+  VERSION       = "2021.03.17c",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -183,7 +183,7 @@ local panels = {
 --
   GenericSensor = {
     panel = function (devNo)
-      local v = luup.variable_get (sid.generic, "CurrentValue", devNo)
+      local v = luup.variable_get (sid.generic, "CurrentLevel", devNo)
       return h.span (v or '')
     end,
   },
