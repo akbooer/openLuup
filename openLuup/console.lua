@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.15",
+  VERSION       = "2021.03.18",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -90,6 +90,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.01.09  developing scene UI
 -- 2021.01.31  add MQTT server
 -- 2021.03.11  @rafale77 change to slider position variable
+-- 2021.03.18  add log_analysis() to pages.log
 
 
 --  WSAPI Lua CGI implementation
@@ -1084,6 +1085,28 @@ end
 
 --------------------------------
 
+-- 2021.03.18  analyze time gaps in log
+local function log_analysis (log)
+  local n, at = 0, ''
+  local max, old = 0
+  local datetime = "%s %s:%s:%s"
+  for l in log: gmatch "[^%c]+" do
+    n = n + 1
+    local YMD, h,m,s = l: match "^%c*(%d+%-%d+%-%d+)%s+(%d+):(%d+):(%d+%.%d+)"
+    if YMD then 
+      local new = 60*(24*h+m)+s
+      local dif = new - (old or new)
+      if dif > max then 
+        max = dif 
+        at = datetime: format (YMD, h,m,s)
+      end
+      old = new
+    end
+  end
+  max = max - max % 0.001
+  return n, max, at
+end
+
 function pages.log (p)
   local page = p.page or ''  
   local name = luup.attr_get "openLuup.Logfile.Name" or "LuaUPnP.log"
@@ -1098,7 +1121,10 @@ function pages.log (p)
   if f then
     local x = f:read "*a"
     f: close()
-    pre = xhtml.pre {x}
+    local n, max, at = log_analysis (x)     -- 2021.03.18
+    pre = xhtml.div {
+      xhtml.span {"# lines: ", n, ", maximum gap: ", max, "s @ ", at},
+      xhtml.pre {x}}
   end
   local end_of_page_buttons = page_group_buttons (page)
   return page_wrapper(name, pre, xhtml.div {class="w3-container w3-row w3-margin-top",
