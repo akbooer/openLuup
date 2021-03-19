@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2021.03.05",
+  VERSION       = "2021.03.19",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -82,6 +82,8 @@ local ABOUT = {
 -- 2021.01.31  add MQTT to register_handler() protocol
 -- 2021.02.03  add luup.openLuup.find_device() by attribute: name / id / altid / etc...
 -- 2021.03.05  add luup.openLuup.find_scene()
+-- 2021.03.19  add optional parameter to request_handler() (thanks @therealdb)
+--             see: https://smarthome.community/topic/316/openluup-mqtt-server/81
 
 
 local logs          = require "openLuup.logs"
@@ -785,8 +787,8 @@ so that this single call may be used for a number of different types of callback
   luup.register_handler ("myHandler", "me@openLuup.local")
   
 --]]
-local function register_handler (...)
-  local global_function_name, request_name = parameters ({"string", "string"}, ...)
+local function register_handler (g, r, parameter)
+  local global_function_name, request_name = parameters ({"string", "string"}, g, r)
   local fct = entry_point (global_function_name, "luup.register_handler")
   if fct then
     -- fixed callback context - thanks @reneboer
@@ -805,7 +807,7 @@ local function register_handler (...)
         }
       local scheme = valid[protocol: lower()]
       if scheme then 
-        scheme.register_handler (fct, address)
+        scheme.register_handler (fct, address, parameter)
       else
         _log ("ERROR, invalid register_handler protocol: " .. request_name)
       end

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.17",
+  VERSION       = "2021.03.19",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -34,6 +34,8 @@ local ABOUT = {
 --              see: https://smarthome.community/topic/316/openluup-mqtt-server/74
 --              and: https://mosquitto.org/man/mosquitto-conf-5.html
 -- 2021.03.17   add UDP -> MQTT bridge
+-- 2021.03.19   add extra parameter to register_handler() (thanks @therealdb)
+--              see: https://smarthome.community/topic/316/openluup-mqtt-server/81
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -659,10 +661,11 @@ local subscriptions = {} do
   end
 
   -- register an openLuup-side subscriber to a single topic
-  function methods: register_handler (callback, topic)
+  function methods: register_handler (callback, topic, parameter)
     self: subscribe {
       callback = callback, 
       devNo = scheduler.current_device (),
+      parameter = parameter,
       topic = topic,
       count = 0,
     }
@@ -713,7 +716,7 @@ local subscriptions = {} do
         s.count = (s.count or 0) + 1
         local ok, err
         if s.callback then
-          ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage)
+          ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage, s.parameter)
         elseif s.client then
           message = message or MQTT_packet.PUBLISH (TopicName, ApplicationMessage)
           ok, err = self: send_to_client (s.client, message) -- publish to external subscribers

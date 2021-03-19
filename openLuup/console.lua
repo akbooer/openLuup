@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.18",
+  VERSION       = "2021.03.19",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -633,7 +633,7 @@ end
 -----------------------------
 
 local function html5_title (...) return xhtml.h4 {...} end
-local function red (x) return xhtml.span {class = "w3-red", x}  end
+local function red (...) return xhtml.span {class = "w3-red", ...}  end
 local function status_number (n) if n ~= 200 then return red (n) end; return n end
 local function page_wrapper (title, ...) return xhtml.div {html5_title (title), ...} end
 
@@ -1103,7 +1103,7 @@ local function log_analysis (log)
       old = new
     end
   end
-  max = max - max % 0.001
+  max = math.floor (max + 0.5)
   return n, max, at
 end
 
@@ -1122,8 +1122,12 @@ function pages.log (p)
     local x = f:read "*a"
     f: close()
     local n, max, at = log_analysis (x)     -- 2021.03.18
+    local warning = ''
+    if max > 122 then
+      warning = red (" ––– Large gap in log: ", max, "s @ ", at, " –––")
+    end
     pre = xhtml.div {
-      xhtml.span {"# lines: ", n, ", maximum gap: ", max, "s @ ", at},
+      xhtml.span {"# lines: ", n, warning},
       xhtml.pre {x}}
   end
   local end_of_page_buttons = page_group_buttons (page)

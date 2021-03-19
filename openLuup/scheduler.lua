@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2021.01.16",
+  VERSION       = "2021.03.19",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -69,6 +69,7 @@ local ABOUT = {
 -- 2020.12.30  evaluate function extra_return parameters in run_job()
 
 -- 2021.01.16  add state_names (moved from console)
+-- 2021.03.19  add optional user-defined parameter to user callback in socket_callbacks()
 
 
 local logs      = require "openLuup.logs"
@@ -623,7 +624,7 @@ local function socket_callbacks (timeout)
     local info = socket_list[sock]
     local call = info.callback        -- registered callback handler
     local dev  = info.devNo
-    local ok, msg = context_switch (dev, call, sock)    -- dispatch  
+    local ok, msg = context_switch (dev, call, sock, info.parameter)    -- dispatch  
     if not ok then 
       _log (tostring(info.callback) .. " ERROR: " .. (msg or '?'), "luup.incoming_callback") 
     end
