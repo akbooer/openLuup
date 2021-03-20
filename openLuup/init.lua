@@ -88,7 +88,7 @@ function require (module, ...)
   reqs[module] = (reqs[module] or 0) + 1
   req_table[dev] = reqs
   local _M =  G_require (module, ...)
-  req_table.versions[module] = _M._VERSION or ''
+  req_table.versions[module] = type (_M) == "table" and _M._VERSION or ''
   return _M
 end
 
