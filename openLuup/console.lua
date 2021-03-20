@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.19",
+  VERSION       = "2021.03.20",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -91,6 +91,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.01.31  add MQTT server
 -- 2021.03.11  @rafale77 change to slider position variable
 -- 2021.03.18  add log_analysis() to pages.log
+-- 2021.03.20  add pages.required for prerequisites and plugin dependencies
 
 
 --  WSAPI Lua CGI implementation
@@ -223,7 +224,7 @@ end
 local page_groups = {
     ["Apps"]      = {"plugins_table", "app_store", "luup_files", "required_files"},
     ["Historian"] = {"summary", "cache", "database", "orphans"},
-    ["System"]    = {"parameters", "top_level", "all_globals", "states", "sandboxes", "RELOAD"},
+    ["System"]    = {"parameters", "top_level", "all_globals", "states", "required", "sandboxes", "RELOAD"},
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "globals", "user_data"},
     ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
@@ -1022,6 +1023,34 @@ function pages.states ()
   return page_wrapper("Device States (defined by service file short_names)", tbl)
 end
 
+function pages.required ()
+  local columns = {"module","version"}
+  local reqs = luup.openLuup.req_table
+  local versions = reqs.versions
+  local vs = {}
+  local wanted = {"lfs", "ltn12", "md5", "mime", "socket", "ssl"}
+  for _, n in pairs (wanted) do
+    local v = versions[n]
+    if v then vs[#vs+1] = {n, v} end
+  end
+  local tbl = create_table_from_data (columns, vs)
+  
+  local byp = {}
+  local unwanted = {[0] = true, versions = true}
+  for plugin, list in sorted (reqs) do
+    if not unwanted[plugin] then
+      byp[#byp+1] = {{xhtml.strong {dev_or_scene_name (plugin, luup.devices)}, colspan = 2}}
+      for n in sorted (list) do
+        byp[#byp+1] = {'', n}
+      end
+    end
+  end
+  local tbl2 = create_table_from_data (nil, byp)
+  
+  return page_wrapper("Required modules", 
+    xhtml.h5 "Prerequisites", tbl, 
+    xhtml.h5 "Required by Plugin", tbl2)
+end
 
 -- backups
 function pages.backups ()

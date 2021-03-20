@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.03.17",
+  VERSION       = "2021.03.20",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -78,7 +78,7 @@ _log (lfs.currentdir(),":: openLuup STARTUP ")
 logs.banner (ABOUT)   -- for version control
 
 local scheduler             -- forward reference
-local req_table = {}
+local req_table = {versions = {}}
 
 local G_require = require
 
@@ -87,7 +87,9 @@ function require (module, ...)
   local reqs = req_table[dev] or {}
   reqs[module] = (reqs[module] or 0) + 1
   req_table[dev] = reqs
-  return G_require (module, ...)
+  local _M =  G_require (module, ...)
+  req_table.versions[module] = _M._VERSION or ''
+  return _M
 end
 
 local loader = require "openLuup.loader"  -- keep this first... it prototypes the global environment
