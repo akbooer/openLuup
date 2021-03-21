@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.20",
+  VERSION       = "2021.03.21",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1118,10 +1118,12 @@ end
 local function log_analysis (log)
   local n, at = 0, ''
   local max, old = 0
+  local nerr = 0
   local datetime = "%s %s:%s:%s"
   for l in log: gmatch "[^%c]+" do
     n = n + 1
     local YMD, h,m,s = l: match "^%c*(%d+%-%d+%-%d+)%s+(%d+):(%d+):(%d+%.%d+)"
+    if l: lower(): match "error" then nerr = nerr + 1 end
     if YMD then 
       local new = 60*(24*h+m)+s
       local dif = new - (old or new)
@@ -1133,7 +1135,7 @@ local function log_analysis (log)
     end
   end
   max = math.floor (max + 0.5)
-  return n, max, at
+  return n, max, at, nerr
 end
 
 function pages.log (p)
@@ -1150,13 +1152,10 @@ function pages.log (p)
   if f then
     local x = f:read "*a"
     f: close()
-    local n, max, at = log_analysis (x)     -- 2021.03.18
-    local warning = ''
-    if max > 122 then
-      warning = red (" ––– Large gap in log: ", max, "s @ ", at, " –––")
-    end
+    local n, max, at, nerr = log_analysis (x)     -- 2021.03.18
+    local info = "%d lines, %d error%s, max gap %ss"
     pre = xhtml.div {
-      xhtml.span {"# lines: ", n, warning},
+      xhtml.span {info: format (n, nerr, nerr == 1 and '' or 's', max)},
       xhtml.pre {x}}
   end
   local end_of_page_buttons = page_group_buttons (page)
