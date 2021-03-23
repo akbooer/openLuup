@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.21",
+  VERSION       = "2021.03.23",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1123,7 +1123,7 @@ local function log_analysis (log)
   for l in log: gmatch "[^%c]+" do
     n = n + 1
     local YMD, h,m,s = l: match "^%c*(%d+%-%d+%-%d+)%s+(%d+):(%d+):(%d+%.%d+)"
-    if l: lower(): match "error" then nerr = nerr + 1 end
+    if l: lower(): match "%serror%s" then nerr = nerr + 1 end
     if YMD then 
       local new = 60*(24*h+m)+s
       local dif = new - (old or new)
