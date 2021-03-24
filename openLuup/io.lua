@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2019.11.29",
+  VERSION       = "2021.03.24",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -58,6 +58,9 @@ local ABOUT = {
 -- 2019.11.29  server.new() watches client proxy, rather than socket itself, as passed to incoming handler
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263
 
+-- 2021.03.24  add client.send() with check for socket ready
+
+
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
 local READ_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for incoming reads
 
@@ -69,6 +72,8 @@ local scheduler = require "openLuup.scheduler"
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
+
+local empty = setmetatable ({}, {__newindex = function() error ("read-only", 2) end})
 
 --[[
  <protocol>
@@ -479,7 +484,7 @@ function server.new (config)
   local port = tostring (config.port)
   local servlet = config.servlet
   local connects = config.connects or {}                -- statistics of incoming connections
-  
+  local select = socket.select
   
   local ip                                              -- client's IP address
   local server, err = socket.bind ('*', port, backlog)  -- create the master listening port
@@ -512,7 +517,13 @@ function server.new (config)
         ip = ip,                              -- ip address of the client
         closed = false,
       }
-      client.close  = function (self, msg)         -- note optional log message cf. standard socket close
+      client.send = function (self, ...)      -- 2021.03.24 check socket ready to send
+        local s = {sock}
+        local _, x = select (empty, s, 0)      -- check OK to send, with no delay
+        if #x == 0 then return nil, "socket.select() not ready to send ".. tostring(sock) end
+        return sock: send (...)
+      end
+      client.close = function (self, msg)         -- note optional log message cf. standard socket close
           if not self.closed then
             self.closed = true
             local disconnect = "%s connection closed %s %s"
