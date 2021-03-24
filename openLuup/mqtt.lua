@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.24",
+  VERSION       = "2021.03.20",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -37,7 +37,6 @@ local ABOUT = {
 -- 2021.03.19   add extra parameter to register_handler() (thanks @therealdb)
 --              see: https://smarthome.community/topic/316/openluup-mqtt-server/81
 -- 2021.03.20   EXTRA checks with socket.select() to ensure socket is OK to send
--- 2021.03.24   EXTRA checks moved to io.server.open()
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -47,12 +46,16 @@ local logs      = require "openLuup.logs"
 local tables    = require "openLuup.servertables"     -- for myIP
 local ioutil    = require "openLuup.io"               -- for core server functions
 local scheduler = require "openLuup.scheduler"
+local socket    = require "socket"                    -- for socket.select()
 
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
 
 local iprequests = {}
+
+local empty = setmetatable ({}, {__newindex = function() error ("read-only", 2) end})
+local select = socket.select
 
 -------------------------------------------
 --
@@ -693,7 +696,16 @@ local subscriptions = {} do
     local ok, err = true
     local closed = client.closed            -- client.closed is created by io.server
     if not closed then
-      ok, err = client: send (message)      -- don't try to send to closed socket
+      
+      -- EXTRA checks to ensure socket is OK to send
+      local s = {client}
+      local _, x = select (empty, s, 0)      -- check OK to send, with no delay
+      ok, err = #x > 0, "socket.select() 'not ready to send'"
+      --
+      
+      if ok then
+        ok, err = client: send (message)      -- don't try to send to closed socket
+      end
     end
     if closed or not ok then
       self: close_and_unsubscribe_from_all (client, err)

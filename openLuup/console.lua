@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.24",
+  VERSION       = "2021.03.23",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -224,7 +224,7 @@ end
 local page_groups = {
     ["Apps"]      = {"plugins_table", "app_store", "luup_files", "required_files"},
     ["Historian"] = {"summary", "cache", "database", "orphans"},
-    ["System"]    = {"parameters", "top_level", "all_globals", "states", "sandboxes", "RELOAD"},
+    ["System"]    = {"parameters", "top_level", "all_globals", "states", "required", "sandboxes", "RELOAD"},
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "globals", "user_data"},
     ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
     ["Scheduler"] = {"running", "completed", "startup", "plugins", "delays", "watches"},
@@ -1023,7 +1023,7 @@ function pages.states ()
   return page_wrapper("Device States (defined by service file short_names)", tbl)
 end
 
-function pages.required_files ()
+function pages.required ()
   local columns = {"module","version"}
   local reqs = luup.openLuup.req_table
   local versions = reqs.versions
@@ -1049,7 +1049,7 @@ function pages.required_files ()
   
   return page_wrapper("Required modules", 
     xhtml.h5 "Prerequisites", tbl, 
-    xhtml.h5 "Required by Plugins", tbl2)
+    xhtml.h5 "Required by Plugin", tbl2)
 end
 
 -- backups
@@ -3180,6 +3180,21 @@ function pages.luup_files (p)
   local t = create_table_from_data ({{colspan=2, "filename (click to view)"}}, fnames)
   local rdiv = xhtml.div {typemenu, xhtml.div {class="w3-rest w3-panel", t } }
   return page_wrapper ("Luup files", rdiv)  
+end
+
+function pages.required_files ()      -- 2020.07.04
+  local r = luup.openLuup.req_table
+  local t = xhtml.table {class="w3-small"}
+  t.header {"Plugin", "#", "Module"}
+  for plugin, reqs in sorted (r) do
+--    if plugin ~= 0 then
+      t.row {devname (plugin)}
+      for module, number in sorted (reqs) do
+        t.row {'', rhs(number), module}
+      end
+--    end
+  end
+  return page_wrapper ("Required modules by Plugin:", t)
 end
 
 -- command line
