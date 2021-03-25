@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.24",
+  VERSION       = "2021.03.25",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -92,6 +92,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.03.11  @rafale77 change to slider position variable
 -- 2021.03.18  add log_analysis() to pages.log
 -- 2021.03.20  add pages.required for prerequisites and plugin dependencies
+-- 2021.03.25  highlight log error lines in red (thanks @rafale77)
 
 
 --  WSAPI Lua CGI implementation
@@ -1115,15 +1116,31 @@ end
 --------------------------------
 
 -- 2021.03.18  analyze time gaps in log
-local function log_analysis (log)
+-- 2021.03.25  highlight error lines in red (thanks @rafale77)
+
+local function log_analysis (name)
   local n, at = 0, ''
   local max, old = 0
   local nerr = 0
   local datetime = "%s %s:%s:%s"
-  for l in log: gmatch "[^%c]+" do
+
+  local mode = false
+  local log 
+  local logs = {}
+
+  for l in io.lines (name) do
+    
     n = n + 1
+    local err = l: lower(): match "%serror%s"
+    nerr = nerr + (err and 1 or 0)
+    if err ~= mode then
+      log = {class = err and "w3-text-red" or nil} 
+      logs[#logs+1] = log
+      mode = err
+    end
+    log[#log+1] = l
+
     local YMD, h,m,s = l: match "^%c*(%d+%-%d+%-%d+)%s+(%d+):(%d+):(%d+%.%d+)"
-    if l: lower(): match "%serror%s" then nerr = nerr + 1 end
     if YMD then 
       local new = 60*(24*h+m)+s
       local dif = new - (old or new)
@@ -1133,10 +1150,13 @@ local function log_analysis (log)
       end
       old = new
     end
+
   end
+  
   max = math.floor (max + 0.5)
-  return n, max, at, nerr
+  return logs, n, max, at, nerr
 end
+
 
 function pages.log (p)
   local page = p.page or ''  
@@ -1148,15 +1168,14 @@ function pages.log (p)
     name = table.concat {name, '.', ver}
   end
   local pre
-  local f = io.open (name)
-  if f then
-    local x = f:read "*a"
-    f: close()
-    local n, max, at, nerr = log_analysis (x)     -- 2021.03.18
+  local logs, n, max, at, nerr = log_analysis (name)     -- 2021.03.18
+  if n > 0 then
     local info = "%d lines, %d error%s, max gap %ss @ %s"
-    pre = xhtml.div {
-      xhtml.span {info: format (n, nerr, nerr == 1 and '' or 's', max, at)},
-      xhtml.pre {x}}
+    pre = xhtml.div {xhtml.span {info: format (n, nerr, nerr == 1 and '' or 's', max, at)}}
+    for _, l in ipairs (logs) do
+      local q = table.concat (l, '\n')
+      pre[#pre + 1] = xhtml.pre {class = l.class, q}
+    end
   end
   local end_of_page_buttons = page_group_buttons (page)
   return page_wrapper(name, pre, xhtml.div {class="w3-container w3-row w3-margin-top",
