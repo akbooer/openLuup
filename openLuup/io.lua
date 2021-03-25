@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2021.03.24b",
+  VERSION       = "2021.03.25",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -59,6 +59,7 @@ local ABOUT = {
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263
 
 -- 2021.03.24  add client.send() with check for socket ready
+-- 2021.03.25  add keepalive option to new client sockets
 
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
@@ -546,6 +547,7 @@ function server.new (config)
       expiry = socket.gettime () + idletime     -- set initial socket expiry 
       sock:settimeout(nil)                      -- no socket timeout on read
       sock:setoption ("tcp-nodelay", true)      -- allow consecutive read/writes
+      sock:setoption ("keepalive", true)        -- TODO: * * * TESTING keepalive * * *    2021.03.25 
     end
     
     do -- start a new user servlet using client socket and set up its callback
