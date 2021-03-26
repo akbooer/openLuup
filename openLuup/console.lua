@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.25",
+  VERSION       = "2021.03.26",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1121,18 +1121,20 @@ end
 local function log_analysis (name)
   local n, at = 0, ''
   local max, old = 0
-  local nerr = 0
   local datetime = "%s %s:%s:%s"
 
   local mode = false
-  local log 
-  local logs = {}
+  local log               -- current list of contiguous log lines
+  local logs = {}         -- list of log sections  
+  local errlog = {}       -- list of just error lines
 
   for l in io.lines (name) do
     
     n = n + 1
     local err = l: lower(): match "%serror%s"
-    nerr = nerr + (err and 1 or 0)
+    if err then
+      errlog[#errlog+1] = l
+    end
     if err ~= mode then
       log = {class = err and "w3-text-red" or nil} 
       logs[#logs+1] = log
@@ -1154,7 +1156,7 @@ local function log_analysis (name)
   end
   
   max = math.floor (max + 0.5)
-  return logs, n, max, at, nerr
+  return logs, n, max, at, errlog
 end
 
 
@@ -1168,7 +1170,8 @@ function pages.log (p)
     name = table.concat {name, '.', ver}
   end
   local pre
-  local logs, n, max, at, nerr = log_analysis (name)     -- 2021.03.18
+  local logs, n, max, at, errlog = log_analysis (name)     -- 2021.03.18
+  local nerr = #errlog
   if n > 0 then
     local info = "%d lines, %d error%s, max gap %ss @ %s"
     pre = xhtml.div {xhtml.span {info: format (n, nerr, nerr == 1 and '' or 's', max, at)}}
@@ -1177,10 +1180,15 @@ function pages.log (p)
       pre[#pre + 1] = xhtml.pre {class = l.class, q}
     end
   end
+  local message 
+  if nerr > 0 then
+    message = xhtml.pre {class = "w3-text-red", button = "w3-red", table.concat (errlog, '\n')}
+  end
   local end_of_page_buttons = page_group_buttons (page)
   return page_wrapper(name, pre, xhtml.div {class="w3-container w3-row w3-margin-top",
       page_tree (page, p.previous), 
-      xhtml.div {class="w3-container w3-cell", xhtml.div (end_of_page_buttons)}})
+      xhtml.div {class="w3-container w3-cell", xhtml.div (end_of_page_buttons)}}),
+      message
 end
 
 for i = 1,5 do pages["log." .. i] = pages.log end         -- add the older file versions
@@ -3304,9 +3312,10 @@ function pages.home (p)
     xhtml.h4 {"Page Index"}, div(index)} 
 end
 
-local function page_nav (current, previous)
+local function page_nav (current, previous, message)
 --  local onclick="document.getElementById('messages').style.display='block'" 
-  local messages = div (xhtml.div {class="w3-button w3-round w3-border", "Messages ▼ "})
+  local bcol = message and message.button or ''
+  local messages = div (xhtml.div {class="w3-button w3-round w3-border " .. bcol, "Messages ▼ "})
   messages.onclick="ShowHide('messages')" 
 --  local msg = xhtml.div {class="w3-container w3-green w3-bar", 
 --    xhtml.span {onclick="this.parentElement.style.display='none'",
@@ -3316,9 +3325,7 @@ local function page_nav (current, previous)
   return div {class="w3-container w3-row w3-margin-top",
       page_tree (current, previous), 
       div {class="w3-container w3-cell", messages},
-      div {class = "w3-panel w3-border w3-hide", id="messages",  
-        "hello",
-        },
+      div {class = "w3-panel w3-border w3-hide", id="messages", message, },
       div {xhtml.h3 {groupname}, div (tabs) }}
 end
 
@@ -3399,9 +3406,8 @@ function run (wsapi_env)
   -- PAGES
   if p.page ~= p.previous then res: set_cookie ("previous", p.page) end
   
-  local navigation = page_nav (p.page, p.previous)
-
-  local sheet = pages[p.page] (p, req)
+  local sheet, message = pages[p.page] (p, req)
+  local navigation = page_nav (p.page, p.previous, message)
   local formatted_page = div {class = "w3-container", navigation, sheet}
   
   static_menu = static_menu or dynamic_menu()    -- build the menu tree just once

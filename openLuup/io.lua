@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2021.03.25",
+  VERSION       = "2021.03.26",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -60,6 +60,7 @@ local ABOUT = {
 
 -- 2021.03.24  add client.send() with check for socket ready
 -- 2021.03.25  add keepalive option to new client sockets
+-- 2021.03.26  add server config.sendwait
 
 
 local OPEN_SOCKET_TIMEOUT = 5       -- wait up to 5 seconds for initial socket open
@@ -486,6 +487,7 @@ function server.new (config)
   local servlet = config.servlet
   local connects = config.connects or {}                -- statistics of incoming connections
   local select = socket.select
+  local sendwait = config.sendwait or 1.0               -- socket.select() timeout
   
   local ip                                              -- client's IP address
   local server, err = socket.bind ('*', port, backlog)  -- create the master listening port
@@ -520,7 +522,7 @@ function server.new (config)
       }
       client.send = function (self, ...)      -- 2021.03.24 check socket ready to send
         local s = {sock}
-        local _, x = select (empty, s, 0.2)      -- check OK to send, with small delay
+        local _, x = select (empty, s, sendwait)      -- check OK to send, with small delay
         if #x == 0 then return nil, "socket.select() not ready to send ".. tostring(sock) end
         return sock: send (...)
       end

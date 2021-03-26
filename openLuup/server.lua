@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2020.03.20",
+  VERSION       = "2020.03.26",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2020 AKBooer",
@@ -316,6 +316,7 @@ local function start (config)
       idletime  = config.CloseIdleSocketAfter or 90,    -- connect timeout
       servlet   = HTTPservlet,                          -- our own servlet
       connects  = iprequests,                           -- use our own table for info
+      sendwait  = config.SelectWait or 1.0,             -- socket.select() timeout
     }
 
 end
