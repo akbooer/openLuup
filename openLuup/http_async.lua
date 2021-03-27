@@ -35,7 +35,7 @@ ABOUT = {
 -- 2019.05.08  allow user create function (for https, etc.)
 -- 2019.05.09  incorporated code from LuaSec
 -- 2019.05.10  modified to work on either Vera (using proxy scheduler) or openLuup
-
+-- 2021.03.25  update luasec to 1.0
 
 local url     = require "socket.url"
 local http    = require "socket.http"
@@ -323,8 +323,8 @@ end
 ----------------------------------------------------
 
 --[[
-LuaSec 0.4 license
-Copyright (C) 2006-2009 Bruno Silvestre, PUC-Rio
+LuaSec 1.0 license
+Copyright (C) 2006-2021 Bruno Silvestre, PUC-Rio
 
 Permission is hereby granted, free  of charge, to any person obtaining
 a  copy  of this  software  and  associated  documentation files  (the
