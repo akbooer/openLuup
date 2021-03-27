@@ -363,13 +363,7 @@ local function LuaSec_https ()
 
   local ahttp  = LuaSocket_http()
 
---  local table  = require("table")
---  local string = require("string")
-
-  local try          = socket.try
-  local type         = type
-  local pairs        = pairs
-  local getmetatable = getmetatable
+  local try    = socket.try
 
 --  module("ssl.https")
   --
