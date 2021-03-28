@@ -2,7 +2,7 @@ module ("http_async", package.seeall)
 
 ABOUT = {
   NAME          = "http_async",
-  VERSION       = "2019.05.10",
+  VERSION       = "2021.03.25",
   DESCRIPTION   = "Asynchronous HTTP(S) request for Vera and openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2018-19",
@@ -35,7 +35,7 @@ ABOUT = {
 -- 2019.05.08  allow user create function (for https, etc.)
 -- 2019.05.09  incorporated code from LuaSec
 -- 2019.05.10  modified to work on either Vera (using proxy scheduler) or openLuup
-
+-- 2021.03.25  update luasec to 1.0
 
 local url     = require "socket.url"
 local http    = require "socket.http"
@@ -323,8 +323,8 @@ end
 ----------------------------------------------------
 
 --[[
-LuaSec 0.4 license
-Copyright (C) 2006-2009 Bruno Silvestre, PUC-Rio
+LuaSec 1.0 license
+Copyright (C) 2006-2021 Bruno Silvestre, PUC-Rio
 
 Permission is hereby granted, free  of charge, to any person obtaining
 a  copy  of this  software  and  associated  documentation files  (the
@@ -348,8 +348,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 local function LuaSec_https ()
   ----------------------------------------------------------------------------
-  -- LuaSec 0.4
-  -- Copyright (C) 2009 PUC-Rio
+  -- LuaSec 1.0
+  -- Copyright (C) 2009-2021 PUC-Rio
   --
   -- Author: Pablo Musa
   -- Author: Tomas Guisasola
@@ -363,28 +363,23 @@ local function LuaSec_https ()
 
   local ahttp  = LuaSocket_http()
 
---  local table  = require("table")
---  local string = require("string")
-
-  local try          = socket.try
-  local type         = type
-  local pairs        = pairs
-  local getmetatable = getmetatable
+  local try    = socket.try
 
 --  module("ssl.https")
   --
   -- Module
   --
   local _M = {
-    _VERSION   = "0.4",
-    _COPYRIGHT = "LuaSec 0.4 - Copyright (C) 2009 PUC-Rio",
+    _VERSION   = "1.0",
+    _COPYRIGHT = "LuaSec 1.0 - Copyright (C) 2009-2021 PUC-Rio",
     PORT       = 443,
     TIMEOUT    = 60
   }
 
+-- TLS configuration
   local cfg = {
-    protocol = "tlsv1",
-    options  = "all",
+    protocol = "any",
+    options  = {"all", "no_sslv2", "no_sslv3", "no_tlsv1"},
     verify   = "none",
   }
 
@@ -441,12 +436,14 @@ local function LuaSec_https ()
         conn.sock = try(socket.tcp())
         local st = getmetatable(conn.sock).__index.settimeout
         function conn:settimeout(...)
-           return st(self.sock, ...)
+           return st(self.sock, _M.TIMEOUT)
         end
         -- Replace TCP's connection function
         function conn:connect(host, port)
            try(self.sock:connect(host, port))
            self.sock = try(ssl.wrap(self.sock, params))
+           self.sock:sni(host)
+           self.sock:settimeout(_M.TIMEOUT)
            try(self.sock:dohandshake())
            reg(self, getmetatable(self.sock))
            return 1
@@ -514,7 +511,7 @@ local function LuaSec_https ()
     local function https_callback (res, ...)
       if res and stringrequest then res = table.concat(result_table) end
       callback (res, ...)     -- user supplied callback
-    end  
+    end
     return ahttp.async_http_request (url, https_callback)
   end
 
