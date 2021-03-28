@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2021.03.10",
+  VERSION       = "2021.03.28",
   DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -36,6 +36,7 @@ local ABOUT = {
 -- 2021.02.17  add LastUpdate time to individual devices
 -- 2021.03.01  don't start Shelly bridge until first "shellies/..." MQTT message
 -- 2021.03.05  allow /relay/xxx and /scene/xxx to have id OR name
+-- 2021.03.28  addd Shelly 1/1PM
 
 
 --local socket    = require "socket"
@@ -282,6 +283,8 @@ end
 local unknown_model = model_info (DEV.controller, generic)
 local models = setmetatable (
   {
+    ["SHSW-1"]  = model_info (DEV.light, sw2_5),
+    ["SHSW-PM"] = model_info (DEV.light, sw2_5),
     ["SHIX3-1"] = model_info (DEV.controller, ix3),
     ["SHSW-25"] = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light})      -- two child devices
   },{

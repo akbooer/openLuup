@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.03.26",
+  VERSION       = "2021.03.27",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -206,7 +206,7 @@ do -- set attributes, possibly decoding if required
       Backlog = 2000,                     -- used in socket.bind() for queue length
       ChunkedLength = 16000,              -- size of chunked transfers
       CloseIdleSocketAfter = 90,          -- number of seconds idle after which to close socket
-      SelectWait = 1.0,                   -- seconds to wait for socket ready to send
+      SelectWait = 0.1,                   -- seconds to wait for socket ready to send
     },
     SMTP = {
       Backlog = 100,                      -- RFC 821 recommended minimum queue length

@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.26",
+  VERSION       = "2021.03.28",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1131,7 +1131,7 @@ local function log_analysis (name)
   for l in io.lines (name) do
     
     n = n + 1
-    local err = l: lower(): match "%serror%s"
+    local err = l: lower(): match "%serror:?%s"
     if err then
       errlog[#errlog+1] = l
     end
@@ -2935,7 +2935,7 @@ function pages.plugins_table (_, req)
   end
   ---
   local t = xhtml.table {class = "w3-bordered"}
-  t.header {'', "Name","Version", "Files", '', "Update", "Unistall"}
+  t.header {'', "Name","Version", "Files", '', "Update", "Uninstall"}
   for _, p in ipairs (IP2) do
     local version = table.concat ({p.VersionMajor or '?', p.VersionMinor}, '.')
     local files = {}
@@ -3222,11 +3222,11 @@ function pages.command_line (_, req)
   local h = xhtml
   local window = h.div {
     html5_title ("Output: ", h.span {style="font-family:Monaco; font-size:11pt;", command} ),
-    h.pre {style="height: 500px; border:1px grey; background-color:white; overflow:scroll", output} }
+    h.pre {style="height: 450px; border:1px grey; background-color:white; overflow:scroll", output} }
   local form = h.form {action= selfref (), method="post",
     h.input {class="w3-button w3-round w3-green w3-margin", value="Submit", type = "submit"},
-    h.input {type = "text", style="width: 80%;", name ="command", 
-      autocomplete="off", placeholder="command line", autofocus=1}}
+    h.input {type = "text", style="width: 80%;", name ="command", onfocus="this.select();",
+      autocomplete="off", placeholder="command line", value=command, autofocus=1}}
   return h.div {class="w3-container", window, form}
 end
 
@@ -3309,7 +3309,7 @@ function pages.home (p)
   
   return xhtml.div {
     xhtml.h4 "House Mode", hmg,
-    xhtml.h4 {"Page Index"}, div(index)} 
+    xhtml.h4 {"Page Index"}, div(index)}
 end
 
 local function page_nav (current, previous, message)

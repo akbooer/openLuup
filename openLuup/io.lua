@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.io",
-  VERSION       = "2021.03.26",
+  VERSION       = "2021.03.27",
   DESCRIPTION   = "I/O module for plugins",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -487,7 +487,7 @@ function server.new (config)
   local servlet = config.servlet
   local connects = config.connects or {}                -- statistics of incoming connections
   local select = socket.select
-  local sendwait = config.sendwait or 1.0               -- socket.select() timeout
+  local sendwait = config.sendwait or 0.1               -- socket.select() timeout
   
   local ip                                              -- client's IP address
   local server, err = socket.bind ('*', port, backlog)  -- create the master listening port
