@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.03.28",
+  VERSION       = "2021.03.29",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1128,34 +1128,36 @@ local function log_analysis (name)
   local logs = {}         -- list of log sections  
   local errlog = {}       -- list of just error lines
 
-  for l in io.lines (name) do
-    
-    n = n + 1
-    local err = l: lower(): match "%serror:?%s"
-    if err then
-      errlog[#errlog+1] = l
-    end
-    if err ~= mode then
-      log = {class = err and "w3-text-red" or nil} 
-      logs[#logs+1] = log
-      mode = err
-    end
-    log[#log+1] = l
-
-    local YMD, h,m,s = l: match "^%c*(%d+%-%d+%-%d+)%s+(%d+):(%d+):(%d+%.%d+)"
-    if YMD then 
-      local new = 60*(24*h+m)+s
-      local dif = new - (old or new)
-      if dif > max then 
-        max = dif 
-        at = datetime: format (YMD, h,m,s)
+  if lfs.attributes (name) then
+  
+    for l in io.lines (name) do
+      
+      n = n + 1
+      local err = l: lower(): match "%serror:?%s"
+      if err then
+        errlog[#errlog+1] = l
       end
-      old = new
-    end
+      if err ~= mode then
+        log = {class = err and "w3-text-red" or nil} 
+        logs[#logs+1] = log
+        mode = err
+      end
+      log[#log+1] = l
 
+      local YMD, h,m,s = l: match "^%c*(%d+%-%d+%-%d+)%s+(%d+):(%d+):(%d+%.%d+)"
+      if YMD then 
+        local new = 60*(24*h+m)+s
+        local dif = new - (old or new)
+        if dif > max then 
+          max = math.floor (dif + 0.5) 
+          at = datetime: format (YMD, h,m,s)
+        end
+        old = new
+      end
+    end
+    
   end
   
-  max = math.floor (max + 0.5)
   return logs, n, max, at, errlog
 end
 
@@ -3222,7 +3224,7 @@ function pages.command_line (_, req)
   local h = xhtml
   local window = h.div {
     html5_title ("Output: ", h.span {style="font-family:Monaco; font-size:11pt;", command} ),
-    h.pre {style="height: 450px; border:1px grey; background-color:white; overflow:scroll", output} }
+    h.pre {style="height: 400px; border:1px grey; background-color:white; overflow:scroll", output} }
   local form = h.form {action= selfref (), method="post",
     h.input {class="w3-button w3-round w3-green w3-margin", value="Submit", type = "submit"},
     h.input {type = "text", style="width: 80%;", name ="command", onfocus="this.select();",

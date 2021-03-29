@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2021.03.28",
+  VERSION       = "2021.03.29",
   DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -36,7 +36,8 @@ local ABOUT = {
 -- 2021.02.17  add LastUpdate time to individual devices
 -- 2021.03.01  don't start Shelly bridge until first "shellies/..." MQTT message
 -- 2021.03.05  allow /relay/xxx and /scene/xxx to have id OR name
--- 2021.03.28  addd Shelly 1/1PM
+-- 2021.03.28  add Shelly 1/1PM
+-- 2021.03.29  use "input_event" topic for scenes to denote long push, etc.
 
 
 --local socket    = require "socket"
@@ -235,21 +236,37 @@ local function generic() end
 
 --[[
   for switch in "momentary" mode: 
-  input_event/n = {"event":"S","event_cnt":11}
-		S = shortpush 	
-		L = longpush 	
-		SS = double shortpush 	
-		SSS = triple shortpush 	
-		SL = shortpush + longpush 	
-		LS = longpush + shortpush 	
-
+  input_event is {"event":"S","event_cnt":57}
+  added to the switch number 0/1/2/...
 --]]
-local function ix3 (dno, var) 
+local push_event = {
+      S   = 10,  -- shortpush 	
+      L   = 20,  -- longpush 	
+      SS  = 30,  -- double shortpush 	
+      SSS = 40,  -- triple shortpush 	
+      SL  = 50,  -- shortpush + longpush 	
+      LS  = 60,  -- longpush + shortpush 
+    }	
+    
+--local function ix3 (dno, var) 
+----  luup.log ("ix3 - update: " .. var)
+--  -- look for change of value of input/n [n = 0,1,2]
+--  local button = var: match "^input/(%d)"
+--  if button then
+--    variable_set (SID.scene, "sl_SceneActivated", button, dno)
+--    variable_set (SID.scene, "LastSceneTime", os.time(), dno)
+--  end
+--end
+
+local function ix3 (dno, var, value) 
 --  luup.log ("ix3 - update: " .. var)
   -- look for change of value of input/n [n = 0,1,2]
-  local button = var: match "^input/(%d)"
-  if button then
-    variable_set (SID.scene, "sl_SceneActivated", button, dno)
+  local button = var: match "^input_event/(%d)"
+  local event = json.decode (value)
+  local push = push_event[event]
+  if button and push then
+    local scene = button + push
+    variable_set (SID.scene, "sl_SceneActivated", scene, dno)
     variable_set (SID.scene, "LastSceneTime", os.time(), dno)
   end
 end
