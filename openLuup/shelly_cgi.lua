@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2021.03.29",
+  VERSION       = "2021.03.29b",
   DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -262,12 +262,14 @@ local function ix3 (dno, var, value)
 --  luup.log ("ix3 - update: " .. var)
   -- look for change of value of input/n [n = 0,1,2]
   local button = var: match "^input_event/(%d)"
-  local event = json.decode (value)
-  local push = push_event[event]
-  if button and push then
-    local scene = button + push
-    variable_set (SID.scene, "sl_SceneActivated", scene, dno)
-    variable_set (SID.scene, "LastSceneTime", os.time(), dno)
+  if button then
+    local event = json.decode (value)
+    local push = push_event[event]
+    if push then
+      local scene = button + push
+      variable_set (SID.scene, "sl_SceneActivated", scene, dno)
+      variable_set (SID.scene, "LastSceneTime", os.time(), dno)
+    end
   end
 end
 
