@@ -1,4 +1,4 @@
-local VERSION = "2021.02.11"
+local VERSION = "2021.03.30"
 
 -- mimetypes
 -- 2016/04/14
@@ -29,6 +29,7 @@ local VERSION = "2021.02.11"
 -- 2019.06.11  cache control definitions moved here from servlet module
 
 -- 2021.01.31  MQTT codes added
+-- 2021.03.20  DEV and SID codes added
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -272,11 +273,34 @@ local archive_rules = {
   }
 
 
+-- Device types and ServiceIds
+
+local DEV = {
+    light       = "D_BinaryLight1.xml",
+    dimmer      = "D_DimmableLight1.xml",
+    thermos     = "D_HVAC_ZoneThermostat1.xml",
+    motion      = "D_MotionSensor1.xml",
+    controller  = "D_SceneController1.xml",
+    combo       = "D_ComboDevice1.xml",
+    rgb         = "D_DimmableRGBLight1.xml",
+  }
+
+local SID = {
+    hag       = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
+    hadevice  = "urn:micasaverde-com:serviceId:HaDevice1",
+    switch    = "urn:upnp-org:serviceId:SwitchPower1",                          
+    scene     = "urn:micasaverde-com:serviceId:SceneController1",
+    energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
+  }
+
 --
 
 return {
   
     VERSION = VERSION,
+    
+    DEV = DEV,
+    SID = SID,
     
     myIP            = myIP (),
     cgi_prefix      = cgi_prefix,
