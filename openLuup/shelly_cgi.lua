@@ -6,7 +6,7 @@ local wsapi = require "openLuup.wsapi"
 
 local ABOUT = {
   NAME          = "shelly_cgi",
-  VERSION       = "2021.03.31",
+  VERSION       = "2021.03.29c",
   DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -38,8 +38,6 @@ local ABOUT = {
 -- 2021.03.05  allow /relay/xxx and /scene/xxx to have id OR name
 -- 2021.03.28  add Shelly 1/1PM
 -- 2021.03.29  use "input_event" topic for scenes to denote long push, etc.
--- 2021.03.30  use DEV and SID definitions from openLuup.servertables
--- 2021.03.31  put button press processing into generic() function (works for ix3, sw1, sw2.5, ...) 
 
 
 --local socket    = require "socket"
@@ -47,16 +45,17 @@ local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
 local requests  = require "openLuup.requests"         -- for data_request?id=status response
 local chdev     = require "openLuup.chdev"            -- to create new bridge devices
-local tables    = require "openLuup.servertables"     -- for standard DEV and SID definitions
 
-local DEV = setmetatable ({
-  shelly      = "D_GenericShellyDevice.xml",
-  }, tables.DEV)
-
-local SID = setmetatable ({
+local SID = {
+    hag       = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",   -- run scene
+    hadevice  = "urn:micasaverde-com:serviceId:HaDevice1",                -- LastUpdate, Toggle
+    switch    = "urn:upnp-org:serviceId:SwitchPower1",                          
+    scene     = "urn:micasaverde-com:serviceId:SceneController1",
+    energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
+    
     sBridge   = "urn:akbooer-com:serviceId:ShellyBridge1",
     shellies  = "shellies",
-  }, tables.SID)
+  }
 
 
 local settings =       -- complete device settings
@@ -201,6 +200,19 @@ end
 local devices = {}      -- gets filled with device info on MQTT connection
 local devNo             -- bridge device number (set on startup)
 
+
+local DEV = {
+  light       = "D_BinaryLight1.xml",
+  dimmer      = "D_DimmableLight1.xml",
+  thermos     = "D_HVAC_ZoneThermostat1.xml",
+  motion      = "D_MotionSensor1.xml",
+  controller  = "D_SceneController1.xml",
+  combo       = "D_ComboDevice1.xml",
+  rgb         = "D_DimmableRGBLight1.xml",
+  shelly      = "D_GenericShellyDevice.xml",
+
+}
+
 -- option for allowing variable to be set with or without logging
 local function variable_set (sid, var, val, dno, log)
   local d = luup.devices[dno]
@@ -235,10 +247,19 @@ local push_event = {
       SL  = 50,  -- shortpush + longpush 	
       LS  = 60,  -- longpush + shortpush 
     }	
+    
+--local function ix3 (dno, var) 
+----  luup.log ("ix3 - update: " .. var)
+--  -- look for change of value of input/n [n = 0,1,2]
+--  local button = var: match "^input/(%d)"
+--  if button then
+--    variable_set (SID.scene, "sl_SceneActivated", button, dno)
+--    variable_set (SID.scene, "LastSceneTime", os.time(), dno)
+--  end
+--end
 
--- generic actions for all devices
-local function generic (dno, var, value) 
-  -- button pushes behave as scene controller
+local function ix3 (dno, var, value) 
+--  luup.log ("ix3 - update: " .. var)
   -- look for change of value of input/n [n = 0,1,2]
   local button = var: match "^input_event/(%d)"
   if button then
@@ -250,11 +271,6 @@ local function generic (dno, var, value)
       variable_set (SID.scene, "LastSceneTime", os.time(), dno)
     end
   end
-end
-
-local function ix3 ()
-  -- all the work done in generic actions above
-  --  luup.log ("ix3 - update: " .. var)
 end
 
 local function sw2_5(dno, var, value) 
@@ -404,7 +420,7 @@ end
 -- MQTT callbacks
 --
 
-function Shelly_MQTT_Handler (topic, message)
+function _G.Shelly_MQTT_Handler (topic, message)
   
   local shellies = topic: match "^shellies/(.+)"
   if not shellies then return end
@@ -434,9 +450,7 @@ function Shelly_MQTT_Handler (topic, message)
   
   local old = luup.variable_get (shelly, var, child)
   if message ~= old then
-
     dev: variable_set (shelly, var, message, true)                  -- not logged, but 'true' enables variable watch
-    generic (child, var, message)
     local model = luup.attr_get ("model", child)
     models[model].updater (child, var, message)
   end
