@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2021.02.11",
+  VERSION       = "2021.04.02",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -689,65 +689,8 @@ local I_ShellyBridge_impl do
     x: appendChild {
       x.implementation {
         x.functions [[
---          local M = require "L_ShellyBridge"
---          init = M.init
--- module(..., package.seeall)
-
--- 2020.02.01  Shelly Bridge - control API only (ie. action requests)
-
-local SID = {
-    switch    = "urn:upnp-org:serviceId:SwitchPower1",                          
-    hadevice  = "urn:micasaverde-com:serviceId:HaDevice1",
-    bridge    = "urn:akbooer-com:serviceId:ShellyBridge1",
-  }
-
-local devNo             -- bridge device number (set on startup)
-
-local function SetTarget (dno, args)
-  local id = luup.attr_get ("altid", dno)
-  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
-  if relay then
-    local val = tonumber (args.newTargetValue)
-    luup.variable_set (SID.switch, "Target", val, dno)
-    local on_off = val == 1 and "on" or "off"
-    shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
-    luup.openLuup.mqtt.publish (shelly, on_off)
-  else 
-    return false
-  end
-end
-
-local function ToggleState (dno)
-  local val = luup.variable_get (SID.switch, "Status", dno)
-  SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
-end
-
-local function generic_action (serviceId, action)
-  local function noop(lul_device)
-    local message = "service/action not implemented: %d.%s.%s"
-    luup.log (message: format (lul_device, serviceId, action))
-    return false
-  end
-
-  local SRV = {
-      [SID.switch]    = {SetTarget = SetTarget},
-      [SID.hadevice]  = {ToggleState = ToggleState},
-    }
-  
-  local service = SRV[serviceId] or {}
-  local act = service [action] or noop
-  if type(act) == "function" then act = {run = act} end
-  return act
-end
-
-function init (lul_device)   -- Shelly Bridge device entry point
-  devNo = tonumber (lul_device)
-	luup.devices[devNo].action_callback (generic_action)    -- catch all undefined action calls
-  luup.set_failure (0)
-  return true, "OK", "Shelly Bridge IMPL file"
-end
-
------
+          local M = require "L_ShellyBridge"
+          init = M.init
         ]],
         x.startup "init",
 --        x.actionList {
@@ -767,6 +710,57 @@ local D_GenericShellyDevice_json = json.encode {
         default_icon = "https://cdn6.aptoide.com/imgs/6/a/c/6acc4942157e022670fa153739730cf9_icon.png",
 --        default_icon = "https://pbs.twimg.com/profile_images/1317058087929450505/Vw2yKX4S.jpg",
         DeviceType = "GenericShellyDevice",
+      }
+
+-----
+
+-----
+--
+-- Tasmota support
+--
+
+local D_TasmotaBridge_xml = Device {
+        deviceType   = "TasmotaBridge",
+        Category_Num = "1",
+        friendlyName = "Tasmota Bridge",
+        manufacturer = "akbooer",
+        handleChildren  = "1",
+        staticJson   = "D_TasmotaBridge.json",
+        serviceList     = { 
+          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+        implementationList = {"I_TasmotaBridge.xml"}}
+      }
+
+
+local D_TasmotaBridge_json = json.encode {
+    default_icon = "https://tasmota.github.io/docs/_media/logo.svg",
+    DeviceType = "TasmotaBridge",
+  }
+
+local I_TasmotaBridge_impl do
+  local x = xml.createDocument ()
+    x: appendChild {
+      x.implementation {
+        x.functions [[
+          local M = require "L_TasmotaBridge"
+          init = M.init
+        ]],
+        x.startup "init",
+        x.actionList {}
+        }}
+  I_TasmotaBridge_impl = tostring(x)
+end
+
+
+local D_GenericTasmotaDevice_xml = Device {
+        deviceType   = "GenericShellyDevice",
+        staticJson   = "D_GenericShellyDevice.json",
+      }
+
+local D_GenericTasmotaDevice_json = json.encode {
+--        default_icon = "https://cdn6.aptoide.com/imgs/6/a/c/6acc4942157e022670fa153739730cf9_icon.png",
+--        default_icon = "https://pbs.twimg.com/profile_images/1317058087929450505/Vw2yKX4S.jpg",
+        DeviceType = "GenericTasmotaDevice",
       }
 
 -----
@@ -1405,6 +1399,13 @@ local manifest = {
     
     ["D_GenericShellyDevice.xml"]  = D_GenericShellyDevice_xml,
     ["D_GenericShellyDevice.json"] = D_GenericShellyDevice_json,
+    
+    ["D_TasmotaBridge.xml"]  = D_TasmotaBridge_xml,
+    ["D_TasmotaBridge.json"] = D_TasmotaBridge_json,
+    ["I_TasmotaBridge.xml"]  = I_TasmotaBridge_impl,
+    
+    ["D_GenericTasmotaDevice.xml"]  = D_GenericTasmotaDevice_xml,
+    ["D_GenericTasmotaDevice.json"] = D_GenericTasmotaDevice_json,
     
     ["built-in/altui_console_menus.json"]   = altui_console_menus_json,
     ["built-in/openLuup_menus.json"]   = openLuup_menus_json,

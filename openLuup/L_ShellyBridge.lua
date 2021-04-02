@@ -1,13 +1,9 @@
-#!/usr/bin/env wsapi.cgi
-
 module(..., package.seeall)
 
-local wsapi = require "openLuup.wsapi" 
-
-local ABOUT = {
-  NAME          = "shelly_cgi",
-  VERSION       = "2021.04.01",
-  DESCRIPTION   = "Shelly-like API for relays and scenes, and Shelly MQTT bridge",
+ABOUT = {
+  NAME          = "mqtt_shelly",
+  VERSION       = "2021.04.02",
+  DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
   DOCUMENTATION = "",
@@ -28,174 +24,98 @@ local ABOUT = {
 ]]
 }
 
--- shelly_cgi.lua
--- see: https://shelly-api-docs.shelly.cloud/#shelly-family-overview
--- see: http://keplerproject.github.io/wsapi/libraries.html
 
--- 2021.02.01  add Shelly Bridge
+-- 2021.02.01  original Shelly Bridge
 -- 2021.02.17  add LastUpdate time to individual devices
 -- 2021.03.01  don't start Shelly bridge until first "shellies/..." MQTT message
--- 2021.03.05  allow /relay/xxx and /scene/xxx to have id OR name
 -- 2021.03.28  add Shelly 1/1PM
 -- 2021.03.29  use "input_event" topic for scenes to denote long push, etc.
 -- 2021.03.30  use DEV and SID definitions from openLuup.servertables
 -- 2021.03.31  put button press processing into generic() function (works for ix3, sw1, sw2.5, ...) 
+-- 2021.04.02  make separate L_ShellyBridge file
 
 
---local socket    = require "socket"
 local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
-local requests  = require "openLuup.requests"         -- for data_request?id=status response
 local chdev     = require "openLuup.chdev"            -- to create new bridge devices
 local tables    = require "openLuup.servertables"     -- for standard DEV and SID definitions
 
-local DEV = setmetatable ({
-  shelly      = "D_GenericShellyDevice.xml",
-  }, {__index = tables.DEV})
+local DEV = tables.DEV {
+    shelly      = "D_GenericShellyDevice.xml",
+  }
 
-local SID = setmetatable ({
+local SID = tables.SID {
     sBridge   = "urn:akbooer-com:serviceId:ShellyBridge1",
     shellies  = "shellies",
-  }, {__index = tables.SID})
-
-
-local settings =       -- complete device settings
-  {
-    device = {
-      name  = "openLuup_shelly_server",
-      fw    = ABOUT.VERSION,
-    },
-    mqtt = {
-      enable = true,
-      port = 1883,
-      keep_alive = 60,
-    },
-    lat = luup.latitude,
-    lng = luup.longitude,
   }
- 
--------------------------------------------
+
+
+--------------------------------------------------
 --
--- Shelly-like CGI API for all openLuup devices
+-- Shelly MQTT Bridge - CONTROL
+--
+-- this part runs as a standard device
+-- it is a control API only (ie. action requests)
 --
 
--- perform generic luup action
-local function call_action (info, ...)
-  -- returns: error (number), error_msg (string), job (number), arguments (table)
-  info.status, info.message, info.job = luup.call_action(...)
-end
+local devNo             -- bridge device number (set on startup)
 
--- easy HTTP request to run a scene
-local function scene (info) 
-  if luup.scenes[info.id] then
-    call_action(info, SID.hag, "RunScene", {SceneNum = info.id}, 0)
+local function SetTarget (dno, args)
+  local id = luup.attr_get ("altid", dno)
+  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
+  if relay then
+    local val = tonumber (args.newTargetValue)
+    luup.variable_set (SID.switch, "Target", val, dno)
+    local on_off = val == 1 and "on" or "off"
+    shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
+    luup.openLuup.mqtt.publish (shelly, on_off)
+  else 
+    return false
   end
-  return info
 end
 
--- easy HTTP request to switch a switch
-local turn = {
-    on      = function (info) call_action (info, SID.switch, "SetTarget", {newTargetValue = '1'}, info.id) end,
-    off     = function (info) call_action (info, SID.switch, "SetTarget", {newTargetValue = '0'}, info.id) end,
-    toggle  = function (info) call_action (info, SID.hadevice, "ToggleState", {}, info.id) end,
-  }
-  
-local function simple()
-  local d = settings.device
-  return {
-    type  = d.name,
-    fw    = d.fw,
-  }
-end
-  
-local function relay (info)
-  local op = info.parameters.turn
-  local fct = turn[op]
-  local d = luup.devices[info.id]
-  if fct and d then fct(info) end
-  return info
+local function ToggleState (dno)
+  local val = luup.variable_get (SID.switch, "Status", dno)
+  SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
 end
 
-local function status (info)
-  local result = requests.status (nil, {DeviceNum = info.id})   -- already JSON encoded
-  return (result == "Bad Device") and info or result            -- info has default error message
-end
+local function generic_action (serviceId, action)
+  local function noop(lul_device)
+    local message = "service/action not implemented: %d.%s.%s"
+    luup.log (message: format (lul_device, serviceId, action))
+    return false
+  end
 
-local function update_dynamic_settings ()
-  local t = os.time()
-  settings.unixtime = t
-  settings.time = os.date ("%H:%M", t)
-end
-
-local function config (info)
-  update_dynamic_settings ()
-  return settings
-end
-
-local function unknown (info)
-  info.status = -1
-  info.message = "invalid action request"
-  return info
-end
-
-
-local dispatch = {
-    shelly    = simple,
-    relay     = relay,
-    scene     = scene,
-    status    = status,
-    settings  = config,
-  }
-  
--- CGI entry point
-
-function run(wsapi_env)
-  
-  local req = wsapi.request.new(wsapi_env)
-  local res = wsapi.response.new ()
-  res:content_type "text/plain" 
-  
-  local command = req.script_name
-  local action, path = command: match "/(%w+)/?(.*)"
-  local id = tonumber(path: match "^%d+")
-  
-  local ol = luup.openLuup
-  local finders = { 
-      relay = ol.find_device,
-      scene = ol.find_scene,
+  local SRV = {
+      [SID.switch]    = {SetTarget = SetTarget},
+      [SID.hadevice]  = {ToggleState = ToggleState},
     }
-  local finder = finders[action]
-    
-  if not id and finder then         -- try device/scene by name
-    local name = wsapi.util.url_decode (path: match "^[^/%?]+")
-    id = finder {name = name}
-    print ("name:", name, "id:", id, type(id))
-  end
   
-  local info = {command = command, id = id, parameters = req.GET}
-  local fct = dispatch[action] or unknown
-  
-  unknown(info)   -- set default error message (to be over-written)
-  
-  local reply, err = fct(info)       -- input and output parameters also returned (unencoded) in info
-  if type(reply) == "table" then
-    reply, err = json.encode(reply)
-  end
-  res: write (reply or err)
-  res:content_type "application/json"
-  
-  return res:finish()
+  local service = SRV[serviceId] or {}
+  local act = service [action] or noop
+  if type(act) == "function" then act = {run = act} end
+  return act
+end
+
+function init (lul_device)   -- Shelly Bridge device entry point
+  devNo = tonumber (lul_device)
+	luup.devices[devNo].action_callback (generic_action)    -- catch all undefined action calls
+  luup.set_failure (0)
+  return true, "OK", "ShellyBridge"
 end
 
 --
--- END of Shelly CGI
+-- end of Luup device file
 --
 --------------------------------------------------
 
 
 --------------------------------------------------
 --
--- Shelly MQTT Bridge
+-- Shelly MQTT Bridge - MODEL and VIEW
+--
+-- this part runs as a system module and can create a bridge device
+-- as well as subsequent child devices, and update their variables
 --
 
 local devices = {}      -- gets filled with device info on MQTT connection
@@ -257,17 +177,21 @@ end
 
 local function sw2_5(dno, var, value) 
 --  luup.log ("sw2.5 - update: " .. var)
-  local child, attr = var: match "^relay/(%d)/?(.*)"
+  local action, child, attr = var: match "^%a+/(%d)/?(.*)"
   if child then
     local altid = luup.attr_get ("altid", dno)
     local cdno = luup.openLuup.find_device {altid = table.concat {altid, '/', child} }
     if cdno then
-      if attr == '' then
-        variable_set (SID.switch, "Status", value == "on" and '1' or '0', cdno)
-      elseif attr == "power" then
-        variable_set (SID.energy, "Watts", value, cdno, false)    -- don't log power updates
-      elseif attr == "energy" then
-        variable_set (SID.energy, "KWH", math.floor (value / 60) / 1000, cdno, false)  -- convert Wmin to kWh, don't log
+      if action == "relay" then
+        if attr == '' then
+          variable_set (SID.switch, "Status", value == "on" and '1' or '0', cdno)
+        elseif attr == "power" then
+          variable_set (SID.energy, "Watts", value, cdno, false)    -- don't log power updates
+        elseif attr == "energy" then
+          variable_set (SID.energy, "KWH", math.floor (value / 60) / 1000, cdno, false)  -- convert Wmin to kWh, don't log
+        end
+      elseif action == "input" then
+          -- possibly set the input as a security/tamper switch
       end
     end
   end

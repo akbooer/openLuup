@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.03.27",
+  VERSION       = "2021.04.02",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -67,6 +67,7 @@ local ABOUT = {
 -- 2021.01.30  add MQTT server and Shelly bridge
 -- 2021.03.02  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js
 -- 2021.03.11  add devutil.PublishVariableUpdates (true)
+-- 2021.04.02  change ShellyBridge initialisation, add prototype Tasmota bridge
 
 
 local logs  = require "openLuup.logs"
@@ -331,10 +332,11 @@ do --	 SERVERs and SCHEDULER
 
   if config.Historian then historian.start (config.Historian) end
 
-  luup.inet.wget "/shelly"        -- 2021.02.01  start the Shelly bridge (new CGI-style of bridge) BEFORE MQTT server
   
   luup.openLuup.mqtt = mqtt
   if config.MQTT then 
+    require "L_ShellyBridge"      -- 2021.02.01  start the Shelly bridge BEFORE MQTT server (so it catches ANNOUNCE)
+    require "L_TasmotaBridge"     -- 2021.04.02  start the Tasmota bridge BEFORE MQTT server
     mqtt.start (config.MQTT) 
     if config.MQTT.PublishVariableUpdates == "true" then
       devutil.publish_variable_updates (true)

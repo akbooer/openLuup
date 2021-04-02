@@ -1,4 +1,4 @@
-local VERSION = "2021.03.30"
+local VERSION = "2021.04.02"
 
 -- mimetypes
 -- 2016/04/14
@@ -164,13 +164,7 @@ local cgi_prefix = {
     "dashboard",    -- for graphite_api
     "metrics",      -- ditto
     "render",       -- ditto
-    
-    "shelly",       -- for Shelly-like api
-    "relay",        -- ditto
-    "scene",        -- ditto
-    "status",       -- ditto
-    "settings",     -- ditto
-    
+        
     "ZWaveAPI",     -- Z-Wave.me Advanced API (requires Z-Way plugin)
     "ZAutomation",  -- Z-Wave.me Virtual Device API
   }
@@ -195,16 +189,8 @@ local cgi_alias = setmetatable ({
   },
   
   { __index = function (_, path)
-      -- Shelly-like API for switches and scenes
-      if path: match "^shelly"
-      or path: match "^relay"
-      or path: match "^scene" 
-      or path: match "^settings" 
-      or path: match "^status" then
-        return "openLuup/shelly_cgi.lua"
-        
-      -- TODO: REMOVE special handling of Zway requests (all directed to same handler)
-      elseif path: match "^ZWaveAPI"
+--      -- TODO: REMOVE special handling of Zway requests (all directed to same handler)
+    if path: match "^ZWaveAPI"
       or path: match "^ZAutomation" then
         return "cgi/zway_cgi.lua"
       end
@@ -274,8 +260,16 @@ local archive_rules = {
 
 
 -- Device types and ServiceIds
+--
+-- usage:
+--   local DEV = tables.DEV {foo = "urn:...", garp = "urn:..."}    -- extend default table with local references
+--
+local meta = {
+  __call = function (self, args)
+    return setmetatable (args, {__index = self})
+  end}
 
-local DEV = {
+local DEV = setmetatable ({
     light       = "D_BinaryLight1.xml",
     dimmer      = "D_DimmableLight1.xml",
     thermos     = "D_HVAC_ZoneThermostat1.xml",
@@ -283,15 +277,22 @@ local DEV = {
     controller  = "D_SceneController1.xml",
     combo       = "D_ComboDevice1.xml",
     rgb         = "D_DimmableRGBLight1.xml",
-  }
+  }, meta)
 
-local SID = {
-    hag       = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
-    hadevice  = "urn:micasaverde-com:serviceId:HaDevice1",
-    switch    = "urn:upnp-org:serviceId:SwitchPower1",                          
-    scene     = "urn:micasaverde-com:serviceId:SceneController1",
+local SID = setmetatable ({
+    altui     = "urn:upnp-org:serviceId:altui1",
+    appstore  = "urn:upnp-org:serviceId:AltAppStore1",
+    dimming   = "urn:upnp-org:serviceId:Dimming1",
     energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
-  }
+    hadevice  = "urn:micasaverde-com:serviceId:HaDevice1",
+    hag       = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
+    humid     = "urn:micasaverde-com:serviceId:HumiditySensor1",
+    light     = "urn:micasaverde-com:serviceId:LightSensor1",
+    switch    = "urn:upnp-org:serviceId:SwitchPower1",                          
+    security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
+    scene     = "urn:micasaverde-com:serviceId:SceneController1",
+    temp      = "urn:upnp-org:serviceId:TemperatureSensor1",
+  }, meta)
 
 --
 

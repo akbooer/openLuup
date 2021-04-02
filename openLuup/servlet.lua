@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2020.01.29",
+  VERSION       = "2021.04.02",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -28,10 +28,11 @@ local ABOUT = {
 This module is the interface between the HTTP port 3480 server and the handlers which implement the requests.
 
 Requests are of three basic types:
-  - data_request?id=...       Luup-style system requests (both system lu_xxx, and user-defined lr_xxx)
-  - Lua WSAPI CGIs            enumerated in the cgi_prefix section of the servertables.lua file
-  - file requests             anything not recognised as one of the above, and on defined file paths,
-                              or as redirected from servertables dir_alias table.
+  - data_request?id=...             Luup-style system requests (both system lu_xxx, and user-defined lr_xxx)
+  - Lua WSAPI CGIs                  enumerated in the cgi_prefix section of the servertables.lua file
+  - openLuup Shelly-like requests   relay / scene / status /...
+  - file requests                   anything not recognised as one of the above, and on defined file paths,
+                                    or as redirected from servertables dir_alias table.
 
 The add_callback_handlers () function registers a list of new request callback handlers.
 
@@ -66,19 +67,23 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 -- 2020.01.29   add "dontrespond" mimetype option for external data_requests
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263/7
 
+-- 2021.04.02   add fourth request type: Shelly-like relay / scene / status / ... (from old shelly_cgi)
+
 
 local logs      = require "openLuup.logs"
 local devices   = require "openLuup.devices"            -- to access 'dataversion'
 local scheduler = require "openLuup.scheduler"
 local json      = require "openLuup.json"               -- for unit testing only
 local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for CGI processing
-local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
+local tables    = require "openLuup.servertables"       -- mimetypes and status_codes, and serviceIds
 local loader    = require "openLuup.loader"             -- for raw_read()
 
 --local _log, _debug = logs.register (ABOUT)
 local _log, _debug = logs.register (ABOUT)
 
 -- TABLES
+
+local SID = tables.SID
 
 local mimetype = tables.mimetypes
   
@@ -292,6 +297,142 @@ end
 
 ----------------------------------------------------
 --
+-- REQUEST HANDLER: openLuup Shelly-like requests
+--
+
+local settings =       -- complete device settings
+  {
+    device = {
+      name  = "openLuup_shelly_server",
+      fw    = ABOUT.VERSION,
+    },
+    mqtt = {
+      enable = true,
+      port = 1883,
+      keep_alive = 60,
+    },
+--    lat = luup.latitude,
+--    lng = luup.longitude,
+  }
+
+local requests = setmetatable ({}, {__index = 
+    function (x, a)
+      local req = require "openLuup.requests"        -- can't be done at initialisation (circular reference)
+      rawset (x, a, req[a])
+      return x[a]
+    end
+  })
+
+-- perform generic luup action
+local function call_action (info, ...)
+  -- returns: error (number), error_msg (string), job (number), arguments (table)
+  info.status, info.message, info.job = luup.call_action(...)
+end
+
+-- easy HTTP request to run a scene
+local function scene (info) 
+  if luup.scenes[info.id] then
+    call_action(info, SID.hag, "RunScene", {SceneNum = info.id}, 0)
+  end
+  return info
+end
+
+-- easy HTTP request to switch a switch
+local turn = {
+    on      = function (info) call_action (info, SID.switch, "SetTarget", {newTargetValue = '1'}, info.id) end,
+    off     = function (info) call_action (info, SID.switch, "SetTarget", {newTargetValue = '0'}, info.id) end,
+    toggle  = function (info) call_action (info, SID.hadevice, "ToggleState", {}, info.id) end,
+  }
+  
+local function simple()
+  local d = settings.device
+  return {
+    type  = d.name,
+    fw    = d.fw,
+  }
+end
+  
+local function relay (info)
+  local op = info.parameters.turn
+  local fct = turn[op]
+  local d = luup.devices[info.id]
+  if fct and d then fct(info) end
+  return info
+end
+
+local function status (info)
+  local result = requests.status (nil, {DeviceNum = info.id})   -- already JSON encoded
+  return (result == "Bad Device") and info or result            -- info has default error message
+end
+
+local function update_dynamic_settings ()
+  local t = os.time()
+  settings.unixtime = t
+  settings.time = os.date ("%H:%M", t)
+end
+
+local function config ()
+  update_dynamic_settings ()
+  return settings
+end
+
+local function unknown (info)
+  info.status = -1
+  info.message = "invalid action request"
+  return info
+end
+
+
+local dispatch = {
+    shelly    = simple,
+    relay     = relay,
+    scene     = scene,
+    status    = status,
+    settings  = config,
+  }
+  
+-- CGI entry point
+
+local function ol_request (wsapi_env)
+  
+  local req = wsapi.request.new(wsapi_env)
+  local res = wsapi.response.new ()
+  res:content_type "text/plain" 
+  
+  local command = req.script_name
+  local action, path = command: match "/(%w+)/?(.*)"
+  local id = tonumber(path: match "^%d+")
+  
+  local ol = luup.openLuup
+  local finders = { 
+      relay = ol.find_device,
+      scene = ol.find_scene,
+    }
+  local finder = finders[action]
+    
+  if not id and finder then         -- try device/scene by name
+    local name = wsapi.util.url_decode (path: match "^[^/%?]+")
+    id = finder {name = name}
+    print ("name:", name, "id:", id, type(id))
+  end
+  
+  local info = {command = command, id = id, parameters = req.GET}
+  local fct = dispatch[action] or unknown
+  
+  unknown(info)   -- set default error message (to be over-written)
+  
+  local reply, err = fct(info)       -- input and output parameters also returned (unencoded) in info
+  if type(reply) == "table" then
+    reply, err = json.encode(reply)
+  end
+  res: write (reply or err)
+  res:content_type "application/json"
+  
+  return res:finish()
+end
+
+----------------------------------------------------
+--
 -- REQUEST HANDLER: CGI requests
 --
 
@@ -316,6 +457,11 @@ local function file_task (wsapi_env, respond)
   return {run = function () respond (file_request(wsapi_env)) end} -- immediate run action (no job)
 end
 
+-- return a task for the scheduler to handle file requests 
+local function ol_task (wsapi_env, respond)
+  return {run = function () respond (ol_request(wsapi_env)) end} -- immediate run action (no job)
+end
+
 -- return a task for the scheduler to handle CGI requests 
 local function cgi_task (wsapi_env, respond)
   return {run = function () respond (cgi_request(wsapi_env)) end} -- immediate run action (no job)
@@ -325,8 +471,19 @@ end
 -- 
 -- define the appropriate handlers and tasks depending on request type
 --
-local exec_selector = {data_request = data_request}
-local task_selector = {data_request = data_request_task}
+local exec_selector = {
+    data_request = data_request,
+    relay = ol_request,
+    scene = ol_request,
+    status = ol_request,
+  }
+
+local task_selector = {
+    data_request = data_request_task,
+    relay = ol_task,
+    scene = ol_task,
+    status = ol_task,
+  }
 
 for _,prefix in pairs (tables.cgi_prefix) do
   exec_selector[prefix] = wsapi.cgi    -- add those defined in the server tables
@@ -342,6 +499,7 @@ local function execute (wsapi_env, respond, client)
   local request_root = wsapi_env.SCRIPT_NAME: match "[^/]+"     -- get the first path element in the request
   if respond then
     local task = (task_selector [request_root] or file_task) (wsapi_env, respond, client)
+    print (request_root, task_selector [request_root], ol_task)
     return scheduler.run_job (task, {}, nil)   -- nil device number,  returns err, msg, jobNo
   else
     local handler = exec_selector [request_root] or file_request
@@ -356,6 +514,7 @@ return {
     
     TEST = {          -- for testing only
       data_request    = data_request,
+      ol_request      = ol_request,
       http_file       = file_request,
       make_iterator   = make_iterator,
       wsapi_cgi       = wsapi.cgi,
