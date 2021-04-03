@@ -313,6 +313,7 @@ do -- TODO: tidy up obsolete files
 --  os.remove "openLuup/rooms.lua"
 --  os.remove "openLuup/hag.lua"
 --  os.remove "openLuup/http.lua"
+--  os.remove "openLuup/shelly_cgi.lua"
 end
 
 local status

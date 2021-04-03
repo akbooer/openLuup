@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2021.04.02",
+  VERSION       = "2021.04.03",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -413,7 +413,6 @@ local function ol_request (wsapi_env)
   if not id and finder then         -- try device/scene by name
     local name = wsapi.util.url_decode (path: match "^[^/%?]+")
     id = finder {name = name}
-    print ("name:", name, "id:", id, type(id))
   end
   
   local info = {command = command, id = id, parameters = req.GET}
@@ -499,7 +498,6 @@ local function execute (wsapi_env, respond, client)
   local request_root = wsapi_env.SCRIPT_NAME: match "[^/]+"     -- get the first path element in the request
   if respond then
     local task = (task_selector [request_root] or file_task) (wsapi_env, respond, client)
-    print (request_root, task_selector [request_root], ol_task)
     return scheduler.run_job (task, {}, nil)   -- nil device number,  returns err, msg, jobNo
   else
     local handler = exec_selector [request_root] or file_request

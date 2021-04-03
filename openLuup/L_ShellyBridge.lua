@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.02",
+  VERSION       = "2021.04.03",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -177,7 +177,7 @@ end
 
 local function sw2_5(dno, var, value) 
 --  luup.log ("sw2.5 - update: " .. var)
-  local action, child, attr = var: match "^%a+/(%d)/?(.*)"
+  local action, child, attr = var: match "^(%a+)/(%d)/?(.*)"
   if child then
     local altid = luup.attr_get ("altid", dno)
     local cdno = luup.openLuup.find_device {altid = table.concat {altid, '/', child} }

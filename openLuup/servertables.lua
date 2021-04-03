@@ -262,7 +262,7 @@ local archive_rules = {
 -- Device types and ServiceIds
 --
 -- usage:
---   local DEV = tables.DEV {foo = "urn:...", garp = "urn:..."}    -- extend default table with local references
+--   local DEV = tables.DEV {foo = "urn:...", garp = "urn:..."}    -- optionally, extend default table with local references
 --
 local meta = {
   __call = function (self, args)
