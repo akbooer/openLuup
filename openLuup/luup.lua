@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2021.03.19",
+  VERSION       = "2021.04.04",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -84,6 +84,7 @@ local ABOUT = {
 -- 2021.03.05  add luup.openLuup.find_scene()
 -- 2021.03.19  add optional parameter to request_handler() (thanks @therealdb)
 --             see: https://smarthome.community/topic/316/openluup-mqtt-server/81
+-- 2021.04.04  change pattern search in register_handler() for xxx: prefixes (was rejecting strings with ':')
 
 
 local logs          = require "openLuup.logs"
@@ -797,7 +798,7 @@ local function register_handler (g, r, parameter)
     _log (msg, "luup.register_handler")
     
     -- 2018.04.18  optional alphameric protocol prefix in register_handler request
-    local protocol, address = request_name: match "^(%a+):%s*([^:]+)$"     --  abc:xxx
+    local protocol, address = request_name: match "^(%a+):%s*(.+)"     --  abc:xxx
     if protocol then
       local valid = {                 -- 2018.04.23  format for easier reading
           ["mailto"]  = smtp, 

@@ -1,4 +1,4 @@
-local VERSION = "2021.04.02"
+local VERSION = "2021.04.04"
 
 -- mimetypes
 -- 2016/04/14
@@ -292,6 +292,7 @@ local SID = setmetatable ({
     security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
     scene     = "urn:micasaverde-com:serviceId:SceneController1",
     temp      = "urn:upnp-org:serviceId:TemperatureSensor1",
+    zwave     = "urn:micasaverde-com:serviceId:ZWaveDevice1",
   }, meta)
 
 --
