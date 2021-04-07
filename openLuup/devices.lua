@@ -272,6 +272,12 @@ function variable:set (value)
   local t = scheduler.timenow()                   -- time to millisecond resolution
   value = tostring(value or '')                   -- all device variables are strings
   
+  -- 2021.03.09, 2021.04.07 instant status updates over MQTT
+  local changed = value ~= self.value
+  if changed and PublishVariableUpdates and self.mqtt then
+    publish ("openLuup/update/" .. self.pathname, value)
+  end
+  
   -- 2018.04.25 'VariableWithHistory'
   -- history is implemented as a circular buffer, limited to CacheSize time/value pairs
   local history = self.history 
@@ -302,12 +308,6 @@ function variable:set (value)
   self.value    = value                           -- set new value 
   self.time     = t                               -- save time of change
   self.version  = n                               -- save version number
-  
-  -- 2021.03.09, 2021.04.07 instant status updates over MQTT
-  local changed = value ~= self.value
-  if changed and PublishVariableUpdates and self.mqtt then
-    publish ("openLuup/update/" .. self.pathname, self.value)
-  end
   
   return self
 end
