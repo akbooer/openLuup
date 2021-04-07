@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2021.04.05",
+  VERSION       = "2021.04.07",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -60,7 +60,8 @@ ABOUT = {
 -- 2019.04.18  remove generic plugin_configuration functionality (no longer required)
 
 -- 2020.02.20  add EmptyRoom101 service action
--- 2020.07.04  UK Covid-19 Independence Day edition!
+
+-- 2021.04.06  add MQTT commands
 
 
 local json        = require "openLuup.json"
@@ -506,6 +507,17 @@ local function mqtt_sys_broker_stats ()
   timers.call_delay (mqtt_sys_broker_stats, 60, '', "MQTT $SYS/broker/#")
 end
 
+
+------------------------
+--
+-- MQTT commands
+--
+-- relay / scene / status
+--
+function mqtt_command (topic, message, parameter)
+  _log (table.concat ({"MQTT COMMAND", topic, message}, " / "))
+end
+
 ------------------------
 --
 -- init()
@@ -703,6 +715,12 @@ function init (devNo)
     mqtt_sys_broker_stats ()
   end
 
+  do -- MQTT commands
+    luup.register_handler ("mqtt_command", "mqtt:relay", "relay")
+    luup.register_handler ("mqtt_command", "mqtt:scene", "scene")
+    luup.register_handler ("mqtt_command", "mqtt:status", "status")
+  end
+  
   set ("StartTime", luup.attr_get "openLuup.Status.StartTime")        -- 2018.05.02
   calc_stats ()
   

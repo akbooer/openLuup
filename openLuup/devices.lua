@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2021.03.11",
+  VERSION       = "2021.04.07",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -59,6 +59,7 @@ local ABOUT = {
 -- 2021.03.09  add pathname to each variable, and publish instant updates over MQTT
 -- 2021.03.10  fix benign error in delete_single_var()
 -- 2021.03.11  add publish_variable_updates() method to toggle flag
+-- 2021.04.07  correct MQTT published variable value
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -271,12 +272,6 @@ function variable:set (value)
   local t = scheduler.timenow()                   -- time to millisecond resolution
   value = tostring(value or '')                   -- all device variables are strings
   
-  -- 2021.03.09 instant status updates over MQTT
-  local changed = value ~= self.value
-  if changed and PublishVariableUpdates and self.mqtt then
-    publish ("openLuup/update/" .. self.pathname, self.value)
-  end
-  
   -- 2018.04.25 'VariableWithHistory'
   -- history is implemented as a circular buffer, limited to CacheSize time/value pairs
   local history = self.history 
@@ -307,6 +302,13 @@ function variable:set (value)
   self.value    = value                           -- set new value 
   self.time     = t                               -- save time of change
   self.version  = n                               -- save version number
+  
+  -- 2021.03.09, 2021.04.07 instant status updates over MQTT
+  local changed = value ~= self.value
+  if changed and PublishVariableUpdates and self.mqtt then
+    publish ("openLuup/update/" .. self.pathname, self.value)
+  end
+  
   return self
 end
 
