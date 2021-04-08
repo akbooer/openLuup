@@ -486,9 +486,15 @@ end
 -- relay / scene / status
 --
 local function mqtt_command (topic, json_message)
-  _log (table.concat ({"MQTT COMMAND", topic, json_message}, " / "))
-  if #json_message == 0 then json_message = '{}' end
-  local parameters, err = json.decode (json_message)
+  local parameters, err
+  _log (table.concat {"MQTT COMMAND: ", topic," = ", json_message})
+  local n = tonumber (json_message)
+  if n then 
+    parameters = {turn = n}
+  else
+    if #json_message == 0 then json_message = '{}' end
+    parameters, err = json.decode (json_message)
+  end
   if parameters then
     exec_shelly_like_command (topic, parameters)
   else
