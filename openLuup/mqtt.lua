@@ -935,9 +935,10 @@ end
 -- easy MQTT request to switch a switch
 local function mqtt_command (topic, message)
   _log (table.concat {"MQTT COMMAND: ", topic," = ", message})
+  local d = tonumber (topic: match "^relay/(%d+)")
   local n = tonumber (message)
-  if n then 
-    luup.call_action (SID.switch, "SetTarget", {newTargetValue = message}, n)
+  if d and n then 
+    luup.call_action (SID.switch, "SetTarget", {newTargetValue = n}, d)
   end
 end
 
