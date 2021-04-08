@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2021.04.07",
+  VERSION       = "2021.04.08",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -61,7 +61,8 @@ ABOUT = {
 
 -- 2020.02.20  add EmptyRoom101 service action
 
--- 2021.04.06  add MQTT commands
+-- 2021.04.06  add MQTT device/variable PUBLISH, and broker stats
+-- 2021.04.08  only PUBLISH if MQTT configured (thanks @ArcherS)
 
 
 local json        = require "openLuup.json"
@@ -501,22 +502,14 @@ local function mqtt_sys_broker_stats ()
   stats["clients/total"] = nc
   stats["clients/connected"] = nc
   stats["clients/maximum"] = math.max (stats["clients/maximum"], nc)
-  for n, v in pairs (stats) do
-    mqtt.publish (topic..n, tostring(v))
+  if luup.attr_get "openLuup.MQTT" then   -- 2021.04.08 only publish if MQTT configured
+    for n, v in pairs (stats) do
+      mqtt.publish (topic..n, tostring(v))
+    end
   end
   timers.call_delay (mqtt_sys_broker_stats, 60, '', "MQTT $SYS/broker/#")
 end
 
-
-------------------------
---
--- MQTT commands
---
--- relay / scene / status
---
-function mqtt_command (topic, message, parameter)
-  _log (table.concat ({"MQTT COMMAND", topic, message}, " / "))
-end
 
 ------------------------
 --
@@ -713,12 +706,6 @@ function init (devNo)
     mqtt_round_robin ()   -- ... but start the timer anyway, in case it's turned on later
     luup.log "starting MQTT $SYS/broker statistics"
     mqtt_sys_broker_stats ()
-  end
-
-  do -- MQTT commands
-    luup.register_handler ("mqtt_command", "mqtt:relay", "relay")
-    luup.register_handler ("mqtt_command", "mqtt:scene", "scene")
-    luup.register_handler ("mqtt_command", "mqtt:status", "status")
   end
   
   set ("StartTime", luup.attr_get "openLuup.Status.StartTime")        -- 2018.05.02

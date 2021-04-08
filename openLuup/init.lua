@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.04.02",
+  VERSION       = "2021.04.08",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -225,6 +225,8 @@ do -- set attributes, possibly decoding if required
 --      CloseIdleSocketAfter = 120,
 --      Port = 1883,
 --      Bridge_UDP = 2883,
+--      PublishVariableUpdates = "true",  -- publish /update/ messages for individual variable changes
+--      PublishDeviceStatus = 2,          -- publish a single device status every N seconds (0 = never)
 --    },
     Scenes = {
       -- Prolog/Epilog are global function names to run before/after ALL scenes

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2021.04.03",
+  VERSION       = "2021.04.08",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -68,6 +68,7 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263/7
 
 -- 2021.04.02   add fourth request type: Shelly-like relay / scene / status / ... (from old shelly_cgi)
+-- 2021.04.08   add MQTT subscriber for Shelly-like commands, per the above
 
 
 local logs      = require "openLuup.logs"
@@ -77,6 +78,7 @@ local json      = require "openLuup.json"               -- for unit testing only
 local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for CGI processing
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes, and serviceIds
 local loader    = require "openLuup.loader"             -- for raw_read()
+local mqtt      = require "openLuup.mqtt"
 
 --local _log, _debug = logs.register (ABOUT)
 local _log, _debug = logs.register (ABOUT)
@@ -300,21 +302,6 @@ end
 -- REQUEST HANDLER: openLuup Shelly-like requests
 --
 
-local settings =       -- complete device settings
-  {
-    device = {
-      name  = "openLuup_shelly_server",
-      fw    = ABOUT.VERSION,
-    },
-    mqtt = {
-      enable = true,
-      port = 1883,
-      keep_alive = 60,
-    },
---    lat = luup.latitude,
---    lng = luup.longitude,
-  }
-
 local requests = setmetatable ({}, {__index = 
     function (x, a)
       local req = require "openLuup.requests"        -- can't be done at initialisation (circular reference)
@@ -344,18 +331,11 @@ local turn = {
     toggle  = function (info) call_action (info, SID.hadevice, "ToggleState", {}, info.id) end,
   }
   
-local function simple()
-  local d = settings.device
-  return {
-    type  = d.name,
-    fw    = d.fw,
-  }
-end
-  
 local function relay (info)
   local op = info.parameters.turn
   local fct = turn[op]
-  local d = luup.devices[info.id]
+  local id = info.id 
+  local d = luup.devices[id]
   if fct and d then fct(info) end
   return info
 end
@@ -363,17 +343,6 @@ end
 local function status (info)
   local result = requests.status (nil, {DeviceNum = info.id})   -- already JSON encoded
   return (result == "Bad Device") and info or result            -- info has default error message
-end
-
-local function update_dynamic_settings ()
-  local t = os.time()
-  settings.unixtime = t
-  settings.time = os.date ("%H:%M", t)
-end
-
-local function config ()
-  update_dynamic_settings ()
-  return settings
 end
 
 local function unknown (info)
@@ -384,23 +353,13 @@ end
 
 
 local dispatch = {
-    shelly    = simple,
     relay     = relay,
     scene     = scene,
     status    = status,
-    settings  = config,
   }
   
--- CGI entry point
-
-local function ol_request (wsapi_env)
-  
-  local req = wsapi.request.new(wsapi_env)
-  local res = wsapi.response.new ()
-  res:content_type "text/plain" 
-  
-  local command = req.script_name
-  local action, path = command: match "/(%w+)/?(.*)"
+local function exec_shelly_like_command (command, parameters)
+  local action, path = command: match "/?(%w+)/?(.*)"
   local id = tonumber(path: match "^%d+")
   
   local ol = luup.openLuup
@@ -415,7 +374,7 @@ local function ol_request (wsapi_env)
     id = finder {name = name}
   end
   
-  local info = {command = command, id = id, parameters = req.GET}
+  local info = {command = command, id = id, parameters = parameters}
   local fct = dispatch[action] or unknown
   
   unknown(info)   -- set default error message (to be over-written)
@@ -424,6 +383,20 @@ local function ol_request (wsapi_env)
   if type(reply) == "table" then
     reply, err = json.encode(reply)
   end
+  return reply, err
+end
+
+-- CGI entry point
+
+local function ol_request (wsapi_env)
+  
+  local req = wsapi.request.new(wsapi_env)
+  local res = wsapi.response.new ()
+  res:content_type "text/plain" 
+  
+  local command = req.script_name                         -- eg. /relay/42 or scene/32
+  
+  local reply, err = exec_shelly_like_command (command, req.GET)
   res: write (reply or err)
   res:content_type "application/json"
   
@@ -503,6 +476,31 @@ local function execute (wsapi_env, respond, client)
     local handler = exec_selector [request_root] or file_request
     return handler (wsapi_env)    -- no HTTP response needed by server
   end
+end
+
+
+------------------------
+--
+-- MQTT subscriber for Shelly-like commands
+--
+-- relay / scene / status
+--
+local function mqtt_command (topic, json_message)
+  _log (table.concat ({"MQTT COMMAND", topic, json_message}, " / "))
+  if #json_message == 0 then json_message = '{}' end
+  local parameters, err = json.decode (json_message)
+  if parameters then
+    exec_shelly_like_command (topic, parameters)
+  else
+    _log ("ERROR: " .. (err or '?'))
+  end
+end
+
+do -- MQTT commands
+  mqtt.register_handler (mqtt_command, "relay/#")
+  mqtt.register_handler (mqtt_command, "scene/#")
+  mqtt.register_handler (mqtt_command, "status/#")
+  mqtt.register_handler (mqtt_command, "status")
 end
 
 --- return module variables and methods
