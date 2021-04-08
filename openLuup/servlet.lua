@@ -68,7 +68,6 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263/7
 
 -- 2021.04.02   add fourth request type: Shelly-like relay / scene / status / ... (from old shelly_cgi)
--- 2021.04.08   add MQTT subscriber for Shelly-like commands, per the above
 
 
 local logs      = require "openLuup.logs"
@@ -78,7 +77,6 @@ local json      = require "openLuup.json"               -- for unit testing only
 local wsapi     = require "openLuup.wsapi"              -- WSAPI connector for CGI processing
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes, and serviceIds
 local loader    = require "openLuup.loader"             -- for raw_read()
-local mqtt      = require "openLuup.mqtt"
 
 --local _log, _debug = logs.register (ABOUT)
 local _log, _debug = logs.register (ABOUT)
@@ -478,36 +476,6 @@ local function execute (wsapi_env, respond, client)
   end
 end
 
-
-------------------------
---
--- MQTT subscriber for Shelly-like commands
---
--- relay / scene / status
---
-local function mqtt_command (topic, json_message)
-  local parameters, err
-  _log (table.concat {"MQTT COMMAND: ", topic," = ", json_message})
-  local n = tonumber (json_message)
-  if n then 
-    parameters = {turn = n}
-  else
-    if #json_message == 0 then json_message = '{}' end
-    parameters, err = json.decode (json_message)
-  end
-  if parameters then
-    exec_shelly_like_command (topic, parameters)
-  else
-    _log ("ERROR: " .. (err or '?'))
-  end
-end
-
-do -- MQTT commands
-  mqtt.register_handler (mqtt_command, "relay/#")
-  mqtt.register_handler (mqtt_command, "scene/#")
-  mqtt.register_handler (mqtt_command, "status/#")
-  mqtt.register_handler (mqtt_command, "status")
-end
 
 --- return module variables and methods
 

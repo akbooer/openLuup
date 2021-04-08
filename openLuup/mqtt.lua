@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.03.24",
+  VERSION       = "2021.04.08",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -39,20 +39,23 @@ local ABOUT = {
 -- 2021.03.20   EXTRA checks with socket.select() to ensure socket is OK to send
 -- 2021.03.24   EXTRA checks moved to io.server.open()
 
+-- 2021.04.08   add subscriber for relay/nnn topic (with 0 or 1 message)
+
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
 -- Each conformance statement has been assigned a reference in the format [MQTT-x.x.x-y]
 
 local logs      = require "openLuup.logs"
-local tables    = require "openLuup.servertables"     -- for myIP
+local tables    = require "openLuup.servertables"     -- for myIP and serviceIds
 local ioutil    = require "openLuup.io"               -- for core server functions
-local scheduler = require "openLuup.scheduler"
-
+local scheduler = require "openLuup.scheduler"        -- for current_device() and context_switch()
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
 
 local iprequests = {}
+
+local SID = tables.SID
 
 -------------------------------------------
 --
@@ -919,6 +922,27 @@ local function start (config)
       servlet   = MQTTservlet,                          -- our own servlet
       connects  = iprequests,                           -- use our own table for console info
     }
+end
+
+
+------------------------
+--
+-- MQTT subscriber for Shelly-like commands
+--
+-- relay
+--
+
+-- easy MQTT request to switch a switch
+local function mqtt_command (topic, message)
+  _log (table.concat {"MQTT COMMAND: ", topic," = ", message})
+  local n = tonumber (message)
+  if n then 
+    luup.call_action (SID.switch, "SetTarget", {newTargetValue = message}, n)
+  end
+end
+
+do -- MQTT commands
+  subscriptions: register_handler (mqtt_command, "relay/#")
 end
 
 
