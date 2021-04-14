@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2021.04.02",
+  VERSION       = "2021.04.14",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -753,8 +753,8 @@ end
 
 
 local D_GenericTasmotaDevice_xml = Device {
-        deviceType   = "GenericShellyDevice",
-        staticJson   = "D_GenericShellyDevice.json",
+        deviceType   = "GenericTasmotaDevice",
+        staticJson   = "D_GenericTasmotaDevice.json",
       }
 
 local D_GenericTasmotaDevice_json = json.encode {

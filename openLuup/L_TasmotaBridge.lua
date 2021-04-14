@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.04.02",
+  VERSION       = "2021.04.14",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -130,16 +130,18 @@ local function _log (msg)
   luup.log (msg, "luup.tasmota")
 end
 
-local function create_device(info)
+local function create_device(altid, info)
+  _log ("New Tasmota detected: " .. altid)
   local room = luup.rooms.create "Tasmota"     -- create new device in Shellies room
 
   local offset = luup.variable_get (SID.TasmotaBridge, "Offset", devNo)
   local dno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
-  local name, altid, ip = info.id, info.id, info.ip
+  local name = altid
   
   
-  local upnp_file = models[info.model].upnp
+--  local upnp_file = models[info.model].upnp
+  local upnp_file = DEV.tasmota
   
   local dev = chdev.create {
     devNo = dno,
@@ -149,8 +151,6 @@ local function create_device(info)
 --    json_file = json_file,
     parent = devNo,
     room = room,
-    ip = info.ip,                           -- include ip address of Shelly device
-    mac = info.mac,                         -- ditto mac
     manufacturer = "could be anyone",
   }
   
@@ -159,46 +159,34 @@ local function create_device(info)
   
   -- create extra child devices if required
   
-  local children = models[info.model].children or {}
-  local childID = "%s/%s"
-  for i, upnp_file2 in ipairs (children) do
-    local cdno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
-    local cdev = chdev.create {
-      devNo = cdno,
-      internal_id = childID: format (altid, i-1),
-      description = childID: format (name, i-1),
-      upnp_file = upnp_file2,
-  --    json_file = json_file,
-      parent = dno,
-      room = room,
-    }
+--  local children = models[info.model].children or {}
+--  local childID = "%s/%s"
+--  for i, upnp_file2 in ipairs (children) do
+--    local cdno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
+--    local cdev = chdev.create {
+--      devNo = cdno,
+--      internal_id = childID: format (altid, i-1),
+--      description = childID: format (name, i-1),
+--      upnp_file = upnp_file2,
+--  --    json_file = json_file,
+--      parent = dno,
+--      room = room,
+--    }
     
-    luup.devices[cdno] = cdev                   -- add to Luup devices
-  end
+--    luup.devices[cdno] = cdev                   -- add to Luup devices
+--  end
   
   return dno
 end
 
-local function init_device (info)
-  
---  local altid = info.id
---  if devices[info.id] then return end       -- device already registered
-
---  _log ("New Tasmota announced: " .. altid)
---  local dno = luup.openLuup.find_device {altid = altid} 
---                or 
---                  create_device (info)
+local function init_device (altid, info)
+  local dno = luup.openLuup.find_device {altid = altid} 
+                or 
+                  create_device (altid, info)
                   
---  luup.devices[dno].handle_children = true  -- ensure that it handles child requests
---  devices[altid] = dno                      -- save the device number, indexed by id
-  
---  -- update info, it may have changed
---  -- info = {"id":"xxx","model":"SHSW-25","mac":"hhh","ip":"...","new_fw":false,"fw_ver":"..."}
---  luup.ip_set (info.ip, dno)
---  luup.mac_set (info.mac, dno)
---  luup.attr_set ("model", info.model, dno)
---  luup.attr_set ("firmware", info.fw_ver, dno)
-  
+  luup.devices[dno].handle_children = true  -- ensure that it handles child requests
+  devices[altid] = dno                      -- save the device number, indexed by id
+  return dno
 end
 
 -- the bridge is a standard Luup plugin
@@ -229,7 +217,7 @@ local prefixes = {cmnd = true, stat = true, tele = true}    -- default Tasmota p
 
 function _G.Tasmota_MQTT_Handler (topic, message)
   
-  local prefix  = topic: match "^(%w+)/(.+)"
+  local prefix, tasmotas  = topic: match "^(%w+)/(.+)"
   if not prefixes[prefix] then return end
   
   devNo = devNo       -- ensure that TasmotaBridge device exists
@@ -238,31 +226,36 @@ function _G.Tasmota_MQTT_Handler (topic, message)
                 or
                   create_TasmotaBridge ()
   
---  if shellies == "announce" then
---    local info, err = json.decode (message)
---    if not info then _log ("Announce JSON error: " .. (err or '?')) return end
---    init_device (info)
---  end
+  local info, err = json.decode (message)
+  if not info then _log ("JSON error: " .. (err or '?')) return end
   
---  local timenow = os.time()
---  luup.devices[devNo]: variable_set (SID.hadevice, "LastUpdate", timenow, true)   -- not logged, but watchable
+  local timenow = os.time()
+  luup.devices[devNo]: variable_set (SID.hadevice, "LastUpdate", timenow, true)   -- not logged, but watchable
 
---  local  shelly, var = shellies: match "^(.-)/(.+)"
+  -- device update: tele/tasmota_7FA953/SENSOR
+  if prefix == "tele" then 
+    local tasmota = tasmotas: match "^(.-)/SENSOR"
 
---  local child = devices[shelly]
---  if not child then return end
+    local child = devices[tasmota] or init_device (tasmota, info)
   
---  local dev = luup.devices[child]
---  dev: variable_set (SID.hadevice, "LastUpdate", timenow, true)     -- not logged, but 'true' enables variable watch
-  
---  local old = luup.variable_get (shelly, var, child)
---  if message ~= old then
-
---    dev: variable_set (shelly, var, message, true)                  -- not logged, but 'true' enables variable watch
---    generic (child, var, message)
+    local dev = luup.devices[child]
+    dev: variable_set (SID.hadevice, "LastUpdate", timenow, true)     -- not logged, but 'true' enables variable watch
+    dev: variable_set (tasmota, "tele", message, true)  
+    
+    for n,v in pairs (info) do
+      if type (v) == "table" then
+        for a,b in pairs (v) do
+          dev: variable_set (n, a, b, true)
+        end
+      else
+        dev: variable_set (tasmota, n, v, true)
+      end
+    end
+    
 --    local model = luup.attr_get ("model", child)
 --    models[model].updater (child, var, message)
---  end
+  
+  end
 end
 
 for prefix in pairs (prefixes) do
