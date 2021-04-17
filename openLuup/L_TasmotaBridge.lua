@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.04.17",
+  VERSION       = "2021.04.17c",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -26,7 +26,7 @@ ABOUT = {
 
 
 -- 2021.04.02  new L_TasmotaBridge file
--- 2021.04.17  use openLuup device variable virtualizer
+-- 2021.04.17  use openLuup device variable virtualizer, go one level deeper in table data (thanks @Buxton)
 
 
 local json      = require "openLuup.json"
@@ -175,10 +175,17 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
   for n,v in pairs (info) do
     if type (v) == "table" then
       for a,b in pairs (v) do
-        dev[n][a] = b
+        if type (b) == "table" then
+          for c,d in pairs(b) do
+            dev[n][a .. '/' .. c] = d
+          end
+        else
+          dev[n][a] = b
+        end
       end
     else
-      dev[tasmota][n] = v      end
+      dev[tasmota][n] = v
+    end
   end
 end
 
