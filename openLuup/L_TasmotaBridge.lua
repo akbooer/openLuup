@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.04.17c",
+  VERSION       = "2021.04.17d",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -157,7 +157,11 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
                   create_TasmotaBridge ()
   
   local info, err = json.decode (message)
-  if not info then _log ("JSON error: " .. (err or '?')) return end
+  if not info then 
+    _log ("JSON error: " .. (err or '?')) 
+    _log ("Received message causing error was: " .. message)
+    return 
+  end
   
   local timenow = os.time()
   V[devNo].hadevice.LastUpdate = timenow

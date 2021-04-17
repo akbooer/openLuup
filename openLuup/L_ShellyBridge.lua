@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.17b",
+  VERSION       = "2021.04.18",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -65,8 +65,7 @@ local devNo             -- bridge device number (set on startup)
 
 local function SetTarget (dno, args)
   local id = luup.attr_get ("altid", dno)
-  local shelly, relay = id: match "^([^/]+)/?(%d?)$"    -- expecting "shellyxxxx/n", 2021.04.17, or not, for Shelly-1
-  relay = relay or '0'
+  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
   if shelly then
     local val = tonumber (args.newTargetValue)
     V[dno].switch.Target = val
