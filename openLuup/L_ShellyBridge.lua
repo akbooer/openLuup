@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.17",
+  VERSION       = "2021.04.17b",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -202,8 +202,10 @@ end
 local unknown_model = model_info (DEV.controller, generic)
 local models = setmetatable (
   {
-    ["SHSW-1"]  = model_info (DEV.light, sw2_5),
-    ["SHSW-PM"] = model_info (DEV.light, sw2_5),
+--    ["SHSW-1"]  = model_info (DEV.light, sw2_5),
+    ["SHSW-1"]  = model_info (DEV.shelly, sw2_5, {DEV.light}),
+--    ["SHSW-PM"] = model_info (DEV.light, sw2_5),
+    ["SHSW-PM"] = model_info (DEV.shelly, sw2_5, {DEV.light}),
     ["SHIX3-1"] = model_info (DEV.controller, ix3),
     ["SHSW-25"] = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light})      -- two child devices
   },{
@@ -358,6 +360,6 @@ function _G.Shelly_MQTT_Handler (topic, message)
   end
 end
 
-luup.register_handler ("Shelly_MQTT_Handler", "mqtt:shellies/#")   -- * * * * MQTT wildcard subscription * * * *
+luup.register_handler ("Shelly_MQTT_Handler", "mqtt:shellies/#")   -- * * * MQTT wildcard subscription * * *
 
 -----

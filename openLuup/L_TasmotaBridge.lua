@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.04.14",
+  VERSION       = "2021.04.17",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -26,6 +26,7 @@ ABOUT = {
 
 
 -- 2021.04.02  new L_TasmotaBridge file
+-- 2021.04.17  use openLuup device variable virtualizer
 
 
 local json      = require "openLuup.json"
