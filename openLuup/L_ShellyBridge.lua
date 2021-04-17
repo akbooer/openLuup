@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.03",
+  VERSION       = "2021.04.17",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -33,6 +33,7 @@ ABOUT = {
 -- 2021.03.30  use DEV and SID definitions from openLuup.servertables
 -- 2021.03.31  put button press processing into generic() function (works for ix3, sw1, sw2.5, ...) 
 -- 2021.04.02  make separate L_ShellyBridge file
+-- 2021.04.17  use openLuup device variable virtualizer, fix SetTarget for Shelly-1 (thanks @Elcid)
 
 
 local json      = require "openLuup.json"
@@ -49,6 +50,8 @@ local SID = tables.SID {
     shellies  = "shellies",
   }
 
+local V = luup.openLuup.virtualizer
+
 
 --------------------------------------------------
 --
@@ -62,10 +65,11 @@ local devNo             -- bridge device number (set on startup)
 
 local function SetTarget (dno, args)
   local id = luup.attr_get ("altid", dno)
-  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
-  if relay then
+  local shelly, relay = id: match "^([^/]+)/?(%d?)$"    -- expecting "shellyxxxx/n", 2021.04.17, or not, for Shelly-1
+  relay = relay or '0'
+  if shelly then
     local val = tonumber (args.newTargetValue)
-    luup.variable_set (SID.switch, "Target", val, dno)
+    V[dno].switch.Target = val
     local on_off = val == 1 and "on" or "off"
     shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
     luup.openLuup.mqtt.publish (shelly, on_off)
@@ -75,7 +79,7 @@ local function SetTarget (dno, args)
 end
 
 local function ToggleState (dno)
-  local val = luup.variable_get (SID.switch, "Status", dno)
+  local val = V[dno].switch.Status
   SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
 end
 
@@ -121,18 +125,6 @@ end
 local devices = {}      -- gets filled with device info on MQTT connection
 local devNo             -- bridge device number (set on startup)
 
--- option for allowing variable to be set with or without logging
-local function variable_set (sid, var, val, dno, log)
-  local d = luup.devices[dno]
-  if d then
-    if log == false then                            -- note that nil will allow logging
-      d: variable_set (sid, var, val, true)         -- not logged, but 'true' enables variable watch
-    else
-      luup.variable_set (sid, var, val, dno)
-    end
-  end
-end
-
 ----------------------
 --
 -- device specific variable updaters
@@ -164,8 +156,9 @@ local function generic (dno, var, value)
     local push = input and push_event[input.event]
     if push then
       local scene = button + push
-      variable_set (SID.scene, "sl_SceneActivated", scene, dno)
-      variable_set (SID.scene, "LastSceneTime", os.time(), dno)
+      local S = V[dno].scene
+      S.sl_SceneActivated = scene
+      S.LastSceneTime = os.time()
     end
   end
 end
@@ -182,13 +175,14 @@ local function sw2_5(dno, var, value)
     local altid = luup.attr_get ("altid", dno)
     local cdno = luup.openLuup.find_device {altid = table.concat {altid, '/', child} }
     if cdno then
+      local D = V[cdno]
       if action == "relay" then
         if attr == '' then
-          variable_set (SID.switch, "Status", value == "on" and '1' or '0', cdno)
+          D.switch.Status = value == "on" and '1' or '0'
         elseif attr == "power" then
-          variable_set (SID.energy, "Watts", value, cdno, false)    -- don't log power updates
+          D.energy.Watts = value
         elseif attr == "energy" then
-          variable_set (SID.energy, "KWH", math.floor (value / 60) / 1000, cdno, false)  -- convert Wmin to kWh, don't log
+          D.energy.KWH = math.floor (value / 60) / 1000   -- convert Wmin to kWh
         end
       elseif action == "input" then
           -- possibly set the input as a security/tamper switch
@@ -227,7 +221,7 @@ local function create_device(info)
   local offset = luup.variable_get (SID.sBridge, "Offset", devNo)
   if not offset then 
     offset = luup.openLuup.bridge.nextIdBlock()  
-    variable_set (SID.sBridge, "Offset", offset, devNo)
+    V[devNo][SID.sBridge].Offset = offset
   end
   local dno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
@@ -344,23 +338,23 @@ function _G.Shelly_MQTT_Handler (topic, message)
   end
   
   local timenow = os.time()
-  luup.devices[devNo]: variable_set (SID.hadevice, "LastUpdate", timenow, true)   -- not logged, but watchable
+  V[devNo].hadevice.LastUpdate = timenow
 
   local  shelly, var = shellies: match "^(.-)/(.+)"
 
   local child = devices[shelly]
   if not child then return end
   
-  local dev = luup.devices[child]
-  dev: variable_set (SID.hadevice, "LastUpdate", timenow, true)     -- not logged, but 'true' enables variable watch
+  local D = V[child]
+  D.hadevice.LastUpdate = timenow
   
-  local old = luup.variable_get (shelly, var, child)
+  local S = D[shelly]
+  local old = S[var]
   if message ~= old then
-
-    dev: variable_set (shelly, var, message, true)                  -- not logged, but 'true' enables variable watch
-    generic (child, var, message)
+    S[var] = message                                  -- save the raw message
+    generic (child, var, message)                     -- perform generic update actions
     local model = luup.attr_get ("model", child)
-    models[model].updater (child, var, message)
+    models[model].updater (child, var, message)       -- perform device specific update actions
   end
 end
 
