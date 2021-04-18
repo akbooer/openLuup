@@ -206,7 +206,8 @@ local models = setmetatable (
 --    ["SHSW-PM"] = model_info (DEV.light, sw2_5),
     ["SHSW-PM"] = model_info (DEV.shelly, sw2_5, {DEV.light}),
     ["SHIX3-1"] = model_info (DEV.controller, ix3),
-    ["SHSW-25"] = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light})      -- two child devices
+    ["SHSW-25"] = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light}),       -- two child devices
+    ["SHPLG-S"] = model_info (DEV.shelly, sw2_5, {DEV.light}),
   },{
     __index = function () return unknown_model end
   })

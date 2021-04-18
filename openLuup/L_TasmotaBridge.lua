@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.04.17d",
+  VERSION       = "2021.04.18",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -155,40 +155,43 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
               luup.openLuup.find_device {device_type = "TasmotaBridge"}
                 or
                   create_TasmotaBridge ()
+
+  -- device update: tele/tasmota_7FA953/SENSOR
+  local tasmota = tasmotas: match "^(.-)/SENSOR"
+  if not tasmota then 
+    _log (table.concat ({"Topic ignored", topic, message}, " : "))
+    return 
+  end
   
   local info, err = json.decode (message)
   if not info then 
     _log ("JSON error: " .. (err or '?')) 
-    _log ("Received message causing error was: " .. message)
+    _log ("Received message ignored: " .. message)
     return 
   end
   
   local timenow = os.time()
   V[devNo].hadevice.LastUpdate = timenow
-
-  -- device update: tele/tasmota_7FA953/SENSOR
-  local tasmota = tasmotas: match "^(.-)/SENSOR"
-  if not tasmota then return end
   
   local child = devices[tasmota] or init_device (tasmota)
 
-  local dev = V[child]
-  dev.hadevice.LastUpdate = timenow
-  dev[tasmota][prefix] = message
+  local DEV = V[child]
+  DEV.hadevice.LastUpdate = timenow
+  DEV[tasmota][prefix] = message
   
   for n,v in pairs (info) do
     if type (v) == "table" then
       for a,b in pairs (v) do
         if type (b) == "table" then
           for c,d in pairs(b) do
-            dev[n][a .. '/' .. c] = d
+            DEV[n][a .. '/' .. c] = d
           end
         else
-          dev[n][a] = b
+          DEV[n][a] = b
         end
       end
     else
-      dev[tasmota][n] = v
+      DEV[tasmota][n] = v
     end
   end
 end
