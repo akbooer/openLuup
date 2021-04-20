@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.04.18",
+  VERSION       = "2021.04.20",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -82,7 +82,7 @@ local function create_device(altid)
   _log ("New Tasmota detected: " .. altid)
   local room = luup.rooms.create "Tasmota"     -- create new device in Tasmota room
 
-  local offset = luup.variable_get (SID.TasmotaBridge, "Offset", devNo)
+  local offset = luup.devices[devNo][SID.TasmotaBridge].Offset
   local dno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
   local name = altid
@@ -142,9 +142,6 @@ end
 -- MQTT callbacks
 --
 
-local V = luup.openLuup.virtualizer
-
-
 function _G.Tasmota_MQTT_Handler (topic, message, prefix)
   
   local tasmotas = topic: match (table.concat {"^", prefix, "/(.+)"})
@@ -171,11 +168,11 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
   end
   
   local timenow = os.time()
-  V[devNo].hadevice.LastUpdate = timenow
+  luup.devices[devNo].hadevice.LastUpdate = timenow
   
   local child = devices[tasmota] or init_device (tasmota)
 
-  local DEV = V[child]
+  local DEV = luup.devices[child]
   DEV.hadevice.LastUpdate = timenow
   DEV[tasmota][prefix] = message
   

@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.18",
+  VERSION       = "2021.04.19",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -50,8 +50,6 @@ local SID = tables.SID {
     shellies  = "shellies",
   }
 
-local V = luup.openLuup.virtualizer
-
 
 --------------------------------------------------
 --
@@ -68,7 +66,7 @@ local function SetTarget (dno, args)
   local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
   if shelly then
     local val = tonumber (args.newTargetValue)
-    V[dno].switch.Target = val
+    luup.devices[dno].switch.Target = val
     local on_off = val == 1 and "on" or "off"
     shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
     luup.openLuup.mqtt.publish (shelly, on_off)
@@ -78,7 +76,7 @@ local function SetTarget (dno, args)
 end
 
 local function ToggleState (dno)
-  local val = V[dno].switch.Status
+  local val = luup.devices[dno].switch.Status
   SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
 end
 
@@ -155,7 +153,7 @@ local function generic (dno, var, value)
     local push = input and push_event[input.event]
     if push then
       local scene = button + push
-      local S = V[dno].scene
+      local S = luup.devices[dno].scene
       S.sl_SceneActivated = scene
       S.LastSceneTime = os.time()
     end
@@ -174,7 +172,7 @@ local function sw2_5(dno, var, value)
     local altid = luup.attr_get ("altid", dno)
     local cdno = luup.openLuup.find_device {altid = table.concat {altid, '/', child} }
     if cdno then
-      local D = V[cdno]
+      local D = luup.devices[cdno]
       if action == "relay" then
         if attr == '' then
           D.switch.Status = value == "on" and '1' or '0'
@@ -198,12 +196,10 @@ local function model_info (upnp, updater, children)
   return {upnp = upnp, updater = updater, children = children}
 end
 
-local unknown_model = model_info (DEV.controller, generic)
+local unknown_model = model_info (DEV.shelly, generic)
 local models = setmetatable (
   {
---    ["SHSW-1"]  = model_info (DEV.light, sw2_5),
     ["SHSW-1"]  = model_info (DEV.shelly, sw2_5, {DEV.light}),
---    ["SHSW-PM"] = model_info (DEV.light, sw2_5),
     ["SHSW-PM"] = model_info (DEV.shelly, sw2_5, {DEV.light}),
     ["SHIX3-1"] = model_info (DEV.controller, ix3),
     ["SHSW-25"] = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light}),       -- two child devices
@@ -220,10 +216,10 @@ end
 local function create_device(info)
   local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
 
-  local offset = luup.variable_get (SID.sBridge, "Offset", devNo)
+  local offset = luup.devices[devNo][SID.sBridge].Offset
   if not offset then 
     offset = luup.openLuup.bridge.nextIdBlock()  
-    V[devNo][SID.sBridge].Offset = offset
+    luup.devices[devNo][SID.sBridge].Offset = offset
   end
   local dno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
@@ -340,14 +336,14 @@ function _G.Shelly_MQTT_Handler (topic, message)
   end
   
   local timenow = os.time()
-  V[devNo].hadevice.LastUpdate = timenow
+  luup.devices[devNo].hadevice.LastUpdate = timenow
 
   local  shelly, var = shellies: match "^(.-)/(.+)"
 
   local child = devices[shelly]
   if not child then return end
   
-  local D = V[child]
+  local D = luup.devices[child]
   D.hadevice.LastUpdate = timenow
   
   local S = D[shelly]

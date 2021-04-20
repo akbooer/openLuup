@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.04.08",
+  VERSION       = "2021.04.18",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -722,7 +722,11 @@ local subscriptions = {} do
         s.count = (s.count or 0) + 1
         local ok, err
         if s.callback then
-          ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage, s.parameter)
+          if type(s.callback) == "function" then
+            ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage, s.parameter)
+          else
+            err = "callback is not a function : " .. tostring(s.callback)
+          end
         elseif s.client then
           message = message or MQTT_packet.PUBLISH (TopicName, ApplicationMessage)
           ok, err = self: send_to_client (s.client, message) -- publish to external subscribers

@@ -1,4 +1,4 @@
-local VERSION = "2021.04.04"
+local VERSION = "2021.04.19"
 
 -- mimetypes
 -- 2016/04/14
@@ -280,6 +280,23 @@ local DEV = setmetatable ({
   }, meta)
 
 local SID = setmetatable ({
+    
+    -- Short SIDs (as used by Historian / Grafana)
+    altui1                  = "urn:upnp-org:serviceId:altui1",
+    AltAppStore1            = "urn:upnp-org:serviceId:AltAppStore1",
+    Dimming1                = "urn:upnp-org:serviceId:Dimming1",
+    EnergyMetering1         = "urn:micasaverde-com:serviceId:EnergyMetering1",
+    HaDevice1               = "urn:micasaverde-com:serviceId:HaDevice1",
+    HomeAutomationGateway1  = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
+    HumiditySensor1         = "urn:micasaverde-com:serviceId:HumiditySensor1",
+    LightSensor1            = "urn:micasaverde-com:serviceId:LightSensor1",
+    SwitchPower1            = "urn:upnp-org:serviceId:SwitchPower1",                          
+    SecuritySensor1         = "urn:micasaverde-com:serviceId:SecuritySensor1",
+    SceneController1        = "urn:micasaverde-com:serviceId:SceneController1",
+    TemperatureSensor1      = "urn:upnp-org:serviceId:TemperatureSensor1",
+    ZWaveDevice1            = "urn:micasaverde-com:serviceId:ZWaveDevice1",
+    
+    -- Very Short SIDs
     altui     = "urn:upnp-org:serviceId:altui1",
     appstore  = "urn:upnp-org:serviceId:AltAppStore1",
     dimming   = "urn:upnp-org:serviceId:Dimming1",
@@ -293,6 +310,7 @@ local SID = setmetatable ({
     scene     = "urn:micasaverde-com:serviceId:SceneController1",
     temp      = "urn:upnp-org:serviceId:TemperatureSensor1",
     zwave     = "urn:micasaverde-com:serviceId:ZWaveDevice1",
+  
   }, meta)
 
 --

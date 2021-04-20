@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2021.04.16",
+  VERSION       = "2021.04.20",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1144,6 +1144,8 @@ end
 -----
 --
 -- virtualization of device variables
+-- 2021.04.20  functionality now integrated into chdev module,
+-- but retained here for reference (since this code will work on Vera too!)
 --
 
 local SID = tables.SID
@@ -1155,12 +1157,18 @@ local dev_meta = {__newindex = readonly}
 function dev_meta:__index (dev)
   
   local svc_meta = {__newindex = readonly}
-    
+        
   function svc_meta:__index (sid)
     sid = SID[sid] or sid
     
     local var_meta = {}
-  
+    
+    function var_meta: __call (action)
+      return function (args)
+        return luup.call_action (sid, action, args, dev)
+      end
+    end
+
     function var_meta:__index (var)
       return luup.variable_get (sid, var, dev)
     end
@@ -1168,12 +1176,8 @@ function dev_meta:__index (dev)
     function var_meta:__newindex (var, new)
       new = tostring(new)
       local old = self[var]
-      if old then
-        if old ~= new then
-          luup.devices[dev]: variable_set (sid, var, new, true)   -- not logged, but 'true' enables variable watch
-        end
-      else
-        luup.variable_set (sid, var, new, dev)        -- create and log
+      if old ~= new then
+        luup.variable_set (sid, var, new, dev)        -- create/update and log
       end
     end
 
