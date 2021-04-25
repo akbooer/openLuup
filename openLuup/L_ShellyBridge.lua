@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.19",
+  VERSION       = "2021.04.25",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -34,6 +34,7 @@ ABOUT = {
 -- 2021.03.31  put button press processing into generic() function (works for ix3, sw1, sw2.5, ...) 
 -- 2021.04.02  make separate L_ShellyBridge file
 -- 2021.04.17  use openLuup device variable virtualizer, fix SetTarget for Shelly-1 (thanks @Elcid)
+-- 2021.04.25  add Shelly SHPLG2-1 (thanks @ArcherS)
 
 
 local json      = require "openLuup.json"
@@ -199,11 +200,12 @@ end
 local unknown_model = model_info (DEV.shelly, generic)
 local models = setmetatable (
   {
-    ["SHSW-1"]  = model_info (DEV.shelly, sw2_5, {DEV.light}),
-    ["SHSW-PM"] = model_info (DEV.shelly, sw2_5, {DEV.light}),
-    ["SHIX3-1"] = model_info (DEV.controller, ix3),
-    ["SHSW-25"] = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light}),       -- two child devices
-    ["SHPLG-S"] = model_info (DEV.shelly, sw2_5, {DEV.light}),
+    ["SHSW-1"]    = model_info (DEV.shelly, sw2_5, {DEV.light}),
+    ["SHSW-PM"]   = model_info (DEV.shelly, sw2_5, {DEV.light}),
+    ["SHIX3-1"]   = model_info (DEV.controller, ix3),
+    ["SHSW-25"]   = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light}),       -- two child devices
+    ["SHPLG-S"]   = model_info (DEV.shelly, sw2_5, {DEV.light}),
+    ["SHPLG2-1"]  = model_info (DEV.shelly, sw2_5, {DEV.light}),
   },{
     __index = function () return unknown_model end
   })
