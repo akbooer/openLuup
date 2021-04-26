@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.25",
+  VERSION       = "2021.04.26",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -51,6 +51,7 @@ local SID = tables.SID {
     shellies  = "shellies",
   }
 
+local openLuup = luup.openLuup
 
 --------------------------------------------------
 --
@@ -67,17 +68,17 @@ local function SetTarget (dno, args)
   local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
   if shelly then
     local val = tonumber (args.newTargetValue)
-    luup.devices[dno].switch.Target = val
+    openLuup[dno].switch.Target = val
     local on_off = val == 1 and "on" or "off"
     shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
-    luup.openLuup.mqtt.publish (shelly, on_off)
+    openLuup.mqtt.publish (shelly, on_off)
   else 
     return false
   end
 end
 
 local function ToggleState (dno)
-  local val = luup.devices[dno].switch.Status
+  local val = openLuup[dno].switch.Status
   SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
 end
 
@@ -154,7 +155,7 @@ local function generic (dno, var, value)
     local push = input and push_event[input.event]
     if push then
       local scene = button + push
-      local S = luup.devices[dno].scene
+      local S = openLuup[dno].scene
       S.sl_SceneActivated = scene
       S.LastSceneTime = os.time()
     end
@@ -171,9 +172,9 @@ local function sw2_5(dno, var, value)
   local action, child, attr = var: match "^(%a+)/(%d)/?(.*)"
   if child then
     local altid = luup.attr_get ("altid", dno)
-    local cdno = luup.openLuup.find_device {altid = table.concat {altid, '/', child} }
+    local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
     if cdno then
-      local D = luup.devices[cdno]
+      local D = openLuup[cdno]
       if action == "relay" then
         if attr == '' then
           D.switch.Status = value == "on" and '1' or '0'
@@ -220,10 +221,10 @@ local function create_device(info)
 
   local offset = luup.devices[devNo][SID.sBridge].Offset
   if not offset then 
-    offset = luup.openLuup.bridge.nextIdBlock()  
-    luup.devices[devNo][SID.sBridge].Offset = offset
+    offset = openLuup.bridge.nextIdBlock()  
+    openLuup[devNo][SID.sBridge].Offset = offset
   end
-  local dno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
+  local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
   local name, altid, ip = info.id, info.id, info.ip
   
@@ -258,7 +259,7 @@ local function create_device(info)
   local children = models[info.model].children or {}
   local childID = "%s/%s"
   for i, upnp_file2 in ipairs (children) do
-    local cdno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
+    local cdno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
     local cdev = chdev.create {
       devNo = cdno,
       internal_id = childID: format (altid, i-1),
@@ -281,7 +282,7 @@ local function init_device (info)
   if devices[info.id] then return end       -- device already registered
 
   _log ("New Shelly announced: " .. altid)
-  local dno = luup.openLuup.find_device {altid = altid} 
+  local dno = openLuup.find_device {altid = altid} 
                 or 
                   create_device (info)
                   
@@ -327,7 +328,7 @@ function _G.Shelly_MQTT_Handler (topic, message)
   
   devNo = devNo       -- ensure that ShellyBridge device exists
             or
-              luup.openLuup.find_device {device_type = "ShellyBridge"}
+              openLuup.find_device {device_type = "ShellyBridge"}
                 or
                   create_ShellyBridge ()
   
@@ -338,14 +339,14 @@ function _G.Shelly_MQTT_Handler (topic, message)
   end
   
   local timenow = os.time()
-  luup.devices[devNo].hadevice.LastUpdate = timenow
+  openLuup[devNo].hadevice.LastUpdate = timenow
 
   local  shelly, var = shellies: match "^(.-)/(.+)"
 
   local child = devices[shelly]
   if not child then return end
   
-  local D = luup.devices[child]
+  local D = openLuup[child]
   D.hadevice.LastUpdate = timenow
   
   local S = D[shelly]

@@ -1,4 +1,4 @@
-local VERSION = "2021.04.19"
+local VERSION = "2021.04.25"
 
 -- mimetypes
 -- 2016/04/14
@@ -34,7 +34,9 @@ local VERSION = "2021.04.19"
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
 
-local socket = require "socket"
+local socket  = require "socket"
+local xml     = require "openLuup.xml"
+
 
 local function myIP ()    
   local mySocket = socket.udp ()
@@ -313,8 +315,72 @@ local SID = setmetatable ({
   
   }, meta)
 
+-----
+--
+-- device/service file synthesis utilities
 --
 
+
+-- synthesize SCPDURL and serviceType from serviceId 
+local function svc_synth (sid)
+  local serviceType = "urn:schemas-%s:service:%s:%s"
+  local serviceFile = "S_%s.xml"
+
+  local id1, id2 = sid: match "urn:(.-):serviceId:(.+)"
+  if not id1 then 
+    return serviceFile: format(sid), sid    -- special handling for openLuup no-nonsence SID
+  end
+  local id3 = id2: match "%D+%d?"
+  local sfile = serviceFile: format (id3)
+  
+  local id4,idn = id3: match "^([%a_]+)(%d?)$"
+  local stype = serviceType: format(id1,id4,idn)
+  return sfile, stype
+end
+
+-- synthesize XML device file
+local function Device (d)
+  local x = xml.createDocument ()
+  local dev = {}
+  local special = {implementationList = true, serviceList = true, serviceIds = true}
+  for n,v in pairs (d) do
+    if not special[n] then
+      dev[#dev+1] = x[n] (v)
+    end
+  end
+  if d.serviceIds then 
+    local slist = {}
+    for i, sid in ipairs (d.serviceIds) do
+      local SCPDURL, serviceType = svc_synth (sid)
+      slist[i] = x.service {x.serviceType (serviceType), x.serviceId (sid), x.SCPDURL(SCPDURL)}
+    end
+    dev[#dev+1] = x.serviceList (slist)
+  end
+  if d.serviceList then 
+    local slist = {}
+    for i, s in ipairs (d.serviceList) do
+      slist[i] = x.service {x.serviceType (s[1]), x.serviceId (s[2]), x.SCPDURL(s[3])}
+    end
+    dev[#dev+1] = x.serviceList (slist)
+  end
+  if d.implementationList then
+    local flist = {}
+    for i,f in ipairs (d.implementationList) do
+      flist[i] = x.implementationFile (f)
+    end
+    dev[#dev+1] = x.implementationList (flist)
+  end
+  x: appendChild {
+    x.root {xmlns="urn:schemas-upnp-org:device-1-0",
+      x.specVersion {x.major "1", x.minor "0", x.minimus "auto-generated"},
+      x.device (dev)
+        }}
+  return tostring (x)
+end
+
+
+
+-----
 return {
   
     VERSION = VERSION,
@@ -332,6 +398,11 @@ return {
     mqtt_codes      = mqtt_codes,         -- MQTT
     cache_control   = cache_control,      -- for file servlet
     archive_rules   = archive_rules,      -- for historian
+    
+    -- utilities
+    
+    Device = Device,
+    
   }
   
 -----

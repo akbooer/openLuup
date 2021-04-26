@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2021.04.19",
+  VERSION       = "2020.12.26",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2020 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2020 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -71,8 +71,6 @@ local ABOUT = {
 -- 2020.12.23  add Ezlo bridge to scheduler startup priorities (thanks @rigpapa)
 -- 2020.12.26  make status request honour dataversion number for variables (thanks @rigpapa)
 
--- 2021.04.19  add support for vitualization of device variables and actions
-
 
 local logs      = require "openLuup.logs"
 
@@ -80,8 +78,6 @@ local devutil   = require "openLuup.devices"
 local loader    = require "openLuup.loader"
 local scheduler = require "openLuup.scheduler"
 local json      = require "openLuup.json"               -- for device.__tostring()
-local tables    = require "openLuup.servertables"       -- for SID shortcuts
-
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
@@ -90,6 +86,7 @@ local BLOCKSIZE = 10000     -- size of device number blocks allocate to openLuup
 
 -- utilities
 
+local function newindex (self, ...) rawset (getmetatable(self).__index, ...) end      -- put non-visible variables into meta
 
 local function jsonify (self) return (json.encode (self: state_table())) or '?' end   -- return JSON device representation
 
@@ -257,8 +254,7 @@ local function create (x)
       description         = a.name or '???',
       device_num_parent   = a.id_parent,
       device_type         = a.device_type, 
-      embedded            = false,                    -- if embedded, it doesn't have its own room
-      handle_children     = d.handle_children == "1", -- 2021.04.19  moved from metadata
+      embedded            = false,                  -- if embedded, it doesn't have its own room
       hidden              = x.hidden or false,        -- if hidden, it's not shown on the dashboard
       id                  = a.altid,
       invisible           = x.invisible or false,     -- if invisible, it's 'for internal use only'
@@ -273,7 +269,7 @@ local function create (x)
   
   -- fill out extra data in the proto-device
   dev.category_name       = d.category_name
---  dev.handle_children     = d.handle_children == "1"
+  dev.handle_children     = d.handle_children == "1"
   dev.serviceList         = d.service_list
   dev.environment         = d.environment               -- the global environment (_G) for this device
   dev.io                  = {                           -- area for io related data (see luup.io)
@@ -324,7 +320,7 @@ local function create (x)
   function dev:state_table (dv)       -- 2019.05.12
     dv = dv or 0                      -- 2020.12.26  implement versioning
     local states = {}
-    for _,item in ipairs(self.variables) do
+    for i,item in ipairs(self.variables) do
       local version = item.version or dv + 1
       if version > dv then
         states[#states+1] = {
@@ -426,57 +422,11 @@ local function create (x)
   end
   
   
-  -------
-  --
-  -- support for virtualization of device variables and actions
-  --
+  return setmetatable (luup_device, {
+      __index = dev, 
+      __newindex = newindex,          -- 2020.02.09
+      __tostring = jsonify})
   
-  local SID = tables.SID
-  
-  local meta = {__tostring = jsonify}
-  
-  function meta:__newindex (k,v) dev[k] = v end      -- put non-visible variables into dev
-  
-  function meta:__index (k)
-    local v = dev[k]
-    if v then return v end
-    
-    -- virtual variable get/set and action calls
-    
-    local dno = dev.devNo
-    local sid = SID[k] or k
-    
-    local var_meta = {}
-    
-    function var_meta: __call (action)
-      return function (args)
-        return luup.call_action (sid, action, args, dno)
-      end
-    end
-
-    function var_meta:__index (var)
-      return luup.variable_get (sid, var, dno)
-    end
-    
-    function var_meta:__newindex (var, new)
-      new = tostring(new)
-      local old = self[var]
-      if old then
-        if old ~= new then
-          luup.devices[dno]: variable_set (sid, var, new, true)   -- not logged, but 'true' enables variable watch
-        end
-      else
-        luup.variable_set (sid, var, new, dno)        -- create and log
-      end
-    end
-
-    return setmetatable({}, var_meta)
-  end
-
-  --
-  -------
-  
-  return setmetatable (luup_device, meta)
 end
 
 -- generate the next device number

@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.xml",
-  VERSION       = "2020.03.20",
+  VERSION       = "2021.04.23",
   DESCRIPTION   = "XML utilities (HTML, SVG) and DOM-style parser/serializer",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -39,6 +39,9 @@ local ABOUT = {
 --                and provide new factory methods for XML, HTML, and SVG documents
 
 -- 2020.03.20  trow() function for generic HTML table rows (allows intervening HTML)
+
+-- 2021.04.23  CreateElement parameters changed from type == "string" to type ~= "table"
+
 
 --[[
 
@@ -120,7 +123,7 @@ local NodeMeta = {}     -- NB: real metamethods will be added later!
                         -- parse / serialize do not access any metamethods
 
 local function createElement (name, contents)    -- TODO: flatten tables (DocumentFragments) ?
-  if not contents or type (contents) == "string" then contents = {contents} end
+  if not contents or type (contents) ~= "table" then contents = {contents} end    -- 2021.04.23 changed from type == "string"
   local self = setmetatable ({[0] = name}, NodeMeta)
   for n,v in pairs (contents) do self[n] = v end          -- shallow copy of contents
   return self

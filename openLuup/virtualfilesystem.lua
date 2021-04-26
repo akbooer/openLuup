@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2021.04.14",
+  VERSION       = "2021.04.25",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -22,8 +22,9 @@ local ABOUT = {
 ]]
 }
 
-local json  = require "openLuup.json"             -- for JSON device file encoding
-local xml   = require "openLuup.xml"              -- for XML device file encoding
+local json    = require "openLuup.json"             -- for JSON device file encoding
+local tables  = require "openLuup.servertables"     -- for SIDs
+local xml     = require "openLuup.xml"              -- for XML device file encoding
 
 -- the loader cache is preset with these files
 
@@ -38,8 +39,7 @@ local xml   = require "openLuup.xml"              -- for XML device file encodin
 -- utility functions
 --
 
-local SID = {
-    AltUI           = "urn:upnp-org:serviceId:altui1",
+local SID = tables.SID {
     ShellyBridge    = "urn:akbooer-com:serviceId:ShellyBridge1",
     VeraBridge      = "urn:akbooer-com:serviceId:VeraBridge1",
     ZwaveNetwork    = "urn:micasaverde-com:serviceId:ZWaveNetwork1",
@@ -72,36 +72,9 @@ local function state_icon (img, value, cat, subcat)
           subcategory_num = subcat }}}
 end
 
-local function Device (d)
-  local x = xml.createDocument ()
-  local dev = {}
-  local special = {implementationList = true, serviceList = true}
-  for n,v in pairs (d) do
-    if not special[n] then
-      dev[#dev+1] = x[n] (v)
-    end
-  end
-  if d.serviceList then 
-    local slist = {}
-    for i, s in ipairs (d.serviceList) do
-      slist[i] = x.service {x.serviceType (s[1]), x.serviceId (s[2]), x.SCPDURL(s[3])}
-    end
-    dev[#dev+1] = x.serviceList (slist)
-  end
-  if d.implementationList then
-    local flist = {}
-    for i,f in ipairs (d.implementationList) do
-      flist[i] = x.implementationFile (f)
-    end
-    dev[#dev+1] = x.implementationList (flist)
-  end
-  x: appendChild {
-    x.root {xmlns="urn:schemas-upnp-org:device-1-0",
-      x.specVersion {x.major "1", x.minor "0", x.minimus "built-in"},
-      x.device (dev)
-        }}
-  return tostring (x)
-end
+-----
+
+local Device = tables.Device
 
 -----
 
@@ -128,7 +101,8 @@ local D_openLuup_dev = Device {
         friendlyName = "openLuup",
         manufacturer = "akbooer",
         staticJson   = "D_openLuup.json",
-        serviceList  = { {"openLuup", "openLuup", "S_openLuup.xml"} },
+--        serviceList  = { {"openLuup", "openLuup", "S_openLuup.xml"} },
+        serviceIds  = { "openLuup" },
         implementationList = {"I_openLuup.xml"}}
 
 local D_openLuup_json = json.encode {
@@ -144,9 +118,9 @@ local D_openLuup_json = json.encode {
     
     Control = {
       ControlGroup (1, "variable", 0,0,
-        Display (50,40, 75,20, SID.AltUI, "DisplayLine1")),
+        Display (50,40, 75,20, SID.altui, "DisplayLine1")),
       ControlGroup (1, "variable", 0,1,
-        Display (50,60, 75,20, SID.AltUI, "DisplayLine2")),
+        Display (50,60, 75,20, SID.altui, "DisplayLine2")),
       ControlGroup (2, "variable", 0,3,
         Display (50,100, 75,20, "openLuup","StartTime")),
       ControlGroup (2,  "variable", 0,3, 
@@ -498,7 +472,8 @@ local D_VeraBridge_dev  = Device {
         manufacturer    = "akbooer",
         handleChildren  = "1",
         staticJson      = "D_VeraBridge.json",
-        serviceList     = { {"urn:akbooer-com:service:VeraBridge:1", SID.VeraBridge, "S_VeraBridge.xml"} },
+--        serviceList     = { {"urn:akbooer-com:service:VeraBridge:1", SID.VeraBridge, "S_VeraBridge.xml"} },
+        serviceIds      = { SID.VeraBridge },
         implementationList = {"I_VeraBridge.xml"}}
 
 local D_VeraBridge_json = json.encode {
@@ -514,9 +489,9 @@ local D_VeraBridge_json = json.encode {
     
     Control = {
       ControlGroup (1, "variable", 0,0,
-        Display (50,40, 75,20, SID.AltUI, "DisplayLine1")),
+        Display (50,40, 75,20, SID.altui, "DisplayLine1")),
       ControlGroup (1, "variable", 0,1,
-        Display (50,60, 75,20, SID.AltUI, "DisplayLine2")),
+        Display (50,60, 75,20, SID.altui, "DisplayLine2")),
       ControlGroup (2, "variable", 0,3,
         Display (50,100, 75,20, SID.VeraBridge,"Version")),
       }}}}
@@ -586,10 +561,11 @@ local D_ZWay_xml = Device {
         friendlyName = "ZWay Bridge",
         manufacturer = "akbooer",
         staticJson   = "D_ZWay.json",
-        serviceList     = { 
-          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
-          {"urn:akbooer-com:service:ZWay:1", SID.ZWay, "S_ZWay.xml"},
-          {"urn:schemas-micasaverde-org:service:ZWaveNetwork:1", SID.ZwaveNetwork, "S_ZWaveNetwork1.xml"} },
+--        serviceList     = { 
+--          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+--          {"urn:akbooer-com:service:ZWay:1", SID.ZWay, "S_ZWay.xml"},
+--          {"urn:schemas-micasaverde-org:service:ZWaveNetwork:1", SID.ZwaveNetwork, "S_ZWaveNetwork1.xml"} },
+        serviceIds      = { SID.openLuupBridge,SID.ZWay, SID.ZwaveNetwork },
         implementationList = {"I_ZWay2.xml"}}
 
 
@@ -605,9 +581,9 @@ local D_ZWay_json = json.encode {
     
     Control = {
       ControlGroup (1, "variable", 0,0,
-        Display (50,40, 75,20, SID.AltUI, "DisplayLine1")),
+        Display (50,40, 75,20, SID.altui, "DisplayLine1")),
       ControlGroup (1, "variable", 0,1,
-        Display (50,60, 75,20, SID.AltUI, "DisplayLine2")),
+        Display (50,60, 75,20, SID.altui, "DisplayLine2")),
       ControlGroup (2, "variable", 0,3,
         Display (50,100, 75,20, SID.ZWay,"Version")),
       ControlGroup (2, "label", 0,4, 
@@ -673,9 +649,10 @@ local D_ShellyBridge_xml = Device {
         manufacturer = "akbooer",
         handleChildren  = "1",
         staticJson   = "D_ShellyBridge.json",
-        serviceList     = { 
-          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
-        implementationList = {"I_ShellyBridge.xml"}}
+--        serviceList     = { 
+--          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+        serviceIds      = { SID.openLuupBridge },
+        implementationList = {"I_ShellyBridge.xml"}
       }
 
 
@@ -726,9 +703,10 @@ local D_TasmotaBridge_xml = Device {
         manufacturer = "akbooer",
         handleChildren  = "1",
         staticJson   = "D_TasmotaBridge.json",
-        serviceList     = { 
-          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
-        implementationList = {"I_TasmotaBridge.xml"}}
+--        serviceList     = { 
+--          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+        serviceIds      = { SID.openLuupBridge },
+        implementationList = {"I_TasmotaBridge.xml"}
       }
 
 
@@ -901,11 +879,13 @@ local D_ZWaveNetwork_xml = Device {
 local D_MotionSensor1_xml = Device {
     deviceType = "urn:schemas-micasaverde-com:device:MotionSensor:1",
     staticJson = "D_MotionSensor1.json",
-    serviceList = {
-      {"urn:schemas-micasaverde-com:service:SecuritySensor:1", 
-        "urn:micasaverde-com:serviceId:SecuritySensor1", "S_SecuritySensor1.xml"},
-      {"urn:schemas-micasaverde-com:service:HaDevice:1",
-        "urn:micasaverde-com:serviceId:HaDevice1","S_HaDevice1.xml"}}}
+--    serviceList = {
+--      {"urn:schemas-micasaverde-com:service:SecuritySensor:1", 
+--        "urn:micasaverde-com:serviceId:SecuritySensor1", "S_SecuritySensor1.xml"},
+--      {"urn:schemas-micasaverde-com:service:HaDevice:1",
+--        "urn:micasaverde-com:serviceId:HaDevice1","S_HaDevice1.xml"}}
+    serviceIds = { "urn:micasaverde-com:serviceId:SecuritySensor1", "urn:micasaverde-com:serviceId:HaDevice1"}
+    }
 
 
 -- other install files

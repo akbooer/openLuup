@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.04.20",
+  VERSION       = "2021.04.26",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -42,6 +42,7 @@ local SID = tables.SID {
     TasmotaBridge   = "urn:akbooer-com:serviceId:TasmotaBridge1",
   }
 
+local openLuup = luup.openLuup
 
 --------------------------------------------------
 --
@@ -74,6 +75,7 @@ end
 local devices = {}      -- gets filled with device info on MQTT connection
 local devNo             -- bridge device number (set on startup)
 
+
 local function _log (msg)
   luup.log (msg, "luup.tasmota")
 end
@@ -82,8 +84,8 @@ local function create_device(altid)
   _log ("New Tasmota detected: " .. altid)
   local room = luup.rooms.create "Tasmota"     -- create new device in Tasmota room
 
-  local offset = luup.devices[devNo][SID.TasmotaBridge].Offset
-  local dno = luup.openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
+  local offset = openLuup[devNo][SID.TasmotaBridge].Offset
+  local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
   local name = altid
   
@@ -109,7 +111,7 @@ local function create_device(altid)
 end
 
 local function init_device (altid)
-  local dno = luup.openLuup.find_device {altid = altid} 
+  local dno = openLuup.find_device {altid = altid} 
                 or 
                   create_device (altid)
                   
@@ -122,7 +124,7 @@ end
 local function create_TasmotaBridge()
   local internal_id, ip, mac, hidden, invisible, parent, room, pluginnum 
 
-  local offset = luup.openLuup.bridge.nextIdBlock()  
+  local offset = openLuup.bridge.nextIdBlock()  
   local statevariables = table.concat {SID.TasmotaBridge, ",Offset=", offset} 
    
   return luup.create_device (
@@ -149,7 +151,7 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
   
   devNo = devNo       -- ensure that TasmotaBridge device exists
             or
-              luup.openLuup.find_device {device_type = "TasmotaBridge"}
+              openLuup.find_device {device_type = "TasmotaBridge"}
                 or
                   create_TasmotaBridge ()
 
@@ -168,11 +170,11 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
   end
   
   local timenow = os.time()
-  luup.devices[devNo].hadevice.LastUpdate = timenow
+  openLuup[devNo].hadevice.LastUpdate = timenow
   
   local child = devices[tasmota] or init_device (tasmota)
 
-  local DEV = luup.devices[child]
+  local DEV = openLuup[child]
   DEV.hadevice.LastUpdate = timenow
   DEV[tasmota][prefix] = message
   

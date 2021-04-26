@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2021.04.20",
+  VERSION       = "2021.04.26",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1144,8 +1144,7 @@ end
 -----
 --
 -- virtualization of device variables
--- 2021.04.20  functionality now integrated into chdev module,
--- but retained here for reference (since this code will work on Vera too!)
+-- 2021.04.25  functionality added to openLuup structure itself
 --
 
 local SID = tables.SID
@@ -1176,8 +1175,12 @@ function dev_meta:__index (dev)
     function var_meta:__newindex (var, new)
       new = tostring(new)
       local old = self[var]
-      if old ~= new then
-        luup.variable_set (sid, var, new, dev)        -- create/update and log
+      if old then
+        if old ~= new then
+          luup.devices[dev]: variable_set (sid, var, new, true)   -- not logged, but 'true' enables variable watch
+        end
+      else
+        luup.variable_set (sid, var, new, dev)        -- create and log
       end
     end
 
@@ -1203,17 +1206,17 @@ local openLuup = {    -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate
   bridge = chdev.bridge,      -- 2020.02.12  Bridge utilities 
   find_device = find_device,  -- 2021.02.03  find device by attribute: name / id / altid / etc...
   find_scene = find_scene,    -- 2021.03.05  find scene by name
-  req_table  = nil,           -- 2020.07.04  set in init.lua
 
   -- 2021.04.16 moved from metatable
   cpu_table  = function() return time_table "cpu(s)"  end,
   wall_table = function() return time_table "wall(s)" end,
 
-  -- 2021.04.16 virtualize device variables
-  
-  virtualizer = setmetatable ({}, dev_meta),
-  
+   -- 2021.04.26  reserve placeholders (table is otherwise READONLY)
+  req_table = "replaced during init", 
+  mqtt      = "replaced during init",
 }
+
+setmetatable (openLuup, dev_meta)   -- enable virtualization of device variables and actions
 
 
 local luup = {
