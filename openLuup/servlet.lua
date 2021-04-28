@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2021.04.28",
+  VERSION       = "2021.04.28b",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -332,7 +332,7 @@ local turn = {
   
 local function light (info)
   local b = info.parameters.brightness or '0'
-  call_action (info, SID.dimming, "SetLoadLevelTarget", {newLoadLevelTarget = b}, info.id)
+  call_action (info, SID.dimming, "SetLoadLevelTarget", {newLoadlevelTarget = b}, info.id)
 end
 
 local function relay (info)

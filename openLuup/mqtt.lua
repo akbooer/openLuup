@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.04.28",
+  VERSION       = "2021.04.28b",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -956,7 +956,7 @@ local function mqtt_light (topic, message)
   local d = tonumber (topic: match "^light/(%d+)")
   local n = tonumber (message)
   if d and n then 
-    luup.call_action (SID.dimming, "SetLoadLevelTarget", {newLoadLevelTarget = n}, d)
+    luup.call_action (SID.dimming, "SetLoadLevelTarget", {newLoadlevelTarget = n}, d)
   end
 end
 
