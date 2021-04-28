@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2021.01.08",
+  VERSION       = "2021.04.28",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -72,6 +72,7 @@ local ABOUT = {
 -- 2020.12.30   add clone() for scene duplication
 
 -- 2021.01.08   add openLuup device watch triggers (enabled through openLuup plugin template)
+-- 2021.04.28   add internal scene list (to mirror luup.scenes for openLuup API)
 
 
 local logs      = require "openLuup.logs"
@@ -99,7 +100,9 @@ Apr 2016 - AltUI now provides workflow too.
 
 --]]
 
-local HISTORY_LENGTH = 20   -- number of points in scene history cache
+local scene_list = {}             -- internal list of scenes
+
+local HISTORY_LENGTH = 20         -- number of points in scene history cache
 
 -- scene-wide variables
 --local watched_devices = {}      -- table of watched devices indexed by device number 
@@ -447,6 +450,7 @@ local function delete (scene_no)              -- 2020.01.27
   if scene then 
     scene: stop()
     luup.scenes[scene_no] = nil
+    scene_list[scene_no]  = nil               -- 2021.04.28
     devutil.new_userdata_dataversion ()       -- say something has changed
   end
 end
@@ -529,6 +533,8 @@ local function create (scene_json, timestamp)
   start_watchers (luup_scene)           -- start the trigger watchers
   devutil.new_userdata_dataversion ()   -- say something has changed
   
+  scene_list[scene.id] = luup_scene     -- add to internal list
+
   return luup_scene
 end
 
@@ -541,6 +547,7 @@ return {
     -- constants
     environment   = scene_environment,      -- to be shared with startup code
     -- variables
+    scene_list    = scene_list,
     -- methods
     create        = create,
     delete        = delete,

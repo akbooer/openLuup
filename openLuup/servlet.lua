@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2021.04.08",
+  VERSION       = "2021.04.28",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -68,6 +68,7 @@ The WSAPI-style functions are used by the servlet tasks, but also called directl
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263/7
 
 -- 2021.04.02   add fourth request type: Shelly-like relay / scene / status / ... (from old shelly_cgi)
+-- 2021.04.28   add Shelly-like request: light (for dimmers) with brightness parameter (for @Crille)
 
 
 local logs      = require "openLuup.logs"
@@ -329,6 +330,11 @@ local turn = {
     toggle  = function (info) call_action (info, SID.hadevice, "ToggleState", {}, info.id) end,
   }
   
+local function light (info)
+  local b = info.parameters.brightness or '0'
+  call_action (info, SID.dimming, "SetLoadLevelTarget", {newLoadLevelTarget = b}, info.id)
+end
+
 local function relay (info)
   local op = info.parameters.turn
   local fct = turn[op]
@@ -351,6 +357,7 @@ end
 
 
 local dispatch = {
+    light     = light,
     relay     = relay,
     scene     = scene,
     status    = status,
@@ -386,21 +393,6 @@ end
 
 -- CGI entry point
 
-local function ol_request (wsapi_env)
-  
-  local req = wsapi.request.new(wsapi_env)
-  local res = wsapi.response.new ()
-  res:content_type "text/plain" 
-  
-  local command = req.script_name                         -- eg. /relay/42 or scene/32
-  
-  local reply, err = exec_shelly_like_command (command, req.GET)
-  res: write (reply or err)
-  res:content_type "application/json"
-  
-  return res:finish()
-end
-
 ----------------------------------------------------
 --
 -- REQUEST HANDLER: CGI requests
@@ -408,6 +400,7 @@ end
 
 -- only here to log the usage statistics
 local cgi_handler = {}
+
 
 local function cgi_request (wsapi_env)
   local path = wsapi_env.SCRIPT_NAME
@@ -419,6 +412,21 @@ local function cgi_request (wsapi_env)
   cgi_handler[path] = stats
 
   return status, headers, iterator
+end
+
+
+local function ol_request (wsapi_env)
+  local req = wsapi.request.new(wsapi_env)
+  local res = wsapi.response.new ()
+  res:content_type "text/plain" 
+  
+  local command = req.script_name                         -- eg. /relay/42 or scene/32
+  
+  local reply, err = exec_shelly_like_command (command, req.GET)
+  res: write (reply or err)
+  res:content_type "application/json"
+  
+  return res:finish()
 end
 
 
@@ -443,6 +451,7 @@ end
 --
 local exec_selector = {
     data_request = data_request,
+    light = ol_request,
     relay = ol_request,
     scene = ol_request,
     status = ol_request,
@@ -450,6 +459,7 @@ local exec_selector = {
 
 local task_selector = {
     data_request = data_request_task,
+    light = ol_task,
     relay = ol_task,
     scene = ol_task,
     status = ol_task,

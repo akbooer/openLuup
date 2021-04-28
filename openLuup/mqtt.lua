@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.04.18",
+  VERSION       = "2021.04.28",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -40,6 +40,7 @@ local ABOUT = {
 -- 2021.03.24   EXTRA checks moved to io.server.open()
 
 -- 2021.04.08   add subscriber for relay/nnn topic (with 0 or 1 message)
+-- 2021.04.28   add subscriber for light/nnn topic (with 0-100 message)
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -936,9 +937,12 @@ end
 -- relay
 --
 
--- easy MQTT request to switch a switch
-local function mqtt_command (topic, message)
+local function mqtt_command_log (topic, message)
   _log (table.concat {"MQTT COMMAND: ", topic," = ", message})
+end  
+-- easy MQTT request to switch a switch
+local function mqtt_relay (topic, message)
+  mqtt_command_log (topic, message)
   local d = tonumber (topic: match "^relay/(%d+)")
   local n = tonumber (message)
   if d and n then 
@@ -946,8 +950,19 @@ local function mqtt_command (topic, message)
   end
 end
 
+-- easy MQTT request to change dimmer level
+local function mqtt_light (topic, message)
+  mqtt_command_log (topic, message)
+  local d = tonumber (topic: match "^light/(%d+)")
+  local n = tonumber (message)
+  if d and n then 
+    luup.call_action (SID.dimming, "SetLoadLevelTarget", {newLoadLevelTarget = n}, d)
+  end
+end
+
 do -- MQTT commands
-  subscriptions: register_handler (mqtt_command, "relay/#")
+  subscriptions: register_handler (mqtt_relay, "relay/#")
+  subscriptions: register_handler (mqtt_light, "light/#")
 end
 
 

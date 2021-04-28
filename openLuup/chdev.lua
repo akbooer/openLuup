@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2020.12.26",
+  VERSION       = "2020.21.27",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -70,6 +70,8 @@ local ABOUT = {
 -- 2020.12.19  allow luup.chdev.append() to change device name (thanks @rigpapa)
 -- 2020.12.23  add Ezlo bridge to scheduler startup priorities (thanks @rigpapa)
 -- 2020.12.26  make status request honour dataversion number for variables (thanks @rigpapa)
+
+-- 2021.04.27  remove (most) self references in favour of 'dev', since self fails for virtualized devices
 
 
 local logs      = require "openLuup.logs"
@@ -298,11 +300,11 @@ local function create (x)
     end
   end
 
-  -- return the names asnd values of the variables with shortCode aliases (as appear in the status request)
+  -- return the names and values of the variables with shortCode aliases (as appear in the status request)
   function dev:get_shortcodes ()      -- 2019.05.10
     local info = {}
     local sd = loader.service_data
-    for svc, s in pairs (self.services) do
+    for svc, s in pairs (dev.services) do
       local known_service = sd[svc]
       if known_service then
         for var, v in pairs (s.variables) do
@@ -320,7 +322,7 @@ local function create (x)
   function dev:state_table (dv)       -- 2019.05.12
     dv = dv or 0                      -- 2020.12.26  implement versioning
     local states = {}
-    for i,item in ipairs(self.variables) do
+    for _,item in ipairs(dev.variables) do
       local version = item.version or dv + 1
       if version > dv then
         states[#states+1] = {
@@ -337,7 +339,7 @@ local function create (x)
   -- get list of child device numbers (not grand-children, etc...)
   function dev:get_children ()
     local children = {}
-    local id = self.attributes.id
+    local id = dev.attributes.id
     for n,d in pairs (luup.devices) do
       if d.device_num_parent == id then
         children[#children + 1] = n
@@ -370,7 +372,7 @@ local function create (x)
 
   function dev: get_icon ()
     local icon = "zwave_default.png"
-    local json_file = self.attributes.device_json
+    local json_file = dev.attributes.device_json
     local sd = loader.static_data[json_file]
     if not sd then return icon end        -- can't find static data
 
@@ -378,7 +380,7 @@ local function create (x)
     local si = sd.state_icons
     if not si then return icon end        -- use default device icon
 
-    local cn, scn = self.category_num, self.subcategory_num
+    local cn, scn = dev.category_num, dev.subcategory_num
     for _, set in ipairs (si) do
       -- 2019.12.19 note that initial entries may include list of the icon names, so ignore non-table items
       -- each set is {conditions = {}...}, img = '...'} and all need to be met
@@ -387,7 +389,7 @@ local function create (x)
         for _, c in ipairs (set.conditions or {}) do
           local cat = (not c.category_num or c.category_num == cn) and
                       (not c.subcategory_num or c.subcategory_num == scn) 
-          met = met and cat and is_true (self, c)
+          met = met and cat and is_true (dev, c)
         end
         if met then
           icon = set.img or icon
@@ -402,14 +404,14 @@ local function create (x)
   -- (can be room number or existing room name, see: http://wiki.micasaverde.com/index.php/Luup_Requests#device)
   function dev: rename (name, new_room)
     if name then
-      self.description = name       -- change in both places!!
-      self.attributes.name = name
+      dev.description = name       -- change in both places!!
+      dev.attributes.name = name
     end
     if new_room then
       local idx = {}
       for i,room in pairs(luup.rooms) do idx[room] = i end        -- build index of room names
-      self.room_num = tonumber(new_room) or idx[new_room] or 0    -- room number also appears in two places
-      self.attributes.room = tostring(self.room_num)
+      dev.room_num = tonumber(new_room) or idx[new_room] or 0    -- room number also appears in two places
+      dev.attributes.room = tostring(dev.room_num)
     end
 --    devutil.new_userdata_dataversion ()
     dev: touch()                    -- 2020.02.23
@@ -417,8 +419,8 @@ local function create (x)
 
   -- set parent of device
   function dev:set_parent (newParent)
-    self.device_num_parent = newParent        -- parent resides in two places under different names !!
-    self.attributes.id_parent = newParent
+    dev.device_num_parent = newParent        -- parent resides in two places under different names !!
+    dev.attributes.id_parent = newParent
   end
   
   

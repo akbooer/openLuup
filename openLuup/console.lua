@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.04.02",
+  VERSION       = "2021.04.28",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -2109,9 +2109,12 @@ local function room_wanted (p)
   local room_number = room_index[room]
   return function (x)  -- works for devices or scenes
     local room_match = all_rooms or x.room_num == room_number
-    local scene_favorite = x.page and x.definition.favorite               -- only scenes have pages
-    local device_favorite = x.attributes and x.attributes.bookmark == '1'   -- only devices have attributes
-    local bookmarked = scene_favorite or device_favorite
+    local bookmarked
+    if x.attributes then    -- only devices have attributes
+      bookmarked = x.attributes.bookmark == '1'   -- device
+    else
+      bookmarked = x.definition.favorite          -- scene
+    end
     return room_match or (bookmarks and bookmarked)
   end
 end

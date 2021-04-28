@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2021.04.26",
+  VERSION       = "2021.04.27",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -86,6 +86,7 @@ local ABOUT = {
 --             see: https://smarthome.community/topic/316/openluup-mqtt-server/81
 -- 2021.04.04  change pattern search in register_handler() for xxx: prefixes (was rejecting strings with ':')
 -- 2021.04.16  openLuup virtualization of device variables
+-- 2021.04.27  move openLuup object (and virtualization) to open.api module
 
 
 local logs          = require "openLuup.logs"
@@ -101,11 +102,12 @@ local loader        = require "openLuup.loader"       -- for shared environment 
 local smtp          = require "openLuup.smtp"         -- for register_handler to work with email
 local mqtt          = require "openLuup.mqtt"         -- for register_handler to work with MQTT
 local historian     = require "openLuup.historian"    -- for luup.variable_get() to work with historian
-local tables        = require "openLuup.servertables" -- SID used in device variable virtualization
 
 -- luup sub-modules
 local chdev         = require "openLuup.chdev"
 local ioutil        = require "openLuup.io"    
+
+local openLuup      = require "openLuup.api"
 
 
 --  local _log() and, optionally, _debug()
@@ -1088,136 +1090,12 @@ local ir = {
 
 -----
 --
--- openLuup.cpu_table,   2020.06.28
--- openLuup.wall_table,  2020.06.29
---
--- returns an object with current plugin CPU / WALL-CLOCK times
--- allow pretty printing and the difference '-' operator
-
-local function time_table (what)
-  local array
-  local function sub(a,b)
-    local s, b = array {}, b or {}
-    for n,v in pairs(a) do s[n] = b[n] and v - b[n] or nil end
-    return s
-  end
-  local function str(x)
-    local con = table.concat
-    local time, info = "%8.3f", "%12s %8s %s"
-    local b = {info: format ("(s.ms)", "[#]", "device name")}
-    local devs = {}
-    for n in pairs(x) do devs[#devs+1] = n end
-    table.sort (devs)
-    for _,n in ipairs(devs) do 
-      local v = x[n]
-      local name = luup.devices[n].description: match "%s*(.*)"
-      b[#b+1] = info: format (time: format(v), con{'[', n, ']'}, name)
-    end
-    b[#b+1] = ''
-    return con (b, '\n')
-  end
-  function array (x) setmetatable (x, {__sub = sub, __tostring = str}) return x end
-  local t = array {}
-  for i, d in pairs (luup.devices) do t[i] = d.attributes[what] end
-  return t
-end
-
--- 2021.02.03  find device by attribute: name / id / altid / etc...
-local function find_device (attribute)
-  if type (attribute) ~= "table" then return end
-  local name, value = next (attribute)
-  for n, d in pairs (devices) do
-    if d.attributes[name] == value then
-      return n
-    end
-  end
-end
-
--- 2021.03.05  find scene id by name - find_scene {name = xxx}
-local function find_scene (attribute)
-  local name = attribute.name       -- currently, only 'name' is supported
-  for id, s in pairs (scenes) do
-    if s.description == name then return id end
-  end
-end
-
------
---
--- virtualization of device variables
--- 2021.04.25  functionality added to openLuup structure itself
---
-
-local SID = tables.SID
-
-local function readonly (_, x) error ("ERROR - READONLY: attempt to create index " .. x, 2) end
-
-local dev_meta = {__newindex = readonly}
-
-function dev_meta:__index (dev)
-  
-  local svc_meta = {__newindex = readonly}
-        
-  function svc_meta:__index (sid)
-    sid = SID[sid] or sid
-    
-    local var_meta = {}
-    
-    function var_meta: __call (action)
-      return function (args)
-        return luup.call_action (sid, action, args, dev)
-      end
-    end
-
-    function var_meta:__index (var)
-      return luup.variable_get (sid, var, dev)
-    end
-    
-    function var_meta:__newindex (var, new)
-      new = tostring(new)
-      local old = self[var]
-      if old then
-        if old ~= new then
-          luup.devices[dev]: variable_set (sid, var, new, true)   -- not logged, but 'true' enables variable watch
-        end
-      else
-        luup.variable_set (sid, var, new, dev)        -- create and log
-      end
-    end
-
-    return setmetatable({}, var_meta)
-  end
-
-  return setmetatable ({}, svc_meta)
-end
-
-
-
------
---
 -- export values and methods
 --
 
 local version = userdata.attributes.BuildVersion: match "*([^*]+)*"
 local a,b,c = version: match "(%d+)%.(%d+)%.(%d+)"
 local version_branch, version_major, version_minor = tonumber(a), tonumber(b), tonumber(c)
-
-local openLuup = {    -- 2018.06.23, 2018.07.18 was true, now {} ... to indicate not a Vera (for plugin developers)
-  -- openLuup-specific API extensions go here...
-  bridge = chdev.bridge,      -- 2020.02.12  Bridge utilities 
-  find_device = find_device,  -- 2021.02.03  find device by attribute: name / id / altid / etc...
-  find_scene = find_scene,    -- 2021.03.05  find scene by name
-
-  -- 2021.04.16 moved from metatable
-  cpu_table  = function() return time_table "cpu(s)"  end,
-  wall_table = function() return time_table "wall(s)" end,
-
-   -- 2021.04.26  reserve placeholders (table is otherwise READONLY)
-  req_table = "replaced during init", 
-  mqtt      = "replaced during init",
-}
-
-setmetatable (openLuup, dev_meta)   -- enable virtualization of device variables and actions
-
 
 local luup = {
   
