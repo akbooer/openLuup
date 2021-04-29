@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.api",
-  VERSION       = "2021.04.28",
+  VERSION       = "2021.04.29",
   DESCRIPTION   = "openLuup object-level API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -123,37 +123,37 @@ local api_meta = {__newindex = readonly, __call = api_iterator}
 function api_meta:__index (dev)
   
   local svc_meta = {__newindex = readonly}
-    
-  function svc_meta:__call ()              -- iterator to return (short) serviceIds, by name
-    local s = {}
-    local d = devices[dev]
-    for sid, svc in pairs(d.services) do
-      s[svc.shortSid] = self[sid]
-    end
-    return next, s
-  end  
         
   function svc_meta:__index (sid)
     sid = SID[sid] or sid             -- handle possible serviceId aliases (see servertables.SID)
     
     local var_meta = {}
     
-    function var_meta:__call (action)
-      return function (args)
-        return devices[dev]: call_action (sid, action, args)
-      end
-    end
+--    function var_meta:__call (action)
+--      return function (args)
+--        local d = devices[dev]
+--        if d then 
+--          return d: call_action (sid, action, args) 
+--        else
+--          return nil, "no such device #" .. tostring(dev)
+--        end
+--      end
+--    end
 
     function var_meta:__index (var)
-      local v = devices[dev]: variable_get (sid, var) or {}
+      local d = devices[dev]
+      if not d then print("No dev", dev) return end
+      local v = d: variable_get (sid, var) or {}
       return v.value, v.time
     end
     
     function var_meta:__newindex (var, new)
+      local d = devices[dev]
+      if not d then print("No dev", dev) return end
       new = tostring(new)
       local old = self[var]
       if old ~= new then
-        devices[dev]: variable_set (sid, var, new, true)   -- not logged, but 'true' enables variable watch
+        d: variable_set (sid, var, new, true)   -- not logged, but 'true' enables variable watch
       end
     end
 
@@ -173,8 +173,8 @@ local RESERVED = "RESERVED"     -- placeholder to be filled in elsewhere
 
 local api = {
   
-  devices = devices,
-  scenes = scenes,
+  devices = devices, 
+  scenes  = scenes,
   -- TODO: find a way to access rooms = rooms,
   
   bridge = chdev.bridge,      -- 2020.02.12  Bridge utilities 

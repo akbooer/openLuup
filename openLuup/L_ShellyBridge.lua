@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.26",
+  VERSION       = "2021.04.29",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -219,7 +219,7 @@ end
 local function create_device(info)
   local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
 
-  local offset = luup.devices[devNo][SID.sBridge].Offset
+  local offset = openLuup[devNo][SID.sBridge].Offset
   if not offset then 
     offset = openLuup.bridge.nextIdBlock()  
     openLuup[devNo][SID.sBridge].Offset = offset
