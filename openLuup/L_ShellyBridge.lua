@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.29",
+  VERSION       = "2021.04.29b",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -67,9 +67,9 @@ local function SetTarget (dno, args)
   local id = luup.attr_get ("altid", dno)
   local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
   if shelly then
-    local val = tonumber (args.newTargetValue)
+    local val = tostring(tonumber (args.newTargetValue) or 0)
     openLuup[dno].switch.Target = val
-    local on_off = val == 1 and "on" or "off"
+    local on_off = val == '1' and "on" or "off"
     shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
     openLuup.mqtt.publish (shelly, on_off)
   else 
