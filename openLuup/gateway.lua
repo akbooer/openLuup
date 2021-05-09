@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.gateway",
-  VERSION       = "2020.03.08",
+  VERSION       = "2021.05.08",
   DESCRIPTION   = "implementation of the Home Automation Gateway device, aka. Device 0",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2020AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -42,6 +42,8 @@ local ABOUT = {
 -- 2020.01.28   add parameter table to scene(run) call (for detection of AltUI requests)
 -- 2020.03.08   add new scene creation date in ModifyUserData 
 
+-- 2021.05.08   make Device_0.attributes the real userdata.attributes (for openLuup object interface)
+
 
 local requests    = require "openLuup.requests"
 local scenes      = require "openLuup.scenes"
@@ -66,6 +68,7 @@ logs.banner (ABOUT)   -- for version control
 --}
 
 local Device_0 = devutil.new (0)
+Device_0.attributes = userdata.attributes   -- 2021.05.08
 
 -- No need for an implementation file - we can define all the services right here.
 -- Note that all the action run/job functions are called with the following parameters:

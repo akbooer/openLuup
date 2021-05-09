@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2020.21.27",
+  VERSION       = "2021.05.04",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -72,6 +72,7 @@ local ABOUT = {
 -- 2020.12.26  make status request honour dataversion number for variables (thanks @rigpapa)
 
 -- 2021.04.27  remove (most) self references in favour of 'dev', since self fails for virtualized devices
+-- 2021.05.04  fix device rename broken by above change
 
 
 local logs      = require "openLuup.logs"
@@ -380,7 +381,9 @@ local function create (x)
     local si = sd.state_icons
     if not si then return icon end        -- use default device icon
 
-    local cn, scn = dev.category_num, dev.subcategory_num
+    local attr = dev.attributes
+--    local cn, scn = dev.category_num, dev.subcategory_num
+    local cn, scn = attr.category_num, attr.subcategory_num
     for _, set in ipairs (si) do
       -- 2019.12.19 note that initial entries may include list of the icon names, so ignore non-table items
       -- each set is {conditions = {}...}, img = '...'} and all need to be met
@@ -404,14 +407,15 @@ local function create (x)
   -- (can be room number or existing room name, see: http://wiki.micasaverde.com/index.php/Luup_Requests#device)
   function dev: rename (name, new_room)
     if name then
-      dev.description = name       -- change in both places!!
+      luup.devices[dev.devNo].description = name       -- change in both places!!
       dev.attributes.name = name
     end
     if new_room then
       local idx = {}
       for i,room in pairs(luup.rooms) do idx[room] = i end        -- build index of room names
-      dev.room_num = tonumber(new_room) or idx[new_room] or 0    -- room number also appears in two places
-      dev.attributes.room = tostring(dev.room_num)
+      local room_num = tonumber(new_room) or idx[new_room] or 0    -- room number also appears in two places
+      luup.devices[dev.devNo].room_num = room_num
+      dev.attributes.room = tostring(room_num)
     end
 --    devutil.new_userdata_dataversion ()
     dev: touch()                    -- 2020.02.23

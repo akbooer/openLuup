@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2021.03.14",
+  VERSION       = "2021.05.06",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -70,7 +70,44 @@ local ABOUT = {
 
 -- 2021.01.08  remove shared_environment.pretty_old()
 -- 2021.03.14  make openLuup structure visible in _G environment
+-- 2021.05.06  move require() proxy and req_table here from init()
 
+
+------------------
+--
+-- require() proxy for module tracking and substitution
+--
+local scheduler             -- forward reference
+
+local req_meta = {}
+
+function req_meta: __call (replacements)    -- define replacement module names
+  for old, new in pairs (replacements) do
+    req_meta[old] = new
+  end
+  return self   -- return actual table of replaced modules
+end
+
+local req_table = setmetatable ({versions = {}}, req_meta)
+
+local G_require = require
+
+function require (module, ...)
+  local dev = scheduler and scheduler.current_device() or 0
+  local reqs = req_table[dev] or {}
+  
+  local _M = req_meta[module]
+  if _M then
+    module = table.concat {module, " --> ", type (_M) == "table" and _M._NAME or '?'}
+  else
+    _M =  G_require (module, ...)
+  end
+  
+  reqs[module] = (reqs[module] or 0) + 1
+  req_table[dev] = reqs
+  req_table.versions[module] = type (_M) == "table" and _M._VERSION or ''
+  return _M
+end
 
 ------------------
 --
@@ -112,10 +149,11 @@ local shared_environment  = new_environment "openLuup_startup_and_scenes"
 
 ------------------
 
+scheduler = require "openLuup.scheduler"  -- for context_switch() [already declared local]
+
 local lfs = require "lfs"
 local json = require "openLuup.json"
 local vfs  = require "openLuup.virtualfilesystem"
-local scheduler = require "openLuup.scheduler"  -- for context_switch()
 local xml = require "openLuup.xml"
 
 local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
@@ -776,6 +814,7 @@ return {
   
   -- tables  
   cat_by_dev          = cat_by_dev,         -- 2019.06.02
+  req_table           = req_table,          -- 2021.05.06
   service_data        = service_data,
   shared_environment  = shared_environment,
   static_data         = static_data,  

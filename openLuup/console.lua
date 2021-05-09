@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.04.28",
+  VERSION       = "2021.05.09",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -93,6 +93,8 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.03.18  add log_analysis() to pages.log
 -- 2021.03.20  add pages.required for prerequisites and plugin dependencies
 -- 2021.03.25  highlight log error lines in red (thanks @rafale77)
+-- 2021.05.01  use native openLuup.json.Lua (for correct formatting)
+-- 2021.05.02  add pseudo-service 'attributes' for consistent virtual access, and serviceId/shortSid to device object
 
 
 --  WSAPI Lua CGI implementation
@@ -118,6 +120,8 @@ local json      = require "openLuup.json"         -- for console_menus.json
 local panels    = require "openLuup.panels"       -- for default console device panels
 local xml       = require "openLuup.xml"          -- for HTML constructors
 local tables    = require "openLuup.servertables" -- for serviceIds
+
+local json = json.Lua         -- 2021.05.01  force native openLuup.json module for encode/decode
 
 local xhtml     = xml.createHTMLDocument ()       -- factory for all HTML tags
 
@@ -260,6 +264,7 @@ local function todate_ms (epoch) return ("%s.%03d"): format (todate (epoch),  ma
 -- truncate to given length
 -- if maxlength is negative, truncate the middle of the string
 local function truncate (s, maxlength)
+  s = s or "?????"
   maxlength = maxlength or 22
   if maxlength < 0 then
     maxlength = math.floor (maxlength / -2)
@@ -281,7 +286,7 @@ end
 local function nice (x, maxlength)
   local s = tostring (x)
   local number = tonumber(s)
-  if number and number > 1234567890 then s = todate (number) end
+  if number and number > 1234567890 and number < 2^31 then s = todate (number) end
   return truncate (s, maxlength or 50)
 end
 
@@ -1016,7 +1021,7 @@ end
 
 function pages.required_files ()
   local columns = {"module","version"}
-  local reqs = luup.openLuup.req_table
+  local reqs = loader.req_table
   local versions = reqs.versions
   local vs = {}
   local wanted = {"lfs", "ltn12", "md5", "mime", "socket", "ssl"}

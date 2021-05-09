@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2021.04.07",
+  VERSION       = "2021.04.30",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -60,6 +60,7 @@ local ABOUT = {
 -- 2021.03.10  fix benign error in delete_single_var()
 -- 2021.03.11  add publish_variable_updates() method to toggle flag
 -- 2021.04.07  correct MQTT published variable value
+-- 2021.04.30  device.find() moved here from openLuup.api
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -416,6 +417,18 @@ local function variable_watch (dev, fct, serviceId, variable, name, silent)
 end
 
 
+-- 2021.02.03  find device by attribute: name / id / altid / etc...
+local function find (attribute)
+  if type (attribute) ~= "table" then return end
+  local name, value = next (attribute)
+  for n, d in pairs (device_list) do
+    local a = d.attributes
+    if a and a[name] == value then
+      return n
+    end
+  end
+end
+
 -----
 --
 -- DEVICE object 
@@ -643,6 +656,7 @@ return {
   
   -- methods
   new                       = new,
+  find                      = find,
   variable_watch            = variable_watch,
   new_dataversion           = new_dataversion,
   new_userdata_dataversion  = new_userdata_dataversion,

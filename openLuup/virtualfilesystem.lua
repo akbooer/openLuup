@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2021.04.25",
+  VERSION       = "2021.05.06",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -666,7 +666,7 @@ local I_ShellyBridge_impl do
     x: appendChild {
       x.implementation {
         x.functions [[
-          local M = require "L_ShellyBridge"
+          local M = require "openLuup.L_ShellyBridge"
           init = M.init
         ]],
         x.startup "init",
@@ -720,7 +720,7 @@ local I_TasmotaBridge_impl do
     x: appendChild {
       x.implementation {
         x.functions [[
-          local M = require "L_TasmotaBridge"
+          local M = require "openLuup.L_TasmotaBridge"
           init = M.init
         ]],
         x.startup "init",

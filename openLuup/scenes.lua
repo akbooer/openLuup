@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2021.04.28",
+  VERSION       = "2021.05.01",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -73,6 +73,7 @@ local ABOUT = {
 
 -- 2021.01.08   add openLuup device watch triggers (enabled through openLuup plugin template)
 -- 2021.04.28   add internal scene list (to mirror luup.scenes for openLuup API)
+-- 2021.04.30   scene.find() moved here from openLuup.api, for json.Lua.encode() for jsonify()
 
 
 local logs      = require "openLuup.logs"
@@ -116,7 +117,8 @@ local scene_environment = loader.shared_environment
 
 local function newindex (self, ...) rawset (getmetatable(self).__index, ...) end    -- put non-visible variables into meta
 
-local function jsonify (x) return (json.encode (x.definition)) or '?' end             -- return JSON scene representation
+-- jsonify() uses the native openLuup.json to format scenes for display
+local function jsonify (x) return (json.Lua.encode (x.definition)) or '?' end       -- return JSON scene representation
 
 -- format includes variables for main scene name, Lua code, and triggers
 local sceneLuaTemplate = [[
@@ -455,6 +457,14 @@ local function delete (scene_no)              -- 2020.01.27
   end
 end
 
+-- 2021.03.05  find scene id by name - find_scene {name = xxx}
+local function find (attribute)
+  local name = attribute.name       -- currently, only 'name' is supported
+  for id, s in pairs (scene_list) do
+    if s.definition.name == name then return id end
+  end
+end
+
 --
 -- scene.create() - returns compiled scene object given json string containing group / timers / lua / ...
 --
@@ -533,7 +543,7 @@ local function create (scene_json, timestamp)
   start_watchers (luup_scene)           -- start the trigger watchers
   devutil.new_userdata_dataversion ()   -- say something has changed
   
-  scene_list[scene.id] = luup_scene     -- add to internal list
+  scene_list[scene.id] = meta     -- add to internal list
 
   return luup_scene
 end
@@ -551,5 +561,6 @@ return {
     -- methods
     create        = create,
     delete        = delete,
+    find          = find,
     verify_all    = verify_all,
   }

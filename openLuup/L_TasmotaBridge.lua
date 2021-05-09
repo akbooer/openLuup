@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.04.26",
+  VERSION       = "2021.05.08",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -27,6 +27,7 @@ ABOUT = {
 
 -- 2021.04.02  new L_TasmotaBridge file
 -- 2021.04.17  use openLuup device variable virtualizer, go one level deeper in table data (thanks @Buxton)
+-- 2021.05.08  add /STATE and /RESULT topics (thanks @ArcherS)
 
 
 local json      = require "openLuup.json"
@@ -43,6 +44,7 @@ local SID = tables.SID {
   }
 
 local openLuup = luup.openLuup
+local VIRTUAL = openLuup
 
 --------------------------------------------------
 --
@@ -84,7 +86,7 @@ local function create_device(altid)
   _log ("New Tasmota detected: " .. altid)
   local room = luup.rooms.create "Tasmota"     -- create new device in Tasmota room
 
-  local offset = openLuup[devNo][SID.TasmotaBridge].Offset
+  local offset = VIRTUAL[devNo][SID.TasmotaBridge].Offset
   local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
   local name = altid
@@ -156,8 +158,10 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
                   create_TasmotaBridge ()
 
   -- device update: tele/tasmota_7FA953/SENSOR
-  local tasmota = tasmotas: match "^(.-)/SENSOR"
-  if not tasmota then 
+  -- 2021.05.08  add /STATE and /RESULT
+  local tasmota, mtype = tasmotas: match "^(.-)/(%u+)"
+  local valid = {SENSOR = true, STATE = true, RESULT = true}
+  if not (tasmota and valid[mtype]) then 
     _log (table.concat ({"Topic ignored", topic, message}, " : "))
     return 
   end
@@ -170,11 +174,11 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
   end
   
   local timenow = os.time()
-  openLuup[devNo].hadevice.LastUpdate = timenow
+  VIRTUAL[devNo].hadevice.LastUpdate = timenow
   
   local child = devices[tasmota] or init_device (tasmota)
 
-  local DEV = openLuup[child]
+  local DEV = VIRTUAL[child]
   DEV.hadevice.LastUpdate = timenow
   DEV[tasmota][prefix] = message
   

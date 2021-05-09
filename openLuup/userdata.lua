@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2021.03.14",
+  VERSION       = "2021.04.30",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -75,6 +75,7 @@ local ABOUT = {
 
 -- 2021.03.11   remove commented out code
 -- 2021.03.14   add ThousandsSeparator top-level attribute
+-- 2021.04.30   for json.Lua.encode() for user_data (since RapidJSON formatting uses too much white space)
 
 
 local json    = require "openLuup.json"
@@ -719,7 +720,7 @@ local function json_user_data (localLuup)   -- refactored thanks to @explorer
     scenes[#scenes+1] = s.definition
   end    
   --
-  return json.encode (data)   -- json text or nil, error message if any
+  return json.Lua.encode (data)   -- json text or nil, error message if any, 2021.04.30 force Lua implementation
 end
  
 -- save ()

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.api",
-  VERSION       = "2021.04.29",
+  VERSION       = "2021.05.09",
   DESCRIPTION   = "openLuup object-level API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -27,8 +27,11 @@ local ABOUT = {
 -- openLuup API - the object-oriented interface
 --
 -- the intention is to deprecate the traditional luup.xxx API for new development
--- retaining the original for compatibility with legacy plugins and code
+-- whilst retaining the original for compatibility with legacy plugins and code.
 --
+-- device variable and attributes, plus other system variables and attributes 
+-- (like cpu and wall-clock times) are directly accessible as API variables.
+
 
 -- 2021.04.27  key parts extracted from luup.lua
 
@@ -45,6 +48,7 @@ local tables        = require "openLuup.servertables" -- SID used in device vari
 local chdev         = require "openLuup.chdev"
 local devutil       = require "openLuup.devices"
 local sceneutil     = require "openLuup.scenes"
+local timers        = require "openLuup.timers"
 
 
 local devices = devutil.device_list
@@ -66,7 +70,8 @@ local function time_table (what)
     table.sort (devs)
     for _,n in ipairs(devs) do 
       local v = x[n]
-      local name = devices[n].description: match "%s*(.*)"
+--      local name = devices[n].description: match "%s*(.*)"
+      local name = devices[n].attributes.name: match "%s*(.*)"
       b[#b+1] = info: format (time: format(v), con{'[', n, ']'}, name)
     end
     b[#b+1] = ''
@@ -76,25 +81,6 @@ local function time_table (what)
   local t = array {}
   for i, d in pairs (devices) do t[i] = d.attributes[what] end
   return t
-end
-
--- 2021.02.03  find device by attribute: name / id / altid / etc...
-local function find_device (attribute)
-  if type (attribute) ~= "table" then return end
-  local name, value = next (attribute)
-  for n, d in pairs (devices) do
-    if d.attributes[name] == value then
-      return n
-    end
-  end
-end
-
--- 2021.03.05  find scene id by name - find_scene {name = xxx}
-local function find_scene (attribute)
-  local name = attribute.name       -- currently, only 'name' is supported
-  for id, s in pairs (scenes) do
-    if s.description == name then return id end
-  end
 end
 
 -----
@@ -115,6 +101,7 @@ end
 --
 
 local SID = tables.SID
+local attr_alias = {attr = true, attributes = true}   -- pseudo serviceId for virtual devices
 
 local function readonly (_, x) error ("ERROR - READONLY: attempt to create index " .. x, 2) end
 
@@ -122,34 +109,36 @@ local api_meta = {__newindex = readonly, __call = api_iterator}
 
 function api_meta:__index (dev)
   
-  local svc_meta = {__newindex = readonly}
+  if not devices[dev] then return end   -- don't create anything for non-existent device
+  
+  local dev_meta = {__newindex = readonly}
         
-  function svc_meta:__index (sid)
+  function dev_meta:__index (sid)
     sid = SID[sid] or sid             -- handle possible serviceId aliases (see servertables.SID)
     
-    local var_meta = {}
+    local svc_meta = {}
     
---    function var_meta:__call (action)
---      return function (args)
---        local d = devices[dev]
---        if d then 
---          return d: call_action (sid, action, args) 
---        else
---          return nil, "no such device #" .. tostring(dev)
---        end
---      end
---    end
+    function svc_meta:__call (action)
+      return function (args)
+        local d = devices[dev]
+        if d then 
+          return d: call_action (sid, action, args) 
+        else
+          return nil, "no such device #" .. tostring(dev)
+        end
+      end
+    end
 
-    function var_meta:__index (var)
+    function svc_meta:__index (var)
       local d = devices[dev]
-      if not d then print("No dev", dev) return end
+      if attr_alias[sid] then return d.attributes[var] end
       local v = d: variable_get (sid, var) or {}
       return v.value, v.time
     end
     
-    function var_meta:__newindex (var, new)
+    function svc_meta:__newindex (var, new)
       local d = devices[dev]
-      if not d then print("No dev", dev) return end
+      if attr_alias[sid] then d.attributes[var] = new end
       new = tostring(new)
       local old = self[var]
       if old ~= new then
@@ -157,13 +146,74 @@ function api_meta:__index (dev)
       end
     end
 
-    return setmetatable({}, var_meta)
+    return setmetatable({}, svc_meta)
   end
 
-  local d = setmetatable ({}, svc_meta)
+  local d = setmetatable ({}, dev_meta)
   rawset (self, dev, d)
   return d
 end
+
+-----
+--
+-- servers module
+--
+
+local s_meta = {__newindex = readonly}
+
+-----
+--
+-- timers module
+--
+ 
+local function pcheck (p)
+  if type (p) ~= "table" then error ("parameter type should be table, but is: " .. type(p), 3) end
+end
+
+local t_meta = {__newindex = readonly}
+
+local t_call = {}
+--  delay = {"callback", "delay","parameter", "name"},
+function t_call.delay (p)
+  pcheck (p)
+  return timers.call_delay (p.callback, p.delay, p.parameter, p.name)
+end
+
+--  timer = {"callback", "type", "time", "days", "parameter", "recurring"},
+-- Type is 1=Interval timer, 2=Day of week timer, 3=Day of month timer, 4=Absolute timer. 
+-- For a day of week timer, Days is a comma separated list with the days of the week where 1=Monday and 7=Sunday. 
+-- Time is the time of day in hh:mm:ss format. 
+function t_call.timer (p)
+  local ttype = {interval = 1, day_of_week = 2, day_of_month = 3, absolute = 4}
+  pcheck (p)
+  local ptype = ttype[p.type] or p.type
+  return timers.call_timer (p.callback, ptype, p.time, p.days, p.parameter, p.recurring)
+end
+
+function t_meta:__call (what)
+  local this = t_call[what]
+  if not this then error ("undefined openLuup.timer function: " .. what, 2) end
+  return this
+end
+
+local t_var = {
+  cpu         = "cpu_clock", 
+  gmt_offset  = "gmt_offset",
+--loadtime    = special case, since it's a constant  
+  night       = "is_night",
+  now         = "timenow", 
+  sunrise     = "sunrise",
+  sunset      = "sunset",
+  wall        = "timenow", 
+}
+
+function t_meta:__index (what)
+  if what == "loadtime" then return timers.loadtime end
+  local this = t_var[what]
+  if not this then error ("undefined openLuup.timer variable: " .. what, 2) end
+  return timers[this] ()   -- convert timers module function call into variable value
+end
+
 
 -----
 --
@@ -173,22 +223,28 @@ local RESERVED = "RESERVED"     -- placeholder to be filled in elsewhere
 
 local api = {
   
-  devices = devices, 
-  scenes  = scenes,
-  -- TODO: find a way to access rooms = rooms,
-  
-  bridge = chdev.bridge,      -- 2020.02.12  Bridge utilities 
-  find_device = find_device,  -- 2021.02.03  find device by attribute: name / id / altid / etc...
-  find_scene = find_scene,    -- 2021.03.05  find scene by name
 
+  
+  bridge = chdev.bridge,          -- 2020.02.12  Bridge utilities 
+  find_device = devutil.find,     -- 2021.02.03  find device by attribute: name / id / altid / etc...
+  find_scene = sceneutil.find,    -- 2021.03.05  find scene by name
+
+  servers = setmetatable ({}, s_meta),
+  timers = setmetatable ({}, t_meta),
+  
   cpu_table  = function() return time_table "cpu(s)"  end,
   wall_table = function() return time_table "wall(s)" end,
 
    -- reserved placeholders (table is otherwise READONLY)
-  req_table = RESERVED, 
   mqtt      = RESERVED,
 }
 
-return setmetatable (api, api_meta)   -- enable virtualization of device variables and actions  
+return setmetatable (api, 
+--    {
+--      __newindex = readonly, 
+--      __call = api_iterator,
+--    }
+    api_meta
+  )   -- enable virtualization of device variables and actions  
 
 -----

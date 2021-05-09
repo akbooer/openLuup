@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2019.05.03",
+  VERSION       = "2021.05.08",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -55,6 +55,9 @@ local ABOUT = {
 --             see: http://forum.micasaverde.com/index.php/topic,99475.msg442182.html#msg442182
 -- 2019.04.26  move cpu_clock() to scheduler
 -- 2019.05.03  add missing 'day' unit (d) to interval timer
+
+-- 2021.05.08  move ABOUT, TEST, and .util to metatable index, and sol_ra_dec() to .util
+
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -187,6 +190,7 @@ end
 -- Sol's RA, DEC, and mean longitude, at given epoch
 local function sol_ra_dec (t)
   
+  t = t or os.time()
   local J2000 = os.time {year = 2000, month=1, day=1, hour = 12}  -- Julian 2000.0 epoch
   local D = (t - J2000) / (24 * 60 * 60)                  -- days since Julian epoch "J2000.0"
 
@@ -498,15 +502,43 @@ end
 
 ---- return methods
 
-return {
-  ABOUT = ABOUT,
-  TEST = {
+local TEST = {
     next_scheduled_time = next_scheduled_time,
     rise_set            = rise_set,
     sunrise_sunset      = sunrise_sunset,
     target_time         = target_time,
     time2unix           = time2unix,
+  }
+
+local util = {                              -- utility time functions
+    
+  sol_ra_dec    = sol_ra_dec,         -- Sol's RA, DEC, and mean longitude, at given epoch
+
+  -- convert epoch to string
+  epoch2ISOdate = ISOdateTime,        -- return ISO 8601 date/time: YYYY-MM-DDThh:mm:ss
+  epoch2rfc5322 = rfc_5322_date,      -- RFC 5322 format date  day, DD MMM YYYY HH:MM:SS +/-hhmm
+  
+  -- convert string to epoch
+  ISOdate2epoch  = UNIXdateTime,      -- Unix epoch for ISO date/time extended-format
+  datetime2epoch = time2unix,         -- time should be in the format: "yyyy-mm-dd hh:mm:ss"
+  
+  tz = {    -- 2018.04.20  timezone functions from http://lua-users.org/wiki/TimeZone
+
+    get = get_timezone,                -- difference in seconds between local time and UTC.
+    get_ISO8601_offset = get_tzoffset, -- tz string in ISO 8601:2000 standard form (+hhmm or -hhmm)
+    get_offset = get_timezone_offset,  -- tz offset in seconds, as at given time given
+  
   },
+  
+}
+
+local meta = {__index = {
+    ABOUT = ABOUT,
+    TEST = TEST,
+    util = util,
+  }}
+
+local _M = {
    -- constants
   loadtime    = loadtime,
  
@@ -519,31 +551,10 @@ return {
   is_night      = is_night,
   call_delay    = call_delay,
   call_timer    = call_timer,
-  sol_ra_dec    = sol_ra_dec,
   rfc_5322_date = rfc_5322_date,
   
-  -- modules
-  
-  util = {                              -- utility time functions
-    
-    -- convert epoch to string
-    epoch2ISOdate = ISOdateTime,        -- return ISO 8601 date/time: YYYY-MM-DDThh:mm:ss
-    epoch2rfc5322 = rfc_5322_date,      -- RFC 5322 format date  day, DD MMM YYYY HH:MM:SS +/-hhmm
-    
-    -- convert string to epoch
-    ISOdate2epoch  = UNIXdateTime,      -- Unix epoch for ISO date/time extended-format
-    datetime2epoch = time2unix,         -- time should be in the format: "yyyy-mm-dd hh:mm:ss"
-    
-    tz = {    -- 2018.04.20  timezone functions from http://lua-users.org/wiki/TimeZone
-
-      get = get_timezone,                -- difference in seconds between local time and UTC.
-      get_ISO8601_offset = get_tzoffset, -- tz string in ISO 8601:2000 standard form (+hhmm or -hhmm)
-      get_offset = get_timezone_offset,  -- tz offset in seconds, as at given time given
-    
-    },
-    
-  },
-  
 }
+
+return setmetatable (_M, meta)
 
 ----

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.04.28b",
+  VERSION       = "2021.04.30",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -41,6 +41,7 @@ local ABOUT = {
 
 -- 2021.04.08   add subscriber for relay/nnn topic (with 0 or 1 message)
 -- 2021.04.28   add subscriber for light/nnn topic (with 0-100 message)
+-- 2021.04.30   add'query' topic to force specific variable update message (after connect, for example)
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -960,9 +961,25 @@ local function mqtt_light (topic, message)
   end
 end
 
+-- easy MQTT request to query a variable (forces publication of an update)
+local function mqtt_query (topic, message)
+  mqtt_command_log (topic, message)
+  local d, s, v = message: match "^(%d+)%.([^%.]+)%.(.+)"
+  d = tonumber(d)
+  if d then 
+    local val = luup.variable_get (SID[s] or s, v, d)
+    if val then
+      subscriptions: publish (table.concat ({"openLuup/update",d,s,v}, '/'), val)
+    end
+  end
+end
+
 do -- MQTT commands
   subscriptions: register_handler (mqtt_relay, "relay/#")
   subscriptions: register_handler (mqtt_light, "light/#")
+  subscriptions: register_handler (mqtt_relay, "openLuup/relay/#")
+  subscriptions: register_handler (mqtt_light, "openLuup/light/#")
+  subscriptions: register_handler (mqtt_query, "openLuup/query")
 end
 
 

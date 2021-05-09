@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.04.08",
+  VERSION       = "2021.05.06",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -68,30 +68,19 @@ local ABOUT = {
 -- 2021.03.02  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js
 -- 2021.03.11  add devutil.PublishVariableUpdates (true)
 -- 2021.04.02  change ShellyBridge initialisation, add prototype Tasmota bridge
+-- 2021.04.30  substitute dkjson with RapidJSON, if available.
+-- 2021.05.06  move require() proxy to openLuup.loader
 
 
 local logs  = require "openLuup.logs"
 local lfs   = require "lfs"
+local json  = require "openLuup.json"
 
 --  local log
 local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 _log (lfs.currentdir(),":: openLuup STARTUP ")
 logs.banner (ABOUT)   -- for version control
 
-local scheduler             -- forward reference
-local req_table = {versions = {}}
-
-local G_require = require
-
-function require (module, ...)
-  local dev = scheduler and scheduler.current_device() or 0
-  local reqs = req_table[dev] or {}
-  reqs[module] = (reqs[module] or 0) + 1
-  req_table[dev] = reqs
-  local _M =  G_require (module, ...)
-  req_table.versions[module] = type (_M) == "table" and _M._VERSION or ''
-  return _M
-end
 
 local loader = require "openLuup.loader"  -- keep this first... it prototypes the global environment
 
@@ -99,9 +88,9 @@ local loader = require "openLuup.loader"  -- keep this first... it prototypes th
 
 luup = require "openLuup.luup"            -- here's the GLOBAL luup environment
 
-luup.openLuup.req_table = req_table       -- make the require table accessible
-
-      scheduler     = require "openLuup.scheduler"  -- already declared local
+loader.req_table {dkjson = json.Rapid}    -- list require module proxies
+  
+local scheduler     = require "openLuup.scheduler"
 local client        = require "openLuup.client"     -- HTTP client
 local server        = require "openLuup.server"     -- HTTP server
 local smtp          = require "openLuup.smtp"
@@ -110,7 +99,6 @@ local mqtt          = require "openLuup.mqtt"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
 local compress      = require "openLuup.compression"
-local json          = require "openLuup.json"
 local historian     = require "openLuup.historian"
 local devutil       = require "openLuup.devices"      -- for devutil.PublishVariableUpdates()
 
@@ -119,14 +107,7 @@ local mime  = require "mime"
 logs.banner (compress.ABOUT)    -- doesn't announce itself
 logs.banner (timers.ABOUT)      -- ditto
 logs.banner (logs.ABOUT)        -- ditto
-
 logs.banner (json.ABOUT)
-if json.C then 
-  local cjson_banner = "using Cjson %s for fast JSON decoding"
-  _log (cjson_banner: format (json.C._VERSION or "(unknown version)")) 
-else
-  _log ("using openLuup.json.Lua.decode() for JSON decoding (Cjson not installed)")
-end
 
 -- heartbeat monitor for memory usage and checkpointing
 local chkpt = 1
@@ -338,8 +319,8 @@ do --	 SERVERs and SCHEDULER
   
   luup.openLuup.mqtt = mqtt
   if config.MQTT then 
-    require "L_ShellyBridge"      -- 2021.02.01  start the Shelly bridge BEFORE MQTT server (so it catches ANNOUNCE)
-    require "L_TasmotaBridge"     -- 2021.04.02  start the Tasmota bridge BEFORE MQTT server
+    require "openLuup.L_ShellyBridge"      -- 2021.02.01  start the Shelly bridge BEFORE MQTT server (so it catches ANNOUNCE)
+    require "openLuup.L_TasmotaBridge"     -- 2021.04.02  start the Tasmota bridge BEFORE MQTT server
     mqtt.start (config.MQTT) 
     if config.MQTT.PublishVariableUpdates == "true" then
       devutil.publish_variable_updates (true)

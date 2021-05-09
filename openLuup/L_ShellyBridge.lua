@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.04.29b",
+  VERSION       = "2021.05.06",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -35,6 +35,7 @@ ABOUT = {
 -- 2021.04.02  make separate L_ShellyBridge file
 -- 2021.04.17  use openLuup device variable virtualizer, fix SetTarget for Shelly-1 (thanks @Elcid)
 -- 2021.04.25  add Shelly SHPLG2-1 (thanks @ArcherS)
+-- 2021.05.02  check for non-existent device (pre-announcement)
 
 
 local json      = require "openLuup.json"
@@ -52,6 +53,7 @@ local SID = tables.SID {
   }
 
 local openLuup = luup.openLuup
+local VIRTUAL = openLuup
 
 --------------------------------------------------
 --
@@ -68,7 +70,7 @@ local function SetTarget (dno, args)
   local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
   if shelly then
     local val = tostring(tonumber (args.newTargetValue) or 0)
-    openLuup[dno].switch.Target = val
+    VIRTUAL[dno].switch.Target = val
     local on_off = val == '1' and "on" or "off"
     shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
     openLuup.mqtt.publish (shelly, on_off)
@@ -78,7 +80,7 @@ local function SetTarget (dno, args)
 end
 
 local function ToggleState (dno)
-  local val = openLuup[dno].switch.Status
+  local val = VIRTUAL[dno].switch.Status
   SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
 end
 
@@ -121,8 +123,8 @@ end
 -- as well as subsequent child devices, and update their variables
 --
 
-local devices = {}      -- gets filled with device info on MQTT connection
-local devNo             -- bridge device number (set on startup)
+local shelly_devices = {}      -- gets filled with device info on MQTT connection
+local devNo                    -- bridge device number (set on startup)
 
 ----------------------
 --
@@ -155,7 +157,7 @@ local function generic (dno, var, value)
     local push = input and push_event[input.event]
     if push then
       local scene = button + push
-      local S = openLuup[dno].scene
+      local S = VIRTUAL[dno].scene
       S.sl_SceneActivated = scene
       S.LastSceneTime = os.time()
     end
@@ -174,7 +176,7 @@ local function sw2_5(dno, var, value)
     local altid = luup.attr_get ("altid", dno)
     local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
     if cdno then
-      local D = openLuup[cdno]
+      local D = VIRTUAL[cdno]
       if action == "relay" then
         if attr == '' then
           D.switch.Status = value == "on" and '1' or '0'
@@ -219,10 +221,10 @@ end
 local function create_device(info)
   local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
 
-  local offset = openLuup[devNo][SID.sBridge].Offset
+  local offset = VIRTUAL[devNo][SID.sBridge].Offset
   if not offset then 
     offset = openLuup.bridge.nextIdBlock()  
-    openLuup[devNo][SID.sBridge].Offset = offset
+    VIRTUAL[devNo][SID.sBridge].Offset = offset
   end
   local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
@@ -279,7 +281,7 @@ end
 local function init_device (info)
   
   local altid = info.id
-  if devices[info.id] then return end       -- device already registered
+  if shelly_devices[info.id] then return end       -- device already registered
 
   _log ("New Shelly announced: " .. altid)
   local dno = openLuup.find_device {altid = altid} 
@@ -287,7 +289,7 @@ local function init_device (info)
                   create_device (info)
                   
   luup.devices[dno].handle_children = true  -- ensure that it handles child requests
-  devices[altid] = dno                      -- save the device number, indexed by id
+  shelly_devices[altid] = dno                      -- save the device number, indexed by id
   
   -- update info, it may have changed
   -- info = {"id":"xxx","model":"SHSW-25","mac":"hhh","ip":"...","new_fw":false,"fw_ver":"..."}
@@ -337,16 +339,19 @@ function _G.Shelly_MQTT_Handler (topic, message)
     if not info then _log ("Announce JSON error: " .. (err or '?')) return end
     init_device (info)
   end
+    
+  local bridge = VIRTUAL[devNo]
+  if not bridge then return end    -- device not yet announced
   
   local timenow = os.time()
-  openLuup[devNo].hadevice.LastUpdate = timenow
+  bridge.hadevice.LastUpdate = timenow
 
   local  shelly, var = shellies: match "^(.-)/(.+)"
 
-  local child = devices[shelly]
+  local child = shelly_devices[shelly]
   if not child then return end
   
-  local D = openLuup[child]
+  local D = VIRTUAL[child]
   D.hadevice.LastUpdate = timenow
   
   local S = D[shelly]

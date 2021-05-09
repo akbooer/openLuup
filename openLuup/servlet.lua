@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.servlet",
-  VERSION       = "2021.04.28c",
+  VERSION       = "2021.04.30",
   DESCRIPTION   = "HTTP servlet API - interfaces to data_request, CGI and file services",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",

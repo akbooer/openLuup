@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.json",
-  VERSION       = "2020.05.20",
+  VERSION       = "2021.05.01",
   DESCRIPTION   = "JSON encode/decode with unicode escapes to UTF-8 encoding and pretty-printing",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2021 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -38,8 +38,22 @@ local ABOUT = {
 -- 2020.04.15   compress encode buffer with metatable function
 -- 2020.05.20   fix for cjson.null in decoded structures (thanks @reneboer)
 
+-- 2021.04.30   add support for RapidJSON
 
-  local is_cj, cjson = pcall (require, "cjson")
+
+  local version = "%s (%s) + openLuup (%s)"
+    
+  local is_cj, cjson
+  local is_rj, rjson = pcall (require, "rapidjson")
+  if is_rj then
+    ABOUT.VERSION = version: format ("RapidJSON", rjson._VERSION or 'v?', ABOUT.VERSION)
+  else
+    is_cj, cjson = pcall (require, "cjson")
+    if is_cj then
+      ABOUT.VERSION = version: format ("Cjson", cjson._VERSION or 'v?', ABOUT.VERSION)
+    end
+  end
+  
   
   local default   = 
     {
@@ -383,10 +397,24 @@ local ABOUT = {
     end
   end
 
-  local function decode_wrapper (json)
+--  local default_encode_options = {empty_table_as_array = true, sort_keys=true, pretty=true}  -- DEFAULT ENCODE OPTIONS
+  local default_encode_options = {empty_table_as_array = true}  -- DEFAULT ENCODE OPTIONS
+  
+  local function encode_proxy (lua, options, ...)
+    if is_rj then
+      options = options or default_encode_options
+      return rjson.encode (lua, options , ...)
+    else
+      return encode (lua, options, ...)
+    end
+  end
+
+  local function decode_proxy (json, ...)
     local ok, msg, try1, try2
-    if is_cj then                          -- 2020.04.12  use cjson module, if available
-      ok, try1 = pcall (cjson.decode, json)
+    if is_rj then
+      return rjson.decode (json, ...) 
+    elseif is_cj then                          -- 2020.04.12  use cjson module, if available
+      ok, try1 = pcall (cjson.decode, json, ...)
       if ok then 
         clean_cjson_nulls (try1)
         return try1 
@@ -401,14 +429,16 @@ return {
   
     ABOUT = ABOUT,
     
-    decode  = decode_wrapper,
+    decode  = decode_proxy,
+    encode  = encode_proxy, 
     
     default = default,
-    encode  = encode, 
     null    = json_null,
     
     Lua = {encode = encode, decode = decode},   -- direct access to Lua implementation
     
     C = is_cj and cjson or nil,                 -- direct access to C implementation
+    
+    Rapid = is_rj and rjson or nil,             -- ditto RapidJson
     
   }
