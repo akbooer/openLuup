@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.05.06",
+  VERSION       = "2021.05.10",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -36,6 +36,7 @@ ABOUT = {
 -- 2021.04.17  use openLuup device variable virtualizer, fix SetTarget for Shelly-1 (thanks @Elcid)
 -- 2021.04.25  add Shelly SHPLG2-1 (thanks @ArcherS)
 -- 2021.05.02  check for non-existent device (pre-announcement)
+-- 2021.05.10  add missing bridge_utilities.SID, "Remote_ID"
 
 
 local json      = require "openLuup.json"
@@ -344,8 +345,9 @@ function _G.Shelly_MQTT_Handler (topic, message)
   if not bridge then return end    -- device not yet announced
   
   local timenow = os.time()
+  bridge[chdev.bridge.SID].Remote_ID = 543779     -- 2021.0105.10  ensure ID for "ShellyBridge" exists
+  
   bridge.hadevice.LastUpdate = timenow
-
   local  shelly, var = shellies: match "^(.-)/(.+)"
 
   local child = shelly_devices[shelly]

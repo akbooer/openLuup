@@ -1,4 +1,4 @@
-local VERSION = "2021.04.25"
+local VERSION = "2021.05.10"
 
 -- mimetypes
 -- 2016/04/14
@@ -30,6 +30,7 @@ local VERSION = "2021.04.25"
 
 -- 2021.01.31  MQTT codes added
 -- 2021.03.20  DEV and SID codes added
+-- 2021.05.10  add Tasmota-style Historian archive rules for Temperature, Humidity, Battery (thanks @Buxton, @ArcherS)
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -239,8 +240,9 @@ local archive_rules = {
     },{
       schema   = "every_10m", 
       patterns = {
-        "*.*.Current*",                 -- temperature, humidity, generic sensors, setpoint...
+        "*.*.Current*",                   -- temperature, humidity, generic sensors, setpoint...
 --        "*.*.{Max,Min}Temp",            -- max/min values (which also use an aggregation rule)
+        "*.*.{Temperature,Humidity}",     -- Tasmota-style
       },
     },{
       schema   = "every_20m", 
@@ -256,7 +258,7 @@ local archive_rules = {
       patterns = {},
     },{
       schema   = "every_1d", 
-      patterns = {"*.*.BatteryLevel"},
+      patterns = {"*.*.{BatteryLevel, Battery}"},   -- Vera and Tasmota versions
     },
   }
 

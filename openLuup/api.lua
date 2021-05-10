@@ -94,6 +94,8 @@ local function api_iterator (self, what)
   return next, possible[what]
 end
 
+local function readonly (_, x) error ("ERROR - READONLY: attempt to create index " .. x, 2) end
+
 -----
 --
 -- virtualization of device variables
@@ -103,7 +105,6 @@ end
 local SID = tables.SID
 local attr_alias = {attr = true, attributes = true}   -- pseudo serviceId for virtual devices
 
-local function readonly (_, x) error ("ERROR - READONLY: attempt to create index " .. x, 2) end
 
 local api_meta = {__newindex = readonly, __call = api_iterator}
 
@@ -152,6 +153,48 @@ function api_meta:__index (dev)
   local d = setmetatable ({}, dev_meta)
   rawset (self, dev, d)
   return d
+end
+
+-----
+-- create module
+-- creation of devices / scenes / rooms
+--
+
+local c_meta = {__newindex = readonly }
+
+local c_what = {}
+
+-- device create
+-- named parameters are called after the attributes of a device
+--
+--[[
+local function create_device (
+      device_type, 
+      altid = internal_id, 
+      name = description, 
+      device_file = upnp_file, 
+      impl_file = upnp_impl, 
+      ip, 
+      mac, 
+      hidden, 
+      invisible, 
+      id_parent = parent, 
+      room, 
+      plugin = pluginnum, s
+      
+      tatevariables,
+      pnpid, nochildsync, aeskey, reload, nodupid  
+  )
+--]]
+
+function c_what: device (x)
+  luup.log "CREATE SOMETHING"
+end
+
+function c_meta:__call (what)
+  local this = c_what[what: lower()]
+  if not this then error ("undefined openLuup.create object: " .. what, 2) end
+  return this
 end
 
 -----
@@ -226,6 +269,9 @@ local api = {
 
   
   bridge = chdev.bridge,          -- 2020.02.12  Bridge utilities 
+  
+  create = setmetatable ({}, c_meta),
+  
   find_device = devutil.find,     -- 2021.02.03  find device by attribute: name / id / altid / etc...
   find_scene = sceneutil.find,    -- 2021.03.05  find scene by name
 

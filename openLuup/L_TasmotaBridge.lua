@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.05.08",
+  VERSION       = "2021.05.10",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -28,7 +28,7 @@ ABOUT = {
 -- 2021.04.02  new L_TasmotaBridge file
 -- 2021.04.17  use openLuup device variable virtualizer, go one level deeper in table data (thanks @Buxton)
 -- 2021.05.08  add /STATE and /RESULT topics (thanks @ArcherS)
-
+-- 2021.05.10  add missing bridge_utilities.SID, "Remote_ID"
 
 local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
@@ -156,6 +156,8 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
               openLuup.find_device {device_type = "TasmotaBridge"}
                 or
                   create_TasmotaBridge ()
+
+  VIRTUAL[devNo][chdev.bridge.SID].Remote_ID = 7453074     -- 2021.0105.10  ensure ID for "TasmotaBridge" exists
 
   -- device update: tele/tasmota_7FA953/SENSOR
   -- 2021.05.08  add /STATE and /RESULT
