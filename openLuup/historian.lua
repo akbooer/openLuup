@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2021.02.03",
+  VERSION       = "2021.05.11",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -31,7 +31,8 @@ local ABOUT = {
 
 -- 2020.02.12  move get_bridge_info to luup.openLuup.bridge.get_info()
 
--- 2021.02.03 avoid non-existent file whisper error in write_thru()
+-- 2021.02.03  avoid non-existent file whisper error in write_thru()
+-- 2021.05.11  add MQTT <--> Graphite Finder separator conversion '/' <--> '.' in variable names
 
 
 local logs    = require "openLuup.logs"
@@ -253,7 +254,7 @@ Different APIs have different formats/requirements:
  
 where:
 
-  node,         0 for openLuup otherwise PK_AccessPoint or remote Vera  
+  node,         0 for openLuup otherwise PK_AccessPoint of remote Vera  
   nodeName,     the name of the associated VeraBridge, or "openLuup"
   shortSid,     final apha-numeric part of the full serviceId
   shortDevName, device name with all non-alphanumerics removed
@@ -267,10 +268,17 @@ here: http://graphite-api.readthedocs.io/en/latest/api.html#graphing-metrics
 
 local Metrics = {}
 
+-- utility function to split up finder name
+local function finder2ndsv (metric)
+  local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([%w_]+)%.(.+)$"
+  v = v: gsub ('%.','/')   -- MQTT -> finder separator conversion
+  return n,d,s,v
+end
+
 -- find the variable with the given metric path: nodeName.dev[_name].shortSid.variable
 function Metrics.finder2var (metric)
   -- ignore non-numeric device name
-  local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([%w_]+)%.(.+)$"
+  local n,d,s,v = finder2ndsv (metric)
   local b = Bridges.by_name[n]
   if b then 
     local dev = luup.devices[d + b.offset]      -- add bridge offset to convert to openLuup device number
@@ -289,16 +297,17 @@ function Metrics.dsv2filepath (dev,shortSid,var)
   -- Bridges[bridge] = {nodeName = name, PK = PK, offset = offset}
   local b = Bridges[bridge]
   if b then
+    var = var: gsub ('/', '.')      -- finder -> MQTT separator conversion
     local filename = table.concat ({b.PK, devNo, shortSid, var}, '.')
     local path = table.concat {Directory, filename, ".wsp"}
     return path, filename
   end
 end
 
--- find the file path and filename give metrics finder name
+-- find the file path and filename given metrics finder name
 function Metrics.finder2filepath (metric)
   -- ignore non-numeric device name
-  local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([%w_]+)%.(.+)$"
+  local n,d,s,v = finder2ndsv (metric)
   local b = Bridges.by_name[n]
   if b then 
     local filename = table.concat ({b.PK, d, s, v}, '.')
@@ -318,7 +327,8 @@ local function bdsv2finder (b, d, shortSid, var)
       local n = b.nodeName
       local devname = dev.description: gsub ("%W", '')            -- remove non-alphanumerics
       local d2 = table.concat {d % BRIDGEBLOCK, '_', devname}     -- shortDevNo_shortDevName
-      return table.concat ({n, d2, shortSid, var}, '.'), d, dev.description
+      local v2 = var: gsub ('/', '.')                             -- finder -> MQTT separator conversion
+      return table.concat ({n, d2, shortSid, v2}, '.'), d, dev.description
     end
   end
 end
