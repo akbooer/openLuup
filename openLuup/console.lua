@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.05.09",
+  VERSION       = "2021.05.12",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -95,6 +95,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.03.25  highlight log error lines in red (thanks @rafale77)
 -- 2021.05.01  use native openLuup.json.Lua (for correct formatting)
 -- 2021.05.02  add pseudo-service 'attributes' for consistent virtual access, and serviceId/shortSid to device object
+-- 2021.05.12  add pages.rules for Historian archives, and interval buttons on Graphics page
 
 
 --  WSAPI Lua CGI implementation
@@ -121,7 +122,7 @@ local panels    = require "openLuup.panels"       -- for default console device 
 local xml       = require "openLuup.xml"          -- for HTML constructors
 local tables    = require "openLuup.servertables" -- for serviceIds
 
-local json = json.Lua         -- 2021.05.01  force native openLuup.json module for encode/decode
+json = json.Lua         -- 2021.05.01  force native openLuup.json module for encode/decode
 
 local xhtml     = xml.createHTMLDocument ()       -- factory for all HTML tags
 
@@ -218,7 +219,7 @@ end
  
 local page_groups = {
     ["Apps"]      = {"plugins_table", "app_store", "luup_files", "required_files"},
-    ["Historian"] = {"summary", "cache", "database", "orphans"},
+    ["Historian"] = {"summary", "rules", "cache", "database", "orphans"},
     ["System"]    = {"parameters", "top_level", "all_globals", "states", "sandboxes", "RELOAD"},
     ["Device"]    = {"control", "attributes", "variables", "actions", "events", "globals", "user_data"},
     ["Scene"]     = {"header", "triggers", "timers", "history", "lua", "group_actions", "json"},
@@ -1558,7 +1559,7 @@ function pages.cache ()
     end
     prev = dname
     local check = archived and 1 or nil
-    local tick = xhtml.input {type="checkbox", readonly=1, checked = check} 
+    local tick = xhtml.input {type="checkbox", readonly=1, disabled=1, checked = check} 
     local short_service_name = v.srv: match "[^:]+$" or v.srv
     t.row {'', short_service_name, h, v.value, xhtml.span {graph, ' ', clear}, xhtml.span {tick, ' ', v.name}}
   end
@@ -1566,7 +1567,6 @@ function pages.cache ()
   local div = xhtml.div {html5_title "Data Historian in-memory Cache", t}
   return div
 end
-
 
 local function database_tables ()
   local folder = luup.attr_get "openLuup.Historian.Directory"
@@ -1656,6 +1656,8 @@ pages.orphans = function (p)
       local old, new = folder .. o, "trash/" ..o
       lfs.link (old, new)
       os.remove (old)
+--      local x, err = os.rename (old, new)    -- 2021.05.12, TODO: doesn't work??
+--      if not x then _log(err) end
     end
     t = nil   -- they should all have gone
   end
@@ -1664,6 +1666,24 @@ pages.orphans = function (p)
       href = selfref "TrashOrphans=yes", "Move All to Trash", title="move all orphans to trash",
       onclick = "return confirm('Trash All Orphans: Are you sure?')" } }
   return page_wrapper ("Orphaned Database Files  - from non-existent devices", trash, t) 
+end
+
+pages.rules = function ()
+  local rules = tables.archive_rules
+  local t = xhtml.table {class = "w3-small"}
+  local link = "https://graphite-api.readthedocs.io/en/latest/api.html#paths-and-wildcards"
+  local title="click for pattern documentation"
+  local plink = xhtml.a {href=link, title=title, target="_blank", "pattern (dev.shortSid.var)"}
+  t.header {"#", plink, "archives", "aggregation", {"xff", title="xFilesFactor"}}
+  local i = 0
+  for _, r in ipairs (rules) do
+    local ret = r.retentions: gsub (",%s*", ", ")
+    for _, p in ipairs (r.patterns) do
+      i = i + 1
+      t.row {i, p, ret, r.aggregationMethod or "average", r.xFilesFactor or "0"}
+    end
+  end
+  return page_wrapper ("Historian Archive Rules – first matching rule applies", t) 
 end
 
 -- file cache
@@ -1772,7 +1792,7 @@ local function device_controls (d)
   end
   srv = d.services[SID.dimming]
   if srv then    -- we need a slider
-    local LoadLevelTarget = (srv.variables.LoadLevelTarget or empty).value or 0
+--    local LoadLevelTarget = (srv.variables.LoadLevelTarget or empty).value or 0
     local LoadLevelStatus = (srv.variables.LoadLevelStatus or empty).value or 0
     slider = xhtml.form {
       oninput="LoadLevelTarget.value = slider.valueAsNumber + ' %'",
@@ -1952,7 +1972,7 @@ function pages.variables (p, req)
   -----
   return device_page (p, function (d, title)
     local t = xhtml.table {class = "w3-small w3-hoverable"}
-    t.header {"id", "service", "cache", "variable", "value", "delete"}
+    t.header {"id", "service", "history", "variable", "value", "delete"}
     -- filter by serviceId
     local All_Services = "All Services"
     local service = p.svc or All_Services
@@ -1964,8 +1984,8 @@ function pages.variables (p, req)
         local n = v.id + 1
         local history, graph = ' ', ' '
         if v.history and #v.history > 2 then 
-          history = xhtml.a {href=selfref ("page=cache_history&variable=", n), title="history", 
-                  xhtml.img {width="18px;", height="18px;", alt="history", src="/icons/calendar-alt-regular.svg"}} 
+          history = xhtml.a {href=selfref ("page=cache_history&variable=", n), title="cache", 
+                  xhtml.img {width="18px;", height="18px;", alt="cache", src="/icons/calendar-alt-regular.svg"}} 
           graph = xhtml.a {href=selfref ("page=graphics&variable=", n), title="graph", 
                   xhtml.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
         end
@@ -2573,23 +2593,64 @@ function pages.viewer (_, req)
   return page_wrapper (file,  div)
 end
 
-function pages.graphics (p, req)
-  if p.variable then    -- build our own target string
-    local dno, vno = tonumber (p.device), tonumber (p.variable)
-    local dev = luup.devices[dno]
-    local v = dev and dev.variables[vno]
-    if v then
-      local _,start = v:oldest()      -- get earliest entry in the cache (if any)
-      if start then
-        local from = timers.util.epoch2ISOdate (start + 1)    -- ensure we're AFTER the start... 
-        local link = "target=%s&from=%s"
-        local finderName = hist.metrics.var2finder (v)
-        req.query_string = link: format (finderName, from)
+-- graphics page may be called with a variable number (current device), or a target, 
+-- and an optional 'from' time (if absent then the earliest time in the cache is used)
+function pages.graphics (p)
+  
+  local function finderName_from_varnum (vnum)
+    local dno, vno = tonumber (p.device), tonumber (vnum)
+    if vno then
+      local dev = luup.devices[dno]
+      if dev then 
+        local v = dev.variables[vno]
+        if v then
+          return hist.metrics.var2finder (v)
+        end
       end
     end
+  end  
+  
+  local function cache_earliest (var)
+    if not var then return end
+    local _,start = var:oldest()      -- get earliest entry in the cache (if any)
+    return timers.util.epoch2ISOdate ((start or 0) + 1)    -- ensure we're AFTER the start... 
+  end
+
+  -- return a button group with links to plot different archives of a variable
+  local function archive_links (var, earliest)   
+    local finderName = hist.metrics.var2finder (var)
+    local path = hist.metrics.finder2filepath (finderName)
+    local function button (name, time)
+      local link = "page=graphics&target=%s&from=%s"
+      local selected = (time == p.from) or (name == "cache" and not p.from)
+      local color = selected and "w3-grey" or "w3-amber"
+      return xhtml.a {class = "w3-button w3-round " .. color, 
+          href = selfref (link: format (finderName, time)), name}
+    end
+    local links = xhtml.div{class = "w3-margin-left"}
+    local i = whisper.info (path)
+    if i then
+      links[1] = button ("cache", earliest)
+      local retentions = tostring(i.retentions) -- text representation of archive retentions
+      for arch in retentions: gmatch "[^,]+" do
+        local _, duration = arch: match "([^:]+):(.+)"                  -- rate:duration
+        links[#links+1] = button (arch, '-' .. duration)
+      end
+    end
+    return links 
   end
   
-  local form = ''
+  local finderName = p.target or finderName_from_varnum (p.variable) 
+  if not finderName then return '' end
+  
+  local var = hist.metrics.finder2var (finderName)
+  if not var then return end
+  
+  local earliest = cache_earliest (var)
+  local from = p.from or earliest
+  local buttons = archive_links (var, earliest)
+        local render = "/render?target=%s&from=%s"
+
 --  xhtml.div{class = "w3-panel",
 --    xhtml.form {
 --      xhtml.label "From",  
@@ -2600,12 +2661,13 @@ function pages.graphics (p, req)
 --        xhtml.input {type="time", name="t_until"},
 --      xhtml.input {type="submit", value="Update", class = "w3-button w3-round w3-green"},
 --    } }
+
   local background = p.background or "GhostWhite"
   return xhtml.div {
-    form, xhtml.iframe {
+    buttons, xhtml.iframe {
     height = "450px", width = "96%", 
     style= "margin-left: 2%; margin-top:30px; background-color:"..background,
-    src="/render?" .. req.query_string} }
+    src= render: format (finderName, from)} }
 end
 
 function pages.create_room ()

@@ -1,4 +1,4 @@
-local VERSION = "2021.05.10"
+local VERSION = "2021.05.12"
 
 -- mimetypes
 -- 2016/04/14
@@ -31,6 +31,7 @@ local VERSION = "2021.05.10"
 -- 2021.01.31  MQTT codes added
 -- 2021.03.20  DEV and SID codes added
 -- 2021.05.10  add Tasmota-style Historian archive rules for Temperature, Humidity, Battery (thanks @Buxton, @ArcherS)
+-- 2021.05.12  archive_rules now standalone, so include retentions and aggregation and xff (no .conf file references)
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -224,41 +225,49 @@ local cache_control = {                 -- 2019.05.14  max-age in seconds indexe
 -- patterns are searched in order, and first match is used
 
 local archive_rules = {
+      -- TODO: add retentions, xFF and aggregation method, and deprecate indirect reference to .conf files
     {
       schema   = "every_1s", 
-      patterns = {"*.*.Tripped"},
-      -- TODO: add retentions, xFF and aggregation method, and deprecate indirect reference to .conf files
       retentions = "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
+      patterns = {"*.*.Tripped"},
       xFilesFactor = 0,
       aggregationMethod = "maximum",
     },{
-      schema   = "every_1m", 
       patterns = {"*.*.Status"},
+      schema   = "every_1m", 
+      retentions = "1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
     },{
-      schema   = "every_5m", 
       patterns = {"*.*{openLuup,DataYours,EventWatcher}*.*"},
+      schema   = "every_5m", 
+      retentions = "5m:7d,1h:30d,3h:1y,1d:10y",
     },{
-      schema   = "every_10m", 
       patterns = {
         "*.*.Current*",                   -- temperature, humidity, generic sensors, setpoint...
---        "*.*.{Max,Min}Temp",            -- max/min values (which also use an aggregation rule)
         "*.*.{Temperature,Humidity}",     -- Tasmota-style
-      },
+--        "*.*.{Max,Min}Temp",            -- max/min values (would also need an aggregationMethod)
+        },
+      schema   = "every_10m", 
+      retentions = "10m:7d,1h:30d,3h:1y,1d:10y",
     },{
-      schema   = "every_20m", 
       patterns = {"*.*EnergyMetering*.{KWH,Watts,kWh24, Voltage, Current}"},
+      schema   = "every_20m", 
+      retentions = "20m:30d,3h:1y,1d:10y",
     },{
+      patterns = {},
       schema   = "every_1h", 
-      patterns = {},
+      retentions = "1h:90d,3h:1y,1d:10y",
     },{
+      patterns = {},
       schema   = "every_3h", 
-      patterns = {},
+      retentions = "3h:1y,1d:10y",
     },{
+      patterns = {},
       schema   = "every_6h", 
-      patterns = {},
+      retentions = "6h:1y,1d:10y",
     },{
-      schema   = "every_1d", 
       patterns = {"*.*.{BatteryLevel, Battery}"},   -- Vera and Tasmota versions
+      schema   = "every_1d", 
+      retentions = "1d:10y",
     },
   }
 

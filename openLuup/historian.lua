@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2021.05.11",
+  VERSION       = "2021.05.12",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -33,6 +33,8 @@ local ABOUT = {
 
 -- 2021.02.03  avoid non-existent file whisper error in write_thru()
 -- 2021.05.11  add MQTT <--> Graphite Finder separator conversion '/' <--> '.' in variable names
+-- 2021.05.12  tables.archive_rules now contains retentions and aggregation, no need for .conf file references
+--             remove archiveRule() for adding new rules (can be done directly in Lua Startup)
 
 
 local logs    = require "openLuup.logs"
@@ -221,23 +223,6 @@ end
 -- may be called more than once, so don't overwrite existing value
 local function nocacheVariables (pattern)
   mapVars (function (v) v:disableCache() end, pattern)
-end
-
--- add a new archive rule to existing or new schema
--- archiveRule ("every_10m", "*.*.*{Max,Min}*")
--- note that, unless run at startup, this may not be effective (see No_Schema)
-local function archiveRule(schema, newrule)
-  for _, rule in ipairs (Rules) do
-    if rule.schema == schema then
-      rule.patterns[#rule.patterns+1] = newrule
-      return
-    end
-  end
-  -- must be a new schema
-  Rules[#Rules+1] = {
-    schema = schema,
-    patterns = {newrule},
-  }  
 end
 
 ---------------------------------
@@ -460,9 +445,15 @@ end
 --
 -- Data Historian file writing
 --
--- Rules for which metrics to archive on disk define the name of a Carbon schema rule which should be used
--- in file creation, not the schema and aggregation themselves.
-
+-- Rules for which metrics to archive on disk define the 
+-- schema and aggregation which should be used in file creation.
+--[[
+  Typical rule:
+      patterns = {"*.*.Tripped", ...},  -- may be multiple patterns
+      retentions = "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
+      xFilesFactor = 0,
+      aggregationMethod = "maximum",
+--]]
 local function match_historian_rules (item, rule_set)
   -- return schema name (and matching pattern) for which first rule_set.patterns element matches item
   for _,rule in ipairs (rule_set) do
@@ -470,33 +461,27 @@ local function match_historian_rules (item, rule_set)
       for _, pattern in ipairs (rule.patterns) do
         local query = FindQuery (pattern)         -- turn it into a sophisticated query object
         if query: matches (item) then 
-          return rule.schema, pattern 
+          return rule, pattern 
         end
       end
     end
   end
 end
 
--- create historian file with specified archives and aggregation...
--- ... so that it's always there to be written (and won't be created with the wrong archives)
 local function create_historian_file (metric, filename) 
-  local schema
   local rule, pattern = match_historian_rules (metric, Rules)
   if rule then          -- find the matching rule name
-    _debug (metric .. " matching rule: " .. rule)
-    local schema = Hcarbon.schemas[rule]    -- find the named schema rule
-    if schema then
-      local archives = schema.retentions
-      local aggregate = Hcarbon.aggregations: match (metric)       -- use actual metric name here
-      local xff = aggregate.xFilesFactor or 0
-      local aggr = aggregate.aggregationMethod or "average"
-      whisper.create (filename, archives, xff, aggr)  
-      
-      local message = "CREATE %s %s(%s) archives: %s, aggregation: %s, xff: %.0f"
-      _log (message: format (metric or '?', rule, pattern, archives, aggr, xff))
-    end
+    _debug (metric .. " matching pattern: " .. pattern)
+    local archives = rule.retentions
+    local xff = rule.xFilesFactor or 0
+    local aggr = rule.aggregationMethod or "average"
+    whisper.create (filename, archives, xff, aggr)  
+    
+    local message = "CREATE %s (%s) archives: %s, aggregation: %s, xff: %.0f"
+    _log (message: format (metric or '?', pattern, archives, aggr, xff))
+--    end
   end
-  return schema
+  return rule
 end
 
 -- write_thru() disc cache - callback for all updates of variables with history
@@ -924,7 +909,6 @@ return {
   tally = tally,
 
   -- methods
-  archiveRule           = archiveRule,            -- add a new archive rule to existing schema
   cacheVariables        = cacheVariables,         -- turn caching on
   nocacheVariables      = nocacheVariables,       -- turn it off
   VariablesWithHistory  = VariablesWithHistory,   -- iterator
