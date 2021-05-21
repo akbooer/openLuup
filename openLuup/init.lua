@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.05.06",
+  VERSION       = "2021.05.21",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -70,6 +70,7 @@ local ABOUT = {
 -- 2021.04.02  change ShellyBridge initialisation, add prototype Tasmota bridge
 -- 2021.04.30  substitute dkjson with RapidJSON, if available.
 -- 2021.05.06  move require() proxy to openLuup.loader
+-- 2021.05.21  add config.MQTT.Carbon for Graphite database MQTT stats
 
 
 local logs  = require "openLuup.logs"
@@ -181,6 +182,8 @@ do -- set attributes, possibly decoding if required
     Historian = {
       CacheSize = 1024,                   -- in-memory cache size (per variable) (allows 7 days of 10 min)
       ["-- Directory"] = "history/",      -- on-disc archive folder
+      ["-- DataYours"] = "whisper/",      -- DataYours whisper folder
+      ["-- Carbon"] = "graphite/carbon/", -- CarbonCache for Historian server stats
       Graphite_UDP  = '',
       InfluxDB_UDP  = '',
     },
@@ -205,6 +208,7 @@ do -- set attributes, possibly decoding if required
 --      Backlog = 100,
 --      CloseIdleSocketAfter = 120,
 --      Port = 1883,
+--      Cabon = "graphite/mqtt/"          -- CarbonCache for MQTT server stats
 --      Bridge_UDP = 2883,
 --      PublishVariableUpdates = "true",  -- publish /update/ messages for individual variable changes
 --      PublishDeviceStatus = 2,          -- publish a single device status every N seconds (0 = never)
@@ -315,7 +319,6 @@ do --	 SERVERs and SCHEDULER
   if config.POP3 then pop3.start (config.POP3) end
 
   if config.Historian then historian.start (config.Historian) end
-
   
   luup.openLuup.mqtt = mqtt
   if config.MQTT then 
@@ -325,6 +328,8 @@ do --	 SERVERs and SCHEDULER
     if config.MQTT.PublishVariableUpdates == "true" then
       devutil.publish_variable_updates (true)
     end
+    local carbon = config.MQTT.Carbon 
+    if carbon then historian.CarbonCache (carbon) end   -- create Graphite database for MQTT stats 
   end
   
   -- start the heartbeat

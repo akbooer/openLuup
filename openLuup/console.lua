@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.05.12",
+  VERSION       = "2021.05.18",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -626,6 +626,18 @@ local function editable_text (hidden, value)
       name="value", autocomplete="off", onchange="this.form.submit()", text} }
   for n,v in pairs (hidden) do form[#form+1] = xhtml.input {hidden=1, name=n, value=v} end
   return form
+end
+
+-- HTML link to whisper-edit CGI
+local function whisper_edit (name, folder)
+  local link = name
+    if folder then 
+    local img = xhtml.img {height=14, width=14, alt="edit", src="icons/edit.svg"}
+    link = xhtml.a {class = "w3-hover-opacity", title="edit", 
+      href = table.concat {"/cgi/whisper-edit.lua?target=", folder, name, ".wsp"}, 
+      target = "_blank", img}
+    end
+  return link or ''
 end
 
 -----------------------------
@@ -1416,7 +1428,7 @@ function pages.trash (p)
     return page_wrapper ("Trash folder being emptied", continue)
   end
   -- list files...
-  local files = get_matching_files_from ("trash/", '^[^%.]+%.[^%.]+$')     -- *.*
+  local files = get_matching_files_from ("trash/", '^[^%.]')     -- *.* avoiding hidden files
   local data = {}
   for i,f in ipairs (files) do 
     data[#data+1] = {i, f.name, f.size}
@@ -1469,7 +1481,7 @@ function pages.summary ()
   t0.row {"total # variables with history", rhs (#H)}
   t0.row {"total # history points", rhs (T)}
   
-  local folder = luup.attr_get "openLuup.Historian.Directory"
+  local folder = hist.folder ()
   if not folder then
     t0.header { {"Disk archiving not enabled", colspan = 2} }
   else
@@ -1510,7 +1522,7 @@ end
 
 function pages.cache ()
   -- find all the archived metrics
-  local folder = luup.attr_get "openLuup.Historian.Directory"
+  local folder = hist.folder()
   local archived = {}
   if folder then 
     mapFiles (folder, 
@@ -1569,14 +1581,12 @@ function pages.cache ()
 end
 
 local function database_tables ()
-  local folder = luup.attr_get "openLuup.Historian.Directory"
+  local folder = hist.folder()
   
   if not folder then
     return "On-disk archiving not enabled"
   end
-  
-  local whisper_edit = lfs.attributes "cgi/whisper-edit.lua"    -- is the editor there?
-    
+      
   local tally = hist.tally        -- here's the historian's stats on individual file updates
   
   local files = mapFiles (folder, 
@@ -1609,17 +1619,6 @@ local function database_tables ()
   
   table.sort (files, keysort)
   
-  local function link_to_editor (name)
-    local link = name
-    if whisper_edit then 
-      local img = xhtml.img {height=14, width=14, alt="edit", src="icons/edit.svg"}
-      link = xhtml.a {class = "w3-hover-opacity", title="edit", 
-        href = table.concat {"/cgi/whisper-edit.lua?target=", folder, name, ".wsp"}, 
-        target = "_blank", img}
-    end
-    return link or ''
-  end
-  
   local t = xhtml.table {class = "w3-small"}
   local t2 = xhtml.table {class = "w3-small"}
   t.header  {'', "archives", "(kB)", "fct", {"#updates", colspan=2}, "filename (node.dev.srv.var)" }
@@ -1636,7 +1635,7 @@ local function database_tables ()
       t.row { {xhtml.strong {'[', f.devnum, '] ', f.description}, colspan = 6} }
     end
     prev = devnum
-    tbl.row {'', f.links or f.retentions, f.size, f.fct, f.updates, link_to_editor (f.shortName), f.shortName}
+    tbl.row {'', f.links or f.retentions, f.size, f.fct, f.updates, whisper_edit (f.shortName, folder), f.shortName}
   end
   
   if t2.length() == 0 then t2.row {'', "--- none ---", ''} end
@@ -1651,15 +1650,13 @@ end
 pages.orphans = function (p) 
   local _, t, orphans = database_tables() 
   if p and p.TrashOrphans == "yes" then
-    local folder = luup.attr_get "openLuup.Historian.Directory"
+    local folder = hist.folder ()
     for _, o in pairs (orphans) do
       local old, new = folder .. o, "trash/" ..o
       lfs.link (old, new)
       os.remove (old)
---      local x, err = os.rename (old, new)    -- 2021.05.12, TODO: doesn't work??
---      if not x then _log(err) end
     end
-    t = nil   -- they should all have gone
+    t = nil   -- they should all have gone (TODO: except folders... needs special handling)
   end
   local trash = xhtml.div {class = "w3-panel",
     xhtml.a {class="w3-button w3-round w3-red", 
@@ -1669,21 +1666,29 @@ pages.orphans = function (p)
 end
 
 pages.rules = function ()
-  local rules = tables.archive_rules
   local t = xhtml.table {class = "w3-small"}
   local link = "https://graphite-api.readthedocs.io/en/latest/api.html#paths-and-wildcards"
   local title="click for pattern documentation"
   local plink = xhtml.a {href=link, title=title, target="_blank", "pattern (dev.shortSid.var)"}
   t.header {"#", plink, "archives", "aggregation", {"xff", title="xFilesFactor"}}
   local i = 0
-  for _, r in ipairs (rules) do
+  for _, r in ipairs (tables.archive_rules) do
     local ret = r.retentions: gsub (",%s*", ", ")
     for _, p in ipairs (r.patterns) do
       i = i + 1
       t.row {i, p, ret, r.aggregationMethod or "average", r.xFilesFactor or "0"}
     end
   end
-  return page_wrapper ("Historian Archive Rules – first matching rule applies", t) 
+  local t2 = xhtml.table {class = "w3-small"}
+  t2.header {"#", "pattern"}
+  for i, p in ipairs (tables.cache_rules) do
+    t2.row {i, p}
+  end
+  return page_wrapper ("Historian Cache and Archive Rules", 
+    xhtml.div {class = "w3-panel",
+      xhtml.h5 "Cache – IGNORE these services or variables", t2 ,
+      xhtml.br {},
+      xhtml.h5 "Archives – first matching rule applies", t })
 end
 
 -- file cache
@@ -1978,22 +1983,32 @@ function pages.variables (p, req)
     local service = p.svc or All_Services
     local any_service = service == All_Services
     local info, sids = {}, {}
+    local historian = hist.folder ()
     for v in sorted_by_id_or_name (p, d.variables) do
       sids[v.shortSid] = true         -- save each unique service name
       if any_service or v.shortSid == service then
         local n = v.id + 1
-        local history, graph = ' ', ' '
-        if v.history and #v.history > 2 then 
+        -- Historian tool icons
+        local history, graph, edit = ' ', ' '
+        local archives, filename, filepath
+        if historian then -- check existence of matching archive file
+          local f = hist.metrics.var2finder(v)                      -- get finder name...
+          local r = hist.reader (f)                                 -- create a reader for that name...
+          archives = r.get_intervals()                              -- ...and use it to see if there are any archives
+          filepath, filename = hist.metrics.finder2filepath (f)     -- ...and matching file path
+        end
+        if (v.history and #v.history > 2) or archives then 
           history = xhtml.a {href=selfref ("page=cache_history&variable=", n), title="cache", 
                   xhtml.img {width="18px;", height="18px;", alt="cache", src="/icons/calendar-alt-regular.svg"}} 
           graph = xhtml.a {href=selfref ("page=graphics&variable=", n), title="graph", 
                   xhtml.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
+--          edit = archives and whisper_edit (filename, historian) or ' '
         end
     -- form to allow variable value updates
         local value_form = editable_text ({page="variables", id=v.id}, v.value)
 --        local trash_can = d.device_type == "openLuup" and '' or delete_link ("var", v.id, "variable")
         local trash_can = delete_link ("var", v.id, "variable")
-        local actions = xhtml.span {history, graph}
+        local actions = xhtml.span {history, graph, edit}
         info[#info+1] = {v.id, v.srv, actions, v.name, value_form, trash_can}
       end
     end
@@ -2617,9 +2632,15 @@ function pages.graphics (p)
   end
 
   -- return a button group with links to plot different archives of a variable
-  local function archive_links (var, earliest)   
+  local function archive_links (var, earliest)  
+    local back = xhtml.a {class = "w3-button w3-round w3-green", "<– Variables",
+                          href = selfref ("page=variables&device=" .. var.dev)}
+    local links = xhtml.div{class = "w3-margin-left", back}
+    
+    local historian = hist.folder()
+    if not historian then return links end
+    
     local finderName = hist.metrics.var2finder (var)
-    local path = hist.metrics.finder2filepath (finderName)
     local function button (name, time)
       local link = "page=graphics&target=%s&from=%s"
       local selected = (time == p.from) or (name == "cache" and not p.from)
@@ -2627,15 +2648,19 @@ function pages.graphics (p)
       return xhtml.a {class = "w3-button w3-round " .. color, 
           href = selfref (link: format (finderName, time)), name}
     end
-    local links = xhtml.div{class = "w3-margin-left"}
+    
+    links[2] = button ("cache", earliest)
+
+    local path = hist.metrics.finder2filepath (finderName)
     local i = whisper.info (path)
     if i then
-      links[1] = button ("cache", earliest)
       local retentions = tostring(i.retentions) -- text representation of archive retentions
       for arch in retentions: gmatch "[^,]+" do
         local _, duration = arch: match "([^:]+):(.+)"                  -- rate:duration
         links[#links+1] = button (arch, '-' .. duration)
       end
+--      links[#links+1] =  xhtml.a {class = "w3-button w3-round w3-red w3-margin-left", target = "_blank", "Edit",
+--            href = "/cgi/whisper-edit.lua?target=" .. path}
     end
     return links 
   end

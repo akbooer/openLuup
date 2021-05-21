@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2021.04.30",
+  VERSION       = "2021.05.18",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -61,10 +61,12 @@ local ABOUT = {
 -- 2021.03.11  add publish_variable_updates() method to toggle flag
 -- 2021.04.07  correct MQTT published variable value
 -- 2021.04.30  device.find() moved here from openLuup.api
+-- 2021.05.18  get ignoreServiceHistory and ignoreVariableHistory from servertables.cache_rules 
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 local publish   = require "openLuup.mqtt" .publish    -- for instant status
+local tables    = require "openLuup.servertables"     -- for cache rules
 
 --
 -- SYSTEM data versions
@@ -214,20 +216,23 @@ local metahistory = {}
     return v, t
   end
   
--- old rules were:   
---    dates_and_times = "*.*.{*Date*,*Time*,*Last*,Poll*,Configured,CommFailure}"
---    zwave_devices = "*.ZWaveDevice1.*"
---
---   most of these now caught by the epoch filter in variable_set()
-local ignoreServiceHistory = {    -- these are the shortServiceIds for which we don't want history
-  ZWaveDevice1  = true,
-  ZWaveNetwork1 = true,
-}
+-- 2021.05.18 get rules patterns from servertables and convert to lookups
 
-local ignoreVariableHistory = {   -- ditto variable names (regardless of serviceId)
-  Configured  = true,
-  CommFailure = true,
-}
+local ignoreServiceHistory = {}     -- these are the shortServiceIds for which we don't want history
+local ignoreVariableHistory = {}    -- ditto variable names (regardless of serviceId)
+
+for _, pattern in ipairs (tables.cache_rules) do
+  local d,s,v = pattern: match "^([^%.]+)%.([^%.]+)%.([^%.]+)$"
+  if d then
+    if s ~= '*' then
+      ignoreServiceHistory[s] = d
+    elseif v ~= '*' then
+      ignoreVariableHistory[v] = d
+    end
+  end
+end
+
+-----
 
 local variable = {}             -- variable CLASS
 

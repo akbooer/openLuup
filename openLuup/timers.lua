@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2021.05.08",
+  VERSION       = "2021.05.16",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -251,7 +251,7 @@ local function rise_set (date, latitude, longitude)
   local cos_p = cos(latitude)
 
   local rise, set
-  local cos_w = (sin(-0.83) - sin_p * sin_d) / (cos_p * cos_d)
+  local cos_w = (sin(-0.833) - sin_p * sin_d) / (cos_p * cos_d) -- 0.833 is approximate correction for atmospheric refraction
   
   local hour_angle
   if math.abs(cos_w) <= 1 then

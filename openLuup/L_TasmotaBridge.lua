@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.05.10",
+  VERSION       = "2021.05.15",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -44,7 +44,7 @@ local SID = tables.SID {
   }
 
 local openLuup = luup.openLuup
-local VIRTUAL = openLuup
+local VIRTUAL = require "openLuup.api"
 
 --------------------------------------------------
 --

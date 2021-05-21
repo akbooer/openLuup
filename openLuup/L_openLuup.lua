@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2021.05.12",
+  VERSION       = "2021.05.21",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -63,12 +63,14 @@ ABOUT = {
 
 -- 2021.04.06  add MQTT device/variable PUBLISH, and broker stats
 -- 2021.04.08  only PUBLISH if MQTT configured (thanks @ArcherS)
+-- 2021.05.20  use carbon cache to archive historian and mqtt server metrics
 
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local ioutil      = require "openLuup.io"           -- NOT the same as luup.io or Lua's io.
 local pop3        = require "openLuup.pop3"
+local hist        = require "openLuup.historian"    -- for metrics archive
 
 local lfs         = require "lfs"
 local smtp        = require "socket.smtp"             -- smtp.message() for formatting events
@@ -491,10 +493,11 @@ local function mqtt_round_robin ()
   timers.call_delay (mqtt_round_robin, dt, '', "MQTT openLuup/status")
 end
 
+
 -- see: https://mosquitto.org/man/mosquitto-8.html
 local function mqtt_sys_broker_stats ()
   local mqtt = luup.openLuup.mqtt
-  local topic = "$SYS/broker/"
+  local prefix = "$SYS/broker/"
   -- augment client stats
   local stats = mqtt.statistics
   local nc = 0
@@ -503,13 +506,46 @@ local function mqtt_sys_broker_stats ()
   stats["clients/connected"] = nc
   stats["clients/maximum"] = math.max (stats["clients/maximum"], nc)
   if luup.attr_get "openLuup.MQTT" then   -- 2021.04.08 only publish if MQTT configured
+    local mqtt_carbon = hist.CarbonCache["mqtt"]
     for n, v in pairs (stats) do
-      mqtt.publish (topic..n, tostring(v))
+      mqtt.publish (prefix..n, tostring(v))
+      if mqtt_carbon then
+        mqtt_carbon.update ("broker."..n: gsub ('/','.'), v)   -- 2021.05.20 add to graphite archives
+      end
     end
   end
   timers.call_delay (mqtt_sys_broker_stats, 60, '', "MQTT $SYS/broker/#")
 end
 
+
+------------------------
+--
+-- Carbon metrics
+--
+local function carbon_metrics ()
+  local carbon_cache = hist.CarbonCache["carbon"]
+  if carbon_cache then
+    local stats = hist.stats 
+    carbon_cache.update ("agents.historian.updateOperations", stats.total_updates)
+  end
+end
+
+------------------------
+--
+-- Sun position updates (cf. Heliotrope plugin)
+--
+local function sun_position ()
+  local function sol (n,v)
+    v = ("%0.3f"): format(v)
+    set (n,v, "solar")
+  end
+  local RA,DEC = timers.util.sol_ra_dec()
+  sol ("RA", RA)
+  sol ("DEC", DEC)
+--  local ALT, AZ = timers.util.ra_dec2alt_az (RA, DEC)
+--  sol ("ALT", ALT)
+--  sol ("AZ", AZ)
+end
 
 ------------------------
 --
@@ -534,6 +570,8 @@ end
 
 function openLuup_ticker ()
   calc_stats()
+  sun_position()
+  carbon_metrics()
   -- might want to do more here...
   -- TODO: update gmt_offset system attribute? (to accommodate DST change)
 end
@@ -546,7 +584,7 @@ function openLuup_synchronise ()
   luup.log "synchronising to on-the-minute"
   luup.call_timer ("openLuup_ticker", timer_type, MINUTES, days, data, recurring)
   luup.log "2 minute timer launched"
-  calc_stats ()
+  openLuup_ticker ()
 end
 
 -- 2018.03.18  receive email for openLuup@openLuup.local
@@ -709,7 +747,7 @@ function init (devNo)
   end
   
   set ("StartTime", luup.attr_get "openLuup.Status.StartTime")        -- 2018.05.02
-  calc_stats ()
+  openLuup_ticker ()
   
   return true, msg, ABOUT.NAME
 end

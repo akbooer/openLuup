@@ -84,14 +84,14 @@ I've written a finder specifically for the dataMine database, to replace the exi
 
 --]]
 
-local url       = require "socket.url"
+
 local luup      = require "openLuup.luup"
 local json      = require "openLuup.json"
 local historian = require "openLuup.historian"
 local timers    = require "openLuup.timers"
 local xml       = require "openLuup.xml"
 local wsapi     = require "openLuup.wsapi"                -- for request and response libraries
---local vfs       = require "openLuup.virtualfilesystem"    -- for external Graphite CSS
+
 
 local isFinders, finders = pcall (require, "L_DataFinders")  -- only present if DataYours there
 

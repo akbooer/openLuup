@@ -623,7 +623,7 @@ local ABOUT = {
       header.file = nil     -- discard out of date file handle
       file: close ()
     elseif not silent then
-      WhisperException (("unable to open Whisper file '%s'"): format (path or '---none---') )
+      WhisperException (("Unable to open Whisper file '%s'"): format (path or '---none---') )
     end
     return result
   end
@@ -659,7 +659,7 @@ local ABOUT = {
       fh:write (zeroes:sub(1,remaining * pointSize))
       fh:close ()
     else
-       WhisperException ("Cannot create file '%s'", path)
+       WhisperException (("Cannot create file '%s'"): format(path or '?'))
     end
     __headerCache[path] = nil    -- invalidate any cached info for this file 
    end

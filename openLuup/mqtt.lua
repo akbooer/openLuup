@@ -41,7 +41,7 @@ local ABOUT = {
 
 -- 2021.04.08   add subscriber for relay/nnn topic (with 0 or 1 message)
 -- 2021.04.28   add subscriber for light/nnn topic (with 0-100 message)
--- 2021.04.30   add'query' topic to force specific variable update message (after connect, for example)
+-- 2021.04.30   add 'query' topic to force specific variable update message (after connect, for example)
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf

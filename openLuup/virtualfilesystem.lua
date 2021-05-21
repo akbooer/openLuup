@@ -1189,6 +1189,15 @@ retentions = 6h:1y,1d:10y
 pattern = \.1d$
 retentions = 1d:10y
 
+-- 2021.05.20 add rules for Carbon and MQTT metrics
+[mqtt_metrics]
+pattern = ^broker\.
+retentions = 1m:1d
+
+[carbon_metrics]
+pattern = ^agents\.
+retentions = 1m:1d
+
 ]]
 
 local storage_aggregation_conf = [[

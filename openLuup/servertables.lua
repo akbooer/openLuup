@@ -1,4 +1,4 @@
-local VERSION = "2021.05.12"
+local VERSION = "2021.05.18"
 
 -- mimetypes
 -- 2016/04/14
@@ -32,6 +32,8 @@ local VERSION = "2021.05.12"
 -- 2021.03.20  DEV and SID codes added
 -- 2021.05.10  add Tasmota-style Historian archive rules for Temperature, Humidity, Battery (thanks @Buxton, @ArcherS)
 -- 2021.05.12  archive_rules now standalone, so include retentions and aggregation and xff (no .conf file references)
+-- 2021.05.14  add cgi/whisper-edit.lua to CGI aliases (and include in baseline directory)
+-- 2021.05.18  add cache _rules for historian in-memory cache
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -179,6 +181,7 @@ local graphite_cgi  = "openLuup/graphite_cgi.lua"
 
 local cgi_alias = setmetatable ({
     
+    ["cgi/whisper-edit.lua"]      = "openLuup/whisper-edit.lua",
     ["cgi-bin/cmh/backup.sh"]     = "openLuup/backup.lua",
     ["cgi-bin/cmh/sysinfo.sh"]    = "openLuup/sysinfo.lua",
     ["console"]                   = "openLuup/console.lua",
@@ -221,24 +224,34 @@ local cache_control = {                 -- 2019.05.14  max-age in seconds indexe
 -- Data Historian Disk Archive rules
 --
 -- pattern: matches deviceNo.shortServiceId.variable
+-- NB: device ignored, and FULL shortSID OR VARIABLE name only
+
+local cache_rules = {
+  -- services to OMIT from cache
+    "*.ZWaveDevice1.*", 
+    "*.ZWaveNetwork1.*",
+  -- variables ditto
+    "*.*.Configured", 
+    "*.*.CommFailure",
+  }
+  
+-- Data Historian Disk Archive rules
+--
+-- pattern: matches deviceNo.shortServiceId.variable
 -- schema is the name of the storage-schema rule to use if pattern matches
 -- patterns are searched in order, and first match is used
 
 local archive_rules = {
-      -- TODO: add retentions, xFF and aggregation method, and deprecate indirect reference to .conf files
     {
-      schema   = "every_1s", 
       retentions = "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
       patterns = {"*.*.Tripped"},
       xFilesFactor = 0,
       aggregationMethod = "maximum",
     },{
       patterns = {"*.*.Status"},
-      schema   = "every_1m", 
       retentions = "1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
     },{
       patterns = {"*.*{openLuup,DataYours,EventWatcher}*.*"},
-      schema   = "every_5m", 
       retentions = "5m:7d,1h:30d,3h:1y,1d:10y",
     },{
       patterns = {
@@ -246,27 +259,21 @@ local archive_rules = {
         "*.*.{Temperature,Humidity}",     -- Tasmota-style
 --        "*.*.{Max,Min}Temp",            -- max/min values (would also need an aggregationMethod)
         },
-      schema   = "every_10m", 
       retentions = "10m:7d,1h:30d,3h:1y,1d:10y",
     },{
       patterns = {"*.*EnergyMetering*.{KWH,Watts,kWh24, Voltage, Current}"},
-      schema   = "every_20m", 
       retentions = "20m:30d,3h:1y,1d:10y",
     },{
       patterns = {},
-      schema   = "every_1h", 
       retentions = "1h:90d,3h:1y,1d:10y",
     },{
       patterns = {},
-      schema   = "every_3h", 
       retentions = "3h:1y,1d:10y",
     },{
       patterns = {},
-      schema   = "every_6h", 
       retentions = "6h:1y,1d:10y",
     },{
       patterns = {"*.*.{BatteryLevel, Battery}"},   -- Vera and Tasmota versions
-      schema   = "every_1d", 
       retentions = "1d:10y",
     },
   }
@@ -408,7 +415,8 @@ return {
     status_codes    = status_codes,       -- HTTP
     mqtt_codes      = mqtt_codes,         -- MQTT
     cache_control   = cache_control,      -- for file servlet
-    archive_rules   = archive_rules,      -- for historian
+    archive_rules   = archive_rules,      -- for historian disk archives
+    cache_rules     = cache_rules,        -- for in-memory historian cache
     
     -- utilities
     

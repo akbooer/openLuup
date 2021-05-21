@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2021.04.27",
+  VERSION       = "2021.05.14",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -87,6 +87,7 @@ local ABOUT = {
 -- 2021.04.04  change pattern search in register_handler() for xxx: prefixes (was rejecting strings with ':')
 -- 2021.04.16  openLuup virtualization of device variables
 -- 2021.04.27  move openLuup object (and virtualization) to open.api module
+-- 2021.05.14  restore luup.openLuup with explicit extensions (NOT, now, the openLuuup API)
 
 
 local logs          = require "openLuup.logs"
@@ -95,6 +96,7 @@ local client        = require "openLuup.client"
 local server        = require "openLuup.server"
 local scheduler     = require "openLuup.scheduler"
 local devutil       = require "openLuup.devices"
+local sceneutil     = require "openLuup.scenes"
 local Device_0      = require "openLuup.gateway"
 local timers        = require "openLuup.timers"
 local userdata      = require "openLuup.userdata"
@@ -106,8 +108,6 @@ local historian     = require "openLuup.historian"    -- for luup.variable_get()
 -- luup sub-modules
 local chdev         = require "openLuup.chdev"
 local ioutil        = require "openLuup.io"    
-
-local openLuup      = require "openLuup.api"
 
 
 --  local _log() and, optionally, _debug()
@@ -1088,6 +1088,40 @@ local ir = {
   end
 }
 
+--
+-- CPU and wall-clock time tables (taken from device attributes)
+--
+
+local function time_table (what)
+  local array
+  local function sub(a,b)
+    local s, b = array {}, b or {}
+    for n,v in pairs(a) do s[n] = b[n] and v - b[n] or nil end
+    return s
+  end
+  local function str(x)
+    local con = table.concat
+    local time, info = "%8.3f", "%12s %8s %s"
+    local b = {info: format ("(s.ms)", "[#]", "device name")}
+    local devs = {}
+    for n in pairs(x) do devs[#devs+1] = n end
+    table.sort (devs)
+    for _,n in ipairs(devs) do 
+      local v = x[n]
+--      local name = devices[n].description: match "%s*(.*)"
+      local name = devices[n].attributes.name: match "%s*(.*)"
+      b[#b+1] = info: format (time: format(v), con{'[', n, ']'}, name)
+    end
+    b[#b+1] = ''
+    return con (b, '\n')
+  end
+  function array (x) setmetatable (x, {__sub = sub, __tostring = str}) return x end
+  local t = array {}
+  for i, d in pairs (devices) do t[i] = d.attributes[what] end
+  return t
+end
+
+
 -----
 --
 -- export values and methods
@@ -1164,6 +1198,16 @@ local luup = {
 
 }
 
-return setmetatable (luup, {__index = {openLuup = openLuup}})
+local openLuup_extensions = {
+    bridge = chdev.bridge,          -- 2020.02.12  Bridge utilities 
+    
+    find_device = devutil.find,     -- 2021.02.03  find device by attribute: name / id / altid / etc...
+    find_scene = sceneutil.find,    -- 2021.03.05  find scene by name
+  
+    cpu_table  = function() return time_table "cpu(s)"  end,
+    wall_table = function() return time_table "wall(s)" end,
+  }
+  
+return setmetatable (luup, {__index = {openLuup = openLuup_extensions}})
 
 -----------

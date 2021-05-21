@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.api",
-  VERSION       = "2021.05.09",
+  VERSION       = "2021.05.15",
   DESCRIPTION   = "openLuup object-level API",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -53,35 +53,7 @@ local timers        = require "openLuup.timers"
 
 local devices = devutil.device_list
 local scenes = sceneutil.scene_list
-
-local function time_table (what)
-  local array
-  local function sub(a,b)
-    local s, b = array {}, b or {}
-    for n,v in pairs(a) do s[n] = b[n] and v - b[n] or nil end
-    return s
-  end
-  local function str(x)
-    local con = table.concat
-    local time, info = "%8.3f", "%12s %8s %s"
-    local b = {info: format ("(s.ms)", "[#]", "device name")}
-    local devs = {}
-    for n in pairs(x) do devs[#devs+1] = n end
-    table.sort (devs)
-    for _,n in ipairs(devs) do 
-      local v = x[n]
---      local name = devices[n].description: match "%s*(.*)"
-      local name = devices[n].attributes.name: match "%s*(.*)"
-      b[#b+1] = info: format (time: format(v), con{'[', n, ']'}, name)
-    end
-    b[#b+1] = ''
-    return con (b, '\n')
-  end
-  function array (x) setmetatable (x, {__sub = sub, __tostring = str}) return x end
-  local t = array {}
-  for i, d in pairs (devices) do t[i] = d.attributes[what] end
-  return t
-end
+local rooms = luup.rooms
 
 -----
 --
@@ -90,7 +62,7 @@ end
 -- usage is:  for n, d in openLuup "devices" -- or "scenes"
 --
 local function api_iterator (self, what)
-  local possible = {devices = devices, scenes = scenes}
+  local possible = {devices = devices, scenes = scenes, rooms = rooms}
   return next, possible[what]
 end
 
@@ -119,14 +91,20 @@ function api_meta:__index (dev)
     
     local svc_meta = {}
     
+--    function svc_meta:__call (action)
+--      return function (args)
+--        local d = devices[dev]
+--        if d then 
+--          return d: call_action (sid, action, args) 
+--        else
+--          return nil, "no such device #" .. tostring(dev)
+--        end
+--      end
+--    end
+    
     function svc_meta:__call (action)
       return function (args)
-        local d = devices[dev]
-        if d then 
-          return d: call_action (sid, action, args) 
-        else
-          return nil, "no such device #" .. tostring(dev)
-        end
+        return luup.call_action (sid, action, args, dev) 
       end
     end
 
@@ -180,20 +158,36 @@ local function create_device (
       invisible, 
       id_parent = parent, 
       room, 
-      plugin = pluginnum, s
-      
-      tatevariables,
+      plugin = pluginnum, 
+      statevariables,
       pnpid, nochildsync, aeskey, reload, nodupid  
   )
 --]]
 
-function c_what: device (x)
-  luup.log "CREATE SOMETHING"
+-- parameter names are all device ATTRIBUTES
+function c_what.device (x)
+  local dno, dev = chdev.create_device (
+      x.device_type, 
+      x.altid,
+      x.name,
+      x.device_file, 
+      x.impl_file,
+      x.ip, 
+      x.mac, 
+      x.hidden, 
+      x.invisible, 
+      x.id_parent, 
+      x.room, 
+      x.plugin, 
+      x.statevariables)
+  luup.devices[dno] = dev
+  return dno
 end
 
 function c_meta:__call (what)
+  local errmsg = 'undefined openLuup.create "%s"'
   local this = c_what[what: lower()]
-  if not this then error ("undefined openLuup.create object: " .. what, 2) end
+  if not this then error (errmsg: format (tostring(what)), 2) end
   return this
 end
 
@@ -262,27 +256,13 @@ end
 --
 -- export values and methods
 --
-local RESERVED = "RESERVED"     -- placeholder to be filled in elsewhere
-
 local api = {
   
-
-  
-  bridge = chdev.bridge,          -- 2020.02.12  Bridge utilities 
-  
   create = setmetatable ({}, c_meta),
-  
-  find_device = devutil.find,     -- 2021.02.03  find device by attribute: name / id / altid / etc...
-  find_scene = sceneutil.find,    -- 2021.03.05  find scene by name
 
   servers = setmetatable ({}, s_meta),
   timers = setmetatable ({}, t_meta),
-  
-  cpu_table  = function() return time_table "cpu(s)"  end,
-  wall_table = function() return time_table "wall(s)" end,
 
-   -- reserved placeholders (table is otherwise READONLY)
-  mqtt      = RESERVED,
 }
 
 return setmetatable (api, 

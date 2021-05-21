@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2021.05.12",
+  VERSION       = "2021.05.21",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -35,6 +35,9 @@ local ABOUT = {
 -- 2021.05.11  add MQTT <--> Graphite Finder separator conversion '/' <--> '.' in variable names
 -- 2021.05.12  tables.archive_rules now contains retentions and aggregation, no need for .conf file references
 --             remove archiveRule() for adding new rules (can be done directly in Lua Startup)
+-- 2021.05.14  add HistoryReader.get_intervals() 
+--             using the Whisper retentions object as an Intervals proxy (non-standard, but useful)
+-- 2021.05.19  add historian.CarbonCache for multiple graphite databases including DataYours
 
 
 local logs    = require "openLuup.logs"
@@ -81,10 +84,7 @@ local BRIDGEBLOCK           -- openLuupBridge blocksize, set in start()
 local Bridges               -- VeraBridge info for nodeNames and device offsets
 
 local Directory             -- location of history database
-local DYdirectory           -- location of (optional) DataYours database (to include in Finder node tree)
-local DYtree = "DataYours"  -- root name of the DataYours tree for Finder
-
-local Hcarbon, DYcarbon     -- Carbon Cache (Whisper archives) for Historian and DataYours replacement
+local Gdirectories          -- table of additional Graphite Whisper databases indexed by finder root name
 
 local Graphite_UDP          -- external Graphite UDP port to mirror historian disk cache
 local InfluxDB_UDP          -- ditto InfluxDB
@@ -255,7 +255,8 @@ local Metrics = {}
 
 -- utility function to split up finder name
 local function finder2ndsv (metric)
-  local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([%w_]+)%.(.+)$"
+  local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([^%.]+)%.(.+)$"
+  if not v then _log ("ERROR invalid metric: " .. metric) end
   v = v: gsub ('%.','/')   -- MQTT -> finder separator conversion
   return n,d,s,v
 end
@@ -354,6 +355,10 @@ end
 -- and: http://graphite.readthedocs.org/en/latest/config-carbon.html#storage-aggregation-conf
 
 local function CarbonCache (path)
+  path = path: gsub("[^/]$", "%1/")                      -- ensure directory path has trailing '/'
+  local root_name = path: match "([^/]+)/$"
+  if Gdirectories[root_name] then error ("CarbonCache - duplicate file root name " .. root_name, 3) end
+  Gdirectories[root_name] = path                        -- add path to Graphite directories for finder
   
   local filePresent = {}   -- index of known files
   
@@ -413,12 +418,12 @@ local function CarbonCache (path)
     aggregations = read_conf_file "storage-aggregation.conf"      
   end
   
-  local function create (filename) 
+  local function create (filename, metric) 
     if not whisper.info (filename) then   -- it's not there
       load_rule_base ()      -- do this every create to make sure we have the latest
       -- apply the matching rules
-      local schema = schemas: match (path)      or default_rule.schema
-      local aggr   = aggregations: match (path) or default_rule.aggregation
+      local schema = schemas: match (metric)      or default_rule.schema
+      local aggr   = aggregations: match (metric) or default_rule.aggregation
       whisper.create (filename, schema.retentions, aggr.xFilesFactor, aggr.aggregationMethod)  
     end
     filePresent[filename] = true
@@ -426,7 +431,7 @@ local function CarbonCache (path)
 
   local function update (metric, value, timestamp)
     local filename = table.concat {path, metric:gsub(':', '^'), ".wsp"}   -- change ':' to '^'
-    if not filePresent[filename] then create (filename) end 
+    if not filePresent[filename] then create (filename, metric) end 
     -- use  timestamp as time 'now' to avoid clock sync problem of writing at a future time
     whisper.update (filename, value, timestamp, timestamp)  
   end
@@ -434,13 +439,27 @@ local function CarbonCache (path)
   -- CarbonCache ()
   load_rule_base ()   -- intial load of storage schemas and aggregation rules
   
-  return {
+  local meta = {}
+  meta.__index = {
+    -- hide lengthy table in metatable
     aggregations = aggregations,
+    root_name = root_name,
     schemas = schemas,
-    update = update,
   }
+
+  return setmetatable ({update = update}, meta)
   
 end
+
+
+-- callable table adds new carbon cache and extends Historian finder Gdirectories path
+local carbon = setmetatable ({}, {
+    __call = function (self, path)
+      local new = CarbonCache (path)
+      self[new.root_name] = new
+      return new
+    end})
+
 -----------------------------------
 --
 -- Data Historian file writing
@@ -687,6 +706,11 @@ local function HistoryReader(metric_path)
   local function get_intervals()
 --    local start_end = whisperDB.__file_open(fs_path,'rb', earliest_latest)
 --    return IntervalSet {start_end}    -- TODO: all of the archives separately?
+
+    -- 2021.05.14  as a proxy, we'll use the Whisper retentions object instead
+    -- this is fast because the file header is (already) cached by Whisper
+    local file_path = Metrics.finder2filepath (metric_path)
+    return (whisper.info (file_path) or {}) .retentions
   end
 
   -- HistoryReader()
@@ -699,9 +723,11 @@ end
 
 
 local function WhisperReader(metric_path)
- 
+  
   local function fetch (startTime, endTime) 
-    local fs_path = table.concat {DYdirectory, metric_path: match "%.(.*)", ".wsp"}  -- ignore tree root
+    local path_root, path_rest = metric_path: match "([^%.]+)%.(.*)"
+    local directory = Gdirectories[path_root] or ''
+    local fs_path = table.concat {directory, path_rest, ".wsp"}  -- ignore tree root
     local _, tv = pcall (whisper.fetch, fs_path, startTime, endTime)  -- catch file missing error
     return tv
   end
@@ -721,7 +747,7 @@ local function WhisperReader(metric_path)
 end
 
 
-local function HistoryFinder(config)
+local function HistoryFinder()    
 
   -- the Historian implementation of the Whisper database is a single directory 
   -- with metric path names, prefixed by the PK_AccessPoint, as the filenames, 
@@ -766,9 +792,9 @@ local function HistoryFinder(config)
     return T
   end
 
-  -- the DataYours (DY) implementation of the Whisper database is a single directory 
+  -- following DataYours, this implementation of the Graphite database is a single directory 
   -- with fully expanded metric path names as the filenames, eg: system.device.service.variable.wsp
-  local function buildDYtree (root_dir)
+  local function buildGtree (root_dir)
     local function buildTree (name, dir)
       local a,b = name: match "^([^%.]+)%.(.*)$"      -- looking for a.b
       if a then 
@@ -795,7 +821,9 @@ local function HistoryFinder(config)
     local pattern_parts = FindQuery (query.pattern)   -- upgrade query to one with real functionality!
 
     local dir = buildVWHtree()
-    dir[DYtree] = DYdirectory and buildDYtree(DYdirectory) or nil    -- add DataYours Whisper directory
+    for name, directory in pairs (Gdirectories) do
+      dir[name] = buildGtree(directory)    -- add other Graphite Whisper directories to tree
+    end
     
     --  Recursively generates absolute paths whose components
     --  underneath current_dir match the corresponding pattern in patterns
@@ -816,7 +844,7 @@ local function HistoryFinder(config)
               -- Now construct and yield an appropriate Node object            
               local reader
               if not branch then
-                if metric_path_parts[1] == DYtree then
+                if Gdirectories[metric_path_parts[1]] then
                   reader = WhisperReader(metric_path)   -- plain Whisper reader
                 else
                   reader = HistoryReader(metric_path)
@@ -832,15 +860,6 @@ local function HistoryFinder(config)
     _find_paths (dir, pattern_parts, 1, {}) 
 
   end
-
-  -- HistoryFinder(),  called with Graphite API configuration
-  
-  DYdirectory = ((config or {}).historian or {}).DataYours   -- explicit override of DY finder
-  
-  if DYdirectory then 
-    DYcarbon = CarbonCache (DYdirectory) 
-    -- TODO: check for DY receiver UDP and start listener
-  end
   
   return {
     find_nodes = function(query) 
@@ -850,7 +869,6 @@ local function HistoryFinder(config)
 end
 
 
-
 ---------------------------------------------------
 --
 -- start() called with openLuup.Historian configuration at system startup
@@ -858,6 +876,15 @@ end
 local function start (config)
   CacheSize   = config.CacheSize
   Directory   = config.Directory
+  
+  -- add possible DataYours directory to Graphite Whisper archives
+  Gdirectories = {DataYours = config.DataYours}
+  -- TODO: check for DY receiver UDP and start listener
+  -- TODO: MQTT subscription for Carbon Cache?
+  
+  local Carbon = config.Carbon
+  if Carbon then carbon (Carbon) end    -- add cache and finder for database stats
+  
   BRIDGEBLOCK = luup.openLuup.bridge.BLOCKSIZE
   Bridges     = luup.openLuup.bridge.get_info ()
   
@@ -876,14 +903,11 @@ local function start (config)
   
   _log "starting data historian"
   devutil.set_cache_size (CacheSize)
-  
+
   if Directory then     -- we're using the write-thru on-disk archive as well as in-memory cache
     Directory = Directory: gsub ("[^/]$","%1/")   -- 2018.07.21  ensure Directory ends with '/'
     _log ("using on-disk archive: " .. Directory)
     lfs.mkdir (Directory)             -- ensure it exists
-    Hcarbon = CarbonCache (Directory) 
-    local cacheMessage = "Graphite schema/aggregation rule sets: %d/%d"
-    _log (cacheMessage: format (#Hcarbon.schemas, #Hcarbon.aggregations) ) 
     
     -- load the disk storage rule base  
     Rules = tables.archive_rules
@@ -913,10 +937,14 @@ return {
   nocacheVariables      = nocacheVariables,       -- turn it off
   VariablesWithHistory  = VariablesWithHistory,   -- iterator
   
-  fetch                 = Hfetch,
-  start                 = start,
+  fetch   = Hfetch,
+  start   = start,
+  folder  = function() return Directory end,  -- true if there's a history directory
   
   -- Graphite modules
+
+  CarbonCache = carbon,
+  
   finder  = HistoryFinder,
   reader  = HistoryReader,
   metrics = Metrics,          -- for name translations: .finder2var(), .dsv2filepath(), .dsv2nodename()
