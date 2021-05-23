@@ -102,7 +102,7 @@ local D_openLuup_dev = Device {
         manufacturer = "akbooer",
         staticJson   = "D_openLuup.json",
 --        serviceList  = { {"openLuup", "openLuup", "S_openLuup.xml"} },
-        serviceIds  = { "openLuup" },
+        serviceIds  = { "openLuup", "solar" },
         implementationList = {"I_openLuup.xml"}}
 
 local D_openLuup_json = json.encode {
@@ -190,7 +190,8 @@ local I_openLuup_impl do
             [[
               local sid = "urn:micasaverde-com:serviceId:HomeAutomationGateway1"
               luup.call_action(sid, "RunScene", {SceneNum = lul_settings.SceneNum}, 0)
-            ]])
+            ]]),
+          run_action ("solar", "GetSolarCoords", "GetSolarCoords (lul_settings)"),
         }}}
   I_openLuup_impl = tostring(x)
 end
@@ -235,6 +236,37 @@ local S_openLuup_svc do
               argument "SceneNum"}},
         }}}
   S_openLuup_svc = tostring(x)
+end
+
+local S_solar_svc do
+  local x = xml.createDocument ()
+  local function argument (N,D, R)
+    return x.argument {x.name (N), x.direction (D or "in"), x.relatedStateVariable (R)}
+  end
+    x: appendChild {
+      x.scpd {xmlns="urn:schemas-upnp-org:service-1-0",
+        x.specVersion {x.major "1", x.minor "0"},
+        
+        x.serviceStateTable {  -- added just for fun to expose these as device status 
+          x.stateVariable {x.name "RA",  x.shortCode "solar_ra"},	
+          x.stateVariable {x.name "DEC", x.shortCode "solar_dec"},	
+          x.stateVariable {x.name "ALT", x.shortCode "solar_alt"},	
+          x.stateVariable {x.name "AZ",  x.shortCode "solar_az"}},	
+        
+        x.actionList {
+
+          x.action {x.name "GetSolarCoords",
+            x.argumentList {
+              argument "Epoch",
+              argument "Latitude",
+              argument "Longitude",
+              argument ("RA",  "out", "RA"),
+              argument ("DEC", "out", "DEC"),
+              argument ("ALT", "out", "ALT"),
+              argument ("AZ",  "out", "AZ"),
+            }},
+        }}}
+  S_solar_svc = tostring(x)
 end
 
 
@@ -1363,6 +1395,7 @@ local manifest = {
     ["D_openLuup.json"] = D_openLuup_json,
     ["I_openLuup.xml"]  = I_openLuup_impl,
     ["S_openLuup.xml"]  = S_openLuup_svc,
+    ["S_solar.xml"]     = S_solar_svc,
     ["LICENSE"] = ABOUT.LICENSE,
     
     ["icons/AltAppStore.svg"] = AltAppStore_svg,

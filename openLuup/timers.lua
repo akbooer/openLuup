@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2021.05.16",
+  VERSION       = "2021.05.23",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -57,7 +57,7 @@ local ABOUT = {
 -- 2019.05.03  add missing 'day' unit (d) to interval timer
 
 -- 2021.05.08  move ABOUT, TEST, and .util to metatable index, and sol_ra_dec() to .util
-
+-- 2021.05.23  add sol_rdaa() for solar RA, DEC, ALT, and AZ
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -186,13 +186,17 @@ end
 --
 -- Sun position
 --
+local J2000 = os.time {year = 2000, month=1, day=1, hour = 12}  -- Julian 2000.0 epoch
+
+-- days since Julian epoch "J2000.0"
+local function days_since_J2000(t)
+  t = t or os.time()
+  return (t - J2000) / (24 * 60 * 60)                  
+end
 
 -- Sol's RA, DEC, and mean longitude, at given epoch
 local function sol_ra_dec (t)
-  
-  t = t or os.time()
-  local J2000 = os.time {year = 2000, month=1, day=1, hour = 12}  -- Julian 2000.0 epoch
-  local D = (t - J2000) / (24 * 60 * 60)                  -- days since Julian epoch "J2000.0"
+  local D = days_since_J2000 (t)
 
   local g = (357.5291 + 0.98560028 * D) % 360             -- mean anomaly of the sun
   local q = (180 + 280.459 + 0.98564736 * D) % 360 - 180  -- mean longitude of the sun (-180..+180)
@@ -208,7 +212,35 @@ local function sol_ra_dec (t)
   
   return RA, DEC, q
 end
+ 
+local function local_sidereal_time (D, lng)   -- mean local sidereal time
+  local T = D /36525                          -- Julian centuries
+  local theta0 = 280.46061837 + 360.98564736629*D + T*T*(0.000387933 - T/38710000.0 ) 
+  return ((theta0 + lng) % 360)
+end
+ 
+local function sol_rdaa (t, lat, lng)
+  lat  = lat  or luup.latitude
+  lng = lng or luup.longitude
   
+  local D = days_since_J2000 (t)
+  local ra, dec = sol_ra_dec(t)
+  local H = local_sidereal_time(D, lng) - ra   -- hour angle
+  
+  local sin_phi, cos_phi = sin(lat), cos(lat)
+  local sin_dec, cos_dec = sin(dec), cos(dec)
+  local sin_H, cos_H = sin(H), cos(H)
+  
+  local sin_ALT = sin_phi * sin_dec + cos_phi * cos_dec * cos_H
+  local az = atan2(-cos_dec * cos_phi * sin_H, sin_dec - sin_phi * sin_ALT) 
+  local alt = asin(sin_ALT)
+  
+  return ra, dec, alt, az
+end
+
+
+-------------
+--
 -- sunrise, sunset times given date (and lat + long, possibly defaulted to luup.xxx globals)
 -- see: http://aa.usno.navy.mil/faq/docs/SunApprox.php
 -- rise and set are nil if the sun does not rise or set on that day.
@@ -513,7 +545,8 @@ local TEST = {
 local util = {                              -- utility time functions
     
   sol_ra_dec    = sol_ra_dec,         -- Sol's RA, DEC, and mean longitude, at given epoch
-
+  sol_rdaa      = sol_rdaa,           -- Sol's RA, DEC, ALT, AZ at given epoch
+  
   -- convert epoch to string
   epoch2ISOdate = ISOdateTime,        -- return ISO 8601 date/time: YYYY-MM-DDThh:mm:ss
   epoch2rfc5322 = rfc_5322_date,      -- RFC 5322 format date  day, DD MMM YYYY HH:MM:SS +/-hhmm

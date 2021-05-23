@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2021.05.21",
+  VERSION       = "2021.05.22",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -38,6 +38,7 @@ local ABOUT = {
 -- 2021.05.14  add HistoryReader.get_intervals() 
 --             using the Whisper retentions object as an Intervals proxy (non-standard, but useful)
 -- 2021.05.19  add historian.CarbonCache for multiple graphite databases including DataYours
+-- 2021.05.22  add performance stats to each individual CarbonCache
 
 
 local logs    = require "openLuup.logs"
@@ -106,6 +107,20 @@ local stats = {             -- interesting performance stats
 --
 -- Utility functions
 --
+
+-- Whisper file update, updating wall-clock and cpu time stats
+local function update_with_stats (stats, path, value, timestamp)
+  _debug (table.concat {"WRITE ", path, " = ", value})
+  local wall = timers.timenow ()
+  local cpu = timers.cpu_clock ()
+  -- use timestamp as time 'now' to avoid clock sync problem of writing at a future time
+  whisper.update (path, value, timestamp, timestamp)  
+  cpu = timers.cpu_clock () - cpu
+  wall = timers.timenow () - wall
+  stats.cpu_seconds = (stats.cpu_seconds or 0) + cpu
+  stats.elapsed_sec = (stats.elapsed_sec or 0) + wall
+  stats.total_updates = (stats.total_updates or 0) + 1
+end
 
 
 -- Find Query class factory with extended methods
@@ -360,7 +375,8 @@ local function CarbonCache (path)
   if Gdirectories[root_name] then error ("CarbonCache - duplicate file root name " .. root_name, 3) end
   Gdirectories[root_name] = path                        -- add path to Graphite directories for finder
   
-  local filePresent = {}   -- index of known files
+  local filePresent = {}    -- index of known files
+  local stats = {}          -- performance stats
   
   -- the current set of rules
   local schemas = {}              -- with retentions field
@@ -433,7 +449,7 @@ local function CarbonCache (path)
     local filename = table.concat {path, metric:gsub(':', '^'), ".wsp"}   -- change ':' to '^'
     if not filePresent[filename] then create (filename, metric) end 
     -- use  timestamp as time 'now' to avoid clock sync problem of writing at a future time
-    whisper.update (filename, value, timestamp, timestamp)  
+    update_with_stats (stats, filename, value, timestamp, timestamp)  
   end
 
   -- CarbonCache ()
@@ -441,13 +457,13 @@ local function CarbonCache (path)
   
   local meta = {}
   meta.__index = {
-    -- hide lengthy table in metatable
+    -- hide lengthy tables in metatable
     aggregations = aggregations,
     root_name = root_name,
     schemas = schemas,
   }
 
-  return setmetatable ({update = update}, meta)
+  return setmetatable ({update = update, stats = stats}, meta)
   
 end
 
@@ -518,23 +534,9 @@ local function write_thru (dev, svc, var, old, value, timestamp)
     NoSchema[short_metric] = not schema 
     if not schema then return end                   -- still no file, so bail out here
   end
-  
-  _debug (table.concat {"WRITE ", path, " = ", value})
-  
-  local wall, cpu   -- for performance stats
-  do
-    wall = timers.timenow ()
-    cpu = timers.cpu_clock ()
-    -- use timestamp as time 'now' to avoid clock sync problem of writing at a future time
-    whisper.update (path, value, timestamp, timestamp)  
-    cpu = timers.cpu_clock () - cpu
-    wall = timers.timenow () - wall
-  end
-
-  -- update stats
-  stats.cpu_seconds = stats.cpu_seconds + cpu
-  stats.elapsed_sec = stats.elapsed_sec + wall
-  stats.total_updates = stats.total_updates + 1  
+    
+  -- write data and update stats
+  update_with_stats (stats, path, value, timestamp)
   tally[filename] = (tally[filename] or 0) + 1
   
   -- send to external DBs also:  Graphite / InfluxDB

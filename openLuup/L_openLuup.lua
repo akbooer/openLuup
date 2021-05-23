@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2021.05.21",
+  VERSION       = "2021.05.23",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -64,6 +64,7 @@ ABOUT = {
 -- 2021.04.06  add MQTT device/variable PUBLISH, and broker stats
 -- 2021.04.08  only PUBLISH if MQTT configured (thanks @ArcherS)
 -- 2021.05.20  use carbon cache to archive historian and mqtt server metrics
+-- 2021.05.23  add solar RA,DEC and ALT,AZ plis GetSolarCoords service with options (Unix) epoch parameter
 
 
 local json        = require "openLuup.json"
@@ -534,17 +535,24 @@ end
 --
 -- Sun position updates (cf. Heliotrope plugin)
 --
-local function sun_position ()
+local function sun_position (t, lat, lng)
   local function sol (n,v)
     v = ("%0.3f"): format(v)
     set (n,v, "solar")
   end
-  local RA,DEC = timers.util.sol_ra_dec()
+  local RA,DEC,ALT,AZ = timers.util.sol_rdaa(t, lat, lng)
   sol ("RA", RA)
   sol ("DEC", DEC)
---  local ALT, AZ = timers.util.ra_dec2alt_az (RA, DEC)
---  sol ("ALT", ALT)
---  sol ("AZ", AZ)
+  sol ("ALT", ALT)
+  sol ("AZ", AZ)
+end
+
+-- GetSolarCoords action
+function GetSolarCoords (p)
+  local t = tonumber (p.Epoch)
+  local lat = tonumber (p.Latitude)
+  local lng = tonumber (p.Longitude)
+  sun_position (t, lat, lng)              -- update parameters, which are then returned by the service
 end
 
 ------------------------
