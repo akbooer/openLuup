@@ -235,7 +235,7 @@ local function sol_rdaa (t, lat, lng)
   local az = atan2(-cos_dec * cos_phi * sin_H, sin_dec - sin_phi * sin_ALT) 
   local alt = asin(sin_ALT)
   
-  return ra, dec, alt, az
+  return ra, dec, alt, az, H
 end
 
 

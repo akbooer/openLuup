@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2021.05.23",
+  VERSION       = "2021.06.08",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -506,6 +506,11 @@ local function mqtt_sys_broker_stats ()
   stats["clients/total"] = nc
   stats["clients/connected"] = nc
   stats["clients/maximum"] = math.max (stats["clients/maximum"], nc)
+  
+  local rmc = 0
+  for _ in pairs (mqtt.retained) do rmc = rmc + 1 end   -- count the retained messages
+  stats["retained/messages/count"] = rmc
+
   if luup.attr_get "openLuup.MQTT" then   -- 2021.04.08 only publish if MQTT configured
     local mqtt_carbon = hist.CarbonCache["mqtt"]
     for n, v in pairs (stats) do

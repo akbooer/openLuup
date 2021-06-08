@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.04.30",
+  VERSION       = "2021.06.08",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -280,12 +280,12 @@ do -- MQTT Packet methods
     return connack
   end
 
-  function MQTT_packet.PUBLISH (TopicName, ApplicationMessage) 
+  function MQTT_packet.PUBLISH (TopicName, ApplicationMessage, control_flags) 
     -- publish to MQTT client socket (with QoS = 0)
     
     -- FIXED HEADER
     local packet_type = "PUBLISH"
-    local control_flags = 0               -- QoS = 0
+    control_flags = control_flags or 0               -- default: DUP = 0, QoS = 0, RETAIN = 0
     
     -- VARIABLE HEADER
     local variable_header = encode_utf8 (TopicName)   -- No packetId, since QoS = 0
@@ -467,6 +467,7 @@ function parse.PUBLISH(message)
   local DUP, QoSmsb, QoSlsb, RETAIN
   DUP, QoSmsb, QoSlsb, RETAIN = unpack (flags)
   local QoS = 2 * QoSmsb + QoSlsb
+  RETAIN = RETAIN == 1
   
   -- VARIABLE HEADER
   
@@ -504,7 +505,7 @@ function parse.PUBLISH(message)
         QoS 2 PUBREC Packet
 --]]
   local ack    -- None, because we only handle QoS 0
-  return ack, nil, TopicName, ApplicationMessage
+  return ack, nil, TopicName, ApplicationMessage, RETAIN
 end
 
 function parse.PINGREQ ()
@@ -619,6 +620,7 @@ local subscriptions = {} do
   local function new_metatable ()
     local meta = {
       wildcards = {}, 
+      retained = {},                        -- retained messages indexed by topic
       stats = {
         ["bytes/received"] = 0,             -- bytes received since the broker started.
         ["bytes/sent"] = 0,                 -- bytes sent since the broker started.
@@ -629,6 +631,7 @@ local subscriptions = {} do
         ["messages/sent"] = 0,              -- messages of any type sent since the broker started.
         ["publish/messages/received"] = 0,  -- PUBLISH messages received since the broker started.
         ["publish/messages/sent"] = 0,      -- PUBLISH messages sent since the broker started.
+        ["retained/messages/count"] = 0,    -- total number of retained messages active on the broker.
       },
     }
     
@@ -680,7 +683,23 @@ local subscriptions = {} do
     return 1
   end
 
-  -- subscribe as external (IP) clients
+  --[[
+
+  [MQTT-3.3.1-6]
+  When a new subscription is established, the last retained message, if any, 
+  on each matching topic name MUST be sent to the subscriber.
+
+  [MQTT-3.3.1-8]
+  When sending a PUBLISH Packet to a Client the Server MUST set the RETAIN flag to 1 
+  if a message is sent as a result of a new subscription being made by a Client.
+
+  [MQTT-3.3.1-9]
+  It MUST set the RETAIN flag to 0 when a PUBLISH Packet is sent to a Client because it matches 
+  an established subscription regardless of how the flag was set in the message it received.
+
+  --]]
+
+  -- subscribe as external (IP) clients (note that SUBACK will already have been sent)
   function methods: subscribe_client_to_topics (client, topics)
     local name = tostring(client)
     local message = "%s SUBSCRIBE to %s %s"
@@ -691,7 +710,24 @@ local subscriptions = {} do
         count = 0,
       }
       _log (message: format (client.MQTT_connect_payload.ClientId or '?', topic, name))
+      
+      -- send any RETAINED message for this topic
+      local retained_message = self.retained[topic]
+      if retained_message then
+        local control_flags = 1 -- format message with RETAIN bit set
+        local message = MQTT_packet.PUBLISH (topic, retained_message, control_flags)
+        self: send_to_client (client, message) -- publish to external subscribers
+      end
     end
+    
+    
+    -- TODO: wildcard topics
+--    for wildcard, pattern in pairs (self.wildcards) do
+--      if TopicName: sub(1, #pattern) == pattern then
+--      end
+--    end
+    
+
   end
   
   function methods: send_to_client (client, message)
@@ -711,31 +747,92 @@ local subscriptions = {} do
     return ok, err
   end
 
+  --[[
+  [MQTT-3.3.1-5]
+  If the RETAIN flag is set to 1, in a PUBLISH Packet sent by a Client to a Server, 
+  the Server MUST store the Application Message and its QoS, 
+  so that it can be delivered to future subscribers whose subscriptions match its topic name.
+
+  [MQTT-3.3.1-7]
+  If the Server receives a QoS 0 message with the RETAIN flag set to 1 
+  it MUST discard any message previously retained for that topic. 
+  It SHOULD store the new QoS 0 message as the new retained message for that topic, 
+  but MAY choose to discard it at any time - if this happens there will be no retained message for that topic.
+
+  [MQTT-3.3.1-10]
+  A PUBLISH Packet with a RETAIN flag set to 1 and a payload containing zero bytes will be processed 
+  as normal by the Server and sent to Clients with a subscription matching the topic name. 
+  Additionally any existing retained message with the same topic name MUST be removed 
+  and any future subscribers for the topic will not receive a retained message.
+
+  [MQTT-3.3.1-11]
+  A zero byte retained message MUST NOT be stored as a retained message on the Server.
+
+  [MQTT-3.3.1-12]
+  If the RETAIN flag is 0, in a PUBLISH Packet sent by a Client to a Server, 
+  the Server MUST NOT store the message and MUST NOT remove or replace any existing retained message.
+  --]]
+  
+  -- message object with formatted MQTT_packet created on demand (and then cached for multiple sends)
+  local function Message (TopicName, ApplicationMessage, Retained)
+    local meta = {}
+    function meta:__index ()
+      local msg = MQTT_packet.PUBLISH (TopicName, ApplicationMessage, Retained)
+      self.MQTT_packet = msg   -- save packet so we won't be called again
+      return msg
+    end
+    local message = {
+      TopicName = TopicName, 
+      ApplicationMessage = ApplicationMessage, 
+      Retained = Retained}
+    return setmetatable (message, meta)
+  end
+  
   -- deliver message to all subscribers
-  function methods: publish (TopicName, ApplicationMessage)
+  function methods: publish (TopicName, ApplicationMessage, Retained)
+    
+    -- handle retained topics [MQTT-3.3.1-5/7/10/11/12]
+    if Retained then 
+      self.retained[TopicName] = (#ApplicationMessage > 0) and ApplicationMessage or nil
+    end
+    
     -- statistics
     local stats = self.stats
     stats["publish/messages/received"] = stats["publish/messages/received"] + 1
+
+    -- publish message to single subscriber
+    local function publish_to_one (subscriber, message)
+      local s, m = subscriber, message
+      s.count = (s.count or 0) + 1
+      local ok, err
+      if s.callback then
+        ok, err = scheduler.context_switch (s.devNo, s.callback, m.TopicName, m.ApplicationMessage, s.parameter, m.Retained)
+      elseif s.client then
+        ok, err = self: send_to_client (s.client, m.MQTT_packet) -- publish to external subscribers
+        if ok then 
+          stats["publish/messages/sent"] = stats["publish/messages/sent"] + 1
+        end
+      end
+      return ok, err
+    end
+    
     -- publish message to all subscribers
     local function publish_to_all (subscribers, TopicName, ApplicationMessage)
-      local message
+      local message = Message (TopicName, ApplicationMessage)
+      local ok, err 
       for _, subscriber in pairs (subscribers) do
-        local s = subscriber
-        s.count = (s.count or 0) + 1
-        local ok, err
-        if s.callback then
---          if type(s.callback) == "function" then
-            ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage, s.parameter)
---          else
---            err = "callback is not a function : " .. tostring(s.callback)
+        ok, err = publish_to_one (subscriber, message)
+--        local s = subscriber
+--        s.count = (s.count or 0) + 1
+--        local ok, err
+--        if s.callback then
+--          ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage, s.parameter, Retained)
+--        elseif s.client then
+--          ok, err = self: send_to_client (s.client, m.MQTT_packet) -- publish to external subscribers
+--          if ok then 
+--            stats["publish/messages/sent"] = stats["publish/messages/sent"] + 1
 --          end
-        elseif s.client then
-          message = message or MQTT_packet.PUBLISH (TopicName, ApplicationMessage)
-          ok, err = self: send_to_client (s.client, message) -- publish to external subscribers
-          if ok then 
-            stats["publish/messages/sent"] = stats["publish/messages/sent"] + 1
-          end
-        end
+--        end
 
         if not ok then
           _log (table.concat {"ERROR publishing application message for mqtt:", TopicName, " : ", err})
@@ -805,14 +902,14 @@ local function incoming (client, credentials, subscriptions)
     stats["messages/received"] = stats["messages/received"] + 1    
     
     -- analyze the message
-    local topic, app_message
+    local topic, app_message, retain
     local process = parse[pname] or reserved
     
     -- ack is an acknowledgement package to send back to the client
     -- errmsg signals an error requring the client connection to be closed
     -- topic may be a list for (un)subscribe, or a single topic to publish
     -- app_message is the appplication message for publication
-    ack, errmsg, topic, app_message = process (message, credentials)    -- credentials used for CONNECT authorization
+    ack, errmsg, topic, app_message, retain = process (message, credentials)    -- credentials used for CONNECT authorization
     
     -- send an ack if required
     if ack then
@@ -824,7 +921,7 @@ local function incoming (client, credentials, subscriptions)
       if app_message then
         
         -- publish topic to subscribers
-        subscriptions: publish (topic, app_message)
+        subscriptions: publish (topic, app_message, retain)
       
       elseif pname == "SUBSCRIBE" then
         
@@ -883,6 +980,7 @@ local function new (config)
   
   return {
       statistics = subscribers.stats,
+      retained = subscribers.retained,
       -- note that these instance methods should be called with the colon syntax
       subscribe = function (_, ...) subscribers: register_handler (...) end,     -- callback for subscribed messages
       publish = function (_, ...) subscribers: publish (...) end,                -- publish from within openLuup
@@ -999,6 +1097,7 @@ return setmetatable ({
     
     -- variables
     statistics = subscriptions.stats,
+    retained = subscriptions.retained,
 
   },{
   

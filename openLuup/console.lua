@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.05.18",
+  VERSION       = "2021.06.06",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -1286,29 +1286,38 @@ end
 
 function pages.mqtt ()
   local data = {}
+  local tbl = xhtml.table {class = "w3-small"}
+  tbl.header {{colspan=2, "subscribers"}, "topic"}
+  tbl.header {"#internal", "#external" }
   for topic, subscribers in sorted (mqtt.subscribers) do
     local internal, external = {}, {}
     for _, subs in pairs (subscribers) do
       internal[#internal+1] = subs.devNo
       external[#external+1] = (subs.client or empty) .ip
     end
---    data[#data+1] = {topic, table.concat (internal, ', '), table.concat (external, ', ')}
-    data[#data+1] = {topic, #internal, #external}
+    tbl.row {#internal, #external, topic}
   end
-  local tbl = create_table_from_data ({"topic", "#internal subscribers", "#external subscribers" }, data)
-  
   local broker = {}
   for n, v in sorted (mqtt.statistics) do
     broker[#broker+1] = {n, commas (v)}
   end
   local stats = create_table_from_data ({}, broker)
+  
+  local retained = {}
+  for topic, message in sorted (mqtt.retained) do
+    local msg = message: gsub ('%c',' ')          -- remove any non-printing chars
+    retained[#retained+1] = {topic, msg}
+  end
+  local ret = create_table_from_data({"topic", "message"}, retained)
+  
   return xhtml.div {
       html5_title "MQTT QoS 0 server",
 --      selection,
     xhtml.div {class="w3-rest w3-panel", 
       xhtml.h5 "Server statistics:", stats,
-      xhtml.h5 "Subscribed topics:", 
-      tbl }}
+      xhtml.h5 "Subscribed topics:", tbl,
+      xhtml.h5 "Retained messages:", ret,
+      }}
 
 end
 
@@ -2268,7 +2277,7 @@ end
 
 function pages.header (p)
   return scene_page (p, function (scene, title)
-    local modes = scene.definition.modeStatus
+    local modes = scene: mode_toggle (p.mode)     -- flip the requested mode on/off, and get new modes
     return title .. " - scene header", 
       xhtml.div {class="w3-row", 
         xhtml.div{class="w3-col", style="width:550px;", 
@@ -2280,8 +2289,20 @@ function pages.header (p)
 end
 
 
-function pages.create_trigger (p)
-  
+local function parameters (p, req)
+  local t = xhtml.table {}
+  t.header {"name", "value"}
+  for a,b in pairs(p) do
+    t.row {a,b}
+  end
+  for a,b in pairs((req or empty) .GET or empty) do
+    t.row {a,b}
+  end
+  return t
+end
+
+function pages.trigger (p)
+  return parameters(p)
 end
 
 function pages.triggers (p)
@@ -2333,13 +2354,13 @@ function pages.triggers (p)
       }        
     end
     local create = xhtml.a {class="w3-button w3-round w3-green", 
-      href = selfref "page=create_trigger", "+ Create", title="create new trigger"}
+      href = selfref "page=trigger", "+ Create", title="create new trigger"}
     return title .. " - scene triggers", xhtml.div {class="w3-panel", create}, T
   end)
 end
 
-function pages.create_timer (p)
-  
+function pages.timer (p)
+  return parameters(p)
 end
 
 function pages.timers (p)
@@ -2380,7 +2401,7 @@ function pages.timers (p)
       }        
     end
     local create = xhtml.a {class="w3-button w3-round w3-green", 
-      href = selfref "page=create_timer", "+ Create", title="create new timer"}
+      href = selfref "page=timer", "+ Create", title="create new timer"}
     return title .. " - scene timers", xhtml.div {class="w3-panel", create}, T
   end)
 end
@@ -2404,32 +2425,54 @@ function pages.lua (p)
   end)
 end
  
+function pages.action (p, req)
+  return parameters(p, req)
+end
+
+local function link_button (name, link, title, colour)
+  colour = colour or "w3-green"
+  return xhtml.a {class="w3-button w3-round " .. colour, 
+    href = selfref (link), name, title=title}
+end
+
 function pages.group_actions (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
     local groups = h.div {class = "w3-container"}
     for g, group in ipairs (scene.definition.groups) do
       local delay = tonumber (group.delay) or 0
-      local d = h.div{class = "w3-panel", h.div {class = "w3-panel w3-grey", h.h5 {"Delay ", delay}}}
+      local gw = delete_link ("group", g, "delay group")
+      local new_action = link_button ("+ Action", "page=action&group=" .. g, 
+        "create new action\nin this delay group", "w3-green")
+      local del_group = link_button ("- Delay", "", "delete delay group\nand all actions in it", "w3-red")
+--      local foo = h.input {type="time", step="1"}  -- NB: not all browsers (Safari) support HH:MM:SS
+      local d = h.div{class = "w3-panel"}
+      local e = h.div {class = "w3-panel w3-padding w3-border-top", 
+        h.div {"Delay ", dhms(delay), new_action, del_group}, d
+        }
       for i, a in ipairs (group.actions) do
-        local srv = a.service: match "[^:]+$" or a.service
-        local desc = h.div {'#', a.device, h.br(), srv}
+        local desc = h.div {h.strong{a.action}}
         for _, arg in pairs(a.arguments) do
           desc[#desc+1] = h.br()
           desc[#desc+1] = h.span {arg.name, '=', arg.value}
         end
-        d[i+1] = generic_panel {
+        local w1 = widget_link ("page=action&group=" .. g .. "&edit=".. i, "view/edit action", "icons/edit.svg")
+        local w2 = delete_link ("group=" .. g .. "&action", i, "action")
+        local dno = tonumber (a.device)
+        d[i] = generic_panel {
           title = a.action,
           height = 100,
-          top_line = {left = a.action},
-          icon = h.img {alt = "no icon", src = luup.devices[tonumber(a.device)]: get_icon()},
+          top_line = {left = devname (dno)},
+          icon = get_device_icon (luup.devices[dno]),
           body = {middle = desc},
---          widgets = {w1, w2},
+          widgets = {w1, w2},
         }        
       end
-      groups[g] = d
+      groups[g] = e
     end
-    return title .. " - actions (in delay groups)", groups
+    return title .. " - actions (in delay groups)", 
+--    link_button ("+ Delay", "page=action", "create new delay group"),
+    groups
   end)
 end
  
@@ -2948,7 +2991,7 @@ function pages.triggers_table (p)
   end
       
   local create = xhtml.a {class="w3-button w3-round w3-green", 
-    href = selfref "page=create_trigger", "+ Create", title="create new trigger"}
+    href = selfref "page=trigger", "+ Create", title="create new trigger"}
   local tdiv = xhtml.div {selection, xhtml.div {class="w3-rest w3-panel", create, triggers} }
   return page_wrapper ("Triggers Table", tdiv)
 end

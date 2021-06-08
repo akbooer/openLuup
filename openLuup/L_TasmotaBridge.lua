@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.05.15",
+  VERSION       = "2021.06.08",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -29,6 +29,9 @@ ABOUT = {
 -- 2021.04.17  use openLuup device variable virtualizer, go one level deeper in table data (thanks @Buxton)
 -- 2021.05.08  add /STATE and /RESULT topics (thanks @ArcherS)
 -- 2021.05.10  add missing bridge_utilities.SID, "Remote_ID"
+-- 2021.06.08  LWT as text message (thanks @Buxton - fixes bridged broker dropout)
+--             see: https://smarthome.community/topic/506/openluup-tasmota-mqtt-bridge/115
+
 
 local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
@@ -162,17 +165,27 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
   -- device update: tele/tasmota_7FA953/SENSOR
   -- 2021.05.08  add /STATE and /RESULT
   local tasmota, mtype = tasmotas: match "^(.-)/(%u+)"
-  local valid = {SENSOR = true, STATE = true, RESULT = true}
-  if not (tasmota and valid[mtype]) then 
+  local valid do
+    local j, t = "json", "text"
+    valid = {SENSOR = j, STATE = j, RESULT = j, LWT = t}    -- thanks @Buxton for LWT as text message
+  end
+  
+  local decoder = valid[mtype]
+  if not (tasmota and decoder) then 
     _log (table.concat ({"Topic ignored", topic, message}, " : "))
     return 
   end
   
-  local info, err = json.decode (message)
-  if not info then 
-    _log ("JSON error: " .. (err or '?')) 
-    _log ("Received message ignored: " .. message)
-    return 
+  local info, err
+  if decoder == "text" then
+    info = {[mtype] = message}
+  else
+    info, err = json.decode (message)
+    if not info then 
+      _log ("JSON error: " .. (err or '?')) 
+      _log ("Received message ignored: " .. message)
+      return 
+    end
   end
   
   local timenow = os.time()

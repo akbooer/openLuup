@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2021.05.22",
+  VERSION       = "2021.05.23",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -377,6 +377,7 @@ local function CarbonCache (path)
   
   local filePresent = {}    -- index of known files
   local stats = {}          -- performance stats
+  local tally = {}          -- metrics tally
   
   -- the current set of rules
   local schemas = {}              -- with retentions field
@@ -450,6 +451,7 @@ local function CarbonCache (path)
     if not filePresent[filename] then create (filename, metric) end 
     -- use  timestamp as time 'now' to avoid clock sync problem of writing at a future time
     update_with_stats (stats, filename, value, timestamp, timestamp)  
+    tally[metric] = (tally[metric] or 0) + 1
   end
 
   -- CarbonCache ()
@@ -463,7 +465,7 @@ local function CarbonCache (path)
     schemas = schemas,
   }
 
-  return setmetatable ({update = update, stats = stats}, meta)
+  return setmetatable ({update = update, stats = stats, tally = tally}, meta)
   
 end
 

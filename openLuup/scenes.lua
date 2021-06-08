@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2021.05.01",
+  VERSION       = "2021.06.02",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -74,6 +74,7 @@ local ABOUT = {
 -- 2021.01.08   add openLuup device watch triggers (enabled through openLuup plugin template)
 -- 2021.04.28   add internal scene list (to mirror luup.scenes for openLuup API)
 -- 2021.04.30   scene.find() moved here from openLuup.api, for json.Lua.encode() for jsonify()
+-- 2021.06.02   add scene_mode_toggle() to turn on/off individual modes in the modeStatus
 
 
 local logs      = require "openLuup.logs"
@@ -251,6 +252,31 @@ local function scene_on_off (self)
     scene.paused = "1"
     self.paused = true
   end
+end
+
+local function mode_string_to_array (m)
+  local a = {}
+  for i = 1,4 do a[i] = m: match (i) or false end
+  return a
+end
+
+local function mode_array_to_string (a)
+  local m = {}
+  for i = 1,4 do m[#m+1] = a[i] and i or nil end
+  return table.concat (m, ',')
+end
+  
+-- toggle particular modeStatus, returning new modes
+local function scene_mode_toggle (self, mode)
+  mode = tonumber(tostring(mode or ''): match "[1234]")
+  local modes = mode_string_to_array (self.definition.modeStatus)
+  if mode then 
+    modes[mode] = not modes[mode]
+  end
+  local new = mode_array_to_string (modes)
+  if new == '' then new = '0' end
+  self.definition.modeStatus = new
+  return new
 end
 
 -- delete any actions which refer to non-existent devices
@@ -506,9 +532,9 @@ local function create (scene_json, timestamp)
   local luup_scene = {    -- this is the visible structure which appears in luup.scenes
       description = scene.name,
       hidden = false,
-      page = 0,           -- TODO: discover what page and remote are for
+      page = 0,           -- not used
       paused = tonumber (scene.paused) == 1,
-      remote = 0,
+      remote = 0,         -- not used
       room_num = scene.room,
     }
   
@@ -526,6 +552,7 @@ local function create (scene_json, timestamp)
     
     -- methods
     clone       = function (self) return create(scene_clone(self)) end,
+    mode_toggle = scene_mode_toggle,    -- toggle particular SceneModeStatus value
     rename      = scene_rename,
     run         = scene_runner,
     stop        = scene_stopper,
