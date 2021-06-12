@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.06.21",
+  VERSION       = "2021.06.12",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -220,8 +220,8 @@ do -- set attributes, possibly decoding if required
       Epilog = '',                        -- ditto, after any scene
     },
     Tasmota = {
-      Prefix = {"tele", "tasmota/tele","stat"},
-      Topic  = {"SENSOR", "STATE","RESULT", "LWT"},
+      Prefix = {"tele", "tasmota/tele", "stat"},
+      Topic  = {"SENSOR", "STATE", "RESULT", "LWT"},
     },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}

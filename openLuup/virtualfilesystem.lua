@@ -593,11 +593,11 @@ local D_ZWay_xml = Device {
         friendlyName = "ZWay Bridge",
         manufacturer = "akbooer",
         staticJson   = "D_ZWay.json",
---        serviceList     = { 
---          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
---          {"urn:akbooer-com:service:ZWay:1", SID.ZWay, "S_ZWay.xml"},
---          {"urn:schemas-micasaverde-org:service:ZWaveNetwork:1", SID.ZwaveNetwork, "S_ZWaveNetwork1.xml"} },
-        serviceIds      = { SID.openLuupBridge,SID.ZWay, SID.ZwaveNetwork },
+        serviceList     = { 
+          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+          {"urn:akbooer-com:service:ZWay:1", SID.ZWay, "S_ZWay.xml"},
+          {"urn:schemas-micasaverde-org:service:ZWaveNetwork:1", SID.ZwaveNetwork, "S_ZWaveNetwork1.xml"} },
+--        serviceIds      = { SID.openLuupBridge,SID.ZWay, SID.ZwaveNetwork }, -- TODO: this FAILS for Login parameters - why?
         implementationList = {"I_ZWay2.xml"}}
 
 
