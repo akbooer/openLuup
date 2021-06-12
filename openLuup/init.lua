@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.05.21",
+  VERSION       = "2021.06.21",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -71,6 +71,7 @@ local ABOUT = {
 -- 2021.04.30  substitute dkjson with RapidJSON, if available.
 -- 2021.05.06  move require() proxy to openLuup.loader
 -- 2021.05.21  add config.MQTT.Carbon for Graphite database MQTT stats
+-- 2021.06.21  add config.Tasmota
 
 
 local logs  = require "openLuup.logs"
@@ -218,6 +219,10 @@ do -- set attributes, possibly decoding if required
       Prolog = '',                        -- name of global function to call before any scene
       Epilog = '',                        -- ditto, after any scene
     },
+    Tasmota = {
+      Prefix = {"tele", "tasmota/tele","stat"},
+      Topic  = {"SENSOR", "STATE","RESULT", "LWT"},
+    },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
   local attr = string.char(unpack (attrs))
@@ -322,9 +327,12 @@ do --	 SERVERs and SCHEDULER
   
   luup.openLuup.mqtt = mqtt
   if config.MQTT then 
-    require "openLuup.L_ShellyBridge"      -- 2021.02.01  start the Shelly bridge BEFORE MQTT server (so it catches ANNOUNCE)
-    require "openLuup.L_TasmotaBridge"     -- 2021.04.02  start the Tasmota bridge BEFORE MQTT server
+    -- 2021.02.01  start the Shelly and Tasmota bridges BEFORE MQTT server (so Shelly catches ANNOUNCE)
+    require "openLuup.L_ShellyBridge"
+    local tasmota = require "openLuup.L_TasmotaBridge"
+    tasmota.start (config.Tasmota)
     mqtt.start (config.MQTT) 
+    
     if config.MQTT.PublishVariableUpdates == "true" then
       devutil.publish_variable_updates (true)
     end

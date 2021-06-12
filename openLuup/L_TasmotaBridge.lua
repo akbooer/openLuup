@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.06.09",
+  VERSION       = "2021.06.12",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -31,6 +31,7 @@ ABOUT = {
 -- 2021.05.10  add missing bridge_utilities.SID, "Remote_ID"
 -- 2021.06.08  LWT as text message (thanks @Buxton - fixes bridged broker dropout)
 --             see: https://smarthome.community/topic/506/openluup-tasmota-mqtt-bridge/115
+-- 2021.06.12  add startup(config) with user-definable Prefix and Topic lists (thanks @Buxton)
 
 
 local json      = require "openLuup.json"
@@ -48,6 +49,8 @@ local SID = tables.SID {
 
 local openLuup = luup.openLuup
 local VIRTUAL = require "openLuup.api"
+
+local VALID = {}      -- valid topics (set at startup)
 
 --------------------------------------------------
 --
@@ -164,10 +167,9 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
 
   -- device update: tele/tasmota_7FA953/SENSOR
   -- 2021.05.08  add /STATE and /RESULT
-  local tasmota, mtype = tasmotas: match "^(.-)/(%u+)"
-  local valid = {SENSOR = 1, STATE = 1, RESULT = 1, LWT = 1}    -- thanks @Buxton for LWT as text message
+  local tasmota, mtype = tasmotas: match "^(.-)/(.+)"
   
-  if not (tasmota and valid[mtype]) then 
+  if not (tasmota and VALID[mtype]) then 
     _log (table.concat ({"Topic ignored", topic, message}, " : "))
     return 
   end
@@ -201,12 +203,23 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
 end
 
 
--- startup on module load
--- standard prefixes are: {"cmnd", "stat", "tele"}
-local prefixes = {"tele", "tasmota/tele"}             -- subscribed Tasmota prefixes
+-- startup
+function start (config)
+  config = config or {}
+  
+  -- standard prefixes are: {"cmnd", "stat", "tele"}
+  local prefixes = config.Prefix or {"tele", "tasmota/tele"}       -- subscribed Tasmota prefixes
+  
+  for _, prefix in ipairs (prefixes) do
+    luup.register_handler ("Tasmota_MQTT_Handler", "mqtt:" .. prefix .. "/#", prefix)   -- * * * MQTT wildcard subscription * * *
+  end
 
-for _, prefix in ipairs (prefixes) do
-  luup.register_handler ("Tasmota_MQTT_Handler", "mqtt:" .. prefix .. "/#", prefix)   -- * * * MQTT wildcard subscription * * *
+  -- standard topics are: {"SENSOR", "STATE", "RESULT", "LWT"}     -- thanks @Buxton for LWT as text message
+  local topics = config.Topic or {"SENSOR", "STATE", "RESULT", "LWT"}
+  for _,topic in ipairs (topics) do
+    VALID[topic] = 1
+  end
+
 end
 
 -----
