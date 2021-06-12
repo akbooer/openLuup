@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2021.05.23",
+  VERSION       = "2021.06.12",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -39,6 +39,7 @@ local ABOUT = {
 --             using the Whisper retentions object as an Intervals proxy (non-standard, but useful)
 -- 2021.05.19  add historian.CarbonCache for multiple graphite databases including DataYours
 -- 2021.05.22  add performance stats to each individual CarbonCache
+-- 2021.06.12  fix failure to create new archives (thanks @ArcherS)
 
 
 local logs    = require "openLuup.logs"
@@ -494,7 +495,7 @@ local carbon = setmetatable ({}, {
 local function match_historian_rules (item, rule_set)
   -- return schema name (and matching pattern) for which first rule_set.patterns element matches item
   for _,rule in ipairs (rule_set) do
-    if type(rule) == "table" and type(rule.patterns) == "table" and type(rule.schema) == "string" then
+    if type(rule) == "table" and type(rule.patterns) == "table" then
       for _, pattern in ipairs (rule.patterns) do
         local query = FindQuery (pattern)         -- turn it into a sophisticated query object
         if query: matches (item) then 

@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.06.08",
+  VERSION       = "2021.06.09",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -165,28 +165,14 @@ function _G.Tasmota_MQTT_Handler (topic, message, prefix)
   -- device update: tele/tasmota_7FA953/SENSOR
   -- 2021.05.08  add /STATE and /RESULT
   local tasmota, mtype = tasmotas: match "^(.-)/(%u+)"
-  local valid do
-    local j, t = "json", "text"
-    valid = {SENSOR = j, STATE = j, RESULT = j, LWT = t}    -- thanks @Buxton for LWT as text message
-  end
+  local valid = {SENSOR = 1, STATE = 1, RESULT = 1, LWT = 1}    -- thanks @Buxton for LWT as text message
   
-  local decoder = valid[mtype]
-  if not (tasmota and decoder) then 
+  if not (tasmota and valid[mtype]) then 
     _log (table.concat ({"Topic ignored", topic, message}, " : "))
     return 
   end
   
-  local info, err
-  if decoder == "text" then
-    info = {[mtype] = message}
-  else
-    info, err = json.decode (message)
-    if not info then 
-      _log ("JSON error: " .. (err or '?')) 
-      _log ("Received message ignored: " .. message)
-      return 
-    end
-  end
+  local info = json.decode (message) or {[mtype] = message}   -- treat invalid JSON as plain text
   
   local timenow = os.time()
   VIRTUAL[devNo].hadevice.LastUpdate = timenow

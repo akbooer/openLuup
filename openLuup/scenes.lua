@@ -309,6 +309,18 @@ local function scene_verify (self)
   end
 end
 
+--[[
+The types are 1=interval, 2=day of week, 3=day of month, 4=absolute. 
+For type 2 the field "days_of_week" indicates which days of the week (Sunday=0), 
+and for type 3 "days_of_month" is a comma-separated list of the days of the month. 
+In both cases "time" is the time. I
+f the time has a T or R at the end it means the time is relative to sunset or sunrise, 
+so -1:30:0R means 1hr 30 minutes before sunrise. 
+For type 1 the interval tag has an h or m for hours or minutes, 
+so 1h means every 1 hour, and 30m means every 30 minutes. 
+For type 4 the time has the day and time.
+
+--]]
 -- initialise scene timers
 local function start_timers (self)
   local function timer_run (timer, next_time) 

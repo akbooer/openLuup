@@ -597,6 +597,13 @@ local function xlink (link)
     xhtml.img {height=14, width=14, class="w3-hover-opacity", alt="goto", src="icons/link-solid.svg"}}}
 end
 
+local function xinput (label, name, value, title)
+  return xhtml.div {title = title,
+    xhtml.label (label), 
+    xhtml.input {name = name or label: lower(), 
+      class="w3-border w3-border-light-gray w3-hover-border-red", size=50,  value = value or ''} }
+end
+
 -- make a link to delete a specific something, providing a 'confirm' box
 -- e.g. delete_link ("room", 42)
 local function delete_link (what, which, whither)
@@ -2359,8 +2366,50 @@ function pages.triggers (p)
   end)
 end
 
+--[[
+
+1=interval
+    the interval tag has an h or m for hours or minutes, 
+    so 1h means every 1 hour, and 30m means every 30 minutes. 
+
+2=day of week
+    "days_of_week" indicates which days of the week (Sunday=0).
+    
+3=day of month
+    "days_of_month" is a comma-separated list of the days of the month. 
+    For types 2 & 3, "time" is the time. 
+    If the time has a T or R at the end it means the time is relative to sunset or sunrise, 
+    so -1:30:0R means 1hr 30 minutes before sunrise. 
+
+4=absolute.
+    the time has the day and time.
+
+{
+    "days_of_week":"1,2,3,4,5,6,7",
+    "enabled":1,
+    "id":1,
+    "last_run":1623279540,
+    "name":"Cinderella",
+    "next_run":1623365940,
+    "time":"23:59:00",
+    "type":2
+  }
+  
+--]]
+
+-- edit=n for timer to edit, if absent then create new
 function pages.timer (p)
-  return parameters(p)
+  local timer = tonumber(p.edit)
+  local scene = tonumber (p.scene)
+  local timers = luup.scenes[scene].definition.timers or {}
+  local t = timers[timer] or {}
+  
+  local h = xhtml
+  local form = h.form {href = selfref(), method="POST",
+      h.input{name = "name"}
+    }
+    
+--  return parameters(p)
 end
 
 function pages.timers (p)
@@ -2994,13 +3043,6 @@ function pages.triggers_table (p)
     href = selfref "page=trigger", "+ Create", title="create new trigger"}
   local tdiv = xhtml.div {selection, xhtml.div {class="w3-rest w3-panel", create, triggers} }
   return page_wrapper ("Triggers Table", tdiv)
-end
-
-local function xinput (label, name, value, title)
-  return xhtml.div {title = title,
-    xhtml.label (label), 
-    xhtml.input {name = name or label: lower(), 
-      class="w3-hover-border-red", size=50,  value = value or ''} }
 end
 
 local function find_plugin (plugin)
