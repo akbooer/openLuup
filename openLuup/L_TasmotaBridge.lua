@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_tasmota",
-  VERSION       = "2021.06.12",
+  VERSION       = "2021.06.14",
   DESCRIPTION   = "Tasmota MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -208,15 +208,15 @@ function start (config)
   config = config or {}
   
   -- standard prefixes are: {"cmnd", "stat", "tele"}
-  local prefixes = config.Prefix or {"tele", "tasmota/tele"}       -- subscribed Tasmota prefixes
+  local prefixes = config.Prefix or "tele, tasmota/tele"       -- subscribed Tasmota prefixes
   
-  for _, prefix in ipairs (prefixes) do
+  for prefix in prefixes: gmatch "[^%s,]+" do
     luup.register_handler ("Tasmota_MQTT_Handler", "mqtt:" .. prefix .. "/#", prefix)   -- * * * MQTT wildcard subscription * * *
   end
 
   -- standard topics are: {"SENSOR", "STATE", "RESULT", "LWT"}     -- thanks @Buxton for LWT as text message
-  local topics = config.Topic or {"SENSOR", "STATE", "RESULT", "LWT"}
-  for _,topic in ipairs (topics) do
+  local topics = config.Topic or "SENSOR, STATE, RESULT, LWT"
+  for topic in topics: gmatch "[^%s,]+" do
     VALID[topic] = 1
   end
 

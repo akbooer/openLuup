@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.05.14",
+  VERSION       = "2021.06.21",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -37,6 +37,7 @@ ABOUT = {
 -- 2021.04.25  add Shelly SHPLG2-1 (thanks @ArcherS)
 -- 2021.05.02  check for non-existent device (pre-announcement)
 -- 2021.05.10  add missing bridge_utilities.SID, "Remote_ID"
+-- 2021.06.21  add child H&T devices for Shelly H&T
 
 
 local json      = require "openLuup.json"
@@ -193,13 +194,46 @@ local function sw2_5(dno, var, value)
   end
 end
 
+-- H&T sensor
+-- sensor/[temperature,humidity,battery] - also [error,act_reasons]
+local function h_t (dno, var, value)
+  local metric = var: match "^sensor/(.+)"
+  if not metric then return end
 
+  local mtype = metric: sub (1,1)     -- first character [t,h,b]
+
+  if mtype == 'b' then
+    VIRTUAL[dno].HaDevice1.BatteryLevel = value
+    return
+  end
+
+  local altid = luup.attr_get ("altid", dno)
+  local children = {t = 0, h = 1}   -- altid suffixes for child device types
+  local child = children[mtype]
+  local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
+  if cdno then
+    local D = VIRTUAL[cdno]
+    if mtype == 't' then
+      D.temp.CurrentTemperature = value
+    elseif mtype == 'h' then
+      D.humid.CurrentLevel = value
+    end
+  end
+
+end
 
 ----------------------
 
 local function model_info (upnp, updater, children)
   return {upnp = upnp, updater = updater, children = children}
 end
+--[[
+  H&T device:
+
+    shellies/shellyht-<deviceid>/sensor/temperature: in °C or °F depending on configuration
+    shellies/shellyht-<deviceid>/sensor/humidity: RH in %
+    shellies/shellyht-<deviceid>/sensor/battery: battery level in %
+--]]
 
 local unknown_model = model_info (DEV.shelly, generic)
 local models = setmetatable (
@@ -210,6 +244,7 @@ local models = setmetatable (
     ["SHSW-25"]   = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light}),       -- two child devices
     ["SHPLG-S"]   = model_info (DEV.shelly, sw2_5, {DEV.light}),
     ["SHPLG2-1"]  = model_info (DEV.shelly, sw2_5, {DEV.light}),
+    ["SHHT-1"]    = model_info (DEV.shelly, h_t,   {DEV.temperature, DEV.humidity}),
   },{
     __index = function () return unknown_model end
   })

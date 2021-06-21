@@ -1,4 +1,4 @@
-local VERSION = "2021.05.18"
+local VERSION = "2021.06.21"
 
 -- mimetypes
 -- 2016/04/14
@@ -297,6 +297,8 @@ local DEV = setmetatable ({
     controller  = "D_SceneController1.xml",
     combo       = "D_ComboDevice1.xml",
     rgb         = "D_DimmableRGBLight1.xml",
+    temperature = "D_TemperatureSensor1.xml",
+    humidity    = "D_HumiditySensor1.xml",
   }, meta)
 
 local SID = setmetatable ({

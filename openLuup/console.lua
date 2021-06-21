@@ -408,20 +408,134 @@ local function page_tree (current, previous)
           pagename}
 end
 
+-------------------
+--
+-- XHTML elements
+--
+
+local X = {
+    Title = xhtml.h4,
+    Subtitle = xhtml.h5,
+  }
+
+function X.Container (p)
+  p.class = "w3-container " .. (p.class or '')
+  return xhtml.div (p)
+end
+
+function X.Panel (p)
+  p.class = "w3-panel " .. (p.class or '')
+  return xhtml.div (p)
+end
+
+function X.ButtonLink (p)
+  p.class = "w3-button w3-round " .. (p.class or "w3-green")
+  if p.selfref then
+    p.href = selfref (p.selfref)
+    p.selfref = nil
+  end
+  return xhtml.a (p)
+end
+
+function X.Icon (p)
+  local size = p.height or p.width or 42
+  p.height = p.height or size
+  p.width  = p.width  or size 
+  return xhtml.img (p)
+end
+
+function X.Form (p)
+  if p.selfref then
+    p.action = selfref (p.selfref)
+    p.selfref = nil
+  end
+  p.action = p.action or selfref ()
+  p.method = p.method or "post"
+  return xhtml.form (p)
+end
+
+-- NB: arguments are name-value pairs, NOT HTML attributes!
+--     so handles multiple items {a=one, b=two, ...}
+function X.Hidden (args)
+  local hidden = xhtml.div {}
+  for n, v in pairs (args) do   -- order of iternation doesn't matter since values are hidden from view
+    hidden[#hidden+1] = xhtml.input {name = n, value = v, hidden = 1}
+  end
+  return hidden
+end
+
+-- make a drop-down selection for things
+local function xselect (hidden, options, selected, presets)
+  local sorted = {}
+  for _,v in pairs (options or empty) do sorted[#sorted+1]  = v end
+  table.sort (sorted)
+  local choices = xhtml.select {style="width:12em;", name="value", onchange="this.form.submit()"} 
+  local function choice(x) 
+    local select = x == selected and 1 or nil
+    choices[#choices+1] = xhtml.option {selected = select, x} 
+  end
+  for _,v in ipairs (presets or empty) do choice(v) end
+  for _,v in ipairs (sorted) do choice(v) end
+  local form = X.Form {choices}
+  for n,v in pairs (hidden or empty) do form[#form+1] = 
+    X.Hidden {[n] = v}
+  end
+  return form
+end
+
+
+-- create an option list for certain file types
+local function xoptions (label_text, name, pattern, value)
+  local listname = name .. "_options"
+  local label = xhtml.label {label_text}
+  local input = xhtml.input {list=listname, name=name, value=value, class="w3-input"}
+  local datalist = xhtml.datalist {id= listname}
+  for file in loader.dir (pattern) do
+    datalist[#datalist+1] = xhtml.option {value=file}
+  end
+  return xhtml.div {label, input, datalist}
+end
+
+-- make a link to go somewhere
+local function xlink (link) 
+  return xhtml.span {style ="text-align:right", xhtml.a {href= selfref (link),  title="link",
+    xhtml.img {height=14, width=14, class="w3-hover-opacity", alt="goto", src="icons/link-solid.svg"}}}
+end
+
+local function xinput (label, name, value, title)
+  return xhtml.div {title = title,
+    xhtml.label (label), 
+    xhtml.input {name = name or label: lower(), 
+      class="w3-border w3-border-light-gray w3-hover-border-red", size=50,  value = value or ''} }
+end
+
+-- make a link to delete a specific something, providing a 'confirm' box
+-- e.g. delete_link ("room", 42)
+local function delete_link (what, which, whither)
+  return xhtml.a {
+    title = "delete " .. (whither or what),
+    href = selfref (table.concat {"action=delete&", what, '=', which}), 
+    onclick = table.concat {"return confirm('Delete ", whither or what, " #", which, ": Are you sure?')"}, 
+    xhtml.img {height=14, width=14, alt="delete", src="icons/trash-alt-red.svg", class = "w3-hover-opacity"} }
+end
+
+--
+-------------------
+
+
 -- create HTML for a group of house mode buttons
 -- selected parameter is a string, e.g. "1,3" with 'on' buttons 
 local function house_mode_group (selected)  
   selected = tostring (selected)
   local mode_name = {"Home", "Away", "Night", "Vacation"}
   local on = {}
-  local size = 42
   for x in selected: gmatch "%d" do on[tonumber(x)] = true end
   local function mode_button (number, icon)
     local name = mode_name[number]
     local colour =''
     if on[number] then colour = "w3-light-green" end
-    return xhtml.a {title=name, class="w3-button w3-round " .. colour, href= selfref ("mode=" .. number),
-      xhtml.img {height=size, width=size, alt=name, src=icon}}
+    return X.ButtonLink {title=name, class=colour, selfref="mode=" .. number,
+      X.Icon {alt=name, src=icon}}
   end
   
   return xhtml.div {class = "w3-cell w3-bar w3-padding w3-round w3-border",
@@ -448,9 +562,7 @@ local function make_button(name, current)
     colour = "w3-grey"
   end
   local icon = short_name_index[short]
-  local link = {class="w3-button w3-round " .. colour, href=selfref ("page=", short), 
-                  onclick=onclick, icon}
-  return xhtml.a (link)
+  return X.ButtonLink {class=colour, selfref="page="..short, onclick=onclick, icon}
 end
   
 -- return the appropriate set of page buttons for the current page 
@@ -559,65 +671,10 @@ local function luup_triggers (scn_no)
 end
 
 
--- make a drop-down selection for things
-local function xselect (hidden, options, selected, presets)
-  local sorted = {}
-  for _,v in pairs (options or empty) do sorted[#sorted+1]  = v end
-  table.sort (sorted)
-  local choices = xhtml.select {style="width:12em;", name="value", onchange="this.form.submit()"} 
-  local function choice(x) 
-    local select = x == selected and 1 or nil
-    choices[#choices+1] = xhtml.option {selected = select, x} 
-  end
-  for _,v in ipairs (presets or empty) do choice(v) end
-  for _,v in ipairs (sorted) do choice(v) end
-  local form = xhtml.form {action=selfref(), method = "post", choices}
-  for n,v in pairs (hidden or empty) do form[#form+1] = 
-    xhtml.input {name=n, value=v, hidden=1}
-  end
-  return form
-end
-
-
--- create an option list for certain file types
-local function xoptions (label_text, name, pattern, value)
-  local listname = name .. "_options"
-  local label = xhtml.label {label_text}
-  local input = xhtml.input {list=listname, name=name, value=value, class="w3-input"}
-  local datalist = xhtml.datalist {id= listname}
-  for file in loader.dir (pattern) do
-    datalist[#datalist+1] = xhtml.option {value=file}
-  end
-  return xhtml.div {label, input, datalist}
-end
-
--- make a link to go somewhere
-local function xlink (link) 
-  return xhtml.span {style ="text-align:right", xhtml.a {href= selfref (link),  title="link",
-    xhtml.img {height=14, width=14, class="w3-hover-opacity", alt="goto", src="icons/link-solid.svg"}}}
-end
-
-local function xinput (label, name, value, title)
-  return xhtml.div {title = title,
-    xhtml.label (label), 
-    xhtml.input {name = name or label: lower(), 
-      class="w3-border w3-border-light-gray w3-hover-border-red", size=50,  value = value or ''} }
-end
-
--- make a link to delete a specific something, providing a 'confirm' box
--- e.g. delete_link ("room", 42)
-local function delete_link (what, which, whither)
-  return xhtml.a {
-    title = "delete " .. (whither or what),
-    href = selfref (table.concat {"action=delete&", what, '=', which}), 
-    onclick = table.concat {"return confirm('Delete ", whither or what, " #", which, ": Are you sure?')"}, 
-    xhtml.img {height=14, width=14, alt="delete", src="icons/trash-alt-red.svg", class = "w3-hover-opacity"} }
-end
-
 -- form to allow variable value updates
 -- {table of hidden form parameters}, value to display and change
 --local function editable_text (hidden, value)
---  local form = xhtml.form{method="post", style="float:left", action=selfref(),
+--  local form = X.Form{
 --    xhtml.input {class="w3-border w3-hover-border-red",type="text", size=28, 
 --      name="value", value=nice(value, 99), autocomplete="off", onchange="this.form.submit()"} }
 --  for n,v in pairs (hidden) do form[#form+1] = xhtml.input {hidden=1, name=n, value=v} end
@@ -625,13 +682,15 @@ end
 --end
 
 -- 2020.11.17  resizable textbox
-local function editable_text (hidden, value)
-  local text = nice(value, 99)
+local function editable_text (hidden, value, maxlen)
+  local text = nice(value, maxlen or 99)
   local _, nrows = text: gsub ("\n","\n") 
-  local form = xhtml.form{method="post", style="float:left", action=selfref(),
+  local form = X.Form{  
     xhtml.textarea {class="w3-border w3-hover-border-red akb-resize", cols="40", rows=tostring(math.min(nrows+1,20)),
       name="value", autocomplete="off", onchange="this.form.submit()", text} }
-  for n,v in pairs (hidden) do form[#form+1] = xhtml.input {hidden=1, name=n, value=v} end
+  for n,v in pairs (hidden) do 
+    form[#form+1] = X.Hidden {[n] = v} 
+  end
   return form
 end
 
@@ -649,10 +708,8 @@ end
 
 -----------------------------
 
-local function html5_title (...) return xhtml.h4 {...} end
 local function red (...) return xhtml.span {class = "w3-red", ...}  end
-local function status_number (n) if n ~= 200 then return red (n) end; return n end
-local function page_wrapper (title, ...) return xhtml.div {html5_title (title), ...} end
+local function page_wrapper (title, ...) return xhtml.div {X.Title (title), ...} end
 
 
 -- make a simple HTML table from data
@@ -1084,8 +1141,7 @@ function pages.backups ()
   end
   local tbl = create_table_from_data (columns, data)
   local backup = xhtml.div {
-    xhtml.a {class="w3-button w3-round w3-light-green", href = "cgi-bin/cmh/backup.sh?", target="_blank",
-                "Backup Now"}}
+    X.ButtonLink {"Backup Now"; class="w3-light-green", href = "cgi-bin/cmh/backup.sh?", target="_blank"}}
   return page_wrapper("Backup directory: " .. dir, backup, tbl)
 end
 
@@ -1103,7 +1159,6 @@ function pages.sandboxes ()               -- 2018.04.07
       table.sort (y, function (a,b) return a[1] < b[1] end)
       local t = xhtml.table {class="w3-small w3-hoverable w3-card w3-padding"}
       t.header {{title, colspan = 2}}
---      t.header {"name","type"}
       for _, row in ipairs(y) do
         t.row (row)
       end
@@ -1117,15 +1172,15 @@ function pages.sandboxes ()               -- 2018.04.07
     return T
   end
   
-  local div = xhtml.div {html5_title "Sandboxed system tables (by plugin)"}
+  local t = X.Container {}
   for n,v in pairs (_G) do
     local meta = ((type(v) == "table") and getmetatable(v)) or empty
     if meta.__newindex and meta.__tostring and meta.lookup then   -- not foolproof, but good enough?
-      div[#div+1] = xhtml.p { n, ".sandbox"} 
-      div[#div+1] = format(v)
+      t[#t+1] = xhtml.p { n, ".sandbox"} 
+      t[#t+1] = format(v)
     end
   end
-  return div
+  return page_wrapper ("Sandboxed system tables (by plugin)", t)
 end
 
 --------------------------------
@@ -1245,6 +1300,7 @@ function pages.sockets ()
 end
 
 function pages.http (p)    
+  local function status_number (n) if n ~= 200 then return red (n) end; return n end
   local function requestTable (requests, columns)
     local t = xhtml.table {class = "w3-small"}
     t.header (columns)
@@ -1284,15 +1340,13 @@ function pages.http (p)
     if all or file then tbl[n] = v end
   end
   
-  return xhtml.div {
-      html5_title "HTTP Web server (port 3480)",
+  return page_wrapper ("HTTP Web server (port 3480)",
       selection,
-      xhtml.div {class="w3-rest w3-panel", 
-        requestTable (tbl, {"request", "#requests  ","status"}) } }
+      X.Panel {class="w3-rest", 
+        requestTable (tbl, {"request", "#requests  ","status"}) } )
 end
 
 function pages.mqtt ()
-  local data = {}
   local tbl = xhtml.table {class = "w3-small"}
   tbl.header {{colspan=2, "subscribers"}, "topic"}
   tbl.header {"#internal", "#external" }
@@ -1317,14 +1371,13 @@ function pages.mqtt ()
   end
   local ret = create_table_from_data({"topic", "message"}, retained)
   
-  return xhtml.div {
-      html5_title "MQTT QoS 0 server",
+  return page_wrapper ("MQTT QoS 0 server",
 --      selection,
-    xhtml.div {class="w3-rest w3-panel", 
-      xhtml.h5 "Server statistics:", stats,
-      xhtml.h5 "Subscribed topics:", tbl,
-      xhtml.h5 "Retained messages:", ret,
-      }}
+    X.Panel {class="w3-rest", 
+      X.Subtitle "Server statistics:", stats,
+      X.Subtitle "Subscribed topics:", tbl,
+      X.Subtitle "Retained messages:", ret,
+      })
 
 end
 
@@ -1345,15 +1398,14 @@ function pages.smtp (p)
   for email in pairs (smtp.blocked) do tbl[#tbl+1] = {email, '?'} end
   local t = create_table_from_data ({"eMail address","#attempts"}, tbl)
   
-  return xhtml.div {
-    html5_title "SMTP eMail server",
+  return page_wrapper ("SMTP eMail server",
     selection,
-    xhtml.div {class="w3-rest w3-panel", 
-      xhtml.h5 "Registered destination mailboxes:", 
+    X.Panel {class="w3-rest", 
+      X.Subtitle "Registered destination mailboxes:", 
       sortedTable (smtp.destinations, function(x) return x:match "@" end),
-      xhtml.h5 "Registered email sender IPs:", 
+      X.Subtitle "Registered email sender IPs:", 
       sortedTable (smtp.destinations, function(x) return not x:match "@" end),
-      xhtml.h5 "Blocked senders:", t }}
+      X.Subtitle "Blocked senders:", t })
 end
 
 function pages.pop3 (p)
@@ -1388,8 +1440,8 @@ function pages.pop3 (p)
     T[#T+1] = t
   end
   
-  return xhtml.div {html5_title "POP3 eMail client server", 
-    selection, xhtml.div {class="w3-rest w3-panel", T}}
+  return page_wrapper ("POP3 eMail client server", 
+    selection, X.Panel {class="w3-rest", T})
 end
 
 function pages.udp (p)
@@ -1409,11 +1461,11 @@ function pages.udp (p)
   end
   table.sort (list, function (a,b) return a[1] < b[1] end)
   local t = create_table_from_data ({"ip:port", "by device"}, list)
-  return xhtml.div {
-    html5_title "UDP datagram ports", selection,
-    xhtml.div {class="w3-container w3-rest", 
-      xhtml.h5 "Registered listeners", t0, 
-      xhtml.h5 "Datagram destinations", t}}
+  return page_wrapper ("UDP datagram ports", 
+    selection,
+    X.Panel {class="w3-rest", 
+      X.Subtitle "Registered listeners", t0, 
+      X.Subtitle "Datagram destinations", t})
 end
 
 
@@ -1424,14 +1476,12 @@ function pages.images ()
     data[#data+1] = {i, xhtml.a {target="image", href="images/" .. f.name, f.name}}
   end
   local index = create_table_from_data ({'#', "filename"}, data)
-  local div = xhtml.div
-  return div {
-      html5_title "Image files in images/ folder",
-      div {class = "w3-row",
-        div {class = "w3-container w3-quarter", index} ,
-        div {class = "w3-container w3-rest", 
+  return page_wrapper ("Image files in images/ folder",
+      X.Container {class = "w3-row",
+        X.Container {class = "w3-quarter", index} ,
+        X.Container {class = "w3-rest", 
           xhtml.iframe {style= "border: none;", width="100%", height="500px", name="image"}},
-      }}
+      })
 end
 
 
@@ -1439,8 +1489,7 @@ function pages.trash (p)
   -- empty?
   if (p.AreYouSure or '') :lower() :match "yes" then    -- empty the trash
     luup.call_action ("openLuup", "EmptyTrash", {AreYouSure = "yes"}, 2)
-    local continue = xhtml.a {class="w3-button w3-round w3-green",
-      href = selfref "page=trash", "Continue..."}
+    local continue = X.ButtonLink {"Continue..."; selfref="page=trash"}
     return page_wrapper ("Trash folder being emptied", continue)
   end
   -- list files...
@@ -1450,9 +1499,9 @@ function pages.trash (p)
     data[#data+1] = {i, f.name, f.size}
   end
   local tbl = create_table_from_data ({'#', "filename", "size"}, data)
-  local empty_trash = xhtml.a {class="w3-button w3-round w3-red",
+  local empty_trash = X.ButtonLink {"Empty Trash"; class="w3-red",
     onclick = "return confirm('Empty Trash: Are you sure?')", 
-    href = selfref "page=trash&AreYouSure=yes", "Empty Trash"}
+    selfref="page=trash&AreYouSure=yes"}
   return page_wrapper ("Files pending delete in trash/ folder", empty_trash, tbl)
 end
 
@@ -1531,9 +1580,7 @@ function pages.summary ()
     t0.row {"total # files", rhs (N)}
     t0.row {"total # updates", rhs (tot)}
   end
-
-  local div = xhtml.div {html5_title "Data Historian statistics summary", t0}
-  return div
+  return page_wrapper ("Data Historian statistics summary", t0)
 end
 
 function pages.cache ()
@@ -1592,8 +1639,7 @@ function pages.cache ()
     t.row {'', short_service_name, h, v.value, xhtml.span {graph, ' ', clear}, xhtml.span {tick, ' ', v.name}}
   end
   
-  local div = xhtml.div {html5_title "Data Historian in-memory Cache", t}
-  return div
+  return page_wrapper ("Data Historian in-memory Cache", t)
 end
 
 local function database_tables ()
@@ -1675,8 +1721,8 @@ pages.orphans = function (p)
     t = nil   -- they should all have gone (TODO: except folders... needs special handling)
   end
   local trash = xhtml.div {class = "w3-panel",
-    xhtml.a {class="w3-button w3-round w3-red", 
-      href = selfref "TrashOrphans=yes", "Move All to Trash", title="move all orphans to trash",
+    X.ButtonLink {"Move All to Trash"; class="w3-red", 
+      title="move all orphans to trash", selfref="TrashOrphans=yes", 
       onclick = "return confirm('Trash All Orphans: Are you sure?')" } }
   return page_wrapper ("Orphaned Database Files  - from non-existent devices", trash, t) 
 end
@@ -1697,14 +1743,14 @@ pages.rules = function ()
   end
   local t2 = xhtml.table {class = "w3-small"}
   t2.header {"#", "pattern"}
-  for i, p in ipairs (tables.cache_rules) do
-    t2.row {i, p}
+  for j, p in ipairs (tables.cache_rules) do
+    t2.row {j, p}
   end
   return page_wrapper ("Historian Cache and Archive Rules", 
-    xhtml.div {class = "w3-panel",
-      xhtml.h5 "Cache – IGNORE these services or variables", t2 ,
+    X.Panel {
+      X.Subtitle "Cache – IGNORE these services or variables", t2 ,
       xhtml.br {},
-      xhtml.h5 "Archives – first matching rule applies", t })
+      X.Subtitle "Archives – first matching rule applies", t })
 end
 
 -- file cache
@@ -1741,10 +1787,8 @@ function pages.file_cache (p)
     end)  
   t:header { '', '', rhs(H), rhs (math.floor (N/1000 + 0.5), " (kB)"), lhs "Total"}
   
-  local div = xhtml.div {
-    html5_title "File Server Cache", sort_menu,
-    xhtml.div {class = "w3-panel w3-rest", t} }
-  return div
+  return page_wrapper ("File Server Cache", sort_menu,
+   X.Panel {class = "w3-rest", t} )
 end
 
 --
@@ -1790,10 +1834,8 @@ local function device_controls (d)
   local srv = d.services[SID.switch]
   if srv then    -- we need an on/off switch
 --    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
-    switch = xhtml.form {
-      action=selfref (), method="post", 
-        xhtml.input {name="action", value="switch", hidden=1},
-        xhtml.input {name="dev", value=d.attributes.id, hidden=1},
+    switch = X.Form {
+        X.Hidden {action = "switch", dev = d.attributes.id},
         xhtml.input {type="image", class="w3-hover-opacity", title = "on/off",
           src="/icons/power-off-solid.svg", alt='on/off', height=on_off_size, width=on_off_size}
 --        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
@@ -1802,10 +1844,8 @@ local function device_controls (d)
   srv = not srv and d.services[SID.security]      -- don't want two!
   if srv then    -- we need an arm/disarm switch
 --    local Target = (srv.variables.Target or {}).value == "1" and 1 or nil
-    switch = xhtml.form {
-      action=selfref (), method="post", 
-        xhtml.input {name="action", value="arm", hidden=1},
-        xhtml.input {name="dev", value=d.attributes.id, hidden=1},
+    switch = X.Form {
+        X.Hidden {action = "arm", dev = d.attributes.id},
         xhtml.input {type="image", class="w3-hover-opacity", title = "arm/disarm",
           src="/icons/power-off-solid.svg", alt='arm/disarm', height=on_off_size, width=on_off_size}  -- TODO: better arm/disarm icon
 --        html5.input {type="checkbox", class="switch", checked=Target, name="switch", onchange="this.form.submit();" }
@@ -1815,11 +1855,9 @@ local function device_controls (d)
   if srv then    -- we need a slider
 --    local LoadLevelTarget = (srv.variables.LoadLevelTarget or empty).value or 0
     local LoadLevelStatus = (srv.variables.LoadLevelStatus or empty).value or 0
-    slider = xhtml.form {
+    slider = X.Form {
       oninput="LoadLevelTarget.value = slider.valueAsNumber + ' %'",
-      action=selfref (), method="post",
-        xhtml.input {name="action", value="slider", hidden=1},
-        xhtml.input {name="dev", value=d.attributes.id, hidden=1},
+        X.Hidden {action = "slider", dev = d.attributes.id},
         xhtml.output {name="LoadLevelStatus", ["for"]="slider", value=LoadLevelStatus, LoadLevelStatus .. '%'},
         xhtml.input {type="range", name="slider", onchange="this.form.submit();",
           value=LoadLevelStatus, min=0, max=100, step=1},
@@ -1908,11 +1946,10 @@ function pages.attributes (p, req)
     --
     local attr = xhtml.div{class = "w3-container"}
     for n,v in sorted (d.attributes) do 
-      attr[#attr+1] = xhtml.form{
-        class = "w3-form w3-padding-small", method="post", style="float:left", action=selfref(),
+      attr[#attr+1] = X.Form {
+        class = "w3-form w3-padding-small w3-left",
         xhtml.label {xhtml.b{n}}, 
-        xhtml.input {hidden=1, name="page", value="attributes"},
-        xhtml.input {hidden=1, name="attribute", value=n},
+        X.Hidden {page = "attributes", attribute = n},
         xhtml.input {class="w3-input w3-round w3-border w3-hover-border-red",type="text", size=28, 
           name="value", value = nice(v, 99), autocomplete="off", onchange="this.form.submit()"} }
     end
@@ -1954,8 +1991,7 @@ function pages.create_variable ()
   for _, svc in ipairs (find_all_existing_serviceIds()) do
     service_list[#service_list+1] = xhtml.option {value=svc}
   end
-  local form = xhtml.form {class = "w3-container w3-form w3-third", 
-    action = selfref "page=variables", method="post",
+  local form = X.Form {class = "w3-container w3-form w3-third", 
     xhtml.label {"Variable name"},
     xhtml.input {class=class, type="text", name="name", autocomplete="off", },
     xhtml.label {"ServiceId"},
@@ -2021,7 +2057,7 @@ function pages.variables (p, req)
 --          edit = archives and whisper_edit (filename, historian) or ' '
         end
     -- form to allow variable value updates
-        local value_form = editable_text ({page="variables", id=v.id}, v.value)
+        local value_form = editable_text ({page="variables", id=v.id}, v.value, 999)    -- maxlength
 --        local trash_can = d.device_type == "openLuup" and '' or delete_link ("var", v.id, "variable")
         local trash_can = delete_link ("var", v.id, "variable")
         local actions = xhtml.span {history, graph, edit}
@@ -2041,8 +2077,7 @@ function pages.variables (p, req)
     table.insert (options, 1, All_Services)
     local function service_menu () return filter_menu (options, service, "svc=") end
     -----
-    local create = xhtml.a {class="w3-button w3-round w3-green", 
-      href = selfref "page=create_variable", "+ Create", title="create new variable"}
+    local create = X.ButtonLink {"+ Create"; selfref="page=create_variable", title="create new variable"}
     local sortmenu = sidebar (p, service_menu, device_sort)
     local rdiv = xhtml.div {sortmenu, xhtml.div {class="w3-rest w3-panel", create, t} }
     return title .. " - variables", rdiv
@@ -2061,10 +2096,8 @@ function pages.actions (p)
       end
       for a in sorted (srv.actions) do
         local args = xhtml.div {class="w3-container w3-cell"}
-        local form = xhtml.form {method="post", action=selfref (),
-          xhtml.input {hidden=1, name="action", value="call_action"},
-          xhtml.input {hidden=1, name="dev", value=devNo},
-          xhtml.input {hidden=1, name="srv", value=s},
+        local form = X.Form {
+          X.Hidden {action = "call_action", dev = devNo, srv = s},
           xhtml.div{class = "w3-container w3-cell", style="width:250px;",
             xhtml.input {class="w3-button w3-round w3-blue", type="submit", name="act", title=s, value=a} },
             args}
@@ -2288,8 +2321,8 @@ function pages.header (p)
     return title .. " - scene header", 
       xhtml.div {class="w3-row", 
         xhtml.div{class="w3-col", style="width:550px;", 
-          xhtml.div {class = "w3-container", scene_panel(scene)}, 
-          xhtml.div {class = "w3-container w3-margin-left w3-padding w3-hover-border-red w3-round w3-border",
+          X.Container {scene_panel(scene)}, 
+          X.Container {class = "w3-margin-left w3-padding w3-hover-border-red w3-round w3-border",
             xhtml.h6 "Active modes (all if none selected)",
             house_mode_group (modes) }}}
   end)
@@ -2360,9 +2393,8 @@ function pages.triggers (p)
         body = {middle = desc},
       }        
     end
-    local create = xhtml.a {class="w3-button w3-round w3-green", 
-      href = selfref "page=trigger", "+ Create", title="create new trigger"}
-    return title .. " - scene triggers", xhtml.div {class="w3-panel", create}, T
+    local create = X.ButtonLink {"+ Create"; selfref="page=trigger", title="create new trigger"}
+    return title .. " - scene triggers", X.Panel {create}, T
   end)
 end
 
@@ -2449,8 +2481,7 @@ function pages.timers (p)
         widgets = {w1, w2},
       }        
     end
-    local create = xhtml.a {class="w3-button w3-round w3-green", 
-      href = selfref "page=timer", "+ Create", title="create new timer"}
+    local create = X.ButtonLink {"+ Create"; selfref="page=timer", title="create new timer"}
     return title .. " - scene timers", xhtml.div {class="w3-panel", create}, T
   end)
 end
@@ -2478,22 +2509,15 @@ function pages.action (p, req)
   return parameters(p, req)
 end
 
-local function link_button (name, link, title, colour)
-  colour = colour or "w3-green"
-  return xhtml.a {class="w3-button w3-round " .. colour, 
-    href = selfref (link), name, title=title}
-end
-
 function pages.group_actions (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
     local groups = h.div {class = "w3-container"}
     for g, group in ipairs (scene.definition.groups) do
       local delay = tonumber (group.delay) or 0
-      local gw = delete_link ("group", g, "delay group")
-      local new_action = link_button ("+ Action", "page=action&group=" .. g, 
-        "create new action\nin this delay group", "w3-green")
-      local del_group = link_button ("- Delay", "", "delete delay group\nand all actions in it", "w3-red")
+      local new_action = X.ButtonLink {"+ Action"; selfref="page=action&group=" .. g, 
+        title="create new action\nin this delay group"}
+      local del_group = X.ButtonLink {"- Delay"; selfref="", title="delete delay group\nand all actions in it", class="w3-red"}
 --      local foo = h.input {type="time", step="1"}  -- NB: not all browsers (Safari) support HH:MM:SS
       local d = h.div{class = "w3-panel"}
       local e = h.div {class = "w3-panel w3-padding w3-border-top", 
@@ -2520,7 +2544,6 @@ function pages.group_actions (p)
       groups[g] = e
     end
     return title .. " - actions (in delay groups)", 
---    link_button ("+ Delay", "page=action", "create new delay group"),
     groups
   end)
 end
@@ -2619,9 +2642,8 @@ function code_editor (code, height, language, readonly, codename)
       submit_button = h.p {class="w3-button w3-round w3-green w3-margin", onclick = "EditorSubmit()", "Submit"}
     end
     local page = h.div {id="editor", class="w3-border", style = "width: 100%; height:"..height, code }
-    local form = xhtml.form {
+    local form = X.Form {
       action= "/data_request?id=XMLHttpRequest&action=submit_lua&codename=" .. codename, 
-      method="post", 
       target = "output", 
       h.input {type="hidden", name="lua_code", id="lua_code"}, 
       submit_button}
@@ -2670,9 +2692,9 @@ function pages.lua_shutdown  () return page_wrapper ("Lua Shutdown Code", lua_ed
 -- editable and runnable pages
 local function lua_exec (codename, title)
   local form =  xhtml.div {class = "w3-col w3-half",
-    html5_title (title or codename),  code_editor (userdata.attributes[codename], 500, "lua", false, codename) }  
+    X.Title (title or codename),  code_editor (userdata.attributes[codename], 500, "lua", false, codename) }  
   local output = xhtml.div {class="w3-half", style="padding-left:16px;", 
-    html5_title "Console Output:", 
+    X.Title "Console Output:", 
     xhtml.iframe {name="output", height="500px", width="100%", 
       style="border:1px grey; background-color:white; overflow:scroll"} }
   return xhtml.div {class="w3-row", form, output}
@@ -2737,8 +2759,7 @@ function pages.graphics (p)
       local link = "page=graphics&target=%s&from=%s"
       local selected = (time == p.from) or (name == "cache" and not p.from)
       local color = selected and "w3-grey" or "w3-amber"
-      return xhtml.a {class = "w3-button w3-round " .. color, 
-          href = selfref (link: format (finderName, time)), name}
+      return X.ButtonLink {name; class = color, selfref=(link: format (finderName, time))}
     end
     
     links[2] = button ("cache", earliest)
@@ -2766,19 +2787,7 @@ function pages.graphics (p)
   local earliest = cache_earliest (var)
   local from = p.from or earliest
   local buttons = archive_links (var, earliest)
-        local render = "/render?target=%s&from=%s"
-
---  xhtml.div{class = "w3-panel",
---    xhtml.form {
---      xhtml.label "From",  
---        xhtml.input {type="date", name="d_from"},  
---        xhtml.input {type="time", name="t_from"},
---      xhtml.label "until", 
---        xhtml.input {type="date", name="d_until"}, 
---        xhtml.input {type="time", name="t_until"},
---      xhtml.input {type="submit", value="Update", class = "w3-button w3-round w3-green"},
---    } }
-
+  local render = "/render?target=%s&from=%s"
   local background = p.background or "GhostWhite"
   return xhtml.div {
     buttons, xhtml.iframe {
@@ -2788,8 +2797,8 @@ function pages.graphics (p)
 end
 
 function pages.create_room ()
-  local form = xhtml.form {class = "w3-container w3-form w3-third", 
-    action = selfref "page=rooms_table", method="post",
+  local form = X.Form {class = "w3-container w3-form w3-third", 
+    selfref = "page=rooms_table", 
     xhtml.label {"Room name"},
     xhtml.input {class="w3-input w3-border w3-hover-border-red", type="text", name="name", autocomplete="off", },
     xhtml.input {class="w3-button w3-round w3-red w3-margin", type="submit", value="Create Room"},
@@ -2823,8 +2832,7 @@ function pages.rooms_table (p, req)
     return xhtml.div {class="w3-display-container", style = "width: 56px;",
       link, xhtml.span {class="w3-display-right", count} }
   end
-  local create = xhtml.a {class="w3-button w3-round w3-green", 
-    href = selfref "page=create_room", "+ Create", title="create new room"}
+  local create = X.ButtonLink {"+ Create"; selfref="page=create_room", title="create new room"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
   t.header {"id", "name", "#devices", "#scenes", "delete"}
   local D,S = droom[0] or 0, sroom[0] or 0
@@ -2859,8 +2867,7 @@ function pages.device_created (_,req)
     if devNo then     -- offer to go there
       div = xhtml.div {
         xhtml.p {"Device #" , devNo, " created"},
-        xhtml.a {class="w3-button w3-green w3-round", 
-          href=selfref "page=device&device=" .. devNo, "Go to new device page"}}
+        X.ButtonLink {"Go to new device page"; selfref="page=device&device=" .. devNo}}
     else
       div = xhtml.p "Error creating device"
     end
@@ -2870,8 +2877,8 @@ end
 
 function pages.create_device ()
 
-  local form = xhtml.form {class = "w3-container w3-form w3-third", 
-    action = selfref "page=device_created", method="post",
+  local form = X.Form {class = "w3-container w3-form w3-third", 
+    selfref = "page=device_created", 
     xhtml.label {"Device name"},
     xhtml.input {class="w3-input w3-border w3-hover-border-red", type="text", name="name", autocomplete="off", },
     xoptions ("Device file", "d_file", "^D_.-%.xml$", "D_"),
@@ -2890,8 +2897,7 @@ function pages.devices_table (p, req)
     local dev = luup.devices[tonumber(q.reroom)]
     if dev then dev: rename (nil, q.value) end
   end
-  local create = xhtml.a {class="w3-button w3-round w3-green", 
-    href = selfref "page=create_device", "+ Create", title="create new device"}
+  local create = X.ButtonLink {"+ Create"; selfref="page=create_device", title="create new device"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
   t.header {"id", "name", "altid", '', "room", "delete"}  
   local wanted = room_wanted(p)        -- get function to filter by room  
@@ -2925,9 +2931,8 @@ function pages.scene_created (_,req)
   local msg = "Scene #%d '%s' created"
   local div = xhtml.div {
       xhtml.p (msg: format (scnNo, q.name)),
-      xhtml.a {class="w3-button w3-green w3-round", 
-        href=selfref "page=scene&scene=" .. scnNo, "Go to new scene page"}}
-  
+      X.ButtonLink {"Go to new scene page"; selfref="page=scene&scene=" .. scnNo}
+      }
   return div
 end
 
@@ -2939,10 +2944,10 @@ function pages.new_scene (p)
      name = luup.scenes[tonumber(p.clone)].description .. " - COPY"
      value = p.clone
    end 
-   local form = xhtml.form {class = "w3-container w3-form w3-third", 
-    action = selfref "page=scene_created", method="post",
+   local form = X.Form {class = "w3-container w3-form w3-third", 
+    selfref = "page=scene_created", 
+    X.Hidden {clone = value},    -- 2020.12.30
     xhtml.label {"Scene name"},
-    xhtml.input {hidden=1, name="clone", value=value},    -- 2020.12.30
     xhtml.input {class="w3-input w3-border w3-hover-border-red", type="text", name="name", value = name, autocomplete="off", },
     xhtml.input {class="w3-button w3-round w3-red w3-margin", type="submit", value="Create Scene"},
   }
@@ -2963,8 +2968,7 @@ function pages.scenes_table (p, req)
     end
     s: rename (nil, num)
   end
-  local create = xhtml.a {class="w3-button w3-round w3-green", 
-    href = selfref "page=new_scene", "+ Create", title="create new scene"}
+  local create = X.ButtonLink {"+ Create"; selfref="page=new_scene", title="create new scene"}
   local scn = {}
   local wanted = room_wanted(p)        -- get function to filter by room  
   local ymdhms = "%y-%m-%d %X"
@@ -3039,8 +3043,7 @@ function pages.triggers_table (p)
     triggers[#triggers+1] = xhtml.div {xhtml.h5 "Luup UPnP Triggers (ignored by openLuup)", l}
   end
       
-  local create = xhtml.a {class="w3-button w3-round w3-green", 
-    href = selfref "page=trigger", "+ Create", title="create new trigger"}
+  local create = X.ButtonLink {"+ Create"; selfref="page=trigger", title="create new trigger"}
   local tdiv = xhtml.div {selection, xhtml.div {class="w3-rest w3-panel", create, triggers} }
   return page_wrapper ("Triggers Table", tdiv)
 end
@@ -3116,8 +3119,8 @@ function pages.plugins_table (_, req)
     local choice = {style="width:12em;", name="file", onchange="this.form.submit()", 
       xhtml.option {value='', "Files", disabled=1, selected=1}}
     for _, f in ipairs (files) do choice[#choice+1] = xhtml.option {value=f, f} end
-    files = xhtml.form {action=selfref(), 
-      xhtml.input {hidden=1, name="page", value="viewer"},
+    files = X.Form {
+      X.Hidden {page = "viewer"},
       xhtml.select (choice)}
     
     local ignore = {AltAppStore = '', VeraBridge = ''}
@@ -3126,10 +3129,8 @@ function pages.plugins_table (_, req)
     local github = xhtml.a {href="https://github.com/"  .. (p.Repository.source or ''), target="_blank", 
       xhtml.img {title="go to GitHub repository", src=GitHub_Mark, alt="GitHub", height=32, width=32} }
     
-    local update = ignore[p.id] or xhtml.form {
-      action = selfref(), method="post",
-      xhtml.input {hidden=1, name="action", value="update_plugin"},
-      xhtml.input {hidden=1, name="plugin", value=p.id},
+    local update = ignore[p.id] or X.Form {
+      X.Hidden {action = "update_plugin", plugin = p.id},
       xhtml.div {class="w3-display-container",
         -- TODO: should the following name be "update" or "version" ???
         xhtml.input {class="w3-hover-border-red", type = "text", autocomplete="off", name="version", value=''},
@@ -3144,10 +3145,7 @@ function pages.plugins_table (_, req)
     local trash_can = ignore[p.id] or delete_link ("plugin", p.id)
     t.row {icon, p.Title, version, files, github, update, trash_can} 
   end
-  local create = xhtml.a {class="w3-button w3-round w3-green", 
-    href = selfref "page=plugin", "+ Create", title="create new plugin"}
---  local appstore = xhtml.a {class="w3-button w3-round w3-amber", 
---    href = selfref "page=app_store", "App Store", title="go to App Store"}
+  local create = X.ButtonLink {"+ Create"; selfref="page=plugin", title="create new plugin"}
   return page_wrapper ("Plugins", create, t)
 end
 
@@ -3213,10 +3211,9 @@ local function app_panel (app, info)
   icon = xhtml.img {title=title, onclick = onclick: format(title),
     src=icon, alt="no icon", height=64, width=64}
   local GitHub_Mark = "https://raw.githubusercontent.com/akbooer/openLuup/development/icons/GitHub-Mark-64px.png"
-  local github = xhtml.a {href="https://github.com/"  .. source, target="_blank", class="w3-button w3-round",
+  local github = X.ButtonLink {href="https://github.com/"  .. source, target="_blank", class='',
     xhtml.img {title="go to GitHub repository", src=GitHub_Mark, alt="GitHub", height=32, width=32} }
-  local jlink = xhtml.a {href=selfref ("page=app_json&plugin=" .. app.id), 
-    class="w3-button w3-round", title="view App Store JSON", "JSON"}
+  local jlink = X.ButtonLink {"JSON"; selfref="page=app_json&plugin=" .. app.id, title="view App Store JSON", class=''}
 
   -- show releases
   local choice = {style="width:12em;", name="release"} 
@@ -3240,8 +3237,8 @@ local function app_panel (app, info)
         xhtml.input {class="w3-button w3-round w3-border w3-green ", type="submit", value="Install" } } },
       }, "app-panel")
   
-  return xhtml.form {action=selfref(), method="POST",
-    xhtml.input {hidden=1, name="app", value=app.id},
+  return X.Form {
+    X.Hidden {app = app.id},
     panel}
 end
 
@@ -3393,13 +3390,13 @@ function pages.command_line (_, req)
   end
   local h = xhtml
   local window = h.div {
-    html5_title ("Output: ", h.span {style="font-family:Monaco; font-size:11pt;", command} ),
+    X.Title {"Output: ", h.span {style="font-family:Monaco; font-size:11pt;", command} },
     h.pre {style="height: 400px; border:1px grey; background-color:white; overflow:scroll", output} }
   local form = h.form {action= selfref (), method="post",
     h.input {class="w3-button w3-round w3-green w3-margin", value="Submit", type = "submit"},
     h.input {type = "text", style="width: 80%;", name ="command", onfocus="this.select();",
       autocomplete="off", placeholder="command line", value=command, autofocus=1}}
-  return h.div {class="w3-container", window, form}
+  return X.Container {window, form}
 end
 
 -----
@@ -3494,10 +3491,10 @@ local function page_nav (current, previous, message)
 --      class="w3-button", "x"},
 --       nice (os.time()), ' ', "Click on the X to close this panel" }
   local tabs, groupname = page_group_buttons (current)
-  return div {class="w3-container w3-row w3-margin-top",
+  return X.Container {class="w3-row w3-margin-top",
       page_tree (current, previous), 
-      div {class="w3-container w3-cell", messages},
-      div {class = "w3-panel w3-border w3-hide", id="messages", message, },
+      X.Container {class="w3-cell", messages},
+      X.Panel {class = "w3-border w3-hide", id="messages", message, },
       div {xhtml.h3 {groupname}, div (tabs) }}
 end
 
