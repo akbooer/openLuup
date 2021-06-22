@@ -124,7 +124,7 @@ local function varlist_to_table (statevariables)
   return vars
 end
 
-local function non_empty(x) return x and x:match "%S" and x end
+local function non_empty(x) x = tostring(x) return x and x:match "%S" and x end
   
 -- 
 -- function: create (x)

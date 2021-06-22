@@ -268,7 +268,7 @@ local function create_device(info)
   local _, s = luup.inet.wget ("http://" .. ip .. "/settings")
   if s then
     s = json.decode (s)
-    if s then name = s.name or name end
+    if s and type(s.name) == "string" then name = s.name end
   else 
     _log "no Shelly settings name found"
   end
@@ -370,6 +370,7 @@ function _G.Shelly_MQTT_Handler (topic, message)
                   create_ShellyBridge ()
   
   if shellies == "announce" then
+    _log (message)
     local info, err = json.decode (message)
     if not info then _log ("Announce JSON error: " .. (err or '?')) return end
     init_device (info)
