@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.06.21",
+  VERSION       = "2021.06.22",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -151,6 +151,11 @@ local push_event = {
 
 -- generic actions for all devices
 local function generic (dno, var, value) 
+  -- battery level
+  if var == "sensor/battery" then
+    VIRTUAL[dno].HaDevice1.BatteryLevel = value
+    return
+  end
   -- button pushes behave as scene controller
   -- look for change of value of input/n [n = 0,1,2]
   local button = var: match "^input_event/(%d)"
@@ -195,18 +200,12 @@ local function sw2_5(dno, var, value)
 end
 
 -- H&T sensor
--- sensor/[temperature,humidity,battery] - also [error,act_reasons]
+-- sensor/[temperature,humidity] - also [battery,error,act_reasons]
 local function h_t (dno, var, value)
   local metric = var: match "^sensor/(.+)"
   if not metric then return end
 
   local mtype = metric: sub (1,1)     -- first character [t,h,b]
-
-  if mtype == 'b' then
-    VIRTUAL[dno].HaDevice1.BatteryLevel = value
-    return
-  end
-
   local altid = luup.attr_get ("altid", dno)
   local children = {t = 0, h = 1}   -- altid suffixes for child device types
   local child = children[mtype]

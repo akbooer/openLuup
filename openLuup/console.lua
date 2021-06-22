@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.06.06",
+  VERSION       = "2021.06.22",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -96,6 +96,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.05.01  use native openLuup.json.Lua (for correct formatting)
 -- 2021.05.02  add pseudo-service 'attributes' for consistent virtual access, and serviceId/shortSid to device object
 -- 2021.05.12  add pages.rules for Historian archives, and interval buttons on Graphics page
+-- 2021.06.22  change cache page clear icons to trash, and move to last column (thanks @a-lurker)
 
 
 --  WSAPI Lua CGI implementation
@@ -1605,8 +1606,8 @@ function pages.cache ()
   table.sort (H, keysort)
       
   local t = xhtml.table {class = "w3-small"}
-  t.header {"device ", "service", "#points", "value", '',
-    {"variable (archived if checked)", title="note that the checkbox field \n is currently READONLY"} }
+  t.header {"device ", "service", "#points", "value", "graph",
+    {"variable (archived if checked)", title="note that the checkbox field \n is currently READONLY"}, "clear" }
   -- TODO: make cache checkbox enable on-disc archiving
   
   local prev  -- previous device (for formatting)
@@ -1624,7 +1625,8 @@ function pages.cache ()
         graph = xhtml.a {class = "w3-hover-opacity", title="graph", 
           href= selfref (link: format (finderName, from)), img}
         clear = xhtml.a {href=selfref ("action=clear_cache&variable=", v.id + 1, "&dev=", v.dev), title="clear cache", 
-                  xhtml.img {width="18px;", height="14px;", alt="clear", src="/icons/undo-solid.svg"}}
+--                  xhtml.img {width="18px;", height="14px;", alt="clear", src="/icons/undo-solid.svg"}}
+    xhtml.img {height=14, width=14, alt="clear", src="icons/trash-alt-red.svg", class = "w3-hover-opacity"} }
       end
     end
     local h = #v.history / 2
@@ -1636,7 +1638,7 @@ function pages.cache ()
     local check = archived and 1 or nil
     local tick = xhtml.input {type="checkbox", readonly=1, disabled=1, checked = check} 
     local short_service_name = v.srv: match "[^:]+$" or v.srv
-    t.row {'', short_service_name, h, v.value, xhtml.span {graph, ' ', clear}, xhtml.span {tick, ' ', v.name}}
+    t.row {'', short_service_name, h, v.value, graph, xhtml.span {tick, ' ', v.name}, clear}
   end
   
   return page_wrapper ("Data Historian in-memory Cache", t)
