@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2021.06.22b",
+  VERSION       = "2021.07.25",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -64,7 +64,7 @@ ABOUT = {
 -- 2021.04.06  add MQTT device/variable PUBLISH, and broker stats
 -- 2021.04.08  only PUBLISH if MQTT configured (thanks @ArcherS)
 -- 2021.05.20  use carbon cache to archive historian and mqtt server metrics
--- 2021.05.23  add solar RA,DEC and ALT,AZ plis GetSolarCoords service with options (Unix) epoch parameter
+-- 2021.05.23  add solar RA,DEC and ALT,AZ plus GetSolarCoords service with options (Unix) epoch parameter
 
 
 local json        = require "openLuup.json"
