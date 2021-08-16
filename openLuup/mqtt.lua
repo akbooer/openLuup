@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.06.08",
+  VERSION       = "2021.08.16",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -42,6 +42,7 @@ local ABOUT = {
 -- 2021.04.08   add subscriber for relay/nnn topic (with 0 or 1 message)
 -- 2021.04.28   add subscriber for light/nnn topic (with 0-100 message)
 -- 2021.04.30   add 'query' topic to force specific variable update message (after connect, for example)
+-- 2021.08.16   fix null topic in publish (thanks @ArcherS)
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -472,7 +473,7 @@ function parse.PUBLISH(message)
   -- VARIABLE HEADER
   
   -- The Topic Name MUST be present as the first field in the PUBLISH Packet Variable header [MQTT-3.3.2-1]
-  local TopicName = message: read_string ()
+  local TopicName = message: read_string () or ''   -- 20221.08.16 (thanks @ArcherS)
   -- All Topic Names and Topic Filters MUST be at least one character long [MQTT-4.7.3-1]
   if #TopicName == 0 then
     return nil, "PUBLISH topic MUST be at least one character long"
