@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "whisper-edit",
-  VERSION       = "2019.07.15",
+  VERSION       = "2021.08.21",
   DESCRIPTION   = "Whisper database editor script cgi/whisper-edit.lua",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2019 AKBooer",
@@ -17,6 +17,8 @@ ABOUT = {
 -- 2019.06.07  use w3.css style sheets
 -- 2019.06.29  use xhtml module
 -- 2019.07.15  use new xml.createHTMLDocument() factory method
+
+-- 2021.08.21  override invalid end date
 
 
 local whisper = require "openLuup.whisper"
@@ -95,7 +97,8 @@ function run (wsapi_env)
   local to = params["until"]
   from = ymd(from) and from or os.date (date, now)
   to   = ymd(to)   and to   or os.date (date, now)
-
+  if to < from then to = from end         -- 2021.08.21, override invalid end date
+  
   -- get the requested data
   
   local I, V, T
