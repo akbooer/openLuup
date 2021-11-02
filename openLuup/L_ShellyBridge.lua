@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.06.22",
+  VERSION       = "2021.11.02",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -38,6 +38,8 @@ ABOUT = {
 -- 2021.05.02  check for non-existent device (pre-announcement)
 -- 2021.05.10  add missing bridge_utilities.SID, "Remote_ID"
 -- 2021.06.21  add child H&T devices for Shelly H&T
+-- 2021.10.21  add Dimmer2 (thanks @ArcherS)
+-- 2021.11.02  Dimmer2 improvements
 
 
 local json      = require "openLuup.json"
@@ -221,6 +223,31 @@ local function h_t (dno, var, value)
 
 end
 
+-- Dimmer 2
+--
+local function dm_2 (dno, var, value)
+  local action, child, attr = var: match "^(%a+)/(%d)/?(.*)"
+  if child then
+    local altid = luup.attr_get ("altid", dno)
+    local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
+    if cdno then
+      local D = VIRTUAL[cdno]
+      if action == "light" then
+        if attr == '' then
+          D.switch.Status = value == "on" and '1' or '0'
+        elseif attr == "power" then
+          D.energy.Watts = value
+        elseif attr == "energy" then
+          D.energy.KWH = math.floor (value / 60) / 1000   -- convert Wmin to kWh
+        end
+      elseif action == "input" then
+          -- possibly set the input as a security/tamper switch
+      end
+    end
+  end
+end
+
+
 ----------------------
 
 local function model_info (upnp, updater, children)
@@ -244,6 +271,7 @@ local models = setmetatable (
     ["SHPLG-S"]   = model_info (DEV.shelly, sw2_5, {DEV.light}),
     ["SHPLG2-1"]  = model_info (DEV.shelly, sw2_5, {DEV.light}),
     ["SHHT-1"]    = model_info (DEV.shelly, h_t,   {DEV.temperature, DEV.humidity}),
+    ["SHDM-2"]    = model_info (DEV.shelly, dm_2,  {DEV.dimmer}),
   },{
     __index = function () return unknown_model end
   })
@@ -362,6 +390,8 @@ function _G.Shelly_MQTT_Handler (topic, message)
   
   local shellies = topic: match "^shellies/(.+)"
   if not shellies then return end
+  
+--  print (os.date "%X  ", "***Topic:", topic)
   
   devNo = devNo       -- ensure that ShellyBridge device exists
             or
