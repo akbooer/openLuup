@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.06.22",
+  VERSION       = "2021.11.03",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -97,6 +97,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.05.02  add pseudo-service 'attributes' for consistent virtual access, and serviceId/shortSid to device object
 -- 2021.05.12  add pages.rules for Historian archives, and interval buttons on Graphics page
 -- 2021.06.22  change cache page clear icons to trash, and move to last column (thanks @a-lurker)
+-- 2021.11.03  changed backup history download link to .lzap from .json (thanks @a-lurker)
 
 
 --  WSAPI Lua CGI implementation
@@ -1136,7 +1137,8 @@ function pages.backups ()
   for _,f in ipairs (files) do 
     local hyperlink = xhtml.a {
       href = "cgi-bin/cmh/backup.sh?retrieve="..f.name, 
-      download = f.name: gsub (".lzap$",'') .. ".json",
+--      download = f.name: gsub (".lzap$",'') .. ".json",
+      download = f.name,    -- 2021.11.03  Thanks @a-lurker
       f.name}
     data[#data+1] = {f.date, f.size, hyperlink} 
   end

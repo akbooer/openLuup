@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.11.02",
+  VERSION       = "2021.11.08",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2021 AKBooer",
@@ -40,6 +40,7 @@ ABOUT = {
 -- 2021.06.21  add child H&T devices for Shelly H&T
 -- 2021.10.21  add Dimmer2 (thanks @ArcherS)
 -- 2021.11.02  Dimmer2 improvements
+-- 2021.11.08  Dimmer2 slider status and control
 
 
 local json      = require "openLuup.json"
@@ -71,12 +72,14 @@ local devNo             -- bridge device number (set on startup)
 
 local function SetTarget (dno, args)
   local id = luup.attr_get ("altid", dno)
+  local dfile = luup.attr_get ("device_file", dno)
+  local dtype = dfile == DEV.dimmer and "light" or "relay"
   local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
   if shelly then
     local val = tostring(tonumber (args.newTargetValue) or 0)
     VIRTUAL[dno].switch.Target = val
     local on_off = val == '1' and "on" or "off"
-    shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
+    shelly = table.concat {"shellies/", shelly, '/', dtype, '/', relay, "/command"}
     openLuup.mqtt.publish (shelly, on_off)
   else 
     return false
@@ -86,6 +89,24 @@ end
 local function ToggleState (dno)
   local val = VIRTUAL[dno].switch.Status
   SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
+end
+
+local function SetLoadLevelTarget (dno, args)
+  local id = luup.attr_get ("altid", dno)
+  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
+  if shelly then
+    local val_n = tonumber (args.newLoadlevelTarget) or 0
+    local val = tostring(val_n)
+    VIRTUAL[dno].dimming.LoadLevelTarget = val
+    -- shellies/shellydimmer-<deviceid>/light/0/set 	
+    -- accepts a JSON payload in the format 
+    -- {"brightness": 100, "turn": "on", "transition": 500}
+    shelly = table.concat {"shellies/", shelly, '/light/', relay, "/set"}
+    local command = json.encode {brightness = val_n}
+    openLuup.mqtt.publish (shelly, command)
+  else 
+    return false
+  end
 end
 
 local function generic_action (serviceId, action)
@@ -98,6 +119,7 @@ local function generic_action (serviceId, action)
   local SRV = {
       [SID.switch]    = {SetTarget = SetTarget},
       [SID.hadevice]  = {ToggleState = ToggleState},
+      [SID.dimming]   = {SetLoadLevelTarget = SetLoadLevelTarget},
     }
   
   local service = SRV[serviceId] or {}
@@ -239,6 +261,15 @@ local function dm_2 (dno, var, value)
           D.energy.Watts = value
         elseif attr == "energy" then
           D.energy.KWH = math.floor (value / 60) / 1000   -- convert Wmin to kWh
+        elseif attr == "status" then
+          -- {"ison":false,"source":"input","has_timer":false,"timer_started":0,    
+          --  "timer_duration":0,"timer_remaining":0,"mode":"white","brightness":48,"transition":0}
+          local status = json.decode (value)
+          if type (status) == "table" then
+            if status.brightness then
+              D.dimming.LoadLevelStatus = status.brightness
+            end
+          end
         end
       elseif action == "input" then
           -- possibly set the input as a security/tamper switch
