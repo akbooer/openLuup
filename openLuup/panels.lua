@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2021.03.17c",
+  VERSION       = "2022.06.20",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -48,6 +48,8 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2021.03.05  generic Shelly control panel
 -- 2021.03.17  generic sensor device (for @ArcherS)
 
+-- 2022.06.20  fix non-string argument in todate()  (thanks @a-lurker)
+
 
 local xml = require "openLuup.xml"
 
@@ -67,7 +69,9 @@ local sid = {
     weather   = "urn:upnp-micasaverde-com:serviceId:Weather1",
   }
   
-local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
+local function todate (epoch) 
+  return type(epoch) == "string" and os.date ("%Y-%m-%d %H:%M:%S", epoch) or "---  00:00"
+end
 
 local panels = {
 
