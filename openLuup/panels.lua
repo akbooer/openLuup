@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2022.06.20",
+  VERSION       = "2022.06.30",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -49,6 +49,7 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2021.03.17  generic sensor device (for @ArcherS)
 
 -- 2022.06.20  fix non-string argument in todate()  (thanks @a-lurker)
+-- 2022.06.30  ...another go at the above fix
 
 
 local xml = require "openLuup.xml"
@@ -70,7 +71,7 @@ local sid = {
   }
   
 local function todate (epoch) 
-  return type(epoch) == "string" and os.date ("%Y-%m-%d %H:%M:%S", epoch) or "---  00:00"
+  return tonumber(epoch) and os.date ("%Y-%m-%d %H:%M:%S", epoch) or "---  00:00"
 end
 
 local panels = {
