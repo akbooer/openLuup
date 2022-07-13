@@ -4,13 +4,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.11.03",
+  VERSION       = "2022.07.13",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-21 AK Booer
+  Copyright 2013-22 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -98,6 +98,8 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.05.12  add pages.rules for Historian archives, and interval buttons on Graphics page
 -- 2021.06.22  change cache page clear icons to trash, and move to last column (thanks @a-lurker)
 -- 2021.11.03  changed backup history download link to .lzap from .json (thanks @a-lurker)
+
+-- 2022.07.13  fix +Create variable functionality (thanks @Donato)
 
 
 --  WSAPI Lua CGI implementation
@@ -1996,6 +1998,7 @@ function pages.create_variable ()
     service_list[#service_list+1] = xhtml.option {value=svc}
   end
   local form = X.Form {class = "w3-container w3-form w3-third", 
+    xhtml.input {type="hidden", name="page", value = "variables"},    -- 2022.07.13  post to variables page
     xhtml.label {"Variable name"},
     xhtml.input {class=class, type="text", name="name", autocomplete="off", },
     xhtml.label {"ServiceId"},
