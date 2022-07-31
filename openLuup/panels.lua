@@ -177,7 +177,7 @@ local panels = {
     end,
     control = function ()
       local isShelly = luup.devices[devNo].id: match "^shelly"
-      return isShelly and ShellyHomePage or "<p>Scene Controller</p>"
+      return isShelly and ShellyHomePage (devNo) or "<p>Scene Controller</p>"
     end},
     
 --
