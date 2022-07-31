@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2022.06.30",
+  VERSION       = "2022.07.31",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -50,6 +50,7 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 
 -- 2022.06.20  fix non-string argument in todate()  (thanks @a-lurker)
 -- 2022.06.30  ...another go at the above fix
+-- 2022.07.31  add ShellyHomePage to Shelly scene controllers
 
 
 local xml = require "openLuup.xml"
@@ -72,6 +73,12 @@ local sid = {
   
 local function todate (epoch) 
   return tonumber(epoch) and os.date ("%Y-%m-%d %H:%M:%S", epoch) or "---  00:00"
+end
+
+local function ShellyHomePage (devNo)  
+  local ip = luup.attr_get ("ip", devNo) or ''
+  local src = table.concat {"http://", ip}
+  return div {class = "w3-panel", h.iframe {src = src, width="500", height="300"}}
 end
 
 local panels = {
@@ -169,18 +176,15 @@ local panels = {
       return div {class = "w3-tiny w3-display-bottomright", time and todate(time) or "---  00:00"}
     end,
     control = function ()
-      return "<p>Scene Controller displays</p>"
+      local isShelly = luup.devices[devNo].id: match "^shelly"
+      return isShelly and ShellyHomePage or "<p>Scene Controller</p>"
     end},
     
 --
 -- Shellies
 --
   GenericShellyDevice = {
-    control = function (devNo)  
-      local ip = luup.attr_get ("ip", devNo) or ''
-      local src = table.concat {"http://", ip}
-      return div {class = "w3-panel", h.iframe {src = src, width="500", height="300"}}
-    end,
+    control = ShellyHomePage,
   },
   
 --
