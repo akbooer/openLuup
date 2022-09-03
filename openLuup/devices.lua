@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2021.05.18",
+  VERSION       = "2022.09.03",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -62,6 +62,8 @@ local ABOUT = {
 -- 2021.04.07  correct MQTT published variable value
 -- 2021.04.30  device.find() moved here from openLuup.api
 -- 2021.05.18  get ignoreServiceHistory and ignoreVariableHistory from servertables.cache_rules 
+
+-- 2022.09.03  add user-defined override function to variable set
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -261,6 +263,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       shortSid  = shortSid,
       silent    = nil,                            -- set to true to mute logging
       mqtt      = true,                           -- set to false to disable MQTT updates
+      userdef   = nil,                            -- 2022.09.03 user-defined function
       watchers  = {},                             -- callback hooks
       -- history
       history   = history,                        -- set to nil to disable history
@@ -276,6 +279,8 @@ end
  
 function variable:set (value)
   local t = scheduler.timenow()                   -- time to millisecond resolution
+  local fct = self.userdef
+  value = fct and fct(value, self) or value       -- user-defined override
   value = tostring(value or '')                   -- all device variables are strings
   
   -- 2021.03.09, 2021.04.07 instant status updates over MQTT
