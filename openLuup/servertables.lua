@@ -1,4 +1,4 @@
-local VERSION = "2022.10.24"
+local VERSION = "2022.10.25"
 
 -- mimetypes
 -- 2016/04/14
@@ -36,7 +36,6 @@ local VERSION = "2022.10.24"
 -- 2021.05.18  add cache _rules for historian in-memory cache
 
 -- 2022.10.24  add Historian rules for Shelly H&T T/H max/min
-
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
 
@@ -261,17 +260,13 @@ local archive_rules = {
         "*.*.{Temperature,Humidity}",     -- Tasmota-style
         },
     },{
-      patterns = {
-        "*.*.MaxTemp",                    -- special for H&T max/min values
+      patterns = {"*.*.MaxTemp"},                    -- special for H&T max/min values
       retentions = "10m:1d,1d:10y",
       aggregationMethod = "maximum",
-        },
     },{
-      patterns = {
-        "*.*.MinTemp",                    -- special for H&T max/min values
+      patterns = {"*.*.MinTemp"},                    -- special for H&T max/min values
       retentions = "10m:1d,1d:10y",
       aggregationMethod = "minimum",
-        },
     },{
       patterns = {"*.*EnergyMetering*.{KWH,Watts,kWh24, Voltage, Current}"},
       retentions = "20m:30d,3h:1y,1d:10y",
