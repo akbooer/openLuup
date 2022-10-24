@@ -2,13 +2,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.11.08",
+  VERSION       = "2022.10.24",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2020-2021 AKBooer",
+  COPYRIGHT     = "(c) 2020-2022 AKBooer",
   DOCUMENTATION = "",
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -41,6 +41,8 @@ ABOUT = {
 -- 2021.10.21  add Dimmer2 (thanks @ArcherS)
 -- 2021.11.02  Dimmer2 improvements
 -- 2021.11.08  Dimmer2 slider status and control
+
+-- 2022.10.24  add Max/Min Temp for H&T child sensors (implemented through Historian database aggregation)
 
 
 local json      = require "openLuup.json"
@@ -238,6 +240,8 @@ local function h_t (dno, var, value)
     local D = VIRTUAL[cdno]
     if mtype == 't' then
       D.temp.CurrentTemperature = value
+      D.temp.MinTemp = value              -- implemented through Historian database aggregation
+      D.temp.MaxTemp = value              -- ditto
     elseif mtype == 'h' then
       D.humid.CurrentLevel = value
     end

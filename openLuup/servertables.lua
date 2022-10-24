@@ -1,4 +1,4 @@
-local VERSION = "2021.06.21"
+local VERSION = "2022.10.24"
 
 -- mimetypes
 -- 2016/04/14
@@ -34,6 +34,8 @@ local VERSION = "2021.06.21"
 -- 2021.05.12  archive_rules now standalone, so include retentions and aggregation and xff (no .conf file references)
 -- 2021.05.14  add cgi/whisper-edit.lua to CGI aliases (and include in baseline directory)
 -- 2021.05.18  add cache _rules for historian in-memory cache
+
+-- 2022.10.24  add Historian rules for Shelly H&T T/H max/min
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -238,7 +240,7 @@ local cache_rules = {
 -- Data Historian Disk Archive rules
 --
 -- pattern: matches deviceNo.shortServiceId.variable
--- schema is the name of the storage-schema rule to use if pattern matches
+-- this is independent of the Carbon storage-schema rule configuration files
 -- patterns are searched in order, and first match is used
 
 local archive_rules = {
@@ -257,9 +259,19 @@ local archive_rules = {
       patterns = {
         "*.*.Current*",                   -- temperature, humidity, generic sensors, setpoint...
         "*.*.{Temperature,Humidity}",     -- Tasmota-style
---        "*.*.{Max,Min}Temp",            -- max/min values (would also need an aggregationMethod)
         },
-      retentions = "10m:7d,1h:30d,3h:1y,1d:10y",
+    },{
+      patterns = {
+        "*.*.MaxTemp",                    -- special for H&T max/min values
+      retentions = "10m:1d,1d:10y",
+      aggregationMethod = "maximum",
+        },
+    },{
+      patterns = {
+        "*.*.MinTemp",                    -- special for H&T max/min values
+      retentions = "10m:1d,1d:10y",
+      aggregationMethod = "minimum",
+        },
     },{
       patterns = {"*.*EnergyMetering*.{KWH,Watts,kWh24, Voltage, Current}"},
       retentions = "20m:30d,3h:1y,1d:10y",
