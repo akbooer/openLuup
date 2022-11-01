@@ -1,4 +1,4 @@
-local VERSION = "2022.10.25"
+local VERSION = "2022.11.01"
 
 -- mimetypes
 -- 2016/04/14
@@ -247,7 +247,7 @@ local archive_rules = {
       retentions = "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
       patterns = {"*.*.Tripped"},
       xFilesFactor = 0,
-      aggregationMethod = "maximum",
+      aggregationMethod = "max",
     },{
       patterns = {"*.*.Status"},
       retentions = "1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
@@ -262,11 +262,11 @@ local archive_rules = {
     },{
       patterns = {"*.*.MaxTemp"},                    -- special for H&T max/min values
       retentions = "10m:1d,1d:10y",
-      aggregationMethod = "maximum",
+      aggregationMethod = "max",
     },{
       patterns = {"*.*.MinTemp"},                    -- special for H&T max/min values
       retentions = "10m:1d,1d:10y",
-      aggregationMethod = "minimum",
+      aggregationMethod = "min",
     },{
       patterns = {"*.*EnergyMetering*.{KWH,Watts,kWh24, Voltage, Current}"},
       retentions = "20m:30d,3h:1y,1d:10y",
