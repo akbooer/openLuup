@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.chdev",
-  VERSION       = "2021.05.04",
+  VERSION       = "2022.11.05",
   DESCRIPTION   = "device creation and luup.chdev submodule",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -73,6 +73,8 @@ local ABOUT = {
 
 -- 2021.04.27  remove (most) self references in favour of 'dev', since self fails for virtualized devices
 -- 2021.05.04  fix device rename broken by above change
+
+-- 2022.11.05  return device number from chdev.append()  [non-standard luup enhancement, makes things easier]
 
 
 local logs      = require "openLuup.logs"
@@ -540,11 +542,12 @@ local function append (device, ptr, altid, description, device_type, device_file
   assert (not ptr.seen[altid], "duplicate altid in chdev.append()")  -- no return status, so raise error
   ptr.seen[altid] = true
  
+  local dev   -- device object
   local dno = ptr.old[altid]
   if dno then 
     ptr.old[altid] = nil        -- it existed already
     if non_empty(description) then      -- 2020.12.19
-      local dev = luup.devices[dno]
+      dev = luup.devices[dno]
       dev.description = description
       dev.attributes.name = description
     end
@@ -554,11 +557,12 @@ local function append (device, ptr, altid, description, device_type, device_file
     if embedded then room = luup.devices[device].room_num end
     -- create_device (device_type, internal_id, description, upnp_file, upnp_impl, 
     --                  ip, mac, hidden, invisible, parent, room, pluginnum, statevariables...)
-    local devNo, dev = create_device (device_type, altid, description, 
+    dno, dev = create_device (device_type, altid, description, 
             device_filename, implementation_filename, 
             nil, nil, embedded, invisible, device, room, nil, parameters)
-    ptr.new[devNo] = dev        -- save in the new list
+    ptr.new[dno] = dev        -- save in the new list
   end
+  return dno      -- 2022.11.05  return device number
 end
   
 -- function: sync

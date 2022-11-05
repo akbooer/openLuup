@@ -1,4 +1,4 @@
-local VERSION = "2022.11.01"
+local VERSION = "2022.11.05"
 
 -- mimetypes
 -- 2016/04/14
@@ -241,11 +241,12 @@ local cache_rules = {
 -- pattern: matches deviceNo.shortServiceId.variable
 -- this is independent of the Carbon storage-schema rule configuration files
 -- patterns are searched in order, and first match is used
+-- retentions parameter is mandatory, xFilesFactor and aggregationMethod have defaults
 
 local archive_rules = {
     {
-      retentions = "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
       patterns = {"*.*.Tripped"},
+      retentions = "1s:1m,1m:1d,10m:7d,1h:30d,3h:1y,1d:10y",
       xFilesFactor = 0,
       aggregationMethod = "max",
     },{
@@ -256,9 +257,10 @@ local archive_rules = {
       retentions = "5m:7d,1h:30d,3h:1y,1d:10y",
     },{
       patterns = {
-        "*.*.Current*",                   -- temperature, humidity, generic sensors, setpoint...
-        "*.*.{Temperature,Humidity}",     -- Tasmota-style
+        "*.*.Current*",                               -- temperature, humidity, generic sensors, setpoint...
+        "*.*.{Temperature,Humidity,Pressure}",        -- Tasmota-style
         },
+      retentions = "10m:7d,1h:30d,3h:1y,1d:10y",
     },{
       patterns = {"*.*.MaxTemp"},                    -- special for H&T max/min values
       retentions = "10m:1d,1d:10y",
@@ -315,6 +317,7 @@ local SID = setmetatable ({
     AltAppStore1            = "urn:upnp-org:serviceId:AltAppStore1",
     Dimming1                = "urn:upnp-org:serviceId:Dimming1",
     EnergyMetering1         = "urn:micasaverde-com:serviceId:EnergyMetering1",
+    GenericSensor1          = "urn:micasaverde-com:serviceId:GenericSensor1",
     HaDevice1               = "urn:micasaverde-com:serviceId:HaDevice1",
     HomeAutomationGateway1  = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
     HumiditySensor1         = "urn:micasaverde-com:serviceId:HumiditySensor1",
@@ -330,6 +333,7 @@ local SID = setmetatable ({
     appstore  = "urn:upnp-org:serviceId:AltAppStore1",
     dimming   = "urn:upnp-org:serviceId:Dimming1",
     energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
+    generic   = "urn:micasaverde-com:serviceId:GenericSensor1",
     hadevice  = "urn:micasaverde-com:serviceId:HaDevice1",
     hag       = "urn:micasaverde-com:serviceId:HomeAutomationGateway1",
     humid     = "urn:micasaverde-com:serviceId:HumiditySensor1",
