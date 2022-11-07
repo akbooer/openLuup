@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2022.07.13",
+  VERSION       = "2022.11.06",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -100,6 +100,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.11.03  changed backup history download link to .lzap from .json (thanks @a-lurker)
 
 -- 2022.07.13  fix +Create variable functionality (thanks @Donato)
+-- 2022.11.06  make 'main' the default update repository for MetOffice_DataPoint plugin (no thanks to GitHub!)
 
 
 --  WSAPI Lua CGI implementation
@@ -792,9 +793,12 @@ end
 
 -- action=update_plugin&plugin=openLuup&update=version
 function actions.update_plugin (_, req)
+  local default_repository = {
+      MetOffice_DataPoint = "main",     -- GitHub changed the default repository name
+    }
   local q = req.params
   local v = q.version
-  v = (#v > 0) and v or "master"
+  v = (#v > 0) and v or default_repository[q.plugin] or "master"
   requests.update_plugin ('', {Plugin=q.plugin, Version=v})
   -- actual update is asynchronous, so return is not useful
 end
