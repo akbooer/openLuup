@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2022.11.01",
+  VERSION       = "2022.11.07",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -44,6 +44,7 @@ ABOUT = {
 
 -- 2022.10.24  add Max/Min Temp for H&T child sensors (implemented through Historian database aggregation)
 -- 2022.11.01  reduce Max/Min Temp cache size to under a day (hopefully)
+-- 2022.11.07  add H & T variables to H&T parent device (for display)
 
 
 local json      = require "openLuup.json"
@@ -239,7 +240,9 @@ local function h_t (dno, var, value)
   local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
   if cdno then
     local D = VIRTUAL[cdno]
+    local P = VIRTUAL[dno]                -- parent device
     if mtype == 't' then
+      P.temp.CurrentTemperature = value
       D.temp.CurrentTemperature = value
       D.temp.MinTemp = value              -- implemented through Historian database aggregation
       D.temp.MaxTemp = value              -- ditto
@@ -249,6 +252,7 @@ local function h_t (dno, var, value)
         vs.MaxTemp.hicache = 5
       end
     elseif mtype == 'h' then
+      P.humid.CurrentLevel = value
       D.humid.CurrentLevel = value
     end
   end
