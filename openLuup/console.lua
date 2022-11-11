@@ -463,7 +463,7 @@ end
 --     so handles multiple items {a=one, b=two, ...}
 function X.Hidden (args)
   local hidden = xhtml.div {}
-  for n, v in pairs (args) do   -- order of iternation doesn't matter since values are hidden from view
+  for n, v in pairs (args) do   -- order of iteration doesn't matter since values are hidden from view
     hidden[#hidden+1] = xhtml.input {name = n, value = v, hidden = 1}
   end
   return hidden

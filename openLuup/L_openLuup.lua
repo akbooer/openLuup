@@ -1,11 +1,12 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2022.11.07b",
+  VERSION       = "2022.11.11",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
-  FORUM         = "https://smarthome.community",
+  FORUM         = "https://smarthome.community/",
+  DONATE        = "https://www.justgiving.com/DataYours/",
   DEBUG         = false,
   LICENSE       = [[
   Copyright 2013-2022 AK Booer
