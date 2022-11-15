@@ -1,4 +1,4 @@
-local VERSION = "2022.11.14"
+local VERSION = "2022.11.15"
 
 -- mimetypes
 -- 2016/04/14
@@ -238,8 +238,10 @@ local cache_rules = {
     ["*.*.Configured"] = 0, 
     ["*.*.CommFailure"] = 0,
   -- reduce frequent (typically every 30s) measurements for Shellies
-    ["*.*.energy"] = 10,
-    ["*.*.power"] = 10,
+    ["*.*.relay/0/energy"] = 10,
+    ["*.*.relay/1/energy"] = 10,
+    ["*.*.relay/0/power"] = 10,
+    ["*.*.relay/1/power"] = 10,
     ["*.*.voltage"] = 10,
     ["*.*.temperature"] = 10,
     ["*.*.temperature_f"] = 10,
