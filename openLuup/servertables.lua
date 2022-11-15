@@ -1,4 +1,4 @@
-local VERSION = "2022.11.05"
+local VERSION = "2022.11.14"
 
 -- mimetypes
 -- 2016/04/14
@@ -36,6 +36,8 @@ local VERSION = "2022.11.05"
 -- 2021.05.18  add cache _rules for historian in-memory cache
 
 -- 2022.10.24  add Historian rules for Shelly H&T T/H max/min
+-- 2022.11.14  change cache_rules to define variable cache length
+
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
 
@@ -226,14 +228,22 @@ local cache_control = {                 -- 2019.05.14  max-age in seconds indexe
 --
 -- pattern: matches deviceNo.shortServiceId.variable
 -- NB: device ignored, and FULL shortSID OR VARIABLE name only
+-- NB: these are NOT wildcards, only *.*.VVV or *.SSS.* are valid, with V overriding S if conflict
 
 local cache_rules = {
   -- services to OMIT from cache
-    "*.ZWaveDevice1.*", 
-    "*.ZWaveNetwork1.*",
+    ["*.ZWaveDevice1.*"] = 0, 
+    ["*.ZWaveNetwork1.*"] = 0,
   -- variables ditto
-    "*.*.Configured", 
-    "*.*.CommFailure",
+    ["*.*.Configured"] = 0, 
+    ["*.*.CommFailure"] = 0,
+  -- reduce frequent measurements for Shellies
+    ["*.*.voltage"] = 10,
+    ["*.*.temperature"] = 10,
+    ["*.*.temperature_f"] = 10,
+  -- special lengths for Shelly H&T measurements
+    ["*.*.MinTemp"] = 5,        -- short, so daily minimum comes from archive
+    ["*.*.MaxTemp"] = 5,
   }
   
 -- Data Historian Disk Archive rules

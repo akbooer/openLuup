@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2022.09.03",
+  VERSION       = "2022.11.15",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -64,6 +64,7 @@ local ABOUT = {
 -- 2021.05.18  get ignoreServiceHistory and ignoreVariableHistory from servertables.cache_rules 
 
 -- 2022.09.03  add user-defined override function to variable set
+-- 2022.11.14  use new cache_rules to define variable cache length
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -220,16 +221,16 @@ local metahistory = {}
   
 -- 2021.05.18 get rules patterns from servertables and convert to lookups
 
-local ignoreServiceHistory = {}     -- these are the shortServiceIds for which we don't want history
-local ignoreVariableHistory = {}    -- ditto variable names (regardless of serviceId)
+local ServiceCacheSize = {}     -- these are the shortServiceIds for which we want specific cache sizes
+local VariableCacheSize = {}    -- ditto variable names (regardless of serviceId)
 
-for _, pattern in ipairs (tables.cache_rules) do
+for pattern, cache_size in pairs (tables.cache_rules) do
   local d,s,v = pattern: match "^([^%.]+)%.([^%.]+)%.([^%.]+)$"
   if d then
     if s ~= '*' then
-      ignoreServiceHistory[s] = d
+      ServiceCacheSize[s] = cache_size
     elseif v ~= '*' then
-      ignoreVariableHistory[v] = d
+      VariableCacheSize[v] = cache_size
     end
   end
 end
@@ -245,7 +246,9 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
   
   local history                                   -- 2019.04.18
   local shortSid  = serviceId: match "[^:]+$" or serviceId
-  if not (ignoreServiceHistory[shortSid] or ignoreVariableHistory[name]) then history = {} end
+  
+  local hicache = VariableCacheSize[name] or ServiceCacheSize[shortSid]     -- specified size (or nil for default)
+  if hicache ~= 0 then history = {} end                                     -- cache if required
   
   new_userdata_dataversion ()                     -- say structure has changed
 
@@ -268,7 +271,7 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       -- history
       history   = history,                        -- set to nil to disable history
       hipoint   = 0,                              -- circular buffer pointer managed by variable_set()
-      hicache   = nil,                            -- local cache size, overriding global CacheSize
+      hicache   = hicache,                        -- local cache size, overriding global CacheSize
       -- methods
       set       = variable.set,
     }, 
