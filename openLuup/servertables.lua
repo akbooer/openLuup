@@ -237,12 +237,14 @@ local cache_rules = {
   -- variables ditto
     ["*.*.Configured"] = 0, 
     ["*.*.CommFailure"] = 0,
-  -- reduce frequent measurements for Shellies
+  -- reduce frequent (typically every 30s) measurements for Shellies
+    ["*.*.energy"] = 10,
+    ["*.*.power"] = 10,
     ["*.*.voltage"] = 10,
     ["*.*.temperature"] = 10,
     ["*.*.temperature_f"] = 10,
   -- special lengths for Shelly H&T measurements
-    ["*.*.MinTemp"] = 5,        -- short, so daily minimum comes from archive
+    ["*.*.MinTemp"] = 5,        -- short, so daily minimum graph comes from archive
     ["*.*.MaxTemp"] = 5,
   }
   

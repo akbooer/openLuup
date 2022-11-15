@@ -126,6 +126,7 @@ local json      = require "openLuup.json"         -- for console_menus.json
 local panels    = require "openLuup.panels"       -- for default console device panels
 local xml       = require "openLuup.xml"          -- for HTML constructors
 local tables    = require "openLuup.servertables" -- for serviceIds
+local devices   = require "openLuup.devices"      -- for cache size
 
 json = json.Lua         -- 2021.05.01  force native openLuup.json module for encode/decode
 
@@ -1752,13 +1753,18 @@ pages.rules = function ()
     end
   end
   local t2 = xhtml.table {class = "w3-small"}
-  t2.header {"#", "pattern"}
-  for j, p in ipairs (tables.cache_rules) do
-    t2.row {j, p}
+  t2.header {"#", "*.shortSID.* or *.*.Variable", "cache size"}
+  local c = { {"OTHERWISE", devices.get_cache_size()} }
+  for p, n in pairs (tables.cache_rules) do
+    c[#c+1] = {p, n}
+  end
+  table.sort (c, function(a,b) return a[2]<b[2] or a[2]==b[2] and a[1]<b[1] end)  -- by size then name
+  for k, r in ipairs(c) do 
+    t2.row {k, r[1], r[2]}
   end
   return page_wrapper ("Historian Cache and Archive Rules", 
     X.Panel {
-      X.Subtitle "Cache – IGNORE these services or variables", t2 ,
+      X.Subtitle "Cache – sizes for specific services or variables", t2 ,
       xhtml.br {},
       X.Subtitle "Archives – first matching rule applies", t })
 end

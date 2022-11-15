@@ -676,6 +676,7 @@ return {
   publish_variable_updates  = publish_variable_updates,
 
   set_cache_size  = function(s) CacheSize = s end,
+  get_cache_size  = function(s) return CacheSize end,
   
 }
 
