@@ -1,9 +1,9 @@
 local ABOUT = {
   NAME          = "openLuup.whisper",
-  VERSION       = "2018.07.23",
+  VERSION       = "2022.11.05",
   DESCRIPTION   = "openLuup Whisper time-series databasa",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2018 AKBooer",
+  COPYRIGHT     = "(c) 2013-2012 AKBooer",
   DOCUMENTATION = "http://graphite.readthedocs.io/en/latest/whisper.html",
   DEBUG         = false,
   LICENSE       = [[
@@ -12,8 +12,6 @@ local ABOUT = {
   
   This is a derivative work from the original sourcecode written in the Python language described below,
   although now extensively refactored to add a more object-oriented approach and Lua specifics.
-  
-  Copyright 2013-2018 AK Booer
 
   ---Whisper---
 
@@ -43,6 +41,7 @@ local ABOUT = {
     
   -- 2014.07.31  Lua translation and refactoring  @akbooer
   -- 2018.07.23  add update_many() with a rather inefficient implementation
+  -- 2022.11.05  tidy WhisperException for error reporting
   
 
   local  CACHE_HEADERS           = true;     -- improves file access performance for read and write
@@ -147,8 +146,8 @@ local ABOUT = {
   local archiveInfoFormat = "!3L"
   local archiveInfoSize = struct.calcsize(archiveInfoFormat)
 
-  local function WhisperException(Exception) 
-    error(Exception, 2) end    --  Base class for whisper exceptions.
+  local function WhisperException(Exception, level) 
+    error(Exception, level or 3) end    --  Base class for whisper exceptions.
 
   --
   -- __ipairs(), iterator function returning count (n) and single value/time pair (v,t) sequentially over given range
@@ -197,7 +196,7 @@ local ABOUT = {
     local function min (Xs) local M = Xs[1]; for i = 2,#Xs do M = math.min (M, Xs[i]) end; return M end
     local function avg (Xs) return sum(Xs) / #Xs end
     local function last(Xs) return Xs[#Xs] end
-    local function err ()   WhisperException ("Unrecognized aggregation method %s", aggregationMethod) end
+    local function err ()   WhisperException ("Unrecognized aggregation method: " .. tostring(aggregationMethod)) end
     local method = {average = avg, sum = sum, last = last, max = max, min = min}
     return (method[aggregationMethod] or err) (knownValues)
   end
@@ -226,7 +225,7 @@ local ABOUT = {
     --  Returns True or raises error exception
     
       if not archiveList or #archiveList < 1 then
-        WhisperException("You must specify at least one archive configuration!") end
+        WhisperException("You must specify at least one archive configuration!", 5) end
     
       table.sort (archiveList, function(a,b) return a[1] < b[1] end) -- #sort by precision (secondsPerPoint)
     
@@ -237,12 +236,14 @@ local ABOUT = {
         local nextArchive = archiveList[i+1]
         if not (archive[1] < nextArchive[1]) then
           WhisperException( ("A Whisper database may not be configured having " ..
-            "two archives with the same precision (archive%d: %s, archive%d: %s)"): format (i, archive[1], i + 1, nextArchive[1])) end
+            "two archives with the same precision (archive%d: %s, archive%d: %s)"): 
+              format (i, archive[1], i + 1, nextArchive[1]), 5) end
     
         if nextArchive[1] % archive[1] ~= 0 then
           WhisperException( ("Higher precision archives' precision "..
             "must evenly divide all lower precision archives' precision "..
-            "(archive%d: %s, archive%d: %s)"): format (i, archive[1], i + 1, nextArchive[1])) end
+            "(archive%d: %s, archive%d: %s)"): 
+              format (i, archive[1], i + 1, nextArchive[1]), 5) end
     
         local retention = archive[1] * archive[2]
         local nextRetention = nextArchive[1] * nextArchive[2]
@@ -250,14 +251,16 @@ local ABOUT = {
         if not (nextRetention > retention) then
           WhisperException( ("Lower precision archives must cover "..
             "larger time intervals than higher precision archives "..
-            "(archive%d: %s seconds, archive%d: %s seconds)"): format (i, retention, i + 1, nextRetention)) end
+            "(archive%d: %s seconds, archive%d: %s seconds)"): 
+              format (i, retention, i + 1, nextRetention), 5) end
         
         local archivePoints = archive[2]
         local pointsPerConsolidation = nextArchive[1] / archive[1]
         if not (archivePoints >= pointsPerConsolidation) then
           WhisperException( ("Each archive must have at least enough points "..
             "to consolidate to the next archive (archive%d consolidates %d of "..
-            "archive%d's points but it has only %d total points)"): format (i + 1, pointsPerConsolidation, i, archivePoints)) end
+            "archive%d's points but it has only %d total points)"): 
+              format (i + 1, pointsPerConsolidation, i, archivePoints), 5) end
       end
       return true
     end

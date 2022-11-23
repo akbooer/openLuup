@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2021.06.14",
+  VERSION       = "2022.11.07",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -72,6 +72,8 @@ local ABOUT = {
 -- 2021.05.06  move require() proxy to openLuup.loader
 -- 2021.05.21  add config.MQTT.Carbon for Graphite database MQTT stats
 -- 2021.06.21  add config.Tasmota
+
+-- 2022.11.07  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.12.5/ace.js
 
 
 local logs  = require "openLuup.logs"
@@ -159,7 +161,7 @@ do -- set attributes, possibly decoding if required
     },
     Console = {
       Menu = "",           -- add user-defined menu JSON definition file here
-      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js",
+      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.12.5/ace.js",
       EditorTheme = "eclipse",
     },
     DataStorageProvider = {

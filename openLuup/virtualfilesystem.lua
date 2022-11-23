@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2021.05.06",
+  VERSION       = "2021.08.12",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -504,8 +504,8 @@ local D_VeraBridge_dev  = Device {
         manufacturer    = "akbooer",
         handleChildren  = "1",
         staticJson      = "D_VeraBridge.json",
---        serviceList     = { {"urn:akbooer-com:service:VeraBridge:1", SID.VeraBridge, "S_VeraBridge.xml"} },
-        serviceIds      = { SID.VeraBridge },
+        serviceList     = { {"urn:akbooer-com:service:VeraBridge:1", SID.VeraBridge, "S_VeraBridge.xml"} },
+--        serviceIds      = { SID.VeraBridge },
         implementationList = {"I_VeraBridge.xml"}}
 
 local D_VeraBridge_json = json.encode {

@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2021.03.17c",
+  VERSION       = "2022.11.11",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -48,26 +48,36 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2021.03.05  generic Shelly control panel
 -- 2021.03.17  generic sensor device (for @ArcherS)
 
+-- 2022.06.20  fix non-string argument in todate()  (thanks @a-lurker)
+-- 2022.06.30  ...another go at the above fix
+-- 2022.07.31  add ShellyHomePage to Shelly scene controllers
+-- 2022.11.11  prettier openLuup device control panel
+
 
 local xml = require "openLuup.xml"
+local SID = require "openLuup.servertables" .SID
 
 local h = xml.createHTMLDocument ()    -- for factory methods
 local div = h.div
-local p = h.p
-
-local sid = {
+local a, p = h.a, h.p
+    
+local sid = SID {
     althue    = "urn:upnp-org:serviceId:althue1",
-    altui     = "urn:upnp-org:serviceId:altui1",
     camera    = "urn:micasaverde-com:serviceId:Camera1",
-    energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
-    generic   = "urn:micasaverde-com:serviceId:GenericSensor1",
     netatmo   = "urn:akbooer-com:serviceId:Netatmo1",
-    scene     = "urn:micasaverde-com:serviceId:SceneController1",
     security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
     weather   = "urn:upnp-micasaverde-com:serviceId:Weather1",
   }
   
-local function todate (epoch) return os.date ("%Y-%m-%d %H:%M:%S", epoch) end
+local function todate (epoch) 
+  return tonumber(epoch) and os.date ("%Y-%m-%d %H:%M:%S", epoch) or "---  00:00"
+end
+
+local function ShellyHomePage (devNo)  
+  local ip = luup.attr_get ("ip", devNo) or ''
+  local src = table.concat {"http://", ip}
+  return div {class = "w3-panel", h.iframe {src = src, width="500", height="300"}}
+end
 
 local panels = {
 
@@ -76,14 +86,18 @@ local panels = {
 --
   openLuup = {
     control = function(devNo) 
-      local forum = luup.devices[devNo].environment.ABOUT.FORUM
-      return [[
-      <div>
-        <p><a class="w3-text-blue" href="https://smarthome.community" target="_blank">
-          smarthome.community - an independent place for smart home users to share experience</a></p>
-        <p><a class="w3-text-blue" href="https://www.justgiving.com/DataYours/" target="_blank">
-          If you like openLuup, you could DONATE to Cancer Research UK right here</a></p>
-        <p>...or from the link in the page footer below</p></div>]]
+      local about = luup.devices[devNo].environment.ABOUT
+      local forum = about.FORUM
+      local donate = about.DONATE
+      return div {
+        div { 
+          a {class = "w3-round-large w3-dark-gray w3-button w3-margin", href=forum, target="_blank", 
+            h.img {alt="SmartHome Community", width=300, src= forum.."assets/uploads/system/site-logo.png?"}}},
+        div { 
+          a {class = "w3-round-large w3-white w3-button w3-margin w3-border", href=donate, target="_blank", 
+            h.img {alt="Donate to Cancer Research", width=300, 
+              src= "https://www.cancerresearchuk.org/sites/all/themes/custom/cruk/cruk-logo.svg"}}},
+        }
     end},
 
 --
@@ -115,6 +129,7 @@ local panels = {
       local src = table.concat {"http://", ip, stream}
       return div {class = "w3-panel", h.iframe {src = src, width="300", height="200"}}
   end},
+
 --
 -- Motion Sensor
 --
@@ -163,19 +178,16 @@ local panels = {
 --      return h.span (time and todate(time) or '')
       return div {class = "w3-tiny w3-display-bottomright", time and todate(time) or "---  00:00"}
     end,
-    control = function ()
-      return "<p>Scene Controller displays</p>"
+    control = function (devNo)
+      local isShelly = luup.devices[devNo].id: match "^shelly"
+      return isShelly and ShellyHomePage (devNo) or "<p>Scene Controller</p>"
     end},
     
 --
 -- Shellies
 --
   GenericShellyDevice = {
-    control = function (devNo)  
-      local ip = luup.attr_get ("ip", devNo) or ''
-      local src = table.concat {"http://", ip}
-      return div {class = "w3-panel", h.iframe {src = src, width="500", height="300"}}
-    end,
+    control = ShellyHomePage,
   },
   
 --

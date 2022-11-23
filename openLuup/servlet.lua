@@ -27,7 +27,7 @@ local ABOUT = {
 
 This module is the interface between the HTTP port 3480 server and the handlers which implement the requests.
 
-Requests are of three basic types:
+Requests are of four basic types:
   - data_request?id=...             Luup-style system requests (both system lu_xxx, and user-defined lr_xxx)
   - Lua WSAPI CGIs                  enumerated in the cgi_prefix section of the servertables.lua file
   - openLuup Shelly-like requests   relay / scene / status /...

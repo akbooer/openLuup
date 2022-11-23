@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2020.03.26",
+  VERSION       = "2022.08.14",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2020 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2020 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -46,6 +46,8 @@ Many people have contributed to finding and fixing bugs over the years, in parti
 --   see: https://community.getvera.com/t/expose-http-client-sockets-to-luup-plugins-requests-lua-namespace/211263
 
 -- 2020.03.20   make module fully reentrant to allow multiple servers (on different ports)
+
+-- 2022.08.14   fix error message for unknown request type (thanks @Donato)
 
 
 local url       = require "socket.url"
@@ -235,7 +237,7 @@ local function receive (client)
   local method, request_URI, http_version = line: match "^(%u+)%s+(.-)%s+(HTTP/%d%.%d)%s*$"
   
   if not (method == "GET" or method == "POST") then
-    err = "Unsupported HTTP request:" .. method
+    err = "Unsupported HTTP request:" .. (method or 'unknown type')
     return nil, err
   end
   

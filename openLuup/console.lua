@@ -4,13 +4,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2021.06.22",
+  VERSION       = "2022.11.06",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-21 AK Booer
+  Copyright 2013-22 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -97,6 +97,10 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2021.05.02  add pseudo-service 'attributes' for consistent virtual access, and serviceId/shortSid to device object
 -- 2021.05.12  add pages.rules for Historian archives, and interval buttons on Graphics page
 -- 2021.06.22  change cache page clear icons to trash, and move to last column (thanks @a-lurker)
+-- 2021.11.03  changed backup history download link to .lzap from .json (thanks @a-lurker)
+
+-- 2022.07.13  fix +Create variable functionality (thanks @Donato)
+-- 2022.11.06  make 'main' the default update repository for MetOffice_DataPoint plugin (no thanks to GitHub!)
 
 
 --  WSAPI Lua CGI implementation
@@ -122,6 +126,7 @@ local json      = require "openLuup.json"         -- for console_menus.json
 local panels    = require "openLuup.panels"       -- for default console device panels
 local xml       = require "openLuup.xml"          -- for HTML constructors
 local tables    = require "openLuup.servertables" -- for serviceIds
+local devices   = require "openLuup.devices"      -- for cache size
 
 json = json.Lua         -- 2021.05.01  force native openLuup.json module for encode/decode
 
@@ -459,7 +464,7 @@ end
 --     so handles multiple items {a=one, b=two, ...}
 function X.Hidden (args)
   local hidden = xhtml.div {}
-  for n, v in pairs (args) do   -- order of iternation doesn't matter since values are hidden from view
+  for n, v in pairs (args) do   -- order of iteration doesn't matter since values are hidden from view
     hidden[#hidden+1] = xhtml.input {name = n, value = v, hidden = 1}
   end
   return hidden
@@ -789,9 +794,12 @@ end
 
 -- action=update_plugin&plugin=openLuup&update=version
 function actions.update_plugin (_, req)
+  local default_repository = {
+      MetOffice_DataPoint = "main",     -- GitHub changed the default repository name
+    }
   local q = req.params
   local v = q.version
-  v = (#v > 0) and v or "master"
+  v = (#v > 0) and v or default_repository[q.plugin] or "master"
   requests.update_plugin ('', {Plugin=q.plugin, Version=v})
   -- actual update is asynchronous, so return is not useful
 end
@@ -1136,7 +1144,8 @@ function pages.backups ()
   for _,f in ipairs (files) do 
     local hyperlink = xhtml.a {
       href = "cgi-bin/cmh/backup.sh?retrieve="..f.name, 
-      download = f.name: gsub (".lzap$",'') .. ".json",
+--      download = f.name: gsub (".lzap$",'') .. ".json",
+      download = f.name,    -- 2021.11.03  Thanks @a-lurker
       f.name}
     data[#data+1] = {f.date, f.size, hyperlink} 
   end
@@ -1744,13 +1753,18 @@ pages.rules = function ()
     end
   end
   local t2 = xhtml.table {class = "w3-small"}
-  t2.header {"#", "pattern"}
-  for j, p in ipairs (tables.cache_rules) do
-    t2.row {j, p}
+  t2.header {"#", "*.shortSID.* or *.*.Variable", "cache size"}
+  local c = { {"OTHERWISE", devices.get_cache_size()} }
+  for p, n in pairs (tables.cache_rules) do
+    c[#c+1] = {p, n}
+  end
+  table.sort (c, function(a,b) return a[2]<b[2] or a[2]==b[2] and a[1]<b[1] end)  -- by size then name
+  for k, r in ipairs(c) do 
+    t2.row {k, r[1], r[2]}
   end
   return page_wrapper ("Historian Cache and Archive Rules", 
     X.Panel {
-      X.Subtitle "Cache – IGNORE these services or variables", t2 ,
+      X.Subtitle "Cache – sizes for specific services or variables", t2 ,
       xhtml.br {},
       X.Subtitle "Archives – first matching rule applies", t })
 end
@@ -1994,6 +2008,7 @@ function pages.create_variable ()
     service_list[#service_list+1] = xhtml.option {value=svc}
   end
   local form = X.Form {class = "w3-container w3-form w3-third", 
+    xhtml.input {type="hidden", name="page", value = "variables"},    -- 2022.07.13  post to variables page
     xhtml.label {"Variable name"},
     xhtml.input {class=class, type="text", name="name", autocomplete="off", },
     xhtml.label {"ServiceId"},

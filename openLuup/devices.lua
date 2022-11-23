@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2021.05.18",
+  VERSION       = "2022.11.15",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -62,6 +62,9 @@ local ABOUT = {
 -- 2021.04.07  correct MQTT published variable value
 -- 2021.04.30  device.find() moved here from openLuup.api
 -- 2021.05.18  get ignoreServiceHistory and ignoreVariableHistory from servertables.cache_rules 
+
+-- 2022.09.03  add user-defined override function to variable set
+-- 2022.11.14  use new cache_rules to define variable cache length
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -218,16 +221,16 @@ local metahistory = {}
   
 -- 2021.05.18 get rules patterns from servertables and convert to lookups
 
-local ignoreServiceHistory = {}     -- these are the shortServiceIds for which we don't want history
-local ignoreVariableHistory = {}    -- ditto variable names (regardless of serviceId)
+local ServiceCacheSize = {}     -- these are the shortServiceIds for which we want specific cache sizes
+local VariableCacheSize = {}    -- ditto variable names (regardless of serviceId)
 
-for _, pattern in ipairs (tables.cache_rules) do
+for pattern, cache_size in pairs (tables.cache_rules) do
   local d,s,v = pattern: match "^([^%.]+)%.([^%.]+)%.([^%.]+)$"
   if d then
     if s ~= '*' then
-      ignoreServiceHistory[s] = d
+      ServiceCacheSize[s] = cache_size
     elseif v ~= '*' then
-      ignoreVariableHistory[v] = d
+      VariableCacheSize[v] = cache_size
     end
   end
 end
@@ -243,7 +246,9 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
   
   local history                                   -- 2019.04.18
   local shortSid  = serviceId: match "[^:]+$" or serviceId
-  if not (ignoreServiceHistory[shortSid] or ignoreVariableHistory[name]) then history = {} end
+  
+  local hicache = VariableCacheSize[name] or ServiceCacheSize[shortSid]     -- specified size (or nil for default)
+  if hicache ~= 0 then history = {} end                                     -- cache if required
   
   new_userdata_dataversion ()                     -- say structure has changed
 
@@ -261,11 +266,12 @@ function variable.new (name, serviceId, devNo)    -- factory for new variables
       shortSid  = shortSid,
       silent    = nil,                            -- set to true to mute logging
       mqtt      = true,                           -- set to false to disable MQTT updates
+      userdef   = nil,                            -- 2022.09.03 user-defined function
       watchers  = {},                             -- callback hooks
       -- history
       history   = history,                        -- set to nil to disable history
       hipoint   = 0,                              -- circular buffer pointer managed by variable_set()
-      hicache   = nil,                            -- local cache size, overriding global CacheSize
+      hicache   = hicache,                        -- local cache size, overriding global CacheSize
       -- methods
       set       = variable.set,
     }, 
@@ -276,6 +282,8 @@ end
  
 function variable:set (value)
   local t = scheduler.timenow()                   -- time to millisecond resolution
+  local fct = self.userdef
+  value = fct and fct(value, self) or value       -- user-defined override
   value = tostring(value or '')                   -- all device variables are strings
   
   -- 2021.03.09, 2021.04.07 instant status updates over MQTT
@@ -668,6 +676,7 @@ return {
   publish_variable_updates  = publish_variable_updates,
 
   set_cache_size  = function(s) CacheSize = s end,
+  get_cache_size  = function(s) return CacheSize end,
   
 }
 

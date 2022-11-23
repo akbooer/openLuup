@@ -2,13 +2,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2021.06.22",
+  VERSION       = "2022.11.15",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2020-2021 AKBooer",
+  COPYRIGHT     = "(c) 2020-2022 AKBooer",
   DOCUMENTATION = "",
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -38,6 +38,14 @@ ABOUT = {
 -- 2021.05.02  check for non-existent device (pre-announcement)
 -- 2021.05.10  add missing bridge_utilities.SID, "Remote_ID"
 -- 2021.06.21  add child H&T devices for Shelly H&T
+-- 2021.10.21  add Dimmer2 (thanks @ArcherS)
+-- 2021.11.02  Dimmer2 improvements
+-- 2021.11.08  Dimmer2 slider status and control
+
+-- 2022.10.24  add Max/Min Temp for H&T child sensors (implemented through Historian database aggregation)
+-- 2022.11.01  reduce Max/Min Temp cache size to under a day (hopefully)
+-- 2022.11.07  add H & T variables to H&T parent device (for display)
+-- 2022.11.15  remove hack for H & T cache size (now handled by servertables.cache_rules)
 
 
 local json      = require "openLuup.json"
@@ -69,12 +77,14 @@ local devNo             -- bridge device number (set on startup)
 
 local function SetTarget (dno, args)
   local id = luup.attr_get ("altid", dno)
+  local dfile = luup.attr_get ("device_file", dno)
+  local dtype = dfile == DEV.dimmer and "light" or "relay"
   local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
   if shelly then
     local val = tostring(tonumber (args.newTargetValue) or 0)
     VIRTUAL[dno].switch.Target = val
     local on_off = val == '1' and "on" or "off"
-    shelly = table.concat {"shellies/", shelly, '/relay/', relay, "/command"}
+    shelly = table.concat {"shellies/", shelly, '/', dtype, '/', relay, "/command"}
     openLuup.mqtt.publish (shelly, on_off)
   else 
     return false
@@ -84,6 +94,24 @@ end
 local function ToggleState (dno)
   local val = VIRTUAL[dno].switch.Status
   SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
+end
+
+local function SetLoadLevelTarget (dno, args)
+  local id = luup.attr_get ("altid", dno)
+  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
+  if shelly then
+    local val_n = tonumber (args.newLoadlevelTarget) or 0
+    local val = tostring(val_n)
+    VIRTUAL[dno].dimming.LoadLevelTarget = val
+    -- shellies/shellydimmer-<deviceid>/light/0/set 	
+    -- accepts a JSON payload in the format 
+    -- {"brightness": 100, "turn": "on", "transition": 500}
+    shelly = table.concat {"shellies/", shelly, '/light/', relay, "/set"}
+    local command = json.encode {brightness = val_n}
+    openLuup.mqtt.publish (shelly, command)
+  else 
+    return false
+  end
 end
 
 local function generic_action (serviceId, action)
@@ -96,6 +124,7 @@ local function generic_action (serviceId, action)
   local SRV = {
       [SID.switch]    = {SetTarget = SetTarget},
       [SID.hadevice]  = {ToggleState = ToggleState},
+      [SID.dimming]   = {SetLoadLevelTarget = SetLoadLevelTarget},
     }
   
   local service = SRV[serviceId] or {}
@@ -212,14 +241,53 @@ local function h_t (dno, var, value)
   local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
   if cdno then
     local D = VIRTUAL[cdno]
+    local P = VIRTUAL[dno]                -- parent device
     if mtype == 't' then
+      P.temp.CurrentTemperature = value
       D.temp.CurrentTemperature = value
+      D.temp.MinTemp = value              -- implemented through Historian database aggregation
+      D.temp.MaxTemp = value              -- ditto
     elseif mtype == 'h' then
+      P.humid.CurrentLevel = value
       D.humid.CurrentLevel = value
     end
   end
 
 end
+
+-- Dimmer 2
+--
+local function dm_2 (dno, var, value)
+  local action, child, attr = var: match "^(%a+)/(%d)/?(.*)"
+  if child then
+    local altid = luup.attr_get ("altid", dno)
+    local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
+    if cdno then
+      local D = VIRTUAL[cdno]
+      if action == "light" then
+        if attr == '' then
+          D.switch.Status = value == "on" and '1' or '0'
+        elseif attr == "power" then
+          D.energy.Watts = value
+        elseif attr == "energy" then
+          D.energy.KWH = math.floor (value / 60) / 1000   -- convert Wmin to kWh
+        elseif attr == "status" then
+          -- {"ison":false,"source":"input","has_timer":false,"timer_started":0,    
+          --  "timer_duration":0,"timer_remaining":0,"mode":"white","brightness":48,"transition":0}
+          local status = json.decode (value)
+          if type (status) == "table" then
+            if status.brightness then
+              D.dimming.LoadLevelStatus = status.brightness
+            end
+          end
+        end
+      elseif action == "input" then
+          -- possibly set the input as a security/tamper switch
+      end
+    end
+  end
+end
+
 
 ----------------------
 
@@ -244,6 +312,7 @@ local models = setmetatable (
     ["SHPLG-S"]   = model_info (DEV.shelly, sw2_5, {DEV.light}),
     ["SHPLG2-1"]  = model_info (DEV.shelly, sw2_5, {DEV.light}),
     ["SHHT-1"]    = model_info (DEV.shelly, h_t,   {DEV.temperature, DEV.humidity}),
+    ["SHDM-2"]    = model_info (DEV.shelly, dm_2,  {DEV.dimmer}),
   },{
     __index = function () return unknown_model end
   })
@@ -362,6 +431,8 @@ function _G.Shelly_MQTT_Handler (topic, message)
   
   local shellies = topic: match "^shellies/(.+)"
   if not shellies then return end
+  
+--  print (os.date "%X  ", "***Topic:", topic)
   
   devNo = devNo       -- ensure that ShellyBridge device exists
             or
