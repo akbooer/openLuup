@@ -225,6 +225,9 @@ do -- set attributes, possibly decoding if required
       Prefix = "tele, tasmota/tele, stat",
       Topic  = "SENSOR, STATE, RESULT, LWT",
     },
+    Zigbee = {
+      Prefix = "zigbee2mqtt",
+    },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
   local attr = string.char(unpack (attrs))
@@ -331,8 +334,13 @@ do --	 SERVERs and SCHEDULER
   if config.MQTT then 
     -- 2021.02.01  start the Shelly and Tasmota bridges BEFORE MQTT server (so Shelly catches ANNOUNCE)
     require "openLuup.L_ShellyBridge"
+    
     local tasmota = require "openLuup.L_TasmotaBridge"
     tasmota.start (config.Tasmota)
+    
+    local zigbee = require "openLuup.L_Zigbee2MQTTBridge"
+    zigbee.start (config.Zigbee)
+    
     mqtt.start (config.MQTT) 
     
     if config.MQTT.PublishVariableUpdates == "true" then

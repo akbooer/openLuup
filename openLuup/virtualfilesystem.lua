@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2021.08.12",
+  VERSION       = "2022.11.27",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -775,6 +775,58 @@ local D_GenericTasmotaDevice_json = json.encode {
 
 -----
 
+-----
+--
+-- Zigbee2MQTT support
+--
+
+local D_Zigbee2MQTTBridge_xml = Device {
+        deviceType   = "Zigbee2MQTTBridge",
+        Category_Num = "1",
+        friendlyName = "Zigbee2MQTT Bridge",
+        manufacturer = "akbooer",
+        handleChildren  = "1",
+        staticJson   = "D_Zigbee2MQTTBridge.json",
+--        serviceList     = { 
+--          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+        serviceIds      = { SID.openLuupBridge },
+        implementationList = {"I_TasmotaBridge.xml"}
+      }
+
+
+local D_Zigbee2MQTTBridge_json = json.encode {
+    default_icon = "https://raw.githubusercontent.com/zigbee2mqtt/hassio-zigbee2mqtt/master/zigbee2mqtt/icon.png",
+    DeviceType = "Zigbee2MQTTBridge",
+  }
+
+local I_Zigbee2MQTTBridge_impl do
+  local x = xml.createDocument ()
+    x: appendChild {
+      x.implementation {
+        x.functions [[
+          local M = require "openLuup.L_Zigbee2MQTTBridge"
+          init = M.init
+        ]],
+        x.startup "init",
+        x.actionList {}
+        }}
+  I_Zigbee2MQTTBridge_impl = tostring(x)
+end
+
+
+local D_GenericZigbeeDevice_xml = Device {
+        deviceType   = "GenericZigbeeDevice",
+        staticJson   = "D_GenericZigbeeDevice.json",
+      }
+
+local D_GenericZigbeeDevice_json = json.encode {
+--        default_icon = "https://cdn6.aptoide.com/imgs/6/a/c/6acc4942157e022670fa153739730cf9_icon.png",
+--        default_icon = "https://pbs.twimg.com/profile_images/1317058087929450505/Vw2yKX4S.jpg",
+        DeviceType = "GenericZigbeeDevice",
+      }
+
+-----
+
 -- Built-in device and service files
 
 local D_BinaryLight1_xml do
@@ -1428,6 +1480,13 @@ local manifest = {
     
     ["D_GenericTasmotaDevice.xml"]  = D_GenericTasmotaDevice_xml,
     ["D_GenericTasmotaDevice.json"] = D_GenericTasmotaDevice_json,
+    
+    ["D_Zigbee2MQTTBridge.xml"]  = D_Zigbee2MQTTBridge_xml,
+    ["D_Zigbee2MQTTBridge.json"] = D_Zigbee2MQTTBridge_json,
+    ["I_Zigbee2MQTTBridge.xml"]  = I_Zigbee2MQTTBridge_impl,
+    
+    ["D_GenericZigbeeDevice.xml"]  = D_GenericZigbeeDevice_xml,
+    ["D_GenericZigbeeDevice.json"] = D_GenericZigbeeDevice_json,
     
     ["built-in/altui_console_menus.json"]   = altui_console_menus_json,
     ["built-in/openLuup_menus.json"]   = openLuup_menus_json,

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2022.11.11",
+  VERSION       = "2022.11.27",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -52,6 +52,7 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2022.06.30  ...another go at the above fix
 -- 2022.07.31  add ShellyHomePage to Shelly scene controllers
 -- 2022.11.11  prettier openLuup device control panel
+-- 2022.11.27  add basic support for Zigbee2MQTT bridge
 
 
 local xml = require "openLuup.xml"
@@ -189,6 +190,14 @@ local panels = {
   GenericShellyDevice = {
     control = ShellyHomePage,
   },
+  
+    
+--
+-- Zigbee2MQTT
+--
+--  GenericZigbeeDevice = {
+--    icon = "Z",
+--  },
   
 --
 -- Generic Sensor
