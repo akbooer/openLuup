@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2021.06.14",
+  VERSION       = "2022.11.28",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -30,8 +30,8 @@ ABOUT = {
 
 local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
-local chdev     = require "openLuup.chdev"            -- to create new bridge devices
-local tables    = require "openLuup.servertables"     -- for standard DEV and SID definitions
+local chdev     = require "openLuup.chdev"              -- to create new bridge devices
+local tables    = require "openLuup.servertables"       -- for standard DEV and SID definitions
 
 local DEV = tables.DEV {
     zigbee      = "D_GenericZigbeeDevice.xml",
@@ -42,15 +42,14 @@ local SID = tables.SID {
   }
 
 local openLuup = luup.openLuup
-local VIRTUAL = require "openLuup.api"
+local API = require "openLuup.api"
 
-local VALID = {}      -- valid topics (set at startup)
 
 --------------------------------------------------
 --
 -- Zigbee2MQTT Bridge - CONTROL
 --
--- this part runs as a standard device
+-- this part runs as a standard openLuup device
 -- it is a control API only (ie. action requests)
 --
 
@@ -82,45 +81,6 @@ local function _log (msg)
   luup.log (msg, "luup.zigbee2mqtt")
 end
 
-local function create_device(altid, name)
-  _log ("New Zigbee detected: " .. altid)
-  local room = luup.rooms.create "Zigbee"     -- create new device in Zigbee room
-
-  local offset = VIRTUAL[devNo][SID.Zigbee2MQTTBridge].Offset
-  local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
-  
---  local upnp_file = models[info.model].upnp
-  local upnp_file = DEV.zigbee
-  
-  local dev = chdev.create {
-    devNo = dno,
-    internal_id = altid,
-    description = name or altid,
-    upnp_file = upnp_file,
---    json_file = json_file,
-    parent = devNo,
-    room = room,
-    manufacturer = "could be anyone",
-  }
-  
-  dev.handle_children = true                -- ensure that any child devices are handled
-  luup.devices[dno] = dev                   -- add to Luup devices
-  
-  return dno
-end
-
-local function init_device (dev)
-  local friendly_name = dev.friendly_name
-  local ieee_address = dev.ieee_address
-  local dno = openLuup.find_device {altid = ieee_address} 
-                or 
-                  create_device (ieee_address, friendly_name)
-                  
-  luup.devices[dno].handle_children = true    -- ensure that it handles child requests
-  devices[ieee_address] = dno                 -- save the device number, indexed by id
-  return dno
-end
-
 -- the bridge is a standard Luup plugin
 local function create_Zigbee2MQTTBridge()
   local internal_id, ip, mac, hidden, invisible, parent, room, pluginnum 
@@ -142,44 +102,178 @@ end
 
 -----
 
+local function add_variables_to_service(Vs, S)
+  if type(Vs) == "table" then 
+    for name,value in pairs(Vs) do
+--      print (name, value)
+      if type(value) ~= "table" then
+        S[name] = value
+      end
+    end
+  end
+end
+
+local function init_device_variables (child, dev)
+
+  local DEV = API[child]
+  DEV.hadevice.LastUpdate = os.time()
+  add_variables_to_service(dev, DEV.properties)
+  
+  for srv,vars in pairs (dev) do
+    local S = DEV[srv]
+    add_variables_to_service (vars, S)
+  end
+
+  local definition = dev.definition
+  if type(definition) == "table" then
+    add_variables_to_service (definition, DEV.definition)
+    local exposes = definition.exposes
+    if type(exposes) == "table" then
+      local exposed = {}
+      for _, item in ipairs(exposes) do
+        exposed[item.name or '?'] = item.type
+      end 
+      add_variables_to_service (exposed, DEV.exposes)
+    end
+  end
+end
+
+-----
+
+
+local function infer_device_type (adev)
+  local upnp_file = DEV.zigbee
+  local exp = adev.exposes
+  if exp then
+    if exp.occupancy then
+      upnp_file = DEV.motion
+    elseif exp.light then
+      upnp_file = DEV.switch
+    elseif exp.switch then
+      upnp_file = DEV.scene
+    end
+  end
+  return upnp_file
+end
+
+
+local function create_device(adev)
+  local props = adev.properties
+  local friendly_name = props.friendly_name
+  local ieee_address = props.ieee_address
+  _log ("New Zigbee detected: " .. ieee_address)
+  
+  local room = luup.rooms.create "Zigbee"     -- create new Zigbee room, if necessary
+  local offset = API[devNo][SID.Zigbee2MQTTBridge].Offset
+  local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
+  local upnp_file = infer_device_type (adev)
+  
+  local dev = chdev.create {
+    devNo = dno,
+    internal_id = ieee_address,
+    description = friendly_name or ieee_address,
+    upnp_file = upnp_file,
+    json_file = nil,      -- may need this one day
+    parent = devNo,
+    room = room,
+    manufacturer = props.manufacturer or "could be anyone",
+  }
+  
+  dev.handle_children = true                -- ensure that any child devices are handled
+  luup.devices[dno] = dev                   -- add to Luup devices
+  
+  return dno
+end
+local function init_device (adev)
+  local dev = adev.properties
+  local ieee_address = dev.ieee_address
+  local dno = openLuup.find_device {altid = ieee_address} 
+                or 
+                  create_device (adev)
+                  
+  luup.devices[dno].handle_children = true    -- ensure that it handles child requests
+  devices[ieee_address] = dno                 -- save the device number, indexed by id
+  return dno
+end
+
+
+local function extract_scalar_variables(Vs)
+  local vars = {}
+  if type(Vs) == "table" then 
+    for name,value in pairs(Vs) do
+      if type(value) ~= "table" then
+        vars[name] = value
+      end
+    end
+  end
+  return vars
+end
+
+-- returns a table with serviceIds
+-- {properties=..., definition=..., exposes=...}
+-- along with their variables and values
+local function analyze_device (dev)
+
+  local adev = {}  
+  adev.properties = extract_scalar_variables (dev)        -- top level properties
+
+  local definition = dev.definition
+  if type(definition) == "table" then
+    adev.definition = extract_scalar_variables (definition)
+    local exposes = definition.exposes
+    if type(exposes) == "table" then
+      local exposed = {}
+      for _, item in ipairs(exposes) do
+        exposed[item.name or '?'] = item.type
+      end 
+      adev.exposes = exposed
+    end
+  end
+  return adev
+end
+
+
 local function create_devices(info)
   if type(info) ~= "table" then
     _log "bridge/devices payload is not valid JSON"
     return
   end
-
   for _, dev in ipairs(info) do
     if type(dev) == "table" then
+      
       local friendly_name = dev.friendly_name
       local ieee_address = dev.ieee_address
-      local zigbee = ieee_address
+
       if friendly_name and ieee_address then
-        local child = devices[ieee_address] or init_device (dev)
-      
-        local DEV = VIRTUAL[child]
-        DEV.hadevice.LastUpdate = os.time()
---        DEV[zigbee][prefix] = message
-        
-        for n,v in pairs (dev) do
-          if type (v) == "table" then
-            for a,b in pairs (v) do
-              if type (b) == "table" then
-                for c,d in pairs(b) do
-                  DEV[n][a .. '/' .. c] = d
-                end
-              else
-                DEV[n][a] = b
-              end
-            end
-          else
-            DEV[zigbee][n] = v
-          end
-        end
-      
+        local adev = analyze_device (dev)      -- all the services and variables
+        local child = devices[ieee_address] or init_device (adev)
+        init_device_variables (child, dev)
       end
     end
   end
 end
+
+-----
+
+local function ignore_topic (topic)
+  _log (table.concat ({"Topic ignored", topic}, " : "))
+end
+
+
+local function handle_bridge_topics (subtopic, message)
+  if subtopic: match "^devices" then
+    create_devices (message)
+  else
+    ignore_topic ("bridge/" .. subtopic)
+  end
+end
+
+local function handle_friendly_names (topic)
+  
+  ignore_topic (topic)
+ 
+end
+
 
 -----
 --
@@ -187,75 +281,38 @@ end
 --
 
 function _G.Zigbee2MQTT_Handler (topic, message, prefix)
-  
-  local zigbees = topic: match (table.concat {"^", prefix, "/(.+)"})
-  if not zigbees then return end
-  
+
+  topic = topic: match (table.concat {"^", prefix, "/(.+)"})
+  if not topic then return end
+
   devNo = devNo       -- ensure that Bridge device exists
-            or
-              openLuup.find_device {device_type = "Zigbee2MQTTBridge"}
-                or
-                  create_Zigbee2MQTTBridge ()
+    or
+      openLuup.find_device {device_type = "Zigbee2MQTTBridge"}
+        or
+          create_Zigbee2MQTTBridge ()
 
-  VIRTUAL[devNo][chdev.bridge.SID].Remote_ID = 716833     -- ensure ID for "Zigbee2MQTTBridge" exists
+  API[devNo][chdev.bridge.SID].Remote_ID = 716833     -- ensure ID for "Zigbee2MQTTBridge" exists
+  API[devNo].hadevice.LastUpdate = os.time()
 
-  local zigbee, mtype = zigbees: match "^(.-)/(.+)"
-  
-  if not (zigbee and VALID[mtype]) then 
-    _log (table.concat ({"Topic ignored", topic}, " : "))
---    _log (table.concat ({"Topic ignored", topic, message}, " : "))
-    return 
+  message = json.decode (message) or message          -- treat invalid JSON as plain text
+
+  local subtopic = topic: match "^bridge/(.+)"
+  if subtopic then 
+    handle_bridge_topics (subtopic, message)
+  else
+    handle_friendly_names (topic, message)
   end
-  
-  local info = json.decode (message) or {[mtype] = message}   -- treat invalid JSON as plain text
-  
-  local timenow = os.time()
-  VIRTUAL[devNo].hadevice.LastUpdate = timenow
-  
-  if zigbee == "bridge" and mtype == "devices" then
-    create_devices (info)
-    return
-  end
-  
---  local child = devices[zigbee] or init_device (zigbee)
 
---  local DEV = VIRTUAL[child]
---  DEV.hadevice.LastUpdate = timenow
---  DEV[zigbee][prefix] = message
-  
---  for n,v in pairs (info) do
---    if type (v) == "table" then
---      for a,b in pairs (v) do
---        if type (b) == "table" then
---          for c,d in pairs(b) do
---            DEV[n][a .. '/' .. c] = d
---          end
---        else
---          DEV[n][a] = b
---        end
---      end
---    else
---      DEV[zigbee][n] = v
---    end
---  end
 end
-
 
 -- startup
 function start (config)
   config = config or {}
   
-  -- standard prefixes are: {"cmnd", "stat", "tele"}
   local prefixes = config.Prefix or "zigbee2mqtt"       -- subscribed prefixes
   
   for prefix in prefixes: gmatch "[^%s,]+" do
-    luup.register_handler ("Zigbee2MQTT_Handler", "mqtt:" .. prefix .. "/#", prefix)   -- * * * MQTT wildcard subscription * * *
-  end
-
-  -- standard topics are: {"SENSOR", "STATE", "RESULT", "LWT"}
-  local topics = config.Topic or "devices"
-  for topic in topics: gmatch "[^%s,]+" do
-    VALID[topic] = 1
+    luup.register_handler ("Zigbee2MQTT_Handler", "mqtt:" .. prefix .. "/#", prefix)   -- MQTT subscription
   end
 
 end

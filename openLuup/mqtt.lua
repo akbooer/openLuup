@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.08.16",
+  VERSION       = "2022.11.28",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2020-2021 AKBooer",
+  COPYRIGHT     = "(c) 2020-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2020-2021 AK Booer
+  Copyright 2020-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -43,6 +43,8 @@ local ABOUT = {
 -- 2021.04.28   add subscriber for light/nnn topic (with 0-100 message)
 -- 2021.04.30   add 'query' topic to force specific variable update message (after connect, for example)
 -- 2021.08.16   fix null topic in publish (thanks @ArcherS)
+
+-- 2022.11.28   use "****" for Username / Password in debug message (on suggestion of @a-lurker)
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -426,8 +428,8 @@ function parse.CONNECT(message, credentials)
   _debug ("ClientId: " .. ClientId)
   _debug ("WillTopic: " .. (WillTopic or ''))
   _debug ("WillMessage: " .. (WillMessage or ''))
-  _debug ("UserName: " .. Username)
-  _debug ("Password: " .. Password)
+  _debug ("UserName: " .. "****")   -- or Username
+  _debug ("Password: " .. "****")   -- or Password
   
   -- ACKNOWLEDGEMENT
   -- If CONNECT validation is successful the Server MUST acknowledge the CONNECT Packet 

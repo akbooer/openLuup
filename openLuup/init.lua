@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2022.11.07",
+  VERSION       = "2022.11.28",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -335,11 +335,9 @@ do --	 SERVERs and SCHEDULER
     -- 2021.02.01  start the Shelly and Tasmota bridges BEFORE MQTT server (so Shelly catches ANNOUNCE)
     require "openLuup.L_ShellyBridge"
     
-    local tasmota = require "openLuup.L_TasmotaBridge"
-    tasmota.start (config.Tasmota)
+    require "openLuup.L_TasmotaBridge" .start (config.Tasmota)
     
-    local zigbee = require "openLuup.L_Zigbee2MQTTBridge"
-    zigbee.start (config.Zigbee)
+    require "openLuup.L_Zigbee2MQTTBridge" .start (config.Zigbee)
     
     mqtt.start (config.MQTT) 
     

@@ -1,4 +1,4 @@
-local VERSION = "2022.11.15"
+local VERSION = "2022.11.28"
 
 -- mimetypes
 -- 2016/04/14
@@ -328,6 +328,7 @@ local SID = setmetatable ({
     
     -- Short SIDs (as used by Historian / Grafana)
     altui1                  = "urn:upnp-org:serviceId:altui1",
+    openLuupBridge          = "urn:akbooer-com:serviceId:openLuupBridge1",
     AltAppStore1            = "urn:upnp-org:serviceId:AltAppStore1",
     Dimming1                = "urn:upnp-org:serviceId:Dimming1",
     EnergyMetering1         = "urn:micasaverde-com:serviceId:EnergyMetering1",
