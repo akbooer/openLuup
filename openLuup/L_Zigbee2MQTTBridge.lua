@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2022.11.28",
+  VERSION       = "2022.11.29",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -53,7 +53,60 @@ local API = require "openLuup.api"
 -- it is a control API only (ie. action requests)
 --
 
-function init ()   -- Zigbee2MQTT Bridge device entry point
+local function SetTarget (dno, args)
+  local id = luup.attr_get ("altid", dno)
+  local val = tostring(tonumber (args.newTargetValue) or 0)
+  API[dno].switch.Target = val
+  local on_off = val == '1' and "ON" or "OFF"
+  local zigbee = table.concat {"zigbee2mqtt/", id, "/set/state"}
+  openLuup.mqtt.publish (zigbee, on_off)
+end
+
+local function ToggleState (dno)
+  local val = API[dno].switch.Status
+  SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
+end
+
+local function SetLoadLevelTarget (dno, args)
+--  local id = luup.attr_get ("altid", dno)
+--  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
+--  if shelly then
+--    local val_n = tonumber (args.newLoadlevelTarget) or 0
+--    local val = tostring(val_n)
+--    API[dno].dimming.LoadLevelTarget = val
+--    -- shellies/shellydimmer-<deviceid>/light/0/set 	
+--    -- accepts a JSON payload in the format 
+--    -- {"brightness": 100, "turn": "on", "transition": 500}
+--    shelly = table.concat {"shellies/", shelly, '/light/', relay, "/set"}
+--    local command = json.encode {brightness = val_n}
+--    openLuup.mqtt.publish (shelly, command)
+--  else 
+--    return false
+--  end
+end
+
+local function generic_action (serviceId, action)
+  local function noop(lul_device)
+    local message = "service/action not implemented: %d.%s.%s"
+    luup.log (message: format (lul_device, serviceId, action))
+    return false
+  end
+
+  local SRV = {
+      [SID.switch]    = {SetTarget = SetTarget},
+      [SID.hadevice]  = {ToggleState = ToggleState},
+      [SID.dimming]   = {SetLoadLevelTarget = SetLoadLevelTarget},
+    }
+  
+  local service = SRV[serviceId] or {}
+  local act = service [action] or noop
+  if type(act) == "function" then act = {run = act} end
+  return act
+end
+
+function init (lul_device)   -- Zigbee2MQTT Bridge device entry point
+  local devNo = tonumber (lul_device)
+	luup.devices[devNo].action_callback (generic_action)    -- catch all undefined action calls
   luup.set_failure (0)
   return true, "OK", "Zigbee2MQTTBridge"
 end
@@ -102,38 +155,17 @@ end
 
 -----
 
-local function add_variables_to_service(Vs, S)
-  if type(Vs) == "table" then 
-    for name,value in pairs(Vs) do
---      print (name, value)
-      if type(value) ~= "table" then
-        S[name] = value
-      end
-    end
-  end
-end
 
-local function init_device_variables (child, dev)
+-- adev = {properties=..., definition=..., exposes=...}
+local function init_device_variables (child, adev)
 
   local DEV = API[child]
   DEV.hadevice.LastUpdate = os.time()
-  add_variables_to_service(dev, DEV.properties)
   
-  for srv,vars in pairs (dev) do
+  for srv,vars in pairs (adev) do
     local S = DEV[srv]
-    add_variables_to_service (vars, S)
-  end
-
-  local definition = dev.definition
-  if type(definition) == "table" then
-    add_variables_to_service (definition, DEV.definition)
-    local exposes = definition.exposes
-    if type(exposes) == "table" then
-      local exposed = {}
-      for _, item in ipairs(exposes) do
-        exposed[item.name or '?'] = item.type
-      end 
-      add_variables_to_service (exposed, DEV.exposes)
+    for name, value in pairs (vars) do
+      S[name] = value
     end
   end
 end
@@ -147,10 +179,10 @@ local function infer_device_type (adev)
   if exp then
     if exp.occupancy then
       upnp_file = DEV.motion
-    elseif exp.light then
-      upnp_file = DEV.switch
     elseif exp.switch then
       upnp_file = DEV.scene
+    elseif exp.type == "light" then
+      upnp_file = DEV.dimmer    -- assuming ATM that most are, these days
     end
   end
   return upnp_file
@@ -166,6 +198,7 @@ local function create_device(adev)
   local room = luup.rooms.create "Zigbee"     -- create new Zigbee room, if necessary
   local offset = API[devNo][SID.Zigbee2MQTTBridge].Offset
   local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
+  
   local upnp_file = infer_device_type (adev)
   
   local dev = chdev.create {
@@ -184,6 +217,7 @@ local function create_device(adev)
   
   return dno
 end
+
 local function init_device (adev)
   local dev = adev.properties
   local ieee_address = dev.ieee_address
@@ -224,7 +258,7 @@ local function analyze_device (dev)
     if type(exposes) == "table" then
       local exposed = {}
       for _, item in ipairs(exposes) do
-        exposed[item.name or '?'] = item.type
+        exposed[item.name or "type"] = item.type
       end 
       adev.exposes = exposed
     end
@@ -247,7 +281,7 @@ local function create_devices(info)
       if friendly_name and ieee_address then
         local adev = analyze_device (dev)      -- all the services and variables
         local child = devices[ieee_address] or init_device (adev)
-        init_device_variables (child, dev)
+        init_device_variables (child, adev)
       end
     end
   end
