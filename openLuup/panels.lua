@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2022.11.27",
+  VERSION       = "2022.11.30",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -57,6 +57,7 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 
 local xml = require "openLuup.xml"
 local SID = require "openLuup.servertables" .SID
+local API = require "openLuup.api"
 
 local h = xml.createHTMLDocument ()    -- for factory methods
 local div = h.div
@@ -69,9 +70,10 @@ local sid = SID {
     security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
     weather   = "urn:upnp-micasaverde-com:serviceId:Weather1",
   }
-  
-local function todate (epoch) 
-  return tonumber(epoch) and os.date ("%Y-%m-%d %H:%M:%S", epoch) or "---  00:00"
+
+local function tiny_date_time (epoch)
+  local date_time = tonumber(epoch) and os.date ("%Y-%m-%d %H:%M:%S", epoch) or "---  00:00"
+  return div {class = "w3-tiny w3-display-bottomright", date_time}  
 end
 
 local function ShellyHomePage (devNo)  
@@ -166,7 +168,7 @@ local panels = {
       local time  = luup.variable_get (sid.energy, "KWHReading", devNo)
       local kwh   = luup.variable_get (sid.energy, "KWH", devNo)
       return h.span {watts or '???', " Watts", h.br(), ("%0.0f"): format(kwh or 0), " kWh", h.br(), 
-        div {class = "w3-tiny w3-display-bottomright", time and todate(time) or "---  00:00"}}
+        tiny_date_time (time)}
     end},
 
 --
@@ -176,8 +178,7 @@ local panels = {
   SceneController = {
     panel = function (devNo)
       local time = luup.variable_get (sid.scene, "LastSceneTime", devNo)
---      return h.span (time and todate(time) or '')
-      return div {class = "w3-tiny w3-display-bottomright", time and todate(time) or "---  00:00"}
+      return tiny_date_time (time)
     end,
     control = function (devNo)
       local isShelly = luup.devices[devNo].id: match "^shelly"
@@ -195,9 +196,14 @@ local panels = {
 --
 -- Zigbee2MQTT
 --
---  GenericZigbeeDevice = {
---    icon = "Z",
---  },
+  Zigbee2MQTTBridge = {
+    panel = function (devNo)
+      local D = API[devNo]
+      local time = D.hadevice.LastUpdate
+      local version = D.attr.version
+      return h.span {version, h.br(), tiny_date_time (time)}
+    end,
+  },
   
 --
 -- Generic Sensor

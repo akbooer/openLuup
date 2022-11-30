@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2022.11.29",
+  VERSION       = "2022.11.30",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -54,7 +54,7 @@ local API = require "openLuup.api"
 --
 
 local function SetTarget (dno, args)
-  local id = luup.attr_get ("altid", dno)
+  local id = API[dno].attr.altid
   local val = tostring(tonumber (args.newTargetValue) or 0)
   API[dno].switch.Target = val
   local on_off = val == '1' and "ON" or "OFF"
@@ -106,6 +106,17 @@ end
 
 function init (lul_device)   -- Zigbee2MQTT Bridge device entry point
   local devNo = tonumber (lul_device)
+  
+  local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
+  local version = ("v%d.%d.%d"): format (y%2000,m,d)
+  local Vnumber = tonumber ((y%2000)..m..d)
+  local D = API[devNo]
+  local S = D[SID.Zigbee2MQTTBridge]
+  S.Version = version                 -- version number in all possible places!
+  S.Vnumber = Vnumber
+  D.altui.DisplayLine1 = version
+  D.attr.version = version
+  
 	luup.devices[devNo].action_callback (generic_action)    -- catch all undefined action calls
   luup.set_failure (0)
   return true, "OK", "Zigbee2MQTTBridge"
@@ -129,10 +140,87 @@ end
 local devices = {}      -- gets filled with device info on MQTT connection
 local devNo             -- bridge device number (set on startup)
 
+local generic_variables = {
+    battery = {s = SID.hadevice, v = "BatteryLevel"},
+    voltage = {s = SID.energy, v = "Voltage"},
+  }
+
+-- generic updates for all devices
+local function generic (D, topic, message) 
+  if type (message) ~= "table" then 
+    luup.log ("no JSON payload for " .. topic)
+    return
+  end
+  
+  -- update generic variables
+  for var, gv in pairs (generic_variables) do
+    local value = message[var]
+    if value then
+      D[gv.s][gv.v] = value
+    end
+  end
+ 
+end
+
+-- specific device updates
+
+local function update_light (D, message)
+  -- state: ON or OFF
+  local state = message.state 
+  if state then
+    D.switch.Status = state == "ON" and '1' or '0'
+  end
+end
+
+local function update_dimmer (D, message)
+  -- brightness: 0 - 100 ?
+  local brightness = message.brightness
+  if brightness then
+    D.dimming.LoadLevelStatus = brightness
+  end
+  update_light (D, message)       -- on/off
+end
+
+local function update_motion (D, message)
+  -- occupancy: true or false
+  local occupancy = message.occupancy
+  -- openLuup simulate of full Tripped / ArmedTripped action would need to use luup.variable_set()
+  -- for the time being, just update the basic variables...
+  if occupancy ~= nil then    -- note that variable is boolean and false is a valid value!
+    D.security.Tripped = occupancy and '1' or '0'
+    D.security.LastTrip = tostring(os.time())
+  end
+end
+
+local function update_scene (D, message)
+--  -- button pushes behave as scene controller
+--  -- look for change of value of input/n [n = 0,1,2]
+--  local button = var: match "^input_event/(%d)"
+--  if button then
+--    local input = json.decode (value)
+--    local push = input and push_event[input.event]
+--    if push then
+--      local scene = button + push
+--      local S = API[dno].scene
+--      S.sl_SceneActivated = scene
+--      S.LastSceneTime = os.time()
+--    end
+--  end
+end
+
+--
+-- end of MODEL and VIEW
+--
+--------------------------------------------------
+
+
+
 
 local function _log (msg)
   luup.log (msg, "luup.zigbee2mqtt")
 end
+
+
 
 -- the bridge is a standard Luup plugin
 local function create_Zigbee2MQTTBridge()
@@ -180,7 +268,7 @@ local function infer_device_type (adev)
     if exp.occupancy then
       upnp_file = DEV.motion
     elseif exp.switch then
-      upnp_file = DEV.scene
+      upnp_file = DEV.controller
     elseif exp.type == "light" then
       upnp_file = DEV.dimmer    -- assuming ATM that most are, these days
     end
@@ -220,13 +308,16 @@ end
 
 local function init_device (adev)
   local dev = adev.properties
+  local friendly_name = dev.friendly_name
   local ieee_address = dev.ieee_address
+  
   local dno = openLuup.find_device {altid = ieee_address} 
                 or 
                   create_device (adev)
                   
   luup.devices[dno].handle_children = true    -- ensure that it handles child requests
-  devices[ieee_address] = dno                 -- save the device number, indexed by id
+  devices[ieee_address] = dno                 -- save the device number, indexed by id...
+  devices[friendly_name] = dno                -- ..and friendly name
   return dno
 end
 
@@ -302,10 +393,28 @@ local function handle_bridge_topics (subtopic, message)
   end
 end
 
-local function handle_friendly_names (topic)
+
+local specific = setmetatable (
+  {
+    [DEV.light]   = update_light,
+    [DEV.dimmer]  = update_dimmer,
+    [DEV.motion]  = update_motion,
+    [DEV.controller]   = update_scene,
+  },{
+    __index = function () end   -- no action
+  })
   
-  ignore_topic (topic)
- 
+local function handle_friendly_names (topic, message)
+  local dno = devices[topic]
+  local D = API[dno]
+  if D then
+    local dfile = D.attr.device_file
+    D.hadevice.LastUpdate = os.time()
+    generic (D, topic, message)
+    specific [dfile] (D, message)       -- perform device specific update actions
+  else
+    ignore_topic (topic)
+  end
 end
 
 
