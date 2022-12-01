@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2022.12.01",
+  VERSION       = "2022.12.01b",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -161,7 +161,7 @@ local function generic (D, topic, message)
   end
   
   -- update exposed values
-  S = D.exposes
+  local S = D.exposes
   for n,v in pairs (message) do
     D[n] = tostring(v)
   end
@@ -206,20 +206,27 @@ local function update_motion (D, message)
   end
 end
 
+-- several types of button / scene controller
+--
+-- Xiaomi WXKG11LM:
+--    Triggered action (e.g. a button click). 
+--    The possible values are: single, double, triple, quadruple, hold, release.
+--
+-- Philips 324131092621: (Hue Dimmer Switch)
+--    Triggered action (e.g. a button click). 
+--    The possible values are: on_press, on_hold, on_hold_release, up_press, up_hold, up_hold_release, 
+--    down_press, down_hold, down_hold_release, off_press, off_hold, off_hold_release.
+--
+
 local function update_scene_controller (D, message)
---  -- button pushes behave as scene controller
---  -- look for change of value of input/n [n = 0,1,2]
---  local button = var: match "^input_event/(%d)"
---  if button then
---    local input = json.decode (value)
---    local push = input and push_event[input.event]
---    if push then
---      local scene = button + push
---      local S = API[dno].scene
---      S.sl_SceneActivated = scene
---      S.LastSceneTime = os.time()
---    end
---  end
+  -- button pushes behave as scene controller
+  local action = message.action
+  if action then
+    local input = json.decode (value)
+    local S = D.scene
+    S.sl_SceneActivated = input
+    S.LastSceneTime = os.time()
+  end
 end
 
 --
@@ -281,7 +288,7 @@ local function infer_device_type (adev)
   if exp then
     if exp.occupancy then
       upnp_file = DEV.motion
-    elseif exp.switch then
+    elseif exp.switch or exp.action then
       upnp_file = DEV.controller
     elseif exp.type == "light" then
       upnp_file = DEV.dimmer    -- assuming ATM that most are, these days
