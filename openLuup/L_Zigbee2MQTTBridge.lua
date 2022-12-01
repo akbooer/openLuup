@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2022.11.30",
+  VERSION       = "2022.12.01",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -44,6 +44,18 @@ local SID = tables.SID {
 local openLuup = luup.openLuup
 local API = require "openLuup.api"
 
+local devNo             -- bridge device number (set on startup)
+
+local PREFIX = "zigbee2mqtt"    -- default MQTT topic prefix
+
+local devices = {}      -- gets filled with device info on MQTT bridge/devices PUBLISH and in init() below
+
+-- save list of device names and addresses
+local function register_device (dno)
+  local S = API[dno].properties                 -- service containing key variables
+  devices[S.ieee_address]  = dno                -- save the device number, indexed by id...
+  devices[S.friendly_name] = dno                -- ..and friendly name
+end
 
 --------------------------------------------------
 --
@@ -58,7 +70,7 @@ local function SetTarget (dno, args)
   local val = tostring(tonumber (args.newTargetValue) or 0)
   API[dno].switch.Target = val
   local on_off = val == '1' and "ON" or "OFF"
-  local zigbee = table.concat {"zigbee2mqtt/", id, "/set/state"}
+  local zigbee = table.concat {PREFIX, '/', id, "/set/state"}
   openLuup.mqtt.publish (zigbee, on_off)
 end
 
@@ -68,21 +80,13 @@ local function ToggleState (dno)
 end
 
 local function SetLoadLevelTarget (dno, args)
---  local id = luup.attr_get ("altid", dno)
---  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
---  if shelly then
---    local val_n = tonumber (args.newLoadlevelTarget) or 0
---    local val = tostring(val_n)
---    API[dno].dimming.LoadLevelTarget = val
---    -- shellies/shellydimmer-<deviceid>/light/0/set 	
---    -- accepts a JSON payload in the format 
---    -- {"brightness": 100, "turn": "on", "transition": 500}
---    shelly = table.concat {"shellies/", shelly, '/light/', relay, "/set"}
---    local command = json.encode {brightness = val_n}
---    openLuup.mqtt.publish (shelly, command)
---  else 
---    return false
---  end
+  local id = API[dno].attr.altid
+  local val_n = tonumber (args.newLoadlevelTarget) or 0
+  local val = tostring(val_n)
+  API[dno].dimming.LoadLevelTarget = val
+  local zigbee = table.concat {PREFIX, '/', id, "/set"}
+  local command = json.encode {brightness = val_n}
+  openLuup.mqtt.publish (zigbee, command)
 end
 
 local function generic_action (serviceId, action)
@@ -105,7 +109,7 @@ local function generic_action (serviceId, action)
 end
 
 function init (lul_device)   -- Zigbee2MQTT Bridge device entry point
-  local devNo = tonumber (lul_device)
+  devNo = tonumber (lul_device)
   
   local y,m,d = ABOUT.VERSION:match "(%d+)%D+(%d+)%D+(%d+)"
   local version = ("v%d.%d.%d"): format (y%2000,m,d)
@@ -116,6 +120,13 @@ function init (lul_device)   -- Zigbee2MQTT Bridge device entry point
   S.Vnumber = Vnumber
   D.altui.DisplayLine1 = version
   D.attr.version = version
+  
+  D[chdev.bridge.SID].Remote_ID = 716833     -- ensure ID for "Zigbee2MQTTBridge" exists
+
+  -- register existing child devices
+  for dno in pairs (openLuup.bridge.all_descendants (devNo)) do
+    register_device (dno)
+  end
   
 	luup.devices[devNo].action_callback (generic_action)    -- catch all undefined action calls
   luup.set_failure (0)
@@ -137,9 +148,6 @@ end
 -- as well as subsequent child devices, and update their variables
 --
 
-local devices = {}      -- gets filled with device info on MQTT connection
-local devNo             -- bridge device number (set on startup)
-
 local generic_variables = {
     battery = {s = SID.hadevice, v = "BatteryLevel"},
     voltage = {s = SID.energy, v = "Voltage"},
@@ -152,7 +160,13 @@ local function generic (D, topic, message)
     return
   end
   
-  -- update generic variables
+  -- update exposed values
+  S = D.exposes
+  for n,v in pairs (message) do
+    D[n] = tostring(v)
+  end
+  
+  -- update generic Luup device variables
   for var, gv in pairs (generic_variables) do
     local value = message[var]
     if value then
@@ -192,7 +206,7 @@ local function update_motion (D, message)
   end
 end
 
-local function update_scene (D, message)
+local function update_scene_controller (D, message)
 --  -- button pushes behave as scene controller
 --  -- look for change of value of input/n [n = 0,1,2]
 --  local button = var: match "^input_event/(%d)"
@@ -306,18 +320,12 @@ local function create_device(adev)
   return dno
 end
 
-local function init_device (adev)
-  local dev = adev.properties
-  local friendly_name = dev.friendly_name
-  local ieee_address = dev.ieee_address
-  
-  local dno = openLuup.find_device {altid = ieee_address} 
+local function init_device (adev)  
+  local dno = openLuup.find_device {altid = adev.properties.ieee_address} 
                 or 
                   create_device (adev)
                   
-  luup.devices[dno].handle_children = true    -- ensure that it handles child requests
-  devices[ieee_address] = dno                 -- save the device number, indexed by id...
-  devices[friendly_name] = dno                -- ..and friendly name
+  luup.devices[dno].handle_children = true              -- ensure that it handles child requests
   return dno
 end
 
@@ -373,6 +381,7 @@ local function create_devices(info)
         local adev = analyze_device (dev)      -- all the services and variables
         local child = devices[ieee_address] or init_device (adev)
         init_device_variables (child, adev)
+        register_device (child)    -- record its name
       end
     end
   end
@@ -381,25 +390,26 @@ end
 -----
 
 local function ignore_topic (topic)
-  _log (table.concat ({"Topic ignored", topic}, " : "))
+  _log (table.concat ({"Topic ignored", PREFIX, '/', topic}, " : "))
 end
 
 
-local function handle_bridge_topics (subtopic, message)
+local function handle_bridge_topics (topic, message)
+  local subtopic = topic: match "^bridge/(.+)"
   if subtopic: match "^devices" then
     create_devices (message)
   else
-    ignore_topic ("bridge/" .. subtopic)
+    ignore_topic (topic)
   end
 end
 
 
 local specific = setmetatable (
   {
-    [DEV.light]   = update_light,
-    [DEV.dimmer]  = update_dimmer,
-    [DEV.motion]  = update_motion,
-    [DEV.controller]   = update_scene,
+    [DEV.light]       = update_light,
+    [DEV.dimmer]      = update_dimmer,
+    [DEV.motion]      = update_motion,
+    [DEV.controller]  = update_scene_controller,
   },{
     __index = function () end   -- no action
   })
@@ -434,14 +444,12 @@ function _G.Zigbee2MQTT_Handler (topic, message, prefix)
         or
           create_Zigbee2MQTTBridge ()
 
-  API[devNo][chdev.bridge.SID].Remote_ID = 716833     -- ensure ID for "Zigbee2MQTTBridge" exists
   API[devNo].hadevice.LastUpdate = os.time()
 
   message = json.decode (message) or message          -- treat invalid JSON as plain text
 
-  local subtopic = topic: match "^bridge/(.+)"
-  if subtopic then 
-    handle_bridge_topics (subtopic, message)
+  if topic: match "^bridge/(.+)" then 
+    handle_bridge_topics (topic, message)
   else
     handle_friendly_names (topic, message)
   end
@@ -452,7 +460,7 @@ end
 function start (config)
   config = config or {}
   
-  local prefixes = config.Prefix or "zigbee2mqtt"       -- subscribed prefixes
+  local prefixes = config.Prefix or PREFIX        -- a string containing subscribed prefixes
   
   for prefix in prefixes: gmatch "[^%s,]+" do
     luup.register_handler ("Zigbee2MQTT_Handler", "mqtt:" .. prefix .. "/#", prefix)   -- MQTT subscription
