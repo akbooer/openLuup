@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2022.11.28",
+  VERSION       = "2022.12.02",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -45,6 +45,7 @@ local ABOUT = {
 -- 2021.08.16   fix null topic in publish (thanks @ArcherS)
 
 -- 2022.11.28   use "****" for Username / Password in debug message (on suggestion of @a-lurker)
+-- 2022.12.02  Fix response to QoS > 0 PUBLISH packets, thanks @Crille and @toggledbits
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -300,10 +301,36 @@ do -- MQTT Packet methods
     return publish
   end
 
-  function MQTT_packet.PUBACK ()  end          -- not implemented (only required for QoS > 0)
-  function MQTT_packet.PUBREC ()  end          -- ditto
-  function MQTT_packet.PUBREL ()  end          -- ditto
-  function MQTT_packet.PUBCOMP () end          -- ditto
+  function MQTT_packet.PUBACK (PacketId) 
+    -- response to QoS 1 PUBLISH
+    
+    -- FIXED HEADER
+    local packet_type = "PUBACK"
+    local control_flags = 0
+    
+    -- VARIABLE HEADER
+    local variable_header = word2bytes (PacketId)
+    
+    local puback = encode (packet_type, control_flags, variable_header)     -- no payload
+    return puback
+   end
+  
+  function MQTT_packet.PUBREC (PacketId)
+    -- response to QoS 2 PUBLISH
+    
+    -- FIXED HEADER
+    local packet_type = "PUBREC"
+    local control_flags = 0
+    
+    -- VARIABLE HEADER
+    local variable_header = word2bytes (PacketId)
+    
+    local pubrec = encode (packet_type, control_flags, variable_header)     -- no payload
+    return pubrec
+  end
+  
+  function MQTT_packet.PUBREL ()  end          -- not implemented
+  function MQTT_packet.PUBCOMP () end          -- not implemented
 
   function MQTT_packet.SUBSCRIBE () end        -- client only
 
@@ -507,7 +534,15 @@ function parse.PUBLISH(message)
         QoS 1 PUBACK Packet 
         QoS 2 PUBREC Packet
 --]]
-  local ack    -- None, because we only handle QoS 0
+  local ack    -- None for QoS 0
+  
+  -- 2022.12.02  Fix response to QoS > 0 packets, thanks @Crille and @toggledbits
+  if QoS == 1 then
+    ack = MQTT_packet.PUBACK (PacketId)
+  elseif QoS == 2 then
+    ack = MQTT_packet.PUBREC (PacketId)
+  end
+  
   return ack, nil, TopicName, ApplicationMessage, RETAIN
 end
 

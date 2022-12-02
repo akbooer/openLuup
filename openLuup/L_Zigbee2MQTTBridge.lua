@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2022.12.01b",
+  VERSION       = "2022.12.02",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -89,6 +89,10 @@ local function SetLoadLevelTarget (dno, args)
   openLuup.mqtt.publish (zigbee, command)
 end
 
+local function SetArmed (dno, args)
+  API[dno].security.Armed = args.newArmedValue or '0'
+end
+
 local function generic_action (serviceId, action)
   local function noop(lul_device)
     local message = "service/action not implemented: %d.%s.%s"
@@ -100,6 +104,7 @@ local function generic_action (serviceId, action)
       [SID.switch]    = {SetTarget = SetTarget},
       [SID.hadevice]  = {ToggleState = ToggleState},
       [SID.dimming]   = {SetLoadLevelTarget = SetLoadLevelTarget},
+      [SID.security]  = {SetArmed = SetArmed},
     }
   
   local service = SRV[serviceId] or {}
@@ -217,14 +222,12 @@ end
 --    The possible values are: on_press, on_hold, on_hold_release, up_press, up_hold, up_hold_release, 
 --    down_press, down_hold, down_hold_release, off_press, off_hold, off_hold_release.
 --
-
 local function update_scene_controller (D, message)
   -- button pushes behave as scene controller
   local action = message.action
   if action then
-    local input = json.decode (value)
     local S = D.scene
-    S.sl_SceneActivated = input
+    S.sl_SceneActivated = action
     S.LastSceneTime = os.time()
   end
 end
@@ -235,12 +238,9 @@ end
 --------------------------------------------------
 
 
-
-
 local function _log (msg)
   luup.log (msg, "luup.zigbee2mqtt")
 end
-
 
 
 -- the bridge is a standard Luup plugin
