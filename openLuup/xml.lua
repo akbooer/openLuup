@@ -86,7 +86,8 @@ Features include:
     - xpathIterator()
   - .documentElement field of the model accesses the root XML document element
 
-The underlying model is a simple Lua table, with children in succesive elements and attributes as named index entries. Metamethods are provided to simulteNode interface with the following Lua substitutions:
+The underlying model is a simple Lua table, with children in succesive elements and attributes as named index entries.
+Metamethods are provided to simulate the Node interface with the following Lua substitutions:
 
     metamethods     x[-3]     -- specific to individual elements
     x.ownerDocument x[-2]     -- may be nil
@@ -331,7 +332,9 @@ local DocumentMethods = {
 
 --[[ note from: https://www.w3.org/TR/DOM-Level-2-Traversal-Range/traversal.html#Iterator-overview
 
-"A NodeIterator may be active while the data structure it navigates is being edited, so an iterator must behave gracefully in the face of change. Additions and removals in the underlying data structure do not invalidate a NodeIterator"
+"A NodeIterator may be active while the data structure it navigates is being edited, 
+   so an iterator must behave gracefully in the face of change. 
+   Additions and removals in the underlying data structure do not invalidate a NodeIterator"
 
 NB: THIS IS NOT THE CASE HERE, since structures are navigated by Lua iterators!
 

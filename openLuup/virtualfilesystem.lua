@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2022.11.28",
+  VERSION       = "2022.12.03",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -257,9 +257,10 @@ local S_solar_svc do
 
           x.action {x.name "GetSolarCoords",
             x.argumentList {
-              argument "Epoch",
-              argument "Latitude",
-              argument "Longitude",
+-- 2022.12.02  remove input arguments, since the return values would overwrite the RA / DEC / ... current values
+--              argument "Epoch",
+--              argument "Latitude",
+--              argument "Longitude",
               argument ("RA",  "out", "RA"),
               argument ("DEC", "out", "DEC"),
               argument ("ALT", "out", "ALT"),

@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2022.12.02",
+  VERSION       = "2022.12.05",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -168,7 +168,14 @@ local function generic (D, topic, message)
   -- update exposed values
   local S = D.exposes
   for n,v in pairs (message) do
-    D[n] = tostring(v)
+    if type (v) == "table" then
+      local S2 = D[n]
+      for n2,v2 in pairs (v) do
+        S2[n2] = tostring(v2)
+      end
+    else
+      S[n] = tostring(v)
+    end
   end
   
   -- update generic Luup device variables
