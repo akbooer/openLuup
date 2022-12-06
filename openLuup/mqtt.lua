@@ -858,18 +858,6 @@ local subscriptions = {} do
       local ok, err 
       for _, subscriber in pairs (subscribers) do
         ok, err = publish_to_one (subscriber, message)
---        local s = subscriber
---        s.count = (s.count or 0) + 1
---        local ok, err
---        if s.callback then
---          ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage, s.parameter, Retained)
---        elseif s.client then
---          ok, err = self: send_to_client (s.client, m.MQTT_packet) -- publish to external subscribers
---          if ok then 
---            stats["publish/messages/sent"] = stats["publish/messages/sent"] + 1
---          end
---        end
-
         if not ok then
           _log (table.concat {"ERROR publishing application message for mqtt:", TopicName, " : ", err})
         else

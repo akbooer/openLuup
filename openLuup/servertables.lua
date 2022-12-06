@@ -1,4 +1,4 @@
-local VERSION = "2022.11.28"
+local VERSION = "2022.12.06"
 
 -- mimetypes
 -- 2016/04/14
@@ -313,7 +313,8 @@ local meta = {
   end}
 
 local DEV = setmetatable ({
-    light       = "D_BinaryLight1.xml",
+    binary      = "D_BinaryLight1.xml",       -- as a switch
+    light       = "D_BinaryLight1.xml",       -- as a non-dimming light
     dimmer      = "D_DimmableLight1.xml",
     thermos     = "D_HVAC_ZoneThermostat1.xml",
     motion      = "D_MotionSensor1.xml",

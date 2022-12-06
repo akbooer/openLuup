@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2022.12.05",
+  VERSION       = "2022.12.06",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -295,7 +295,9 @@ local function infer_device_type (adev)
   if exp then
     if exp.occupancy then
       upnp_file = DEV.motion
-    elseif exp.switch or exp.action then
+    elseif exp.switch then
+     upnp_file = DEV.binary
+    elseif exp.action then
       upnp_file = DEV.controller
     elseif exp.type == "light" then
       upnp_file = DEV.dimmer    -- assuming ATM that most are, these days
@@ -417,7 +419,8 @@ local function handle_bridge_topics (topic, message)
   end
 end
 
-
+local function update_unknown () end
+  
 local specific = setmetatable (
   {
     [DEV.light]       = update_light,
@@ -425,7 +428,7 @@ local specific = setmetatable (
     [DEV.motion]      = update_motion,
     [DEV.controller]  = update_scene_controller,
   },{
-    __index = function () end   -- no action
+    __index = function () return update_unknown end   -- no action
   })
   
 local function handle_friendly_names (topic, message)
