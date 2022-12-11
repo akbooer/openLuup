@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2022.12.06",
+  VERSION       = "2022.12.11",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -26,6 +26,7 @@ ABOUT = {
 
 
 -- 2022.11.27  new bridge for @a-lurker (based on Tasmota bridge framework)
+-- 2022.12.11  add variable initialisation for new scene controllers
 
 
 local json      = require "openLuup.json"
@@ -288,9 +289,18 @@ end
 
 -----
 
+local function configure_null () end
+
+local function configure_scene_controller (dno)
+  -- special variable initialisation for scene controllers
+  local S = API[dno].scene
+  S.LastSceneTime = ''
+  S.sl_SceneActivated = ''
+end
 
 local function infer_device_type (adev)
   local upnp_file = DEV.zigbee
+  local configure
   local exp = adev.exposes
   if exp then
     if exp.occupancy then
@@ -299,11 +309,12 @@ local function infer_device_type (adev)
      upnp_file = DEV.binary
     elseif exp.action then
       upnp_file = DEV.controller
+      configure = configure_scene_controller
     elseif exp.type == "light" then
       upnp_file = DEV.dimmer    -- assuming ATM that most are, these days
     end
   end
-  return upnp_file
+  return upnp_file, configure or configure_null
 end
 
 
@@ -317,7 +328,7 @@ local function create_device(adev)
   local offset = API[devNo][SID.Zigbee2MQTTBridge].Offset
   local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
-  local upnp_file = infer_device_type (adev)
+  local upnp_file, configure = infer_device_type (adev)
   
   local dev = chdev.create {
     devNo = dno,
@@ -332,6 +343,7 @@ local function create_device(adev)
   
   dev.handle_children = true                -- ensure that any child devices are handled
   luup.devices[dno] = dev                   -- add to Luup devices
+  configure (dev)     
   
   return dno
 end
@@ -406,7 +418,7 @@ end
 -----
 
 local function ignore_topic (topic)
-  _log (table.concat ({"Topic ignored", PREFIX, '/', topic}, " : "))
+  _log (table.concat ({"Topic ignored ", PREFIX, '/', topic}, " : "))
 end
 
 

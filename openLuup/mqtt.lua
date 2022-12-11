@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2022.12.05",
+  VERSION       = "2022.12.11",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -47,6 +47,7 @@ local ABOUT = {
 -- 2022.11.28   use "****" for Username / Password in debug message (on suggestion of @a-lurker)
 -- 2022.12.02   Fix response to QoS > 0 PUBLISH packets, thanks @Crille and @toggledbits
 -- 2022.12.05   Add PUBCOMP as response to QoS 2 PUBREL
+-- 2022.12.09   Improve error messages in MQTT_packet.receive()
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -82,8 +83,8 @@ do -- MQTT Packet methods
 
   -- control packet names: an ordered list, 1 - 15.
   local pname = {
-      "CONNECT", "CONNACK", "PUBLISH", 
-      "PUBACK", "PUBREC", "PUBREL", "PUBCOMP", 
+      "CONNECT", "CONNACK", 
+      "PUBLISH", "PUBACK", "PUBREC", "PUBREL", "PUBCOMP", 
       "SUBSCRIBE", "SUBACK", "UNSUBSCRIBE", "UNSUBACK", 
       "PINGREQ", "PINGRESP",
       "DISCONNECT"
@@ -193,13 +194,13 @@ do -- MQTT Packet methods
   -- receive returns messsage object, or error message
   function MQTT_packet.receive (client)
     local fixed_header_byte1, err = client: receive (1)
-    if not fixed_header_byte1 then return nil, err end
+    if not fixed_header_byte1 then return nil, "(Fixed Header byte) " .. err end
 
     local nb = 1
     local length = 0
     for i = 0, 2 do                   -- maximum of 3 bytes encode remaining length, LSB first
       local b, err = client: receive (1)
-      if not b then return nil, err end
+      if not b then return nil, "(Remaining Length bytes) " .. err end
       nb = nb + 1
       b = b: byte()
       local n = b % 128               -- seven significant bits
@@ -210,7 +211,7 @@ do -- MQTT Packet methods
     local body = ''
     if length > 0 then
       body, err = (length > 0) and client: receive (length)
-      if not body then return nil, err end
+      if not body then return nil, "(Message body) " .. err end
       nb = nb + length
     end
     
@@ -437,11 +438,11 @@ function parse.CONNECT(message, credentials)
       KeepAlive = KeepAlive,
     }
   
-  _debug ("ClientId: " .. ClientId)
-  _debug ("WillTopic: " .. (WillTopic or ''))
-  _debug ("WillMessage: " .. (WillMessage or ''))
-  _debug ("UserName: " .. "****")   -- or Username
-  _debug ("Password: " .. "****")   -- or Password
+  _debug ("ClientId: ",     ClientId)
+  _debug ("WillTopic: ",    WillTopic)
+  _debug ("WillMessage: ",  WillMessage)
+  _debug ("UserName: ",     "****")       -- or Username
+  _debug ("Password: ",     "****")       -- or Password
   
   -- ACKNOWLEDGEMENT
   -- If CONNECT validation is successful the Server MUST acknowledge the CONNECT Packet 
@@ -576,7 +577,7 @@ function parse.SUBSCRIBE (message)
   repeat
     local topic = message: read_string()
     topics[topic] = topic
-    _debug ("Topic: " .. topic)
+    _debug ("Topic: ", topic)
     nt = nt + 1
     local RequestedQoS
     RequestedQoS = message: read_bytes(1) :byte()
@@ -918,7 +919,7 @@ local function incoming (client, credentials, subscriptions)
   
   if message then
     pname = message.packet_name
-    _debug (table.concat {pname, ' ', tostring(client)})
+    _debug (pname, ' ', tostring(client))
     
     -- statistics
     local stats = subscriptions.stats
@@ -938,7 +939,7 @@ local function incoming (client, credentials, subscriptions)
     -- send an ack if required
     if ack then
       subscriptions: send_to_client (client, ack)
-      _debug ( "ACK sent: " .. MQTT_packet.name (ack))
+      _debug (MQTT_packet.name (ack), "ack")
     end
     
     if topic then
