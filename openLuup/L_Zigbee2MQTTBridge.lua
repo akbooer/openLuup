@@ -210,7 +210,7 @@ end
 
 local function update_motion (D, message)
   -- occupancy: true or false
-  local occupancy = message.occupancy
+  local occupancy = message.occupancy or message.contact
   -- openLuup simulate of full Tripped / ArmedTripped action would need to use luup.variable_set()
   -- for the time being, just update the basic variables...
   if occupancy ~= nil then    -- note that variable is boolean and false is a valid value!
@@ -298,52 +298,82 @@ local function configure_scene_controller (dno)
   S.sl_SceneActivated = ''
 end
 
+-- __tostring() allows json structure to be encoded as string variable value
+local function jwrapper (x)
+  if x then
+    return setmetatable (x, {__tostring = json.encode})
+  end
+end
+
 local function infer_device_type (adev)
   local upnp_file = DEV.zigbee
   local configure
-  local exp = adev.exposes
+  local exp = adev.exposes or {}
+  local switches = jwrapper (exp.switch)
+  local lights = jwrapper (exp.light)
   if exp then
-    if exp.occupancy then
+    if exp.occupancy or exp.contact then
       upnp_file = DEV.motion
-    elseif exp.switch then
-     upnp_file = DEV.binary
+    elseif switches then
+     upnp_file = #switches < 2 and DEV.binary or upnp_file
     elseif exp.action then
       upnp_file = DEV.controller
       configure = configure_scene_controller
-    elseif exp.type == "light" then
+    elseif lights then
       upnp_file = DEV.dimmer    -- assuming ATM that most are, these days
     end
   end
-  return upnp_file, configure or configure_null
+  local children = {
+    lights = lights,
+    switches = switches}
+  return upnp_file, configure or configure_null, children
 end
 
+local function create_device(info)  
+  local room = luup.rooms.create "Zigbee"     -- create new Zigbee room, if necessary
+  local offset = API[devNo][SID.Zigbee2MQTTBridge].Offset
+  local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
+  info.devNo = dno
+  info.room = room
+  local dev = chdev.create (info)
+  dev.handle_children = true                -- ensure that any child devices are handled
+  luup.devices[dno] = dev                   -- add to Luup devices
+  return dev, dno
+end
 
-local function create_device(adev)
+local function configure_children (children, parent)
+  local sw = children.switches or {}
+  for _, c in ipairs(sw) do
+    local name = table.concat {parent, '-', c}
+    local dev = create_device {
+      internal_id = name,
+      description = name,
+      upnp_file = DEV.binary,
+      category_num = 3,
+      subcategory_num = 1,
+    }
+  end
+end
+
+local function zigbee_device(adev)
   local props = adev.properties
   local friendly_name = props.friendly_name
   local ieee_address = props.ieee_address
   _log ("New Zigbee detected: " .. ieee_address)
+    
+  local upnp_file, configure, children = infer_device_type (adev)
   
-  local room = luup.rooms.create "Zigbee"     -- create new Zigbee room, if necessary
-  local offset = API[devNo][SID.Zigbee2MQTTBridge].Offset
-  local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
-  
-  local upnp_file, configure = infer_device_type (adev)
-  
-  local dev = chdev.create {
-    devNo = dno,
+  local dev, dno = create_device {
     internal_id = ieee_address,
     description = friendly_name or ieee_address,
     upnp_file = upnp_file,
     json_file = nil,      -- may need this one day
     parent = devNo,
-    room = room,
     manufacturer = props.manufacturer or "could be anyone",
   }
   
-  dev.handle_children = true                -- ensure that any child devices are handled
-  luup.devices[dno] = dev                   -- add to Luup devices
   configure (dev)     
+  configure_children (children, dno)
   
   return dno
 end
@@ -351,7 +381,7 @@ end
 local function init_device (adev)  
   local dno = openLuup.find_device {altid = adev.properties.ieee_address} 
                 or 
-                  create_device (adev)
+                  zigbee_device (adev)
                   
   luup.devices[dno].handle_children = true              -- ensure that it handles child requests
   return dno
@@ -385,7 +415,15 @@ local function analyze_device (dev)
     if type(exposes) == "table" then
       local exposed = {}
       for _, item in ipairs(exposes) do
-        exposed[item.name or "type"] = item.type
+        local name = item.name
+        local type = item.type
+        if name then
+          exposed[name] = type
+        elseif type then
+          local x = exposed[type] or {}
+          x[#x+1] = item.endpoint
+          exposed[type] = x
+        end
       end 
       adev.exposes = exposed
     end
@@ -418,7 +456,8 @@ end
 -----
 
 local function ignore_topic (topic)
-  _log (table.concat ({"Topic ignored ", PREFIX, '/', topic}, " : "))
+  local msg = "Topic ignored: %s/%s"
+  _log (msg: format (PREFIX, topic))
 end
 
 

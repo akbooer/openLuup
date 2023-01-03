@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.historian",
-  VERSION       = "2021.06.12",
+  VERSION       = "2022.12.20",
   DESCRIPTION   = "openLuup data historian",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-21 AK Booer
+  Copyright 2013-22 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -40,6 +40,8 @@ local ABOUT = {
 -- 2021.05.19  add historian.CarbonCache for multiple graphite databases including DataYours
 -- 2021.05.22  add performance stats to each individual CarbonCache
 -- 2021.06.12  fix failure to create new archives (thanks @ArcherS)
+
+-- 2022.12.20  fix empty metric in finder2ndsv()
 
 
 local logs    = require "openLuup.logs"
@@ -271,10 +273,12 @@ local Metrics = {}
 
 -- utility function to split up finder name
 local function finder2ndsv (metric)
-  local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([^%.]+)%.(.+)$"
-  if not v then _log ("ERROR invalid metric: " .. metric) end
-  v = v: gsub ('%.','/')   -- MQTT -> finder separator conversion
-  return n,d,s,v
+  if metric then 
+    local n,d,s,v = metric: match "(%w+)%.(%d+)[^%.]*%.([^%.]+)%.(.+)$"
+    if not v then _log ("ERROR invalid metric: " .. metric) end
+    v = v: gsub ('%.','/')   -- MQTT -> finder separator conversion
+    return n,d,s,v
+  end
 end
 
 -- find the variable with the given metric path: nodeName.dev[_name].shortSid.variable
@@ -719,7 +723,7 @@ local function HistoryReader(metric_path)
   end
 
   -- HistoryReader()
-  _debug ("READER " .. metric_path)
+  _debug ("READER " .. tostring (metric_path))
   return {
       fetch = fetch,
       get_intervals = get_intervals,

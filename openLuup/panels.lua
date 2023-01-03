@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2022.11.30",
+  VERSION       = "2023.01.04",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -53,6 +53,9 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2022.07.31  add ShellyHomePage to Shelly scene controllers
 -- 2022.11.11  prettier openLuup device control panel
 -- 2022.11.27  add basic support for Zigbee2MQTT bridge
+-- 2022.12.30  add link to https://dev.netatmo.com/
+
+-- 2022.01.03  add Authorize button for Netatmo Oath2 tokens
 
 
 local xml = require "openLuup.xml"
@@ -150,7 +153,24 @@ local panels = {
   Netatmo = {
     control = function ()
       local br = h.br{}
-      return div {p "Links to reports:",
+      return div {
+        p "Grant plugin access to your weather station data:",
+        h.form {
+          action="https://api.netatmo.com/oauth2/authorize", 
+          method="get",
+--          enctype = "application/x-www-form-urlencoded", -- "multipart/form-data",  -- "text/plain",
+          target="_blank",
+          h.input {type="hidden", name="client_id", value="5200dfd21977593427000024"},
+          h.input {type="hidden", name="scope", value="read_station"},
+          h.input {type="hidden", name="state", value="42"},
+          h.input {type="submit", value="Authorize"}
+        },
+
+--        p {class="w3-text-indigo",
+--          h.a {href="https://dev.netatmo.com/", target="_blank", "dev.netatmo.com"}, 
+--          },
+
+        p "Links to reports:",
         p {class="w3-text-indigo",
           h.a {href="/data_request?id=lr_Netatmo&page=organization", target="_blank", "Device Tree"}, br,
           h.a {href="/data_request?id=lr_Netatmo&page=list", target="_blank", "Device List"}, br,

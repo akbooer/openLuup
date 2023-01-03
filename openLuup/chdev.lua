@@ -61,7 +61,7 @@ local ABOUT = {
 -- 2019.08.29  check non-empty device name in create(), thanks @cokeman
 -- 2019.09.14  set specified attributes to AFTER the default settings - thanks @reneboer
 -- 2019.10.28  do not run startup code for devices whose parent handles them
--- 2019.12.19  fix get_icons() - state_icon entries may incllude list of the icon names, so ignore non-table items
+-- 2019.12.19  fix get_icons() - state_icon entries may include list of the icon names, so ignore non-table items
 
 -- 2020.02.05  add dev:rename()
 -- 2020.02.09  add newindex() to keep integrity of visible luup.device[] structure

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2022.12.11",
+  VERSION       = "2022.12.16",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -931,9 +931,10 @@ local function incoming (client, credentials, subscriptions)
     local process = parse[pname] or reserved
     
     -- ack is an acknowledgement package to send back to the client
-    -- errmsg signals an error requring the client connection to be closed
+    -- errmsg signals an error requiring the client connection to be closed
     -- topic may be a list for (un)subscribe, or a single topic to publish
     -- app_message is the appplication message for publication
+    -- retain is true for retained messages
     ack, errmsg, topic, app_message, retain = process (message, credentials)    -- credentials used for CONNECT authorization
     
     -- send an ack if required
