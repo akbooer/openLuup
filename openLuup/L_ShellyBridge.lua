@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2022.11.15",
+  VERSION       = "2022.11.16",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -46,6 +46,7 @@ ABOUT = {
 -- 2022.11.01  reduce Max/Min Temp cache size to under a day (hopefully)
 -- 2022.11.07  add H & T variables to H&T parent device (for display)
 -- 2022.11.15  remove hack for H & T cache size (now handled by servertables.cache_rules)
+-- 2022.11.16  basic infrastructure for Shelly Plus (Shelly-NG) devices
 
 
 local json      = require "openLuup.json"
@@ -154,6 +155,7 @@ end
 -- as well as subsequent child devices, and update their variables
 --
 
+local shelly_plus_devices = {}
 local shelly_devices = {}      -- gets filled with device info on MQTT connection
 local devNo                    -- bridge device number (set on startup)
 
@@ -427,6 +429,14 @@ end
 -- MQTT callbacks
 --
 
+function _G.Shelly_Plus_Handler (topic, message)
+  
+  if not devNo then return end      -- wait until bridge exists
+  _log (table.concat ({"ShellyPlus:", topic, message}, ' '))
+  
+end
+
+
 function _G.Shelly_MQTT_Handler (topic, message)
   
   local shellies = topic: match "^shellies/(.+)"
@@ -473,5 +483,6 @@ function _G.Shelly_MQTT_Handler (topic, message)
 end
 
 luup.register_handler ("Shelly_MQTT_Handler", "mqtt:shellies/#")   -- * * * MQTT wildcard subscription * * *
+luup.register_handler ("Shelly_Plus_Handler", "mqtt:shellyplus#")
 
 -----

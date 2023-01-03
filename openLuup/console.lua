@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2022.11.06",
+  VERSION       = "2022.12.21",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -101,6 +101,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 
 -- 2022.07.13  fix +Create variable functionality (thanks @Donato)
 -- 2022.11.06  make 'main' the default update repository for MetOffice_DataPoint plugin (no thanks to GitHub!)
+-- 2022.12.21  enable history edit on variable page
 
 
 --  WSAPI Lua CGI implementation
@@ -2071,7 +2072,7 @@ function pages.variables (p, req)
                   xhtml.img {width="18px;", height="18px;", alt="cache", src="/icons/calendar-alt-regular.svg"}} 
           graph = xhtml.a {href=selfref ("page=graphics&variable=", n), title="graph", 
                   xhtml.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
---          edit = archives and whisper_edit (filename, historian) or ' '
+          edit = archives and whisper_edit (filename, historian) or ' '
         end
     -- form to allow variable value updates
         local value_form = editable_text ({page="variables", id=v.id}, v.value, 999)    -- maxlength

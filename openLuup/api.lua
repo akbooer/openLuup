@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.api",
-  VERSION       = "2021.05.15",
+  VERSION       = "2023.01.01",
   DESCRIPTION   = "openLuup object-level API",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2023 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2023 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -34,6 +34,8 @@ local ABOUT = {
 
 
 -- 2021.04.27  key parts extracted from luup.lua
+
+-- 2023.01.01  fix phantom variable creation when setting attribute
 
 -----
 --
@@ -117,11 +119,14 @@ function api_meta:__index (dev)
     
     function svc_meta:__newindex (var, new)
       local d = devices[dev]
-      if attr_alias[sid] then d.attributes[var] = new end
-      new = tostring(new)
-      local old = self[var]
-      if old ~= new then
-        d: variable_set (sid, var, new, true)   -- not logged, but 'true' enables variable watch
+      if attr_alias[sid] then 
+        d.attributes[var] = new 
+      else
+        new = tostring(new)
+        local old = self[var]
+        if old ~= new then
+          d: variable_set (sid, var, new, true)   -- not logged, but 'true' enables variable watch
+        end
       end
     end
 
@@ -143,27 +148,7 @@ local c_meta = {__newindex = readonly }
 local c_what = {}
 
 -- device create
--- named parameters are called after the attributes of a device
 --
---[[
-local function create_device (
-      device_type, 
-      altid = internal_id, 
-      name = description, 
-      device_file = upnp_file, 
-      impl_file = upnp_impl, 
-      ip, 
-      mac, 
-      hidden, 
-      invisible, 
-      id_parent = parent, 
-      room, 
-      plugin = pluginnum, 
-      statevariables,
-      pnpid, nochildsync, aeskey, reload, nodupid  
-  )
---]]
-
 -- parameter names are all device ATTRIBUTES
 function c_what.device (x)
   local dno, dev = chdev.create_device (

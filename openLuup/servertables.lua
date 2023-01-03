@@ -1,4 +1,4 @@
-local VERSION = "2022.11.15"
+local VERSION = "2022.12.06"
 
 -- mimetypes
 -- 2016/04/14
@@ -313,7 +313,8 @@ local meta = {
   end}
 
 local DEV = setmetatable ({
-    light       = "D_BinaryLight1.xml",
+    binary      = "D_BinaryLight1.xml",       -- as a switch
+    light       = "D_BinaryLight1.xml",       -- as a non-dimming light
     dimmer      = "D_DimmableLight1.xml",
     thermos     = "D_HVAC_ZoneThermostat1.xml",
     motion      = "D_MotionSensor1.xml",
@@ -328,6 +329,7 @@ local SID = setmetatable ({
     
     -- Short SIDs (as used by Historian / Grafana)
     altui1                  = "urn:upnp-org:serviceId:altui1",
+    openLuupBridge          = "urn:akbooer-com:serviceId:openLuupBridge1",
     AltAppStore1            = "urn:upnp-org:serviceId:AltAppStore1",
     Dimming1                = "urn:upnp-org:serviceId:Dimming1",
     EnergyMetering1         = "urn:micasaverde-com:serviceId:EnergyMetering1",

@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2021.08.12",
+  VERSION       = "2022.12.03",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -257,9 +257,10 @@ local S_solar_svc do
 
           x.action {x.name "GetSolarCoords",
             x.argumentList {
-              argument "Epoch",
-              argument "Latitude",
-              argument "Longitude",
+-- 2022.12.02  remove input arguments, since the return values would overwrite the RA / DEC / ... current values
+--              argument "Epoch",
+--              argument "Latitude",
+--              argument "Longitude",
               argument ("RA",  "out", "RA"),
               argument ("DEC", "out", "DEC"),
               argument ("ALT", "out", "ALT"),
@@ -771,6 +772,57 @@ local D_GenericTasmotaDevice_json = json.encode {
 --        default_icon = "https://cdn6.aptoide.com/imgs/6/a/c/6acc4942157e022670fa153739730cf9_icon.png",
 --        default_icon = "https://pbs.twimg.com/profile_images/1317058087929450505/Vw2yKX4S.jpg",
         DeviceType = "GenericTasmotaDevice",
+      }
+
+-----
+
+-----
+--
+-- Zigbee2MQTT support
+--
+
+local D_Zigbee2MQTTBridge_xml = Device {
+        deviceType   = "Zigbee2MQTTBridge",
+        Category_Num = "1",
+        friendlyName = "Zigbee2MQTT Bridge",
+        manufacturer = "akbooer",
+        handleChildren  = "1",
+        staticJson   = "D_Zigbee2MQTTBridge.json",
+--        serviceList     = { 
+--          {"urn:akbooer-com:service:openLuupBridge:1", SID.openLuupBridge, "S_openLuupBridge.xml"},
+        serviceIds      = { SID.openLuupBridge },
+        implementationList = {"I_TasmotaBridge.xml"}
+      }
+
+
+local D_Zigbee2MQTTBridge_json = json.encode {
+    default_icon = "https://raw.githubusercontent.com/zigbee2mqtt/hassio-zigbee2mqtt/master/zigbee2mqtt/icon.png",
+    DeviceType = "Zigbee2MQTTBridge",
+  }
+
+local I_Zigbee2MQTTBridge_impl do
+  local x = xml.createDocument ()
+    x: appendChild {
+      x.implementation {
+        x.functions [[
+          local M = require "openLuup.L_Zigbee2MQTTBridge"
+          init = M.init
+        ]],
+        x.startup "init",
+        x.actionList {}
+        }}
+  I_Zigbee2MQTTBridge_impl = tostring(x)
+end
+
+
+local D_GenericZigbeeDevice_xml = Device {
+        deviceType   = "GenericZigbeeDevice",
+        staticJson   = "D_GenericZigbeeDevice.json",
+      }
+
+local D_GenericZigbeeDevice_json = json.encode {
+        default_icon = "zigbee.svg",
+        DeviceType = "GenericZigbeeDevice",
       }
 
 -----
@@ -1386,6 +1438,31 @@ fa["arrow-down-solid"] = [[
 fa["arrow-up-solid"] = [[
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><path d="M34.9 289.5l-22.2-22.2c-9.4-9.4-9.4-24.6 0-33.9L207 39c9.4-9.4 24.6-9.4 33.9 0l194.3 194.3c9.4 9.4 9.4 24.6 0 33.9L413 289.4c-9.5 9.5-25 9.3-34.3-.4L264 168.6V456c0 13.3-10.7 24-24 24h-32c-13.3 0-24-10.7-24-24V168.6L69.2 289.1c-9.3 9.8-24.8 10-34.3.4z"></path></svg>]]
 
+
+local zigbee_svg = [[
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+    <defs>
+        <radialGradient cx="50%" cy="50%" fx="50%" fy="50%" r="50%" id="radialGradient-1">
+            <stop stop-color="#DC001F" offset="0%"></stop>
+            <stop stop-color="#D5001D" offset="64.214681%"></stop>
+            <stop stop-color="#AE0017" offset="82.3819839%"></stop>
+            <stop stop-color="#590E0A" offset="100%"></stop>
+        </radialGradient>
+        <linearGradient x1="49.895367%" y1="100%" x2="49.9943142%" y2="-1.92435989%" id="linearGradient-2">
+            <stop stop-color="#D4001C" offset="0%"></stop>
+            <stop stop-color="#EC8A6C" offset="53.1343169%"></stop>
+            <stop stop-color="#FCEFE7" offset="88.7566854%"></stop>
+            <stop stop-color="#FDF7F1" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+	<g>
+		<path d="M0,128 C0,198.7 57.3,256 128,256 C198.7,256 256,198.7 256,128 C256,57.3 198.7,0 128,0 C57.3,0 0,57.3 0,128 L0,128 Z" fill="url(#radialGradient-1)"></path>
+		<path d="M41.8635294,60.3356863 C41.8635294,88.947451 80.2133333,81.1168627 127.498039,81.1168627 C174.782745,81.1168627 213.132549,88.947451 213.132549,60.3356863 C213.132549,31.8243137 174.782745,8.63372549 127.498039,8.63372549 C80.2133333,8.53333333 41.8635294,31.7239216 41.8635294,60.3356863 L41.8635294,60.3356863 Z" fill="url(#linearGradient-2)"></path>
+		<path d="M89.5498039,201.687843 C89.3490196,201.386667 118.763922,168.96 153.198431,135.127843 C187.331765,101.295686 216.345098,71.3788235 216.44549,71.3788235 C215.341176,47.8870588 198.073725,36.5427451 182.512941,34.6352941 C172.67451,32.627451 99.8901961,30.0172549 58.5286275,36.4423529 C50.8052498,37.3728804 43.0818721,38.3896577 35.27855,39.6525737 C34.9746645,39.7017556 31.9144293,42.8860604 29.1888835,46.1761884 C26.3942246,49.5497459 23.9395372,53.0301454 24.1934874,52.9943781 C47.8670236,49.6601116 71.5405599,47.4507754 95.2140962,46.3780526 C119.528352,45.2762967 143.842607,45.373511 168.156863,46.6823529 C168.658824,47.0839216 140.950588,77.8039216 106.817255,111.23451 C72.8847059,144.564706 42.1647059,175.385098 39.1529412,178.999216 C38.9521569,203.494902 59.7333333,212.931765 70.8768627,215.140392 C122.578824,220.16 174.777698,218.363641 226.479659,210.031092 C226.479659,210.031092 231.069167,204.861811 231.623855,203.913248 C232.178542,202.964685 236.154377,197.015354 236.026855,197.033533 C186.43285,204.103461 136.869001,206.296719 87.8431373,203.595294 C88.9174805,202.694818 88.947451,202.390588 89.5498039,201.687843 Z" fill="#FFFFFF"></path>
+	</g>
+</svg>
+]]
+
 -----
 
 local manifest = {
@@ -1429,6 +1506,13 @@ local manifest = {
     ["D_GenericTasmotaDevice.xml"]  = D_GenericTasmotaDevice_xml,
     ["D_GenericTasmotaDevice.json"] = D_GenericTasmotaDevice_json,
     
+    ["D_Zigbee2MQTTBridge.xml"]  = D_Zigbee2MQTTBridge_xml,
+    ["D_Zigbee2MQTTBridge.json"] = D_Zigbee2MQTTBridge_json,
+    ["I_Zigbee2MQTTBridge.xml"]  = I_Zigbee2MQTTBridge_impl,
+    
+    ["D_GenericZigbeeDevice.xml"]  = D_GenericZigbeeDevice_xml,
+    ["D_GenericZigbeeDevice.json"] = D_GenericZigbeeDevice_json,
+    
     ["built-in/altui_console_menus.json"]   = altui_console_menus_json,
     ["built-in/openLuup_menus.json"]   = openLuup_menus_json,
     
@@ -1453,6 +1537,7 @@ local manifest = {
     ["storage-aggregation.conf"]  = storage_aggregation_conf,
     ["unknown.wsp"]               = unknown_wsp,
     
+    ["icons/zigbee.svg"] = zigbee_svg,
   }
 
 do -- add font-awesome icon SVGs

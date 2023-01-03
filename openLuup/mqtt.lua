@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2021.08.16",
+  VERSION       = "2022.12.16",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2020-2021 AKBooer",
+  COPYRIGHT     = "(c) 2020-2022 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2020-2021 AK Booer
+  Copyright 2020-2022 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -44,6 +44,11 @@ local ABOUT = {
 -- 2021.04.30   add 'query' topic to force specific variable update message (after connect, for example)
 -- 2021.08.16   fix null topic in publish (thanks @ArcherS)
 
+-- 2022.11.28   use "****" for Username / Password in debug message (on suggestion of @a-lurker)
+-- 2022.12.02   Fix response to QoS > 0 PUBLISH packets, thanks @Crille and @toggledbits
+-- 2022.12.05   Add PUBCOMP as response to QoS 2 PUBREL
+-- 2022.12.09   Improve error messages in MQTT_packet.receive()
+
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
 -- Each conformance statement has been assigned a reference in the format [MQTT-x.x.x-y]
@@ -78,8 +83,8 @@ do -- MQTT Packet methods
 
   -- control packet names: an ordered list, 1 - 15.
   local pname = {
-      "CONNECT", "CONNACK", "PUBLISH", 
-      "PUBACK", "PUBREC", "PUBREL", "PUBCOMP", 
+      "CONNECT", "CONNACK", 
+      "PUBLISH", "PUBACK", "PUBREC", "PUBREL", "PUBCOMP", 
       "SUBSCRIBE", "SUBACK", "UNSUBSCRIBE", "UNSUBACK", 
       "PINGREQ", "PINGRESP",
       "DISCONNECT"
@@ -160,6 +165,7 @@ do -- MQTT Packet methods
   -- encode for transmission
   local function encode (packet_type, control_flags, variable_header, payload)
     variable_header = variable_header or ''
+    control_flags = control_flags or 0
     payload = payload or ''
     packet_type = ptype[packet_type] or packet_type   -- convert to number if string type
     local length = #variable_header + #payload
@@ -178,16 +184,23 @@ do -- MQTT Packet methods
     return table.concat {fixed_header, variable_header, payload}
   end
 
+  local function encode_ack (packet_type, packet_id, payload) 
+    -- generic acknowledgement
+    local control_flags = 0
+    local variable_header = packet_id and word2bytes (packet_id) or nil
+    return encode (packet_type, control_flags, variable_header, payload)
+   end
+
   -- receive returns messsage object, or error message
   function MQTT_packet.receive (client)
     local fixed_header_byte1, err = client: receive (1)
-    if not fixed_header_byte1 then return nil, err end
+    if not fixed_header_byte1 then return nil, "(Fixed Header byte) " .. err end
 
     local nb = 1
     local length = 0
     for i = 0, 2 do                   -- maximum of 3 bytes encode remaining length, LSB first
       local b, err = client: receive (1)
-      if not b then return nil, err end
+      if not b then return nil, "(Remaining Length bytes) " .. err end
       nb = nb + 1
       b = b: byte()
       local n = b % 128               -- seven significant bits
@@ -198,7 +211,7 @@ do -- MQTT Packet methods
     local body = ''
     if length > 0 then
       body, err = (length > 0) and client: receive (length)
-      if not body then return nil, err end
+      if not body then return nil, "(Message body) " .. err end
       nb = nb + length
     end
     
@@ -264,21 +277,18 @@ do -- MQTT Packet methods
     
     local payload = table.concat {ClientId, WillTopic, WillMessage, Username, Password}
     
-    local packet_type = "CONNECT"
     local control_flags = 0
-    local connect = encode (packet_type, control_flags, variable_header, payload)
-    return connect
+    return encode ("CONNECT", control_flags, variable_header, payload)
   end
   
   function MQTT_packet.CONNACK (ConnectReturnCode)
-    local packet_type, control_flags = "CONNACK", 0 
+    local control_flags = 0 
     
-    local SessionPresent = 0                      -- QoS 0 means that there will be no Session State
+    local SessionPresent = 0                          -- QoS 0 means that there will be no Session State
     ConnectReturnCode = ConnectReturnCode or 0
     local variable_header = string.char (SessionPresent, ConnectReturnCode)
     
-    local connack = encode (packet_type, control_flags, variable_header)    -- connack has no payload
-    return connack
+    return encode ("CONNACK", control_flags, variable_header)
   end
 
   function MQTT_packet.PUBLISH (TopicName, ApplicationMessage, control_flags) 
@@ -286,7 +296,7 @@ do -- MQTT Packet methods
     
     -- FIXED HEADER
     local packet_type = "PUBLISH"
-    control_flags = control_flags or 0               -- default: DUP = 0, QoS = 0, RETAIN = 0
+    control_flags = control_flags or 0                -- default: DUP = 0, QoS = 0, RETAIN = 0
     
     -- VARIABLE HEADER
     local variable_header = encode_utf8 (TopicName)   -- No packetId, since QoS = 0
@@ -297,46 +307,51 @@ do -- MQTT Packet methods
     local publish = encode (packet_type, control_flags, variable_header, payload)
     return publish
   end
+ 
+  function MQTT_packet.PUBACK (PacketId)              -- response to QoS 1 PUBLISH
+    return encode_ack ("PUBACK", PacketId)
+   end
+  
+  function MQTT_packet.PUBREC (PacketId)              -- 1st response to QoS 2 PUBLISH
+    return encode_ack ("PUBREC", PacketId)
+  end
+  
+  function MQTT_packet.PUBREL ()  end                 -- not implemented, we only ever send QoS 0
+  
+  function MQTT_packet.PUBCOMP (PacketId)             -- 2nd response to QoS 2 PUBREL         
+    return encode_ack ("PUBCOMP", PacketId)
+  end
 
-  function MQTT_packet.PUBACK ()  end          -- not implemented (only required for QoS > 0)
-  function MQTT_packet.PUBREC ()  end          -- ditto
-  function MQTT_packet.PUBREL ()  end          -- ditto
-  function MQTT_packet.PUBCOMP () end          -- ditto
+  function MQTT_packet.SUBSCRIBE () end               -- client only
 
-  function MQTT_packet.SUBSCRIBE () end        -- client only
-
-  function MQTT_packet.SUBACK (QoS_list, PacketId) 
+  function MQTT_packet.SUBACK (PacketId, QoS_list) 
     -- When the Server receives a SUBSCRIBE Packet from a Client, the Server MUST respond with a SUBACK Packet [MQTT-3.8.4-1]
     -- The SUBACK Packet MUST have the same Packet Identifier as the SUBSCRIBE Packet that it is acknowledging [MQTT-3.8.4-2]
-    local control_flags = 0
-    local variable_header = word2bytes (PacketId)
-    local payload = QoS_list
-    local suback = encode ("SUBACK", control_flags, variable_header, payload)
-    return suback
+    return encode_ack ("SUBACK", PacketId, QoS_list)
   end
 
-  function MQTT_packet.UNSUBSCRIBE () end      -- client only
+  function MQTT_packet.UNSUBSCRIBE () end             -- client only
 
   function MQTT_packet.UNSUBACK (PacketId)
-    local control_flags = 0
-    local variable_header = word2bytes (PacketId)
-    local unsuback = encode ("UNSUBACK", control_flags, variable_header)    -- no payload
-    return unsuback
+    return encode_ack ("UNSUBACK", PacketId)
   end
 
-  function MQTT_packet.PINGREQ () end          -- client only
+  function MQTT_packet.PINGREQ () end                 -- client only
+
+  local pingresp = encode_ack "PINGRESP" 
 
   function MQTT_packet.PINGRESP () 
     -- The Server MUST send a PINGRESP Packet in response to a PINGREQ packet [MQTT-3.12.4-1]
-    --  local control_flags = 0
-    --  local pingresp = encode ("PINGRESP", control_flags)  -- no variable_header or payload 
-    local pingresp = string.char (13 * 0x10, 0)
     return pingresp
   end
 
-  function MQTT_packet.DISCONNECT () end      -- client only
+  function MQTT_packet.DISCONNECT () end              -- client only
 
-
+  function MQTT_packet.name (packet)                  -- utility method, only used for debug logging
+    local packet_type = parse_packet_type (packet: sub(1,1))
+    return pname[packet_type] or packet_type
+  end
+  
 end
 
 
@@ -423,11 +438,11 @@ function parse.CONNECT(message, credentials)
       KeepAlive = KeepAlive,
     }
   
-  _debug ("ClientId: " .. ClientId)
-  _debug ("WillTopic: " .. (WillTopic or ''))
-  _debug ("WillMessage: " .. (WillMessage or ''))
-  _debug ("UserName: " .. Username)
-  _debug ("Password: " .. Password)
+  _debug ("ClientId: ",     ClientId)
+  _debug ("WillTopic: ",    WillTopic)
+  _debug ("WillMessage: ",  WillMessage)
+  _debug ("UserName: ",     "****")       -- or Username
+  _debug ("Password: ",     "****")       -- or Password
   
   -- ACKNOWLEDGEMENT
   -- If CONNECT validation is successful the Server MUST acknowledge the CONNECT Packet 
@@ -505,8 +520,29 @@ function parse.PUBLISH(message)
         QoS 1 PUBACK Packet 
         QoS 2 PUBREC Packet
 --]]
-  local ack    -- None, because we only handle QoS 0
+  local ack    -- None for QoS 0
+  
+  -- 2022.12.02  Fix response to QoS > 0 packets, thanks @Crille and @toggledbits
+  if QoS == 1 then
+    ack = MQTT_packet.PUBACK (PacketId)
+  elseif QoS == 2 then
+    ack = MQTT_packet.PUBREC (PacketId)
+  end
+  
   return ack, nil, TopicName, ApplicationMessage, RETAIN
+end
+
+function parse.PUBREL (message)
+  -- Bits 3,2,1 and 0 of the fixed header in the PUBREL Control Packet are reserved 
+  -- and MUST be set to 0,0,1 and 0 respectively.
+  -- The Server MUST treat any other value as malformed and close the Network Connection [MQTT-3.6.1-1].
+  local Reserved  = table.concat (message.control_flags) 
+  if Reserved ~= "0010" then
+    return nil, "Unexpected reserved flag bits in PUBREL: " .. Reserved
+  end
+  local PacketId = message: read_word()
+  local ack = MQTT_packet.PUBCOMP (PacketId)
+  return ack
 end
 
 function parse.PINGREQ ()
@@ -524,7 +560,7 @@ function parse.SUBSCRIBE (message)
   -- and MUST be set to 0,0,1 and 0 respectively [MQTT-3.8.1-1]
   local Reserved  = table.concat (message.control_flags) 
   if Reserved ~= "0010" then
-    return nil, "Unexpected reserved flag bits: " .. Reserved
+    return nil, "Unexpected reserved flag bits in SUBSCRIBE: " .. Reserved
   end
   
   -- VARIABLE HEADER
@@ -541,7 +577,7 @@ function parse.SUBSCRIBE (message)
   repeat
     local topic = message: read_string()
     topics[topic] = topic
-    _debug ("Topic: " .. topic)
+    _debug ("Topic: ", topic)
     nt = nt + 1
     local RequestedQoS
     RequestedQoS = message: read_bytes(1) :byte()
@@ -564,7 +600,7 @@ function parse.SUBSCRIBE (message)
   --   of the originally published message and the maximum QoS granted by the Server [MQTT-3.8.4-6]
   
   local QoS_list = string.char(0): rep (nt)   -- regardless of RequestedQoS, we're using QoS = 0 for everything
-  local suback = MQTT_packet.SUBACK (QoS_list, PacketId)
+  local suback = MQTT_packet.SUBACK (PacketId, QoS_list)
   return suback, nil, topics
 end
 
@@ -823,18 +859,6 @@ local subscriptions = {} do
       local ok, err 
       for _, subscriber in pairs (subscribers) do
         ok, err = publish_to_one (subscriber, message)
---        local s = subscriber
---        s.count = (s.count or 0) + 1
---        local ok, err
---        if s.callback then
---          ok, err = scheduler.context_switch (s.devNo, s.callback, TopicName, ApplicationMessage, s.parameter, Retained)
---        elseif s.client then
---          ok, err = self: send_to_client (s.client, m.MQTT_packet) -- publish to external subscribers
---          if ok then 
---            stats["publish/messages/sent"] = stats["publish/messages/sent"] + 1
---          end
---        end
-
         if not ok then
           _log (table.concat {"ERROR publishing application message for mqtt:", TopicName, " : ", err})
         else
@@ -895,7 +919,7 @@ local function incoming (client, credentials, subscriptions)
   
   if message then
     pname = message.packet_name
-    _debug (table.concat {pname, ' ', tostring(client)})
+    _debug (pname, ' ', tostring(client))
     
     -- statistics
     local stats = subscriptions.stats
@@ -907,14 +931,16 @@ local function incoming (client, credentials, subscriptions)
     local process = parse[pname] or reserved
     
     -- ack is an acknowledgement package to send back to the client
-    -- errmsg signals an error requring the client connection to be closed
+    -- errmsg signals an error requiring the client connection to be closed
     -- topic may be a list for (un)subscribe, or a single topic to publish
     -- app_message is the appplication message for publication
+    -- retain is true for retained messages
     ack, errmsg, topic, app_message, retain = process (message, credentials)    -- credentials used for CONNECT authorization
     
     -- send an ack if required
     if ack then
       subscriptions: send_to_client (client, ack)
+      _debug (MQTT_packet.name (ack), "ack")
     end
     
     if topic then

@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2022.11.11",
+  VERSION       = "2023.01.04",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -52,10 +52,15 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2022.06.30  ...another go at the above fix
 -- 2022.07.31  add ShellyHomePage to Shelly scene controllers
 -- 2022.11.11  prettier openLuup device control panel
+-- 2022.11.27  add basic support for Zigbee2MQTT bridge
+-- 2022.12.30  add link to https://dev.netatmo.com/
+
+-- 2022.01.03  add Authorize button for Netatmo Oath2 tokens
 
 
 local xml = require "openLuup.xml"
 local SID = require "openLuup.servertables" .SID
+local API = require "openLuup.api"
 
 local h = xml.createHTMLDocument ()    -- for factory methods
 local div = h.div
@@ -68,9 +73,10 @@ local sid = SID {
     security  = "urn:micasaverde-com:serviceId:SecuritySensor1",
     weather   = "urn:upnp-micasaverde-com:serviceId:Weather1",
   }
-  
-local function todate (epoch) 
-  return tonumber(epoch) and os.date ("%Y-%m-%d %H:%M:%S", epoch) or "---  00:00"
+
+local function tiny_date_time (epoch)
+  local date_time = tonumber(epoch) and os.date ("%Y-%m-%d %H:%M:%S", epoch) or "---  00:00"
+  return div {class = "w3-tiny w3-display-bottomright", date_time}  
 end
 
 local function ShellyHomePage (devNo)  
@@ -147,7 +153,24 @@ local panels = {
   Netatmo = {
     control = function ()
       local br = h.br{}
-      return div {p "Links to reports:",
+      return div {
+        p "Grant plugin access to your weather station data:",
+        h.form {
+          action="https://api.netatmo.com/oauth2/authorize", 
+          method="get",
+--          enctype = "application/x-www-form-urlencoded", -- "multipart/form-data",  -- "text/plain",
+          target="_blank",
+          h.input {type="hidden", name="client_id", value="5200dfd21977593427000024"},
+          h.input {type="hidden", name="scope", value="read_station"},
+          h.input {type="hidden", name="state", value="42"},
+          h.input {type="submit", value="Authorize"}
+        },
+
+--        p {class="w3-text-indigo",
+--          h.a {href="https://dev.netatmo.com/", target="_blank", "dev.netatmo.com"}, 
+--          },
+
+        p "Links to reports:",
         p {class="w3-text-indigo",
           h.a {href="/data_request?id=lr_Netatmo&page=organization", target="_blank", "Device Tree"}, br,
           h.a {href="/data_request?id=lr_Netatmo&page=list", target="_blank", "Device List"}, br,
@@ -165,7 +188,7 @@ local panels = {
       local time  = luup.variable_get (sid.energy, "KWHReading", devNo)
       local kwh   = luup.variable_get (sid.energy, "KWH", devNo)
       return h.span {watts or '???', " Watts", h.br(), ("%0.0f"): format(kwh or 0), " kWh", h.br(), 
-        div {class = "w3-tiny w3-display-bottomright", time and todate(time) or "---  00:00"}}
+        tiny_date_time (time)}
     end},
 
 --
@@ -175,8 +198,7 @@ local panels = {
   SceneController = {
     panel = function (devNo)
       local time = luup.variable_get (sid.scene, "LastSceneTime", devNo)
---      return h.span (time and todate(time) or '')
-      return div {class = "w3-tiny w3-display-bottomright", time and todate(time) or "---  00:00"}
+      return tiny_date_time (time)
     end,
     control = function (devNo)
       local isShelly = luup.devices[devNo].id: match "^shelly"
@@ -188,6 +210,19 @@ local panels = {
 --
   GenericShellyDevice = {
     control = ShellyHomePage,
+  },
+  
+    
+--
+-- Zigbee2MQTT
+--
+  Zigbee2MQTTBridge = {
+    panel = function (devNo)
+      local D = API[devNo]
+      local time = D.hadevice.LastUpdate
+      local version = D.attr.version
+      return h.span {version, h.br(), tiny_date_time (time)}
+    end,
   },
   
 --

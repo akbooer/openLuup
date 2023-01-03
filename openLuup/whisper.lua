@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.whisper",
-  VERSION       = "2022.11.05",
+  VERSION       = "2022.12.20",
   DESCRIPTION   = "openLuup Whisper time-series databasa",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2012 AKBooer",
@@ -42,6 +42,7 @@ local ABOUT = {
   -- 2014.07.31  Lua translation and refactoring  @akbooer
   -- 2018.07.23  add update_many() with a rather inefficient implementation
   -- 2022.11.05  tidy WhisperException for error reporting
+  -- 2022.12.20  fix empty file path in __file_open()
   
 
   local  CACHE_HEADERS           = true;     -- improves file access performance for read and write
@@ -617,7 +618,7 @@ local ABOUT = {
   local function __file_open (path, mode, fct, silent)
     -- open a file and return modified handle, or optionally raise error if unable to do so
     local result
-    local file = io.open (path, mode)
+    local file = io.open (path or '', mode)
     if file then
       local header = __headerCache[path] or __readHeader (file, path) 
       if CACHE_HEADERS then __headerCache[path] = header end         -- save info for next time
