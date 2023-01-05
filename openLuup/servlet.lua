@@ -36,7 +36,10 @@ Requests are of four basic types:
 
 The add_callback_handlers () function registers a list of new request callback handlers.
 
-The execute() function essentially converts a given luup-style callback handler, which simply returns response and possibly mime-type, into both a function with WSAPI-style returns of status, headers, and iterator function, and also a task which may be executed by the scheduler.  These are essentially, servlets.  
+The execute() function essentially converts a given luup-style callback handler, 
+which simply returns response and possibly mime-type, 
+into both a function with WSAPI-style returns of status, headers, and iterator function, 
+and also a task which may be executed by the scheduler.  These are essentially, servlets.  
 
 If a respond() function is given to the execute() call, then the servlet is scheduled.  CGI and file
 requests are currently implemented as <run> tags, so do not appear as scheduler jobs (thus improving response times.)
