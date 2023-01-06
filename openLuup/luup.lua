@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2021.05.14",
+  VERSION       = "2023.01.06",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-2023 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-2023 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -89,6 +89,8 @@ local ABOUT = {
 -- 2021.04.27  move openLuup object (and virtualization) to open.api module
 -- 2021.05.14  restore luup.openLuup with explicit extensions (NOT, now, the openLuuup API)
 
+-- 2023.01.06  remove leading and trailing spaces from room names (thanks @a-lurker)
+
 
 local logs          = require "openLuup.logs"
 
@@ -144,6 +146,7 @@ do
   local room = {}
   
   function room.create (name, force_number) 
+    name = name: match "^%s*(.-)%s*$"     -- 2023.01.06 remove leading and trailing spaces
     local number
     if force_number then
       number = tonumber (force_number)    -- 2018.07.02  ensure room number IS a number!
@@ -162,6 +165,7 @@ do
   end
 
   function room.rename (number, name) 
+    name = name: match "^%s*(.-)%s*$"     -- 2023.01.06 remove leading and trailing spaces
     number = tonumber (number)            -- 2018.07.02
     if number and rooms[number] then
       rooms[number] = name or '?'

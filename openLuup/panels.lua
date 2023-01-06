@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2023.01.04",
+  VERSION       = "2023.01.05",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -55,18 +55,18 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2022.11.27  add basic support for Zigbee2MQTT bridge
 -- 2022.12.30  add link to https://dev.netatmo.com/
 
--- 2022.01.03  add Authorize button for Netatmo Oath2 tokens
+-- 2023.01.03  add Authorize button for Netatmo Oath2 tokens
 
 
 local xml = require "openLuup.xml"
-local SID = require "openLuup.servertables" .SID
+local srv = require "servertables"
 local API = require "openLuup.api"
 
 local h = xml.createHTMLDocument ()    -- for factory methods
 local div = h.div
 local a, p = h.a, h.p
     
-local sid = SID {
+local sid = srv.SID {
     althue    = "urn:upnp-org:serviceId:althue1",
     camera    = "urn:micasaverde-com:serviceId:Camera1",
     netatmo   = "urn:akbooer-com:serviceId:Netatmo1",
@@ -156,20 +156,13 @@ local panels = {
       return div {
         p "Grant plugin access to your weather station data:",
         h.form {
-          action="https://api.netatmo.com/oauth2/authorize", 
+          action="/data_request", 
           method="get",
---          enctype = "application/x-www-form-urlencoded", -- "multipart/form-data",  -- "text/plain",
           target="_blank",
-          h.input {type="hidden", name="client_id", value="5200dfd21977593427000024"},
-          h.input {type="hidden", name="scope", value="read_station"},
-          h.input {type="hidden", name="state", value="42"},
+          h.input {type="hidden", name="id", value="lr_Netatmo"},
+          h.input {type="hidden", name="page", value="authorize"},
           h.input {type="submit", value="Authorize"}
         },
-
---        p {class="w3-text-indigo",
---          h.a {href="https://dev.netatmo.com/", target="_blank", "dev.netatmo.com"}, 
---          },
-
         p "Links to reports:",
         p {class="w3-text-indigo",
           h.a {href="/data_request?id=lr_Netatmo&page=organization", target="_blank", "Device Tree"}, br,
