@@ -1,4 +1,4 @@
-local VERSION = "2022.12.06"
+local VERSION = "2023.01.05"
 
 -- mimetypes
 -- 2016/04/14
@@ -38,6 +38,8 @@ local VERSION = "2022.12.06"
 -- 2022.10.24  add Historian rules for Shelly H&T T/H max/min
 -- 2022.11.14  change cache_rules to define variable cache length
 
+-- 2023.01.05  fix long-standing issue with myIP() on some LuaSocket library versions
+
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
 
@@ -47,7 +49,7 @@ local xml     = require "openLuup.xml"
 
 local function myIP ()    
   local mySocket = socket.udp ()
-  mySocket:setpeername ("42.42.42.42", "424242")  -- arbitrary IP and PORT
+  mySocket:setpeername ("42.42.42.42", 42)  -- arbitrary IP and PORT
   local ip = mySocket:getsockname () 
   mySocket: close()
   return ip or "127.0.0.1"
