@@ -128,7 +128,6 @@ local panels    = require "openLuup.panels"       -- for default console device 
 local xml       = require "openLuup.xml"          -- for HTML constructors
 local tables    = require "openLuup.servertables" -- for serviceIds
 local devices   = require "openLuup.devices"      -- for cache size
-local API       = require "openLuup.API"
 
 json = json.Lua         -- 2021.05.01  force native openLuup.json module for encode/decode
 
@@ -3069,6 +3068,7 @@ end
 
 function pages.ip_table ()
   local ips = {}
+  local API = require "openLuup.api"
   for i,D in API "devices" do
     local A = D.attributes
     local ip = A.ip
