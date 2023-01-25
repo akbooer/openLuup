@@ -2,13 +2,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2022.11.16",
+  VERSION       = "2023.01.20",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2020-2022 AKBooer",
+  COPYRIGHT     = "(c) 2020-2023 AKBooer",
   DOCUMENTATION = "",
   LICENSE       = [[
-  Copyright 2013-2022 AK Booer
+  Copyright 2013-2023 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -48,6 +48,8 @@ ABOUT = {
 -- 2022.11.15  remove hack for H & T cache size (now handled by servertables.cache_rules)
 -- 2022.11.16  basic infrastructure for Shelly Plus (Shelly-NG) devices
 
+-- 2023.01.20  create Shelly Gen2 devices
+
 
 local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
@@ -64,7 +66,7 @@ local SID = tables.SID {
   }
 
 local openLuup = luup.openLuup
-local VIRTUAL = require "openLuup.api"
+local API = require "openLuup.api"
 
 --------------------------------------------------
 --
@@ -73,74 +75,74 @@ local VIRTUAL = require "openLuup.api"
 -- this part runs as a standard device
 -- it is a control API only (ie. action requests)
 --
+do
+  local devNo             -- bridge device number (set on startup)
 
-local devNo             -- bridge device number (set on startup)
-
-local function SetTarget (dno, args)
-  local id = luup.attr_get ("altid", dno)
-  local dfile = luup.attr_get ("device_file", dno)
-  local dtype = dfile == DEV.dimmer and "light" or "relay"
-  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
-  if shelly then
-    local val = tostring(tonumber (args.newTargetValue) or 0)
-    VIRTUAL[dno].switch.Target = val
-    local on_off = val == '1' and "on" or "off"
-    shelly = table.concat {"shellies/", shelly, '/', dtype, '/', relay, "/command"}
-    openLuup.mqtt.publish (shelly, on_off)
-  else 
-    return false
-  end
-end
-
-local function ToggleState (dno)
-  local val = VIRTUAL[dno].switch.Status
-  SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
-end
-
-local function SetLoadLevelTarget (dno, args)
-  local id = luup.attr_get ("altid", dno)
-  local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
-  if shelly then
-    local val_n = tonumber (args.newLoadlevelTarget) or 0
-    local val = tostring(val_n)
-    VIRTUAL[dno].dimming.LoadLevelTarget = val
-    -- shellies/shellydimmer-<deviceid>/light/0/set 	
-    -- accepts a JSON payload in the format 
-    -- {"brightness": 100, "turn": "on", "transition": 500}
-    shelly = table.concat {"shellies/", shelly, '/light/', relay, "/set"}
-    local command = json.encode {brightness = val_n}
-    openLuup.mqtt.publish (shelly, command)
-  else 
-    return false
-  end
-end
-
-local function generic_action (serviceId, action)
-  local function noop(lul_device)
-    local message = "service/action not implemented: %d.%s.%s"
-    luup.log (message: format (lul_device, serviceId, action))
-    return false
+  local function SetTarget (dno, args)
+    local id = luup.attr_get ("altid", dno)
+    local dfile = luup.attr_get ("device_file", dno)
+    local dtype = dfile == DEV.dimmer and "light" or "relay"
+    local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
+    if shelly then
+      local val = tostring(tonumber (args.newTargetValue) or 0)
+      API[dno].switch.Target = val
+      local on_off = val == '1' and "on" or "off"
+      shelly = table.concat {"shellies/", shelly, '/', dtype, '/', relay, "/command"}
+      openLuup.mqtt.publish (shelly, on_off)
+    else 
+      return false
+    end
   end
 
-  local SRV = {
-      [SID.switch]    = {SetTarget = SetTarget},
-      [SID.hadevice]  = {ToggleState = ToggleState},
-      [SID.dimming]   = {SetLoadLevelTarget = SetLoadLevelTarget},
-    }
-  
-  local service = SRV[serviceId] or {}
-  local act = service [action] or noop
-  if type(act) == "function" then act = {run = act} end
-  return act
-end
+  local function ToggleState (dno)
+    local val = API[dno].switch.Status
+    SetTarget (dno, {newTargetValue = val == '0' and '1' or '0'})
+  end
 
-function init (lul_device)   -- Shelly Bridge device entry point
-  devNo = tonumber (lul_device)
-	luup.devices[devNo].action_callback (generic_action)    -- catch all undefined action calls
-  luup.set_failure (0)
-  return true, "OK", "ShellyBridge"
-end
+  local function SetLoadLevelTarget (dno, args)
+    local id = luup.attr_get ("altid", dno)
+    local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
+    if shelly then
+      local val_n = tonumber (args.newLoadlevelTarget) or 0
+      local val = tostring(val_n)
+      API[dno].dimming.LoadLevelTarget = val
+      -- shellies/shellydimmer-<deviceid>/light/0/set 	
+      -- accepts a JSON payload in the format 
+      -- {"brightness": 100, "turn": "on", "transition": 500}
+      shelly = table.concat {"shellies/", shelly, '/light/', relay, "/set"}
+      local command = json.encode {brightness = val_n}
+      openLuup.mqtt.publish (shelly, command)
+    else 
+      return false
+    end
+  end
 
+  local function generic_action (serviceId, action)
+    local function noop(lul_device)
+      local message = "service/action not implemented: %d.%s.%s"
+      luup.log (message: format (lul_device, serviceId, action))
+      return false
+    end
+
+    local SRV = {
+        [SID.switch]    = {SetTarget = SetTarget},
+        [SID.hadevice]  = {ToggleState = ToggleState},
+        [SID.dimming]   = {SetLoadLevelTarget = SetLoadLevelTarget},
+      }
+    
+    local service = SRV[serviceId] or {}
+    local act = service [action] or noop
+    if type(act) == "function" then act = {run = act} end
+    return act
+  end
+
+  function init (lul_device)   -- Shelly Bridge device entry point
+    devNo = tonumber (lul_device)
+    luup.devices[devNo].action_callback (generic_action)    -- catch all undefined action calls
+    luup.set_failure (0)
+    return true, "OK", "ShellyBridge"
+end
+end 
 --
 -- end of Luup device file
 --
@@ -184,7 +186,7 @@ local push_event = {
 local function generic (dno, var, value) 
   -- battery level
   if var == "sensor/battery" then
-    VIRTUAL[dno].HaDevice1.BatteryLevel = value
+    API[dno].HaDevice1.BatteryLevel = value
     return
   end
   -- button pushes behave as scene controller
@@ -195,7 +197,7 @@ local function generic (dno, var, value)
     local push = input and push_event[input.event]
     if push then
       local scene = button + push
-      local S = VIRTUAL[dno].scene
+      local S = API[dno].scene
       S.sl_SceneActivated = scene
       S.LastSceneTime = os.time()
     end
@@ -214,7 +216,7 @@ local function sw2_5(dno, var, value)
     local altid = luup.attr_get ("altid", dno)
     local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
     if cdno then
-      local D = VIRTUAL[cdno]
+      local D = API[cdno]
       if action == "relay" then
         if attr == '' then
           D.switch.Status = value == "on" and '1' or '0'
@@ -242,8 +244,8 @@ local function h_t (dno, var, value)
   local child = children[mtype]
   local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
   if cdno then
-    local D = VIRTUAL[cdno]
-    local P = VIRTUAL[dno]                -- parent device
+    local D = API[cdno]
+    local P = API[dno]                -- parent device
     if mtype == 't' then
       P.temp.CurrentTemperature = value
       D.temp.CurrentTemperature = value
@@ -265,7 +267,7 @@ local function dm_2 (dno, var, value)
     local altid = luup.attr_get ("altid", dno)
     local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
     if cdno then
-      local D = VIRTUAL[cdno]
+      local D = API[cdno]
       if action == "light" then
         if attr == '' then
           D.switch.Status = value == "on" and '1' or '0'
@@ -327,10 +329,10 @@ end
 local function create_device(info)
   local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
 
-  local offset = VIRTUAL[devNo][SID.sBridge].Offset
+  local offset = API[devNo][SID.sBridge].Offset
   if not offset then 
     offset = openLuup.bridge.nextIdBlock()  
-    VIRTUAL[devNo][SID.sBridge].Offset = offset
+    API[devNo][SID.sBridge].Offset = offset
   end
   local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
@@ -429,11 +431,51 @@ end
 -- MQTT callbacks
 --
 
+--
+-- on announcement, get status with, eg,
+-- shellies/shellyplusi4-a8032ab0c018/rpc {"id":123,"method":"Mqtt.GetConfig"}
+--
+
 function _G.Shelly_Plus_Handler (topic, message)
   
   if not devNo then return end      -- wait until bridge exists
   _log (table.concat ({"ShellyPlus:", topic, message}, ' '))
   
+  local shelly, subtopic = topic: match "([^/]+)/(.+)"
+  if subtopic == "online" and message == "true" then    -- get/update configuration
+    local msg = json.encode  {id = tostring {}, src = "shelly-gen2-cmd", method = "Shelly.GetConfig"}
+    openLuup.mqtt.publish (shelly .. "/rpc", msg)
+  end
+end
+
+-- handler for Gen 2 responses
+function _G.Shelly_Gen2_Handler (topic, message)
+  
+  if not devNo then return end      -- wait until bridge exists
+  _log (table.concat ({"ShellyGen2:", topic, message}, ' '))
+  
+  if topic ~= "shelly-gen2/rpc" then return end
+  
+  local info = json.decode (message)
+  if not info then return end
+  
+  -- here should be a complete configuration, including:
+  -- info.wifi.sta.ip
+  -- info.sys.device.name
+  -- info.sys.device.mac
+  
+  info.id = info.src    -- id has different meaning in Gen 2
+  -- add old-style info fields...
+  -- info = {"id":"xxx","model":"SHSW-25","mac":"hhh","ip":"...","new_fw":false,"fw_ver":"..."}
+
+  if info.sys and info.sys.device then
+    info.ip = info.wifi and info.wifi.sta and info.wifi.sta.ip or nil
+    info.mac = info.sys.device.mac
+--    info.model = info. ???
+    info.fw_ver = info.sys.device.fw_id
+  end
+  
+  init_device (info)
 end
 
 
@@ -457,7 +499,7 @@ function _G.Shelly_MQTT_Handler (topic, message)
     init_device (info)
   end
     
-  local bridge = VIRTUAL[devNo]
+  local bridge = API[devNo]
   if not bridge then return end    -- device not yet announced
   
   local timenow = os.time()
@@ -469,7 +511,7 @@ function _G.Shelly_MQTT_Handler (topic, message)
   local child = shelly_devices[shelly]
   if not child then return end
   
-  local D = VIRTUAL[child]
+  local D = API[child]
   D.hadevice.LastUpdate = timenow
   
   local S = D[shelly]
@@ -484,5 +526,6 @@ end
 
 luup.register_handler ("Shelly_MQTT_Handler", "mqtt:shellies/#")   -- * * * MQTT wildcard subscription * * *
 luup.register_handler ("Shelly_Plus_Handler", "mqtt:shellyplus#")
+luup.register_handler ("Shelly_Gen2_Handler", "mqtt:shelly-gen2#")  -- rpc response
 
 -----

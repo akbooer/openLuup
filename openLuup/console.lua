@@ -4,13 +4,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2022.12.21",
+  VERSION       = "2023.01.21",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2022 AKBooer",
+  COPYRIGHT     = "(c) 2013-2023 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-22 AK Booer
+  Copyright 2013-2023 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -128,6 +128,7 @@ local panels    = require "openLuup.panels"       -- for default console device 
 local xml       = require "openLuup.xml"          -- for HTML constructors
 local tables    = require "openLuup.servertables" -- for serviceIds
 local devices   = require "openLuup.devices"      -- for cache size
+local API       = require "openLuup.API"
 
 json = json.Lua         -- 2021.05.01  force native openLuup.json module for encode/decode
 
@@ -234,7 +235,7 @@ local page_groups = {
     ["Servers"]   = {"sockets", "http", "mqtt", "smtp", "pop3", "udp", "file_cache"},
     ["Utilities"] = {"backups", "images", "trash"},
     ["Lua Code"]  = {"lua_startup", "lua_shutdown", "lua_globals", "lua_test", "lua_test2", "lua_test3"},
-    ["Tables"]    = {"rooms_table", "devices_table", "scenes_table", "triggers_table"},
+    ["Tables"]    = {"rooms_table", "devices_table", "scenes_table", "triggers_table", "ip_table"},
     ["Logs"]      = {"log", "log.1", "log.2", "log.3", "log.4", "log.5", "startup_log"},
   }
 
@@ -3064,6 +3065,21 @@ function pages.triggers_table (p)
   local create = X.ButtonLink {"+ Create"; selfref="page=trigger", title="create new trigger"}
   local tdiv = xhtml.div {selection, xhtml.div {class="w3-rest w3-panel", create, triggers} }
   return page_wrapper ("Triggers Table", tdiv)
+end
+
+function pages.ip_table ()
+  local ips = {}
+  for i,D in API "devices" do
+    local A = D.attributes
+    local ip = A.ip
+    if ip and #ip > 0 then
+      local link = xlink ("page=control&device="..i)
+      ips[#ips+1] = {i, ip, link, A.name}
+    end
+  end
+  table.sort (ips, function(a,b) return a[2]<b[2] end)
+  local t = create_table_from_data ({'id', "IP", {colspan=2, "name"}}, ips)  
+  return page_wrapper ("IP Table", t)
 end
 
 local function find_plugin (plugin)

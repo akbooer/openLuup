@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2023.01.06",
+  VERSION       = "2023.01.25",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2023 AKBooer",

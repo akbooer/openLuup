@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2022.12.03",
+  VERSION       = "2023.01.21",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2022 AKBooer",
+  COPYRIGHT     = "(c) 2013-present AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2022 AK Booer
+  Copyright 2013-present AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -1351,7 +1351,7 @@ local openLuup_menus_json = json.encode {
     {"openLuup",  {"About", "hr", "System", "Historian", "Scheduler", "Servers"} },
     {"Devices"},
     {"Scenes"},
-    {"Tables", {"Rooms Table", "Devices Table", "Scenes Table", "Triggers Table",
+    {"Tables", {"Rooms Table", "Devices Table", "Scenes Table", "Triggers Table", "IP Table",
                         "hr","Plugins Table", "App Store", "Luup Files"} },
     {"Utilities", {"Reload Luup Engine", "hr", "Lua Startup","Lua Shutdown", "Lua Test", "Command Line", 
                        "hr", "Backups", "Images", "Trash"} },
