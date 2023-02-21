@@ -1465,6 +1465,30 @@ local zigbee_svg = [[
 
 -----
 
+local openLuup_console_css = [[
+    pre {line-height: 1.1; font-size:10pt;}
+    a.nodec { text-decoration: none; } 
+    th,td {width:1px; white-space:nowrap; padding: 0 16px 0 16px;}
+    table {table-layout: fixed; margin-top:20px}
+    .dev-panel {width:240px; float:left; }
+    .scn-panel {width:240px; float:left; }
+    .tim-panel {width:240px; float:left; }
+    .trg-panel {width:240px; float:left; }
+    .app-panel {width:320px; float:left; }
+    .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    .top-panel-red {background:IndianRed; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    .top-panel-cyan {background:PaleTurquoise; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    .top-panel-green {background:LightGreen; border-bottom:1px solid Grey; margin:0; padding:4px;}
+    textarea.akb-resize {
+      min-height: 20px;
+      max-height: 400px;
+      max-width: 600px;
+    }    
+]]
+
+-----
+
 local manifest = {
     
     ["icons/openLuup.svg"] = openLuup_svg,
@@ -1538,6 +1562,7 @@ local manifest = {
     ["unknown.wsp"]               = unknown_wsp,
     
     ["icons/zigbee.svg"] = zigbee_svg,
+    ["openLuup_console.css"] = openLuup_console_css,
   }
 
 do -- add font-awesome icon SVGs

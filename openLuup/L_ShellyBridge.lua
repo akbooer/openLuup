@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2023.01.20",
+  VERSION       = "2023.01.28",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2023 AKBooer",
@@ -157,7 +157,6 @@ end
 -- as well as subsequent child devices, and update their variables
 --
 
-local shelly_plus_devices = {}
 local shelly_devices = {}      -- gets filled with device info on MQTT connection
 local devNo                    -- bridge device number (set on startup)
 
@@ -338,12 +337,17 @@ local function create_device(info)
   
   local name, altid, ip = info.id, info.id, info.ip
   
-  local _, s = luup.inet.wget ("http://" .. ip .. "/settings")
-  if s then
-    s = json.decode (s)
-    if s and type(s.name) == "string" then name = s.name end
-  else 
-    _log "no Shelly settings name found"
+  if info.Gen2 then
+    name = info.name
+  else
+    -- use HTTP request to get device name
+    local _, s = luup.inet.wget ("http://" .. ip .. "/settings")
+    if s then
+      s = json.decode (s)
+      if s and type(s.name) == "string" then name = s.name end
+    else 
+      _log "no Shelly settings name found"
+    end
   end
   
   local upnp_file = models[info.model].upnp
@@ -426,6 +430,21 @@ local function create_ShellyBridge()
             statevariables)  
 end
 
+local function init_shelly_bridge ()
+  devNo = devNo       -- ensure that ShellyBridge device exists
+            or
+              openLuup.find_device {device_type = "ShellyBridge"}
+                or
+                  create_ShellyBridge ()
+  
+  local bridge = API[devNo]
+  bridge[chdev.bridge.SID].Remote_ID = 543779     -- 2021.0105.10  ensure ID for "ShellyBridge" exists  
+  bridge.hadevice.LastUpdate = os.time()
+  
+  return devNo
+end
+
+
 -----
 --
 -- MQTT callbacks
@@ -451,31 +470,38 @@ end
 -- handler for Gen 2 responses
 function _G.Shelly_Gen2_Handler (topic, message)
   
+  init_shelly_bridge ()
+  
   if not devNo then return end      -- wait until bridge exists
   _log (table.concat ({"ShellyGen2:", topic, message}, ' '))
   
-  if topic ~= "shelly-gen2/rpc" then return end
+  if topic ~= "shelly-gen2-cmd/rpc" then return end
   
-  local info = json.decode (message)
-  if not info then return end
-  
-  -- here should be a complete configuration, including:
-  -- info.wifi.sta.ip
-  -- info.sys.device.name
-  -- info.sys.device.mac
-  
-  info.id = info.src    -- id has different meaning in Gen 2
+  local info, err = json.decode (message)
+  if err then 
+    _log (err) 
+    return
+  end
+    
   -- add old-style info fields...
   -- info = {"id":"xxx","model":"SHSW-25","mac":"hhh","ip":"...","new_fw":false,"fw_ver":"..."}
-
-  if info.sys and info.sys.device then
-    info.ip = info.wifi and info.wifi.sta and info.wifi.sta.ip or nil
-    info.mac = info.sys.device.mac
---    info.model = info. ???
-    info.fw_ver = info.sys.device.fw_id
+  local newinfo = {Gen2 = true}
+  newinfo.id = info.src    -- id has different meaning in Gen 2
+  info = info.result
+  local sys = info.sys
+  if sys and sys.device then
+    newinfo.ip = info.wifi and info.wifi.sta and info.wifi.sta.ip
+    if not newinfo.ip then 
+      _log "No IP address in Shelly Gen 2 configuration response"
+      return
+    end
+    newinfo.model = info.mqtt.client_id: match "%w+"       -- can't see anywhere else which has this info
+    newinfo.name = sys.device.name
+    newinfo.mac = sys.device.mac
+    newinfo.fw_ver = sys.device.fw_id
   end
-  
-  init_device (info)
+--  _log (json.Lua.encode(newinfo))   -- **
+  init_device (newinfo)
 end
 
 
@@ -486,11 +512,7 @@ function _G.Shelly_MQTT_Handler (topic, message)
   
 --  print (os.date "%X  ", "***Topic:", topic)
   
-  devNo = devNo       -- ensure that ShellyBridge device exists
-            or
-              openLuup.find_device {device_type = "ShellyBridge"}
-                or
-                  create_ShellyBridge ()
+  init_shelly_bridge ()
   
   if shellies == "announce" then
     _log (message)
@@ -498,14 +520,8 @@ function _G.Shelly_MQTT_Handler (topic, message)
     if not info then _log ("Announce JSON error: " .. (err or '?')) return end
     init_device (info)
   end
-    
-  local bridge = API[devNo]
-  if not bridge then return end    -- device not yet announced
   
   local timenow = os.time()
-  bridge[chdev.bridge.SID].Remote_ID = 543779     -- 2021.0105.10  ensure ID for "ShellyBridge" exists
-  
-  bridge.hadevice.LastUpdate = timenow
   local  shelly, var = shellies: match "^(.-)/(.+)"
 
   local child = shelly_devices[shelly]

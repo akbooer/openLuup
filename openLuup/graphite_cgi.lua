@@ -709,7 +709,9 @@ Request parameters can be passed via:
     Form data in the request body (application/www-form-urlencoded content-type).
     Querystring parameters.
 
-You can pass some parameters by querystring and others by json/form data if you want to. Parameters are looked up in the order above, meaning that if a parameter is present in both the form data and the querystring, only the one from the querystring is taken into account.
+You can pass some parameters by querystring and others by json/form data if you want to. 
+Parameters are looked up in the order above, meaning that if a parameter is present in both the form data and the querystring, 
+only the one from the querystring is taken into account.
 
 URLs are given without a trailing slash but adding a trailing slash is fine for all API calls.
 

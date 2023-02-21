@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2023.01.05",
+  VERSION       = "2023.02.18",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -98,7 +98,7 @@ local panels = {
       return div {
         div { 
           a {class = "w3-round-large w3-dark-gray w3-button w3-margin", href=forum, target="_blank", 
-            h.img {alt="SmartHome Community", width=300, src= forum.."assets/uploads/system/site-logo.png?"}}},
+            h.img {alt="SmartHome Community", width=300, src= forum.. "assets/uploads/system/site-logo.png"}}},
         div { 
           a {class = "w3-round-large w3-white w3-button w3-margin w3-border", href=donate, target="_blank", 
             h.img {alt="Donate to Cancer Research", width=300, 

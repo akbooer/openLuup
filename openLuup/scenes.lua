@@ -155,7 +155,7 @@ local function load_lua_code (scene)
     local triggers = {}
     for id, t in ipairs (scene.triggers or {}) do
       if t.device == 2 then                         -- 2019.06.10  it is an openLuup variable watch trigger
-        triggers[id] = sceneLuaTrigger: format (id, t.lua)
+        triggers[id] = sceneLuaTrigger: format (id, t.lua or '')
       end
     end
     triggers = table.concat(triggers)

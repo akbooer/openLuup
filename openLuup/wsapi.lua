@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.wsapi",
-  VERSION       = "2019.08.12",
+  VERSION       = "2023.02.10",
   DESCRIPTION   = "a WSAPI application connector for the openLuup port 3480 server",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2019 AKBooer",
+  COPYRIGHT     = "(c) 2013-present AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2019 AK Booer
+  Copyright 2013-present AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -66,6 +66,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 -- 2019.07.17  include complete WSAPI util module rather than socket.url (to decode '+' signs correctly)
 -- 2019.07.28  create global make_env(), used by HTTP server to include in request objects
 
+-- 2023.02.10  @akbooer added SameSite cookie attribute
 
 --[[
 
@@ -293,7 +294,7 @@ local function cgi (wsapi_env)       -- 2019.07.28  now called with a pre-built 
   
   cache[script] = cache[script] or build (script) 
   
-  -- guaranteed to be something executable here, even it it's a dummy with error message
+  -- guaranteed to be something executable here, even if it's a dummy with error message
   -- three return values: the HTTP status code, a table with headers, and the output iterator.
   
   -- catch any error during CGI execution
@@ -332,6 +333,25 @@ end
 -- utility library, this is the verbatim keplerproject code 
 -- see: https://github.com/keplerproject/wsapi/blob/master/src/wsapi/util.lua
 --
+--[[
+
+wsapi.util.url_encode(s) - encodes s according to RFC2396
+
+wsapi.util.url_decode(s) - decodes s according to RFC2396
+
+wsapi.util.sanitize(text) - sanitizes all HTML tags in text, replacing < and > with the corresponding entity codes
+
+wsapi.util.not_empty(s) - returns true if s is not nil or the empty string
+
+wsapi.util.getopt(arg, options) - POSIX style command line argument parser, arg contains the command line arguments in a standard table, options is a string with the letters that expect string values. Returns a table with the options that have been passed and their values
+
+wsapi.util.make_env_get(qs) - makes a mock WSAPI environment with GET method and qs as the query string
+
+wsapi.util.make_env_post(pd, type, qs) - makes a mock WSAPI environment with POST method and pd as the postdata, type as the encoding (x-www-form-urlenconded default), and qs as the query string
+
+wsapi.util.make_rewindable(wsapi_env) - wraps wsapi_env in a new environment that lets you process the POST data more than once. This new environment's input object has a rewind method that you can call to allow you to read the POST data again.
+
+--]]
 
 local function _M_util ()
   
@@ -533,6 +553,51 @@ local util = _M_util ()  -- create version for the following to access
 -- request library, this is the verbatim keplerproject code 
 -- see: https://github.com/keplerproject/wsapi/blob/master/src/wsapi/request.lua
 --
+--[[
+
+wsapi.request.new(wsapi_env, [options]) - creates a new request object wrapping wsapi_env; options is an (optional) table of extra options for the request; the delay_post option tells wsapi.request to not process POST data on creation, the overwrite option tells WSAPI to overwrite input parameters with the same name instead of collecting them in a list, and the mk_app option passes the mk application that created the request object, used in some of the methods
+
+req:parse_post() - processed the POST data in case the processing was delayed by passing delay_post = true on creation of the request
+
+req:qd_encode(tab) - encodes tab as a query string
+
+req:route_link(route, tab, ...) - creates a link to mk route route, encoding tab as the query string and passing extra arguments to the link builder of the route
+
+req:link_<route>(tab, ...) - same as req:route_link(route, tab, ...)
+
+req:link(uri, tab) - makes an internal application link to the specified resource uri, with tab encoded as a query string. For example, if the app is addressed by /foo/bar.lua then req:link("/baz", { id = 2 }) returns "/foo/bar.lua/baz?id=2"
+
+req:static_link(uri, tab) - as req:link, but builds a link external to the application. In the previous example it would return "/foo/baz?id=2"
+
+req:absolute_link(url, tab) - just encodes tab as a query string and appends it to url. Use it to make non-decorated links
+
+req:empty(s) - returns true if s is nil or a blank string, false otherwise
+
+req:empty_param(name) - same as req:empty(req.params[name])
+
+req.GET - table with GET parameters of request
+
+req.POST - table with POST parameters of request
+
+req.method - request method (usually "GET" or "POST")
+
+req.path_info - PATH_INFO metavariable
+
+req.script_name - SCRIPT_NAME metavariable
+
+req.doc_root - DOCUMENT_ROOT metavariable
+
+req.env - the original WSAPI environment
+
+req.app_path - the path of the WSAPI application currently running
+
+req.query_string - unparsed query string
+
+req.params - union of req.GET and req.POST, built on demand
+
+req.cookies[name] - gets value of a cookie from browser
+
+--]]
 
 local function _M_request ()
   
@@ -798,6 +863,32 @@ end
 -- see: https://github.com/keplerproject/wsapi/blob/master/src/wsapi/response.lua
 --
 
+--[[
+
+wsapi.response.new([status, headers]) - creates a new response object, optionally setting an initial status code and header table. If a Content-Type was not passed in the initial header table then sets it as "text/html". The default status code is 200
+
+res.status - status code to be returned to server
+
+res.headers - table with headers to be returned to server
+
+res:content_type(mime) - sets the Content-Type header to mime
+
+res:write(...) - adds the arguments to the body, flattening an argument if it is a table
+
+res:set_cookie(name, value) - sets the value of a cookie, value can be either a string or a table with fields value, expires (expiration date), domain, path, and secure. All fields except value are optional
+
+res:delete_cookie(name, path) - tells the browser to erase a cookie, with an optional path
+
+res:delete_cookie(name, path) - tells the browser to erase a cookie, with an optional path and domain
+
+res:redirect(url) - sets status and headers for a redirect response to url, and returns a WSAPI response that does the redirect
+
+res:forward(uri) - sets the PATH_INFO metavariable to uri (if not nil) and returns a mk FORWARD response to tell mk to keep trying to find a request handler
+
+res:finish() - finishes response, returning status, headers and an iterator for the body
+
+--]]
+
 local function _M_response ()
   
 --  local util = require"wsapi.util"
@@ -873,6 +964,7 @@ local function _M_response ()
     end
     cookie = cookie .. optional("path", options.path)
     cookie = cookie .. optional("domain", options.domain)
+    cookie = cookie .. optional("SameSite", options.SameSite)     -- 2023.02.10 @akbooer added SameSite cookie attribute
     cookie = cookie .. optional_flag("secure", options.secure)
     cookie = cookie .. optional_flag("HttpOnly", options.httponly)
     return cookie

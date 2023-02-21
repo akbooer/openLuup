@@ -1,4 +1,4 @@
-local VERSION = "2023.01.05"
+local VERSION = "2023.01.25"
 
 -- mimetypes
 -- 2016/04/14
@@ -300,6 +300,9 @@ local archive_rules = {
     },{
       patterns = {"*.*.{BatteryLevel, Battery}"},   -- Vera and Tasmota versions
       retentions = "1d:10y",
+    },{
+      patterns = {"*.*.voltage"},   -- Shelly voltage
+      retentions = "1m:1d, 5m:7d",
     },
   }
 
