@@ -1472,9 +1472,10 @@ local openLuup_console_css = [[
     table {table-layout: fixed; margin-top:20px}
     .dev-panel {width:240px; float:left; }
     .scn-panel {width:240px; float:left; }
-    .tim-panel {width:240px; float:left; }
-    .trg-panel {width:240px; float:left; }
+    .tim-panel {width:320px; float:left; }
+    .trg-panel {width:320px; float:left; }
     .app-panel {width:320px; float:left; }
+    .act-panel {width:320px; float:left; }
     .top-panel {background:LightGrey; border-bottom:1px solid Grey; margin:0; padding:4px;}
     .top-panel-red {background:IndianRed; border-bottom:1px solid Grey; margin:0; padding:4px;}
     .top-panel-blue {background:LightBlue; border-bottom:1px solid Grey; margin:0; padding:4px;}
@@ -1486,6 +1487,17 @@ local openLuup_console_css = [[
       max-width: 600px;
     }    
 ]]
+
+local openLuup_console_script_js = [[
+  function ShowHide(id) {
+    var x = document.getElementById(id);
+    if (x.className.indexOf("w3-show") == -1) {
+      x.className += " w3-show";
+    } else {
+      x.className = x.className.replace(" w3-show", "");
+    }}
+]]
+
 
 -----
 
@@ -1563,6 +1575,7 @@ local manifest = {
     
     ["icons/zigbee.svg"] = zigbee_svg,
     ["openLuup_console.css"] = openLuup_console_css,
+    ["openLuup_console_script.js"] = openLuup_console_script_js,
   }
 
 do -- add font-awesome icon SVGs

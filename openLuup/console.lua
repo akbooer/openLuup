@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2023.02.21",
+  VERSION       = "2023.02.28",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2023 AKBooer",
@@ -132,12 +132,12 @@ local xml       = require "openLuup.xml"          -- for HTML constructors
 local tables    = require "openLuup.servertables" -- for serviceIds
 local devices   = require "openLuup.devices"      -- for cache size
 
-
+local pretty = loader.shared_environment.pretty   -- for debugging
 
 local script_name  -- name of this CGI script
 local function selfref (...) return table.concat {script_name, '?', ...} end   -- for use in hrefs
 
-local X, U, P = require "openLuup.console_util" (selfref)  -- xhtml, utility, popups
+local X, U = require "openLuup.console_util" (selfref)  -- xhtml, utilities
 
 local delete_link = X.delete_link
 local xoptions = X.options
@@ -150,6 +150,8 @@ local get_user_html_as_dom = X.get_user_html_as_dom
 local create_table_from_data = X.create_table_from_data
 local XMLHttpRequest = X.XMLHttpRequest
 local code_editor = X.code_editor
+local generic_panel = X.generic_panel
+local find_plugin = X.find_plugin
 
 local todate = U.todate
 local todate_ms = U.todate_ms
@@ -588,6 +590,9 @@ end
 
 -- delete a specific something
 function actions.delete (p)
+  local device = luup.devices[tonumber (p.device)]
+  local scene = luup.scenes[tonumber (p.scene)]
+  local defn = scene and scene.definition
   if p.rm then
     luup.rooms.delete (tonumber(p.rm))
   elseif p.dev then
@@ -595,11 +600,16 @@ function actions.delete (p)
   elseif p.scn then
     scenes.delete (tonumber(p.scn))    -- 2020.01.27
   elseif p.var then
-    local dev = luup.devices[tonumber (p.device)]
-    if dev then dev: delete_single_var(tonumber(p.var)) end
+    if device then device: delete_single_var(tonumber(p.var)) end
+  elseif p.trigger then
+    table.remove (defn.triggers, tonumber(p.trigger))
+    local new_defn = json.encode (defn)                     -- create new json definition
+    requests.scene ('', {action="create", json=new_defn})   -- deals with deleting old and rebuilding triggers/timers
+  elseif p.timer then
+    table.remove (defn.timers, tonumber(p.timer))
+    local new_defn = json.encode (defn)                     -- create new json definition
+    requests.scene ('', {action="create", json=new_defn})   -- deals with deleting old and rebuilding triggers/timers
   elseif p.group then
-    local scene = luup.scenes[tonumber(p.scene)]
-    local defn = scene.definition
     if p.act then
       local group = defn.groups[tonumber(p.group)]
       local actions = group.actions 
@@ -607,7 +617,7 @@ function actions.delete (p)
     else
       table.remove (defn.groups, tonumber(p.group))     -- remove the whole delay group
     end
-  elseif p.plugin and p.plugin ~='' then
+  elseif p.plugin and p.plugin ~= '' then
     requests.delete_plugin ('', {PluginNum = p.plugin})
   end
 end
@@ -643,14 +653,116 @@ function actions.create_scene (_,req)
 --  p.scene = scnNo
 end
 
-function actions.create_trigger (_,req)
+-- create, or edit existing
+function actions.create_trigger (p,req)
   local q = req.params
-  print (require "pretty" (req.POST))
+--  print (pretty {create_trigger={GET=p, POST=req.POST}})
+  local scene = luup.scenes[tonumber (p.scene)]
+  local defn = scene.definition
+  local triggers = defn.triggers
+  local trigger
+  local svc_var = json.decode (q.svc_var or "{}")
+  local svc, var = svc_var.svc, svc_var.var
+  if svc and var then
+    trigger = {
+      name = q.name,
+      lua = q.lua_code or '',
+      enabled = 1,
+      device = 2,             -- openLuup plugin
+      template = "1",         -- this is the only action that the openLuup plugin defines
+      arguments = {           -- these are the dev.svc.var parameters
+        {id='1', value=q.dev},
+        {id='2', value=svc},
+        {id='3', value=var}}}
+  end
+  local tno = tonumber(q.trg) or #triggers+1    -- existing, or new
+  triggers[tno] = trigger
+  local new_defn = json.encode (scene.definition)
+  requests.scene ('', {action="create", json=new_defn})   -- deals with deleting old and rebuilding triggers/timers
 end
 
-function actions.create_timer (_,req)
+--[[
+
+1=interval
+    the interval tag has d / h / m for days / hours / minutes, 
+    so 1h means every 1 hour, and 30m means every 30 minutes. 
+
+2=day of week
+    "days_of_week" indicates which days of the week (Sunday=0).
+    
+3=day of month
+    "days_of_month" is a comma-separated list of the days of the month. 
+    For types 2 & 3, "time" is the time. 
+    If the time has a T or R at the end it means the time is relative to sunset or sunrise, 
+    so -1:30:0R means 1hr 30 minutes before sunrise. 
+
+4=absolute.
+    the time has the day and time.
+
+{
+    "days_of_week":"1,2,3,4,5,6,7",
+    "enabled":1,
+    "id":1,
+    "last_run":1623279540,
+    "name":"Cinderella",
+    "next_run":1623365940,
+    "time":"23:59:00",
+    "type":2
+  }
+  
+--]]
+
+-- convert args to timer format syntax
+local function tformat (time, rel)
+  local sign, event = rel: upper(): match "([%-%+]?)([RT]?)"   -- before/after, sunrise/sunset
+  -- TODO: syntax check time field
+  time = time .. ":00"   -- add seconds field
+  if sign == '' and event ~= '' then time = "00:00:00" end    -- time is defined by actual sunrise/sunset
+  return sign .. time .. event
+end
+
+-- create, or edit existing
+function actions.create_timer (p,req)
   local q = req.params
-  print (require "pretty" (req.POST))
+--  print (pretty {create_timer=req.POST})
+  local scene = luup.scenes[tonumber (p.scene)]
+  local defn = scene.definition
+  local ttype = tonumber (q.ttype)
+  local timers = defn.timers
+  local timer = {enabled = 1, name=q.name, type=ttype}
+  local Timers = {
+    function ()   -- Interval
+      timer.interval = q.interval..(q.units or '')
+     end,
+    function ()  -- Day of Week
+      local Day_of_Week = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+      local dow = {}
+      for i, day in ipairs(Day_of_Week) do
+        if q[day] then 
+          dow[#dow+1] = i
+        end
+      end
+      timer.days_of_week = table.concat (dow, ',')
+      timer.time = tformat (q.time, q.relative)
+    end,
+    function ()   -- Day of Month
+      timer.days_of_month = q.days
+      timer.time = tformat (q.time, q.relative)
+    end,
+    function ()   -- Absolute
+      local time_format           = "(%d%d?%:%d%d?)"
+      local date_format           = "(%d%d%d%d%-%d%d?%-%d%d?)"
+      local date_time_format      =  date_format .. "[Tt%s]+" .. time_format
+      local d,t = q.datetime: match (date_time_format)
+      timer.time = table.concat ({d, t}, ' ')
+      timer.abstime = timer.time                -- special field?
+    end}
+  do (Timers[ttype] or tostring) () end
+--  print(pretty {new_timer=timer})
+  local tno = tonumber(q.tim) or #timers+1    -- existing, or new
+  timers[tno] = timer
+  local new_defn = json.encode (scene.definition)
+  requests.scene ('', {action="create", json=new_defn})   -- deals with deleting old and rebuilding triggers/timers
 end
 
 function actions.create_action (p,req)
@@ -689,7 +801,7 @@ function actions.create_group (p, req)
   local mm,ss = (q.delay or ''): match "(%d*):?(%d+)$"
   if mm and ss then 
     local delay = 60*mm + ss
-    local groups = scene.definition.groups
+    local groups = defn.groups
     groups[#groups+1] = {delay=delay, actions = {}}
     table.sort (groups, function (a,b) return a.delay < b.delay end)
   end
@@ -1923,7 +2035,8 @@ function pages.variables (p, req)
     table.insert (options, 1, All_Services)
     local function service_menu () return filter_menu (options, service, "svc=") end
     -----
-    local create = P.create_variable ()
+    local create = xhtml.button {"+ Create"; 
+      class="w3-button w3-round w3-green", title="create new variable", onclick=X.popMenu "create_variable"}
     local sortmenu = sidebar (p, service_menu, device_sort)
     local rdiv = xhtml.div {sortmenu, xhtml.div {class="w3-rest w3-panel", create, t} }
     return title .. " - variables", rdiv
@@ -1992,7 +2105,6 @@ end
 
 -- make an HTML table with any non-standard globals defined in the given environment
 local function non_standard_globals (env)
-  local pretty = loader.shared_environment.pretty
   local x = {}
   for n,v in sorted (env) do
     if not _G[n] and type(v) ~= "function" then
@@ -2080,32 +2192,6 @@ local function widget_link (action, title, icon, wh)
     href= selfref(action), title=title, xhtml.img {width=wh, height=wh, src=icon} }
 end
 
---[[
-  height = n,
-  top_line {left = ..., right = ...},
-  icon = icon,
-  body = {middle = ..., topright = ..., bottomright = ...},
-  widgets = { w1, w2, ... },
---]]
-local function generic_panel (x, panel_type)
-  panel_type = panel_type or "tim-panel"
-  local div = xhtml.div
-  local widgets = xhtml.span {class="w3-wide"}
-  for i,w in ipairs (x.widgets or empty) do widgets[i] = w end
-  local class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card " .. panel_type
-  return xhtml.div {class = class,
-    div {class="top-panel", 
-      truncate (x.top_line.left or ''), 
-      xhtml.span{style="float: right;", x.top_line.right or '' } }, 
-    div {class = "w3-display-container", style = table.concat {"height:", x.height, "px;"},
---          div {class="w3-padding-small w3-margin-left w3-display-left ", x.icon } , 
-      div {class="w3-margin-left w3-display-left ", x.icon } , 
-      div {class="w3-display-middle", x.body.middle},
-      div {class="w3-padding-small w3-display-topright", x.body.topright } ,
-      div {class="w3-padding-small w3-display-bottomright", x.widgets and div(x.widgets) or x.body.bottomright } 
-          }  } 
-end
-
 -- generic scene page
 local function scene_page (p, fct)
   local i = tonumber(p.scene)
@@ -2189,14 +2275,11 @@ local function parameters (p, req)
   return t
 end
 
-function pages.trigger (p)
-  return parameters(p)
-end
-
 function pages.triggers (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
     local T = h.div {class = "w3-container w3-cell"}
+    local id = scene.definition.id
     for i, t in ipairs (scene.definition.triggers) do
       if t.device == 2 then       -- only display openLuup variable watch triggers
         local d, woo = 28, 14
@@ -2207,7 +2290,12 @@ function pages.triggers (p)
         
         local on_off = xhtml.a {href= selfref("toggle=", i), title="toggle pause", 
           class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
-        local w1 = widget_link ("page=trigger&edit=".. i, "view/edit trigger", "icons/edit.svg")
+
+--        local w1 = widget_link ("page=trigger&edit=".. i, "view/edit trigger", "icons/edit.svg")
+        local w1 = xhtml.img {title="view/edit trigger", src="icons/edit.svg", style="display:block; float:left;",
+            class="w3-margin-right w3-hover-opacity", height=18, width=18, 
+            onclick=X.popMenu (table.concat {"edit_trigger&trg=",i,"&scn=",id})}       
+        
         local w2 = delete_link ("trigger", i)
         local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
         local desc
@@ -2215,17 +2303,17 @@ function pages.triggers (p)
           local args = t.arguments or empty
           local function arg(n, lbl) return h.span {lbl or '', ((args[n] or empty).value or ''): match "[^:]+$", h.br()} end
           desc = h.span {arg(1, '#'), arg(2), arg(3)}
-        T[i] = generic_panel {
+        T[i] = generic_panel ({
           title = t,
           height = 100,
           top_line = {left =  truncate (t.name), right = on_off},
           icon = icon,
           body = {middle = desc},
           widgets = {w1, w2},
-        }        
+        }, "trg-panel")       
       end
     end
-    local watches = altui_device_watches (scene.definition.id)
+    local watches = altui_device_watches (id)
     for i, t in ipairs (watches) do
       
       local d = 28
@@ -2233,15 +2321,17 @@ function pages.triggers (p)
           h.img {width = d, height=d, title="trigger is enabled", alt="trigger", src="icons/trigger-grey.svg"}
       local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", dominos }
       local desc = h.div {'#', t.dev, h.br(), t.srv, h.br(), t.var}
-      T[#T+1] = generic_panel {
+      T[#T+1] = generic_panel ({
         title = '',
         height = 100,
         top_line = {left = truncate ("AltUI watch #" .. tostring(i))},
         icon = icon,
         body = {middle = desc},
-      }        
+      }, "trg-panel")      
     end
-    local create = P.create_trigger ()
+    local create = xhtml.button {"+ Create"; 
+      class="w3-button w3-round w3-green", title="create new trigger", 
+          onclick=X.popMenu "edit_trigger&new=true"}
     return title .. " - scene triggers", X.Panel {create}, T
   end)
 end
@@ -2277,25 +2367,11 @@ end
   
 --]]
 
--- edit=n for timer to edit, if absent then create new
-function pages.timer (p)
-  local timer = tonumber(p.edit)
-  local scene = tonumber (p.scene)
-  local timers = luup.scenes[scene].definition.timers or {}
-  local t = timers[timer] or {}
-  
-  local h = xhtml
-  local form = h.form {href = selfref(), method="POST",
-      h.input{name = "name"}
-    }
-    
---  return parameters(p)
-end
-
 function pages.timers (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
     local T = h.div {class = "w3-container w3-cell"}
+    local id = scene.definition.id
     for i, t in ipairs (scene.definition.timers) do
       local next_run = table.concat {unicode.clock_three, ' ', t.abstime or nice (t.next_run) or ''}
       local info =
@@ -2314,21 +2390,26 @@ function pages.timers (p)
       
       local on_off = xhtml.a {href= selfref("toggle=", t.id), title="toggle pause", 
         class= "w3-hover-opacity", xhtml.img {width=woo, height=woo, src="icons/power-off-solid.svg"} }
-      local w1 = widget_link ("page=timer&edit=".. t.id, "view/edit timer", "icons/edit.svg")
+--      local w1 = widget_link ("page=timer&edit=".. t.id, "view/edit timer", "icons/edit.svg")
+        local w1 = xhtml.img {title="view/edit timer", src="icons/edit.svg", style="display:block; float:left;",
+            class="w3-margin-right w3-hover-opacity", height=18, width=18, 
+            onclick=X.popMenu (table.concat {"edit_timer&tim=",i,"&scn=",id})}       
+      
       local w2 = delete_link ("timer", t.id)
       local ttype = ({"interval", "day of week", "day of month", "absolute"}) [t.type] or '?'
       local icon =  h.div {class="w3-padding-small", style = "border:2px solid grey; border-radius: 4px;", clock }
       local desc = h.div {ttype, h.br{}, info, h.br{}, info2}
-      T[i] = generic_panel {
+      T[i] = generic_panel ({
         title = t,
         height = 100,
         top_line = {left =  truncate (t.name), right = on_off},
         icon = icon,
         body = {middle = desc, topright = next_run},
         widgets = {w1, w2},
-      }        
+      }, "tim-panel")       
     end
-    local create = P.create_timer ()
+    local create = xhtml.button {"+ Create"; 
+      class="w3-button w3-round w3-green", title="create new timer", onclick=X.popMenu "edit_timer&new=true"}
     return title .. " - scene triggers", X.Panel {create}, T
   end)
 end
@@ -2353,6 +2434,9 @@ function pages.lua (p)
 end
  
 function pages.action (p, req)
+--  local pop = P.create_action_in_group (1)
+--  local form = pop[1]
+--  return form
   return parameters(p, req)
 end
 
@@ -2360,10 +2444,15 @@ function pages.group_actions (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
     local groups = h.div {class = "w3-container"}
-    local new_group = P.create_new_delay_group ()
+--    local new_group = P.create_new_delay_group ()
+    local new_group = xhtml.button {"+ Delay"; 
+      class="w3-button w3-round w3-green", title="create new delay group", onclick=X.popMenu "create_new_delay_group"}
     for g, group in ipairs (scene.definition.groups) do
       local delay = tonumber (group.delay) or 0
-      local new_action = P.create_action_in_group (g)
+--      local new_action = P.create_action_in_group (g)
+      local new_action = xhtml.button {"+ Action"; class="w3-button w3-round w3-green", 
+        title="create new action\nin this delay group", onclick=X.popMenu ("edit_action&group=" .. g)}
+
       local del_group = X.ButtonLink {"- Delay"; selfref="action=delete&group=" .. g, 
         onclick = "return confirm('Delete Delay Group (and all its actions): Are you sure?')",
         title="delete delay group\nand all actions in it", class="w3-red w3-cell w3-container"}
@@ -2384,14 +2473,14 @@ function pages.group_actions (p)
         local w1 = widget_link ("page=action&group=" .. g .. "&edit=".. i, "view/edit action", "icons/edit.svg")
         local w2 = delete_link ("group=" .. g .. "&act", i, "action")
         local dno = tonumber (a.device)
-        dpanels[i] = generic_panel {
+        dpanels[i] = generic_panel ({
           title = a.action,
           height = 100,
           top_line = {left = devname (dno)},
           icon = get_device_icon (luup.devices[dno]),
           body = {middle = desc},
           widgets = {w1, w2},
-        }        
+        }, "act-panel")       
       end
       groups[g] = e
     end
@@ -2626,7 +2715,8 @@ function pages.rooms_table (p, req)
     return xhtml.div {class="w3-display-container", style = "width: 56px;",
       link, xhtml.span {class="w3-display-right", count} }
   end
-  local create = P.create_room()
+  local create = xhtml.button {"+ Create"; 
+    class="w3-button w3-round w3-green", title="create new room", onclick=X.popMenu "create_room"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
   t.header {"id", "name", "#devices", "#scenes", "delete"}
   local D,S = droom[0] or 0, sroom[0] or 0
@@ -2660,7 +2750,8 @@ function pages.devices_table (p, req)
     local dev = luup.devices[tonumber(q.reroom)]
     if dev then dev: rename (nil, q.value) end
   end
-  local create = P.create_device()
+  local create = xhtml.button {"+ Create"; 
+    class="w3-button w3-round w3-green", title="create new device", onclick=X.popMenu "create_device"}
   local t = xhtml.table {class = "w3-small w3-hoverable"}
   t.header {"id", "name", "altid", '', "room", "delete"}  
   local wanted = room_wanted(p)        -- get function to filter by room  
@@ -2697,7 +2788,8 @@ function pages.scenes_table (p, req)
     end
     s: rename (nil, num)
   end
-  local create = P.create_scene()
+  local create = xhtml.button {"+ Create"; 
+    class="w3-button w3-round w3-green", title="create new scene", onclick=X.popMenu "create_scene"}
   local scn = {}
   local wanted = room_wanted(p)        -- get function to filter by room  
   local ymdhms = "%y-%m-%d %X"
@@ -2794,47 +2886,6 @@ function pages.ip_table ()
   return page_wrapper ("IP Table", t)
 end
 
-local function find_plugin (plugin)
-  local IP2 = userdata.attributes.InstalledPlugins2
-  for _, plug in ipairs (IP2) do
-    if plug.id == plugin then return plug end
-  end
-end
-
-function pages.plugin (p)
-  local h = xhtml
-  local function w(x) return xhtml.div{x, style="clear: none; float:left; width: 120px;"} end
-  -- if specified plugin, then retrieve installed information
-  local P = find_plugin (p.plugin) or empty
-  ---
-  local D = (P.Devices or empty) [1] or empty
-  local R = P.Repository or empty
-  local F = table.concat (R.folders or empty, ", ")
-  ---
-  local app = h.div {class = "w3-panel w3-cell",
-    h.form {class = "w3-form", method="post", action=selfref  "page=plugins_table",
-      h.div {class = "w3-container w3-grey", h.h5 "Application"},
-      h.div {class = "w3-panel",
-        xinput (w "ID", "id", P.id, "number of Vera plugin or name of openLuup plugin"),
-        xinput (w "Title", "title", P.Title, "name for plugin"),
-        xinput (w "Icon", "icon", P.Icon or '', "URL (relative or absolute) for .png or .svg")},
-      
-      h.div {class = "w3-container w3-grey", h.h5 "Device files"},
-      h.div {class = "w3-panel",
-        xoptions ("Device file", "d_file", "^D_.-%.xml$", D.DeviceFileName or "D_"),
-        xoptions ("Implementation file", "i_file", "^I_.-%.xml$", D.ImplFile or "I_")},
-      
-      h.div {class = "w3-container w3-grey", h.h5 "GitHub"},
-      h.div {class = "w3-panel",
-        xinput (w "Repository", "repository", R.source, "eg. akbooer/openLuup"),
-        xinput (w "Pattern", "pattern", R.pattern, "try: [DIJLS]_.+"),
-        xinput (w "Folders", "folders", F, "blank for top-level or sub-folder name")},
-    
-      xhtml.input {class="w3-button w3-round w3-red w3-margin", type="submit", value="Submit"},
-    }}
-  return app
-end
-
 function pages.plugins_table (_, req)
   local q = req.POST
   -- if info posted then create or update plugin
@@ -2887,7 +2938,8 @@ function pages.plugins_table (_, req)
     local src = p.Icon or ''
     src  = src: gsub ("^/?plugins/", "http://apps.mios.com/plugins/")  -- http://apps.mios.com/plugin.php?id=...
     local icon = xhtml.img {src=src, alt="no icon", height=35, width=35}
-    icon = ignore[p.id] and icon or xhtml.a {href=selfref "page=plugin&plugin="..p.id, title="edit", icon}
+    icon = ignore[p.id] and icon or 
+      xhtml.div {icon; title="edit", onclick=X.popMenu ("plugin&plugin="..p.id)}
     local trash_can = ignore[p.id] or delete_link ("plugin", p.id)
     t.row {icon, p.Title, version, files, github, update, trash_can} 
   end
@@ -3327,28 +3379,22 @@ function run (wsapi_env)
   
   static_menu = static_menu or dynamic_menu()    -- build the menu tree just once
 
+  local modal = X.modal (xhtml.div {id="modal_content", h.h1 "Hello"}, "modal")   -- general pop-up use
+  
   local donate = xhtml.a {
     title = "If you like openLuup, you could DONATE to Cancer Research UK right here",
     href="https://www.justgiving.com/DataYours/", target="_blank", " [donate] "}
   local forum = xhtml.a {class = "w3-text-blue",
     title = "An independent place for smart home users to share experience", 
     href=ABOUTopenLuup.FORUM, target="_blank", " [smarthome.community] "}
-                
-  body = {
-    static_menu,
-    h.div {
-      formatted_page,
-      h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", 
-        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate, forum} }
-    }}
-  
-  h.documentElement[1]:appendChild {  -- the <HEAD> element
-    h.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
-    h.link {rel="stylesheet", href="w3.css"},
-    h.link {rel="stylesheet", href="openLuup_console.css"},
+
+  local script =  
     
+--    xhtml.script {src = "/openLuup_console_script.js", type="text/javascript", charset="utf-8"},    -- JS util code
+
     h.script {
   [[
+  
   function ShowHide(id) {
     var x = document.getElementById(id);
     if (x.className.indexOf("w3-show") == -1) {
@@ -3356,8 +3402,40 @@ function run (wsapi_env)
     } else {
       x.className = x.className.replace(" w3-show", "");
     }
-  }]]}}
+  };
+    
+  function LoadDoc(id, req, data) {
+    const xhttp = new XMLHttpRequest();
+    xhttp.onload = function() {document.getElementById(id).innerHTML = this.responseText;}
+    xhttp.open("POST", req);
+    xhttp.send(data);
+    };
+    
+  function popup(menu) {
+    let formData = new FormData(document.forms.popupMenu);
+    LoadDoc("modal_content", menu, formData);
+    document.getElementById("modal").style.display="block";
+    };
+    
+  ]]}
+
+--  local popup = h.div {"MODAL", onclick=X.popup (modal), class ="w3-button"}
+
+  body = {
+    script,
+    modal,
+    static_menu,
+    h.div {
+      formatted_page,
+      h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", 
+        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate, forum, popup} }
+    }}
   
+  h.documentElement[1]:appendChild {  -- the <HEAD> element
+    h.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
+    h.link {rel="stylesheet", href="w3.css"},
+    h.link {rel="stylesheet", href="openLuup_console.css"}}
+    
   h.body.class = "w3-light-grey"
   h.body:appendChild (body)
   local html = tostring(h)

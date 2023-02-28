@@ -90,9 +90,14 @@ local _log_altui_scene  = logs.altui_scene
 
 --[[
 
-Whilst 'actions' and 'timers' are straight-forward, the 'trigger' functionality of Luup is severely flawed, IMHO, through the close connection to UPnP service files and .json files.  
+Whilst 'actions' and 'timers' are straight-forward, the 'trigger' functionality of Luup is severely flawed, IMHO,
+through the close connection to UPnP service files and .json files.  
 
-The goal would be to have an interface like HomeSeer, with extremely intuitive syntax to define triggers and conditions.  To support this at the openLuup engine level, all trigger conditions are handled through a standard initial luup.variable_watch call - so no new infrastructure is needed - to a handler which then evaluates the condition and, if true, continues to evaluate further states required for the scene to run.  (note that as of mid-2019 the Reactor plugin now provides such functionality.)
+The goal would be to have an interface like HomeSeer, with extremely intuitive syntax to define triggers and conditions.  
+To support this at the openLuup engine level, all trigger conditions are handled through a standard initial 
+luup.variable_watch call - so no new infrastructure is needed - to a handler which then evaluates the condition and, if true, 
+continues to evaluate further states required for the scene to run.  
+(note that as of mid-2019 the Reactor plugin now provides such functionality.)
 
 Sept 2015 - ALTUI now provides this functionality through its own variable watch callback 
 which then triggers scenes if some Lua boolean expression is true

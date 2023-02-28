@@ -383,6 +383,9 @@ local function variable_set (service, name, value, device, startup)
       local old = var.old or "MISSING"
       local info = "%s.%s.%s was: %s now: %s #hooks:%d" 
       local msg = info: format (device,service, name, truncate(old), truncate(value), #var.watchers)
+--      local by = scheduler.current_device()
+--      local info = "%s.%s.%s by: #%d was: %s now: %s #hooks:%d" 
+--      local msg = info: format (device,service,name, by, truncate(old), truncate(value), #var.watchers)
       _log (msg, "luup.variable_set")
       _log_altui_variable (var)              -- log for altUI to see
     end 

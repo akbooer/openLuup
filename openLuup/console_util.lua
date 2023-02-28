@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "utility.lua",
-  VERSION       = "2023.02.21",
+  VERSION       = "2023.02.28",
   DESCRIPTION   = "utilities for openLuup console",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -32,12 +32,15 @@ local xml       = require "openLuup.xml"          -- for HTML constructors
 local luup      = require "openLuup.luup"
 local loader    = require "openLuup.loader"       -- for loader.dir()
 local server    = require "openLuup.server"       -- request handler
+local userdata  = require "openLuup.userdata"     -- for plugin info
 
 local xhtml     = xml.createHTMLDocument ()       -- factory for all HTML tags
 
 local service_data  = loader.service_data         -- for action parameters
 
 local empty = setmetatable ({}, {__newindex = function() error ("read-only", 2) end})
+
+local pretty = loader.shared_environment.pretty
 
 -------------------
 --
@@ -191,9 +194,10 @@ local X = {
 -- HTML document with W3.CSS stylesheet
 function X.createW3Document (title)
   local xhtml = xml.createHTMLDocument (title)
-  xhtml.body:appendChild {
-    xhtml.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"}, 
-    xhtml.link {rel="stylesheet", href="https://www.w3schools.com/w3css/4/w3.css"}}
+  xhtml.documentElement[1]:appendChild {  -- the <HEAD> element
+    xhtml.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
+    xhtml.link {rel="stylesheet", href="w3.css"},
+    xhtml.link {rel="stylesheet", href="openLuup_console.css"}}
   return xhtml
 end
 
@@ -329,21 +333,29 @@ end
 
 local xtimes = json.decode '["\\u00D7"]' [1]    -- multiplication sign (for close boxes)
 
--- onclick action for a button to pop up a model dialog
+-- onclick action for a button to pop up a modal dialog
 -- mode = "none" or "block", default is "block" to make popup visible
 function X.popup (x, mode)
   mode = mode and "none" or "block"
   local onclick = [[document.getElementById("%s").style.display="%s"]] 
-  return onclick : format (x.id, mode)
+  return onclick: format (x.id, mode)
 end
 
-function X.modal (content)
+-- onclick action for a button to pop up a menu
+function X.popMenu (menu)
+  local onclick=[[popup ("data_request?id=XMLHttpRequest&action=%s")]]
+  return onclick: format (menu)
+end
+
+function X.modal (content, id)
+  id = id or unique_id ()
   local closebtn = xhtml.span {class="w3-button w3-round-large w3-display-topright w3-xlarge", xtimes}
-  local id = unique_id ()
   local modal = 
     xhtml.div {class="w3-modal", id=id,
       xhtml.div {class="w3-modal-content w3-round-large",
-        xhtml.div {class="w3-container", closebtn, content}}}
+        xhtml.div {class="w3-container", 
+          closebtn, 
+          content}}}
   closebtn.onclick = X.popup (modal, "none")
   return modal
 end
@@ -355,7 +367,52 @@ function X.modal_button (form, button)
   return xhtml.div {modal, button}
 end
 
-  
+--[[
+  height = n,
+  top_line {left = ..., right = ...},
+  icon = icon,
+  body = {middle = ..., topright = ..., bottomright = ...},
+  widgets = { w1, w2, ... },
+--]]
+function X.generic_panel (x, panel_type)
+  panel_type = panel_type or "tim-panel"
+  local div = xhtml.div
+  local widgets = xhtml.span {class="w3-wide"}
+  for i,w in ipairs (x.widgets or empty) do widgets[i] = w end
+  local class = "w3-small w3-margin-left w3-margin-bottom w3-round w3-border w3-card " .. panel_type
+  return xhtml.div {class = class,
+    div {class="top-panel", 
+      truncate (x.top_line.left or ''), 
+      xhtml.span{style="float: right;", x.top_line.right or '' } }, 
+    div {class = "w3-display-container", style = table.concat {"height:", x.height, "px;"},
+--          div {class="w3-padding-small w3-margin-left w3-display-left ", x.icon } , 
+      div {class="w3-margin-left w3-display-left ", x.icon } , 
+      div {class="w3-display-middle", x.body.middle},
+      div {class="w3-padding-small w3-display-topright", x.body.topright } ,
+      div {class="w3-padding-small w3-display-bottomright", x.widgets and div(x.widgets) or x.body.bottomright } 
+          }  } 
+end
+
+function X.find_plugin (plugin)
+  local IP2 = userdata.attributes.InstalledPlugins2
+  for _, plug in ipairs (IP2) do
+    if plug.id == plugin then return plug end
+  end
+end
+
+local modal do
+  local div, span, p = xhtml.div, xhtml.span, xhtml.p
+  modal = 
+    div {id="modal", class="w3-modal",
+      div {class="w3-modal-content",
+        div {class="w3-container",
+          span {onclick="document.getElementById('modal').style.display='none'",
+                    class="w3-button w3-display-topright">'x'},
+          p "Some text in the Modal..",
+          p "Some text in the Modal..",
+        }}}
+end
+
 local function ace_editor_script (theme, language)
   local script = [[
   
@@ -448,7 +505,6 @@ server.add_callback_handlers {XMLHttpRequest =
 -- Console Pop-up utilities
 --
 
-local P = {}
 
 -- create new variable
 
@@ -463,7 +519,7 @@ local function find_all_existing_serviceIds ()
   return (svc)
 end 
 
-local function create_variable ()
+function XMLHttpRequest.create_variable ()
   local class = "w3-input w3-border w3-hover-border-blue"
   -- search through existing devices for all the serviceIds
   local service_list = xhtml.datalist {id= "services"}
@@ -473,9 +529,9 @@ local function create_variable ()
   return X.Form {class = "w3-container w3-form", 
     xhtml.h3 "Create Variable",
     xhtml.label {"Variable name"},
-    xhtml.input {class=class, type="text", name="name", autocomplete="off", },
+    xhtml.input {class=class, type="text", name="name", autocomplete="off", required=true},
     xhtml.label {"ServiceId"},
-    xhtml.input {class=class, type="text", name="service", autocomplete="off", 
+    xhtml.input {class=class, type="text", name="service", autocomplete="off", required=true, 
       list="services", value="urn:", class="w3-input"},
     service_list,
     xhtml.label {"Value"},
@@ -484,89 +540,104 @@ local function create_variable ()
   }
 end
 
-function P.create_variable ()
-  return X.modal_button (
-    create_variable(),
-    xhtml.button {"+ Create"; title="create new variable"})
-end
-
-function P.create_room ()
+function XMLHttpRequest.create_room ()
   local form = X.Form {class = "w3-container w3-form", 
     xhtml.h3 "Create Room",
     xhtml.label {"Room name"},
-    xhtml.input {class="w3-input w3-border w3-hover-border-blue", type="text", name="name", autocomplete="off", },
+    xhtml.input {class="w3-input w3-border w3-hover-border-blue", type="text", name="name", autocomplete="off", required=true},
     xhtml.input {class="w3-button w3-round w3-light-blue w3-margin", type="submit", value="Create Room"},
   }
-  return X.modal_button (
-    form,
-    xhtml.button {"+ Create"; title="create new room"})
+  return form
 end
 
-function P.create_device ()
+function XMLHttpRequest.create_device ()
   local form = X.Form {class = "w3-container w3-form", 
     xhtml.h3 "Create Device",
     selfref = "action=create_device", 
     xhtml.label {"Device name"},
-    xhtml.input {class="w3-input w3-border w3-hover-border-blue", type="text", name="name", autocomplete="off", },
+    xhtml.input {class="w3-input w3-border w3-hover-border-blue", type="text", name="name", autocomplete="off", required=true},
     X.options ("Device file", "d_file", "^D_.-%.xml$", "D_"),
     X.options ("Implementation file", "i_file", "^I_.-%.xml$", "I_"),
     xhtml.input {class="w3-button w3-round w3-light-blue w3-margin", type="submit", value="Create Device"},
   }
-  return X.modal_button (
-    form,
-    xhtml.button {"+ Create"; title="create new device"})
+  return form
 end
 
-function P.create_scene ()
-  local form = X.Form {class = "w3-container w3-form", 
+function XMLHttpRequest.create_scene ()
+  local form = X.Form {class = "w3-container w3-form", -- name="popupMenu",
     xhtml.h3 "Create Scene",
     selfref = "action=create_scene", 
     xhtml.label {"Scene name"},
-    xhtml.input {class="w3-input w3-border w3-hover-border-blue", type="text", name="name", value = '', autocomplete="off", },
+    xhtml.input {class="w3-input w3-border w3-hover-border-blue", type="text", name="name", value = '', 
+      autocomplete="off", required=true},
     xhtml.input {class="w3-button w3-round w3-light-blue w3-margin", type="submit", value="Create Scene"},
   }
-  return X.modal_button (
-    form,
-    xhtml.button {"+ Create"; title="create new scene"}) 
+  return form
 end
 
--- this menu selector returns a complete web page,
--- so needs to use its own local xhtml document
-function XMLHttpRequest.var_menu (p)
-  local xhtml = X.createW3Document ()
-  local dno = tonumber (p.dev)
-  local dev = luup.devices[dno]
-  local json = '{"svc":"%s", "var":"%s"}'
+function XMLHttpRequest.plugin (p)
+  local function w(x) return xhtml.div{x, style="clear: none; float:left; width: 120px;"} end
+  -- if specified plugin, then retrieve installed information
+  local P = X.find_plugin (p.plugin) or empty
+  ---
+  local D = (P.Devices or empty) [1] or empty
+  local R = P.Repository or empty
+  local F = table.concat (R.folders or empty, ", ")
+  ---
+  local app = xhtml.div {class="w3-container",
+    xhtml.h3 "Plugin",
+    xhtml.form {class = "w3-form", method="post", action=selfref  "page=plugins_table", name="popupMenu",
+      xhtml.div {class = "w3-container w3-grey", xhtml.h5 "Application"},
+      xhtml.div {class = "w3-panel",
+        X.input (w "ID", "id", P.id, "number of Vera plugin or name of openLuup plugin"),
+        X.input (w "Title", "title", P.Title, "name for plugin"),
+        X.input (w "Icon", "icon", P.Icon or '', "URL (relative or absolute) for .png or .svg")},
+      
+      xhtml.div {class = "w3-container w3-grey", xhtml.h5 "Device files"},
+      xhtml.div {class = "w3-panel",
+        X.options ("Device file", "d_file", "^D_.-%.xml$", D.DeviceFileName or "D_"),
+        X.options ("Implementation file", "i_file", "^I_.-%.xml$", D.ImplFile or "I_")},
+      
+      xhtml.div {class = "w3-container w3-grey", xhtml.h5 "GitHub"},
+      xhtml.div {class = "w3-panel",
+        X.input (w "Repository", "repository", R.source, "eg. akbooer/openLuup"),
+        X.input (w "Pattern", "pattern", R.pattern, "try: [DIJLS]_.+"),
+        X.input (w "Folders", "folders", F, "blank for top-level or sub-folder name")},
+    
+      xhtml.input {class="w3-button w3-round w3-light-blue w3-margin", type="submit", value="Submit"},
+    }}
+  return app
+end
+
+local function variable_selector (dev, SVC, VAR, onchange)
+  local jtable = '{"svc":"%s", "var":"%s"}'
+  local selected = dev and SVC and VAR
   local vselect = xhtml.select {class="w3-input w3-border w3-hover-border-blue", name="svc_var", required=true}
-  vselect[1] = xhtml.option {"Select ...", value = '', selected=true}
+  vselect[1] = xhtml.option {"Select ...", value = '', selected=not selected or nil}
   if dev then
     for s, svc in sorted (dev.services) do
+      local smatch = s == SVC
       vselect[#vselect+1] = xhtml.optgroup {label=s}
       for v in sorted (svc.variables) do
-        vselect[#vselect+1] = xhtml.option {v, value= json: format (s,v)}
+        local vmatch = v == VAR
+        vselect[#vselect+1] = xhtml.option {v, value= jtable: format (s,v), selected= smatch and vmatch or nil}
       end
     end
   end 
-  xhtml.body:appendChild {
-    X.Form {class = "w3-form", target="_parent",
-      selfref = "action=create_trigger",
-      xhtml.input {hidden=1, name="name", value=p.name} ,
-      xhtml.input {hidden=1, name="dev", value=dno or 0} ,
-      vselect,
-      xhtml.div {xhtml.label "Lua Code"},
-      edit_and_submit ('', 140)}}
-   return tostring(xhtml)
+  return vselect
 end
 
-local function device_selector ()
+local function device_selector (dno, onchange)
   local dev_by_room = {}
+  local selected = dno
   for i, dev in sorted (luup.devices) do
     local room = dev_by_room[dev.room_num] or {}
-    room[#room+1] = xhtml.option {devname(i), value=i}
+    room[#room+1] = xhtml.option {devname(i), value=i, selected= i==dno or nil}
     dev_by_room[dev.room_num] = room
   end
-  local dselect = xhtml.select {class="w3-input w3-border w3-hover-border-blue", name="dev", onchange="this.form.submit()"}
-  dselect[1] = xhtml.option {"Select ...", value = '', selected=true}
+  local dselect = xhtml.select {class="w3-input w3-border w3-hover-border-blue", name="dev", required=true,
+    onchange=onchange}    -- recursive call
+  dselect[1] = xhtml.option {"Select ...", value = '', selected=not selected}
   for i, room in sorted (dev_by_room) do
     dselect[#dselect+1] = xhtml.optgroup {label = luup.rooms[i] or "No Room"}
     for _, dev in pairs (room) do
@@ -576,24 +647,58 @@ local function device_selector ()
   return dselect
 end
 
-function P.create_trigger ()    
-  local var_menu_url = "/data_request?id=XMLHttpRequest&action=var_menu"
-  local form = X.Form {class = "w3-container w3-form", 
-    action = var_menu_url,
-    target = "var_menu",
+local empty_trigger_code =[[
+-- Lua code is function body which should return boolean
+-- variable values new and old are available for use
+
+return true
+
+-- (no end statement is required)
+]]
+
+function XMLHttpRequest.edit_trigger (p)
+--  print (pretty {edit_trigger=p}) 
+  local name, scn, trg, dno, svc, var, lua
+  if p.new then 
+    p = {name = "New Trigger"}
+  end
+  name = p.name
+  dno = tonumber (p.dev)
+  trg = tonumber(p.trg)
+  scn = tonumber (p.scn)
+  if scn and trg then 
+    local scene = luup.scenes[scn]
+    local defn = scene.definition
+    local trigger = defn.triggers[trg]
+    local args = trigger.arguments
+    dno = tonumber(args[1].value)
+    svc = args[2].value
+    var = args[3].value
+    lua = trigger.lua
+    name = trigger.name
+  end
+  local dev = luup.devices[dno]
+  local form = X.Form {class = "w3-container w3-form", name="popupMenu",
+    selfref = "action=create_trigger",
+    target = "_parent",
     xhtml.h3 "Trigger",
-    xhtml.label "Name",
-    xhtml.input {name="name", value="New Trigger", class="w3-input w3-border w3-border-hover-blue"},
-    xhtml.label {"Device"},
-    device_selector (),
-    xhtml.label {"Variable"},
-    xhtml.iframe {name = "var_menu", width="100%", height=270, class = "w3-border-0",    -- variable form
-      src = var_menu_url,      -- load this menu initially
-    }}
-  return X.modal_button (
-    form,
-    xhtml.button {"+ Create"; title="create new trigger"})
-end
+    xhtml.input {type="hidden", name="trg", value=trg},   -- pass along trigger number if editing existing
+    xhtml.div {class="w3-panel",
+      xhtml.label "Name",
+      xhtml.input {name="name", value=name, class="w3-input w3-border w3-border-hover-blue"},
+      xhtml.label {"Device"},
+      device_selector (dno, X.popMenu "edit_trigger"),
+      xhtml.label "Variable",
+      variable_selector (dev, svc, var),
+      xhtml.label "Lua Code",
+      xhtml.textarea {name="lua_code", rows=6,
+        class="w3-monospace w3-small w3-margin-bottom",
+        style = "width: 100%; resize: none;",
+        lua or empty_trigger_code},   -- needs to be non-blank, for some reason
+      xhtml.input {class="w3-button w3-round w3-light-blue", value="Submit", type="submit"},
+      }}  
+  return form
+end  
 
 --[[
 
@@ -626,89 +731,119 @@ end
   
 --]]
 
-local timer_menu_url = "/data_request?id=XMLHttpRequest&action=timer_menu"
+local function relative_to (p)
+  local sign, time, event = (p.time or ''): match "([%+%-]?)(%d+:%d+:%d+)([RT]?)"
+  -- TODO: use these values to select initial option
+  return
+    xhtml.select {name = "relative", class="w3-container w3-border w3-round w3-hover-border-blue", 
+      xhtml.option {"At a certain time of day", value=' '},
+      xhtml.option {"At sunrise", value='R'},
+      xhtml.option {"Before sunrise", value='-R'},
+      xhtml.option {"After sunrise", value='+R'},
+      xhtml.option {"At sunset", value='T'},
+      xhtml.option {"Before sunset", value='-T'},
+      xhtml.option {"After sunset", value='+T'}}
+end
 
--- this menu selector returns a complete web page,
--- so needs to use its own local xhtml document
-function XMLHttpRequest.timer_menu (p)
-  local Forms = {
-    function ()   -- Interval
-      return 
-        xhtml.label {"Repeat every: "; class="w3-cell", 
-        xhtml.input {name = "interval", title = "enter time interval", 
-          class="w3-container w3-border w3-hover-border-blue", size=8,  value='', required=true},
-        xhtml.select {name = "units", class="w3-container w3-border w3-round w3-hover-border-blue", 
-          xhtml.option {"days", value='d'},
-          xhtml.option {"hours", value='h'},
-          xhtml.option {"minutes", value='m'},
-          xhtml.option {"seconds", value=''}}}
-    end,
-    function ()  -- Day of Week
-      local day_of_week = xhtml.div {}
-      for day in ("Mon Tue Wed Thu Fri Sat Sun"): gmatch "%a+" do
-        day_of_week:appendChild {
-          xhtml.label {day: sub(1,1)},
-          xhtml.input {type="checkbox", name=day, class="w3-check"}}
-      end
-      local runtime = xhtml.div {class="w3-margin-top",
-        xhtml.label "Run at: ",
-        xhtml.input {name = "time", type="time", title="enter time of day", required=true}}
-      return
-        day_of_week, runtime
-    end,
-    function ()   -- Day of Month
-      local day_of_month = xhtml.div{
-        xhtml.div {xhtml.label "Days on which to run (comma or space separated): "}, 
-        xhtml.input {name="days", autocomplete="off", size=50,
-          class="w3-border w3-border-gray w3-hover-border-light-blue w3-animate-input", value= ''} }
-      local runtime = xhtml.div {class="w3-margin-top",
-        xhtml.label "Run at: ",
-        xhtml.input {name = "time", type="time", title="enter days of the month", required=true}}
-      return
-        day_of_month, runtime
-    end,
-    function ()   -- Absolute
-      return
-        xhtml.label "Run once at: ",
-        xhtml.input {name = "datetime", type="datetime-local", title="enter date/time", required=true} 
-    end}
+
+local Timer_forms = {
+  function (p)   -- Interval
+    return 
+      xhtml.label {"Repeat every: "; class="w3-cell", 
+      xhtml.input {name = "interval", title = "enter time interval", 
+        class="w3-container w3-border w3-hover-border-blue", size=8,  value='', autocomplete="off", required=true},
+      xhtml.select {name = "units", class="w3-container w3-border w3-round w3-hover-border-blue", 
+        xhtml.option {"days", value='d'},
+        xhtml.option {"hours", value='h'},
+        xhtml.option {"minutes", value='m'},
+        xhtml.option {"seconds", value=''}}}
+  end,
+  function (p)  -- Day of Week
+    local Day_of_Week = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+    local day_of_week = xhtml.div {}
+    for i, day in ipairs(Day_of_Week) do
+      local checked = (p.days_of_week or ''): match (tostring(i))
+      day_of_week:appendChild {
+        xhtml.label {day: sub(1,1)},
+        xhtml.input {type="checkbox", name=day, class="w3-check", checked=checked}}
+    end
+    local runtime = xhtml.div {class="w3-margin-top",
+      xhtml.label "Run at: (hh:mm) ",
+      xhtml.input {name = "time", type="time", value="00:00", title="enter time of day"},
+      relative_to (p)}
+    return
+      day_of_week, runtime
+  end,
+  function (p)   -- Day of Month
+    local day_of_month = xhtml.div{
+      xhtml.div {xhtml.label "Days on which to run (comma or space separated): "}, 
+      xhtml.input {name="days", autocomplete="off", size=50, title="enter days of the month",
+        class="w3-border w3-border-gray w3-hover-border-light-blue w3-animate-input", value= p.days_of_month or ''} }
+    local runtime = xhtml.div {class="w3-margin-top",
+      xhtml.label "Run at: (hh:mm) ",
+      xhtml.input {name = "time", type="time", value="00:00", title="enter time of day"},
+      relative_to (p)}
+    return
+      day_of_month, runtime
+  end,
+  function (p)   -- Absolute
+    return
+      xhtml.label "Run once at: (date, hh:mm) ",
+      xhtml.input {name = "datetime", type="datetime-local", title="enter date/time", required=true} 
+  end}
+
+function XMLHttpRequest.edit_timer (p)
+--  print (pretty {edit_timer=p})
+  local ttype, name, scn, tim
+  if p.new then
+    p = {ttype = 1, name = "New Timer"}
+  end
   
-  local xhtml = X.createW3Document ()
-  local Ttypes = {"Interval", "Day of Week", "Day of Month", "Date/Time"}
-  local ttype = p.ttype or Ttypes[1]
+  ttype = tonumber(p.ttype) or 1
+  scn = tonumber(p.scn)
+  tim = tonumber(p.tim)
+  name = p.name
+  
+  if scn and tim then 
+    local scene = luup.scenes[scn]
+    local defn = scene.definition
+    local timer = defn.timers[tim]
+    name = timer.name
+    p.time = timer.time or timer.abstime
+    p.days_of_week = timer.days_of_week
+    p.days_of_month = timer.days_of_month
+    ttype = tonumber(timer.type)
+  end
+  
+--    print (pretty {MODIFIED_edit_timer=p})
+
   local bar = xhtml.div {class="w3-bar"}
   local form
-  for i, t in ipairs (Ttypes) do
-    local selected = t == ttype 
+  local Ttypes = {"Interval", "Day of Week", "Day of Month", "Date/Time"}
+  for i, tname in ipairs (Ttypes) do
     local colour = "w3-light-blue"
-    if selected then 
+    if i == ttype then 
       colour = "w3-grey"
-      form = X.Form {class = "w3-form", target="_parent",
+      form = X.Form {class = "w3-form", name="popupMenu",
+        target="_parent",
         selfref = "action=create_timer",
-        xhtml.h5 (Ttypes[i]), 
+        xhtml.h5 (tname), 
+        xhtml.input {type="hidden", name="tim", value=tim},   -- pass along trigger number if editing existing
+        xhtml.input {type="hidden", name="ttype", value=i},
         xhtml.div {class="w3-container",
           xhtml.label "Name",
-          xhtml.input {name="name", value="New Timer", class="w3-input w3-border w3-margin-bottom"}},
-        xhtml.input {type="hidden", name="ttype", value=i},
-        xhtml.div {class="w3-container w3-cell-row", (Forms[i] or tostring) ()},
+          xhtml.input {name="name", value=name, class="w3-input w3-border w3-margin-bottom"}},
+        xhtml.div {class="w3-container w3-cell-row", (Timer_forms[i] or tostring) (p)},
       xhtml.input {class="w3-button w3-round w3-light-blue w3-margin", type="submit", value="Submit"}}
     end
-    bar[#bar+1] = X.ButtonLink {t; class=colour, href = timer_menu_url .. "&ttype=" .. t}
+    bar[#bar+1] = xhtml.button {tname; class="w3-button w3-round " .. colour,
+      onclick=X.popMenu ("edit_timer&ttype="..i)}  -- URL parameter overrides form
   end
-  local timer_selector = bar
       
-  xhtml.body:appendChild {
+  return xhtml.div {
     xhtml.h3 "Timer",
-    timer_selector,
+    bar,
     form}
-  return tostring (xhtml)
-end
-    
-function P.create_timer ()
-  return X.modal_button (
-    xhtml.iframe {name = "timer_menu", width="100%", height=380, class = "w3-border-0",    -- timer frame
-      src = timer_menu_url},      -- load this menu initially
-    xhtml.button {"+ Create"; title="create new timer"})
 end
 
 -- this menu selector returns a complete web page,
@@ -754,33 +889,31 @@ local function get_argument_list (s, a)
       end
     end
   end
+  if #args == 0 then args[1] = xhtml.span "No parameters" end
   return args
 end
 
-local act_menu_url = "/data_request?id=XMLHttpRequest&action=act_menu"
-
--- this menu selector returns a complete web page,
--- so needs to use its own local xhtml document
-
-function XMLHttpRequest.act_menu (p)
-  local xhtml = X.createW3Document ()
-  local dno = tonumber (p.dev)
+local function action_selector (dno, svc_act, onchange)
   local dev = luup.devices[dno]
-  local svc_act = json.decode (p.svc_act or "{}")    -- do we have a known service action?
   local SVC,ACT
   if type(svc_act) == "table" then
     SVC,ACT = svc_act.svc, svc_act.act
   end
   local sajson = '{"svc":"%s", "act":"%s"}'
   local aselect = xhtml.select {class="w3-input w3-border w3-hover-border-blue", name="svc_act", 
-    required=true, onchange="this.form.submit()"}
+    required=true, onchange=onchange}
   aselect[1] = xhtml.option {"Select ...", value='', selected=not ACT or nil}
   local aparameters = xhtml.span {}
   
   if dev then
-    for s, svc in sorted (dev.services) do
+    for s in sorted (dev.services) do
       aselect[#aselect+1] = xhtml.optgroup {label=s}
-      for a in sorted (svc.actions) do
+-- Note: that we can't use the device's own implemented actions, like this:
+--      for a in sorted (svc.actions) do
+-- ...since they may not be present (perhaps implemented by a parent or generic request) 
+--    so we use the formal service data definitions
+      for _, act in sorted ((service_data[s] or empty).actions or empty) do
+        local a = act.name
         local selected = s == SVC and a == ACT
         aselect[#aselect+1] = xhtml.option {a, value= sajson: format (s,a), selected=selected or nil}
         if selected then    -- add parameters
@@ -790,56 +923,48 @@ function XMLHttpRequest.act_menu (p)
     end
   end
   
-  xhtml.body:appendChild {
-    X.Form {class = "w3-form", 
-      action = act_menu_url,
-      xhtml.input {hidden=1, name="dev", value=dno or 0} ,
-      xhtml.input {name="group", value=p.group, hidden=1},
+  return xhtml.div {
       aselect,
       aparameters,
-      xhtml.input {class="w3-button w3-round w3-light-blue w3-margin", type="submit", value="Submit",
-        formaction=selfref "action=create_action", formtarget="_parent"}
-      }}
-   return tostring(xhtml)
+      }
 end
 
-function P.create_action_in_group (group_num)
-  local frame_name = "var_menu_" .. group_num
-  local form = X.Form {class = "w3-container w3-form", 
-    action = act_menu_url,
-    target = frame_name,
+function XMLHttpRequest.edit_action (p)
+--  print (pretty {edit_action=p})
+  local dno = tonumber(p.dev) 
+  local svc_act = json.decode (p.svc_act or "{}")    -- do we have a known service action?
+  local group_num = p.group or 1
+  local form = X.Form {class="w3-container w3-form", name="popupMenu",  -- popup menu must have this name
+    action = selfref "action=create_action",
+    target = "_parent",
     xhtml.h3 "Action",
     xhtml.input {name="group", value=group_num, hidden=1},
     xhtml.label {"Device"},
-    device_selector (),
+    device_selector (dno, X.popMenu ("edit_action")),
     xhtml.label {"Action"},
-    xhtml.iframe {name = frame_name, width="100%", height=440, class = "w3-border-0",    -- variable form
-      src = act_menu_url,      -- load this menu initially
-    }}
-  return X.modal_button (
-    form,
-    xhtml.button {"+ Action"; class="w3-container", title="create new action\nin this delay group"})
+    action_selector (dno, svc_act, X.popMenu ("edit_action")),
+    xhtml.input {class="w3-button w3-round w3-light-blue w3-margin", type="submit", value="Submit"}
+    }
+  return form
 end
 
 -- new delay group
-function P.create_new_delay_group ()
-  local form = X.Form {class = "w3-form", 
+function XMLHttpRequest.create_new_delay_group ()
+  local form = X.Form {class="w3-form", 
     selfref = "action=create_group",
     target = "_parent",
     xhtml.h3 "Create Delay Group",
     xhtml.div {class="w3-panel",
       xhtml.label {"Delay (mm:ss):"},
-      xhtml.input {name="delay", type="time", required=true}},
+      xhtml.input {name="delay", type="time", value="00:00", required=true}},
     xhtml.input {type="submit", value="Submit", class="w3-button w3-round w3-light-blue w3-margin"}}
-  return X.modal_button (
-    form,
-    xhtml.button {"+ Delay"; class="w3-container", title="create new delay group"})
+  return form
 end
 
 return 
   function (_selfref) 
     selfref = _selfref
-    return X, U, P
+    return X, U
   end
 
 -------------------
