@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.scenes",
-  VERSION       = "2021.06.02",
+  VERSION       = "2023.03.03",
   DESCRIPTION   = "openLuup SCENES",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-present AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-present AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -76,6 +76,9 @@ local ABOUT = {
 -- 2021.04.30   scene.find() moved here from openLuup.api, for json.Lua.encode() for jsonify()
 -- 2021.06.02   add scene_mode_toggle() to turn on/off individual modes in the modeStatus
 
+-- 2023.03.01   update trigger watcher identifier (for console watches page)
+-- 2023.03.03   add default delay group 0
+
 
 local logs      = require "openLuup.logs"
 local json      = require "openLuup.json"
@@ -142,9 +145,12 @@ local sceneLuaTemplate = [[
 -- format to individual Lua trigger code, includes trigger id format parameter
 -- parameters are as for luup.variable_watch() callback function
 -- plus additional time parameter with _actual_ time of variable change
+-- 2023.03.01  also remove access to global _G and restrict luup to .log only
+-- ... to ensure that trigger code just sticks to its basic task of defining the trigger based on inputs only
 local sceneLuaTrigger = [[
   [%s] = function (lul_device, lul_service, lul_variable, lul_value_old, lul_value_new, lul_time)
     local old, new = lul_value_old, lul_value_new   -- for compatibility with AltUI variable watch code
+    local _G, luup = {}, {log = luup.log}
     %s
   end,
 ]]
@@ -353,7 +359,8 @@ end
 -- start scene trigger watchers
 local function start_watchers (self)      -- 2021.01.06
   local function noop() end
-  local triggers = self.definition.triggers
+  local defn = self.definition
+  local triggers = defn.triggers
   local params = {"dev", "srv", "var"}
   for id, trigger in ipairs (triggers) do
     if trigger.device == 2 then          -- this is an openLuup variable watch trigger
@@ -371,7 +378,7 @@ local function start_watchers (self)      -- 2021.01.06
         w[params[tonumber(arg.id)]] = arg.value
       end
       local dev = luup.devices[tonumber(w.dev)]
-      devutil.variable_watch (dev, scene_watcher, w.srv, w.var, "openLuupVariableTrigger")
+      devutil.variable_watch (dev, scene_watcher, w.srv, w.var, "Trigger, scene #" .. defn.id)
     end
   end
 end
@@ -532,7 +539,7 @@ local function create (scene_json, timestamp)
   
   scene.Timestamp   = timestamp or scene.Timestamp or os.time()   -- creation time stamp
   scene.favorite    = scene.favorite or false
-  scene.groups      = scene.groups or {}
+  scene.groups      = scene.groups or {{delay=0, actions={}}}
   scene.id          = tonumber (scene.id) or (#luup.scenes + 1)     -- given id or next one available
   scene.modeStatus  = scene.modeStatus or "0"                       -- comma separated list of enabled modes ("0" = all)
   scene.paused      = scene.paused or "0"

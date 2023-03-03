@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2023.02.28",
+  VERSION       = "2023.03.03",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2023 AKBooer",
@@ -140,16 +140,16 @@ local function selfref (...) return table.concat {script_name, '?', ...} end   -
 local X, U = require "openLuup.console_util" (selfref)  -- xhtml, utilities
 
 local delete_link = X.delete_link
-local xoptions = X.options
+--local xoptions = X.options
 local xselect = X.select
-local xinput = X.input
+--local xinput = X.input
 local xlink = X.link
 local rhs = X.rhs
 local lhs = X.lhs
 local get_user_html_as_dom = X.get_user_html_as_dom
 local create_table_from_data = X.create_table_from_data
-local XMLHttpRequest = X.XMLHttpRequest
 local code_editor = X.code_editor
+local lua_scene_editor = X.lua_scene_editor
 local generic_panel = X.generic_panel
 local find_plugin = X.find_plugin
 
@@ -203,11 +203,11 @@ local unicode = {
   black_star  = "★",
   white_star  = "☆",
   check_mark  = "✓",  
+  times       = '×',    -- muktiplication sign × (for close boxes)
 --  cross_mark  = "&#x2718;",
 --  pencil      = "&#x270e;",
 --  power       = "&#x23FB;",     -- NB. not yet commonly implemented.
   nbsp        = json.decode '["\\u00A0"]' [1],
-  times       = json.decode '["\\u00D7"]' [1],    -- muktiplication sign (for close boxes)
 }
 
 
@@ -730,6 +730,8 @@ function actions.create_timer (p,req)
   local ttype = tonumber (q.ttype)
   local timers = defn.timers
   local timer = {enabled = 1, name=q.name, type=ttype}
+  local rise_or_set = {R = true, T = true} 
+  if rise_or_set[q.relative] then q.time = "00:00" end    -- actual rise or set time
   local Timers = {
     function ()   -- Interval
       timer.interval = q.interval..(q.units or '')
@@ -765,8 +767,23 @@ function actions.create_timer (p,req)
   requests.scene ('', {action="create", json=new_defn})   -- deals with deleting old and rebuilding triggers/timers
 end
 
+--[[
+{CREATE_ACTION = {
+    dev = "2",
+    existing = "",
+    group = "1",
+    names = '["Folder","MaxDays","MaxFiles","FileTypes"]',
+    scn = "",
+    svc_act = '{"svc":"openLuup", "act":"SendToTrash"}',
+    value_1 = "fold",
+    value_2 = "days",
+    value_3 = "max",
+    value_4 = "types"
+  }}
+--]]
 function actions.create_action (p,req)
   local q = req.POST
+--  print(pretty {CREATE_ACTION = q})
   local dno = tonumber (q.dev)
   local gno = tonumber (q.group)
   local svc_act = json.decode (q.svc_act or "{}")
@@ -775,18 +792,17 @@ function actions.create_action (p,req)
     svc, act = svc_act.svc, svc_act.act
   end
   if dno and gno and svc and act then
-    local ignore = {dev = 1, group = 1, svc_act = 1}
+    local names = json.decode (q.names) or empty
     local args = {}
-    for a,b in pairs (q) do
-      if not ignore[a] then 
-        args[#args+1] = {name=a, value=b}
-      end
+    for i, name in ipairs (names) do
+      args[#args+1] = {name=name, value=q["value_"..i] or ''}
     end
     local scene = luup.scenes[tonumber(p.scene)]
     local defn = scene.definition
     local group = defn.groups[gno]
     local actions = group.actions 
-    actions[#actions + 1] = {
+    local act_no = tonumber(q.existing) or #actions + 1
+    actions[act_no] = {
       action = act,
       arguments = args,
       device = tostring(dno),
@@ -805,6 +821,16 @@ function actions.create_group (p, req)
     groups[#groups+1] = {delay=delay, actions = {}}
     table.sort (groups, function (a,b) return a.delay < b.delay end)
   end
+end
+
+function actions.edit_scene_lua (p, req)
+  local q = req.POST  
+--  print(pretty {EDIT_SCENE_LUA = q, p =p})
+  local scene = luup.scenes[tonumber (p.scene)]
+  local defn = scene.definition
+  defn.lua = q.lua_code or ''
+  local new_defn = json.encode (scene.definition)
+  requests.scene ('', {action="create", json=new_defn})   -- deals with deleting old and rebuilding triggers/timers
 end
 
 local function scene_filter (p)
@@ -1603,8 +1629,8 @@ function pages.cache ()
       local _,start = v:oldest()      -- get earliest entry in the cache (if any)
       if start then
         local from = timers.util.epoch2ISOdate (start + 1)    -- ensure we're AFTER the start... 
-        local link = "page=graphics&target=%s&from=%s"
         local img = xhtml.img {height=14, width=14, alt="plot", src="icons/chart-bar-solid.svg"}
+        local link = "page=graphics&target=%s&from=%s"
         graph = xhtml.a {class = "w3-hover-opacity", title="graph", 
           href= selfref (link: format (finderName, from)), img}
         clear = xhtml.a {href=selfref ("action=clear_cache&variable=", v.id + 1, "&dev=", v.dev), title="clear cache", 
@@ -1886,7 +1912,7 @@ local function device_panel (self)          -- 2019.05.12
     else
       local switch, slider = device_controls(self)
       local time = self: variable_get (SID.security, "LastTrip")
-      time = time and div {class = "w3-tiny w3-display-bottomright", todate(time.value) or ''} or nil
+      time = time and div {class = "w3-tiny w3-display-bottomright", todate(tonumber(time.value)) or ''} or nil
       main_panel = div {
         div {class="w3-display-topright w3-padding-small", switch},
         div {class="w3-display-bottommiddle", slider},
@@ -1947,22 +1973,6 @@ function pages.attributes (p, req)
   end)
 end
 
-function pages.cache_history (p)
-  return device_page (p, function (d, title)
-    local vnum = tonumber(p.variable)
-    local v = d and d.variables and d.variables[vnum]
-    local TV = {}
-    if v then
-      local V,T = v:fetch (v:oldest (), os.time())    -- get the whole cache from the oldest available time
-      local NT = #T
-      for i, t in ipairs (T) do TV[NT-i] = {t, V[i]} end   -- reverse sort
-    end
-    local t = create_table_from_data ({"time", "value"}, TV, function (row) row[1] = nice (row[1]) end)
---    local scrolling = xhtml.div {style="height:500px; width:350px; overflow:scroll;", class="w3-border", t}
-    return title .. '.' .. ((v and v.name) or '?'), t   -- or, instead of t, scrolling
-  end)
-end
-
 function pages.variables (p, req)
   local q = req.POST
   local devNo = tonumber (p.device)
@@ -2008,10 +2018,16 @@ function pages.variables (p, req)
           filepath, filename = hist.metrics.finder2filepath (f)     -- ...and matching file path
         end
         if (v.history and #v.history > 2) or archives then 
-          history = xhtml.a {href=selfref ("page=cache_history&variable=", n), title="cache", 
-                  xhtml.img {width="18px;", height="18px;", alt="cache", src="/icons/calendar-alt-regular.svg"}} 
+--          history = xhtml.a {href=selfref ("page=cache_history&variable=", n), title="cache", 
+--                  xhtml.img {width="18px;", height="18px;", alt="cache", src="/icons/calendar-alt-regular.svg"}} 
+        history = xhtml.img {title="cache", 
+            style="display:inline-block;", alt="cache", src="/icons/calendar-alt-regular.svg",
+            class="w3-hover-opacity", height=18, width=18, 
+            onclick=X.popMenu (table.concat {"view_cache&dev=",d.devNo,"&var=",n})}       
+          
           graph = xhtml.a {href=selfref ("page=graphics&variable=", n), title="graph", 
                   xhtml.img {width="18px;", height="18px;", alt="graph", src="/icons/chart-bar-solid.svg"}}
+          
           edit = archives and whisper_edit (filename, historian) or ' '
         end
     -- form to allow variable value updates
@@ -2263,18 +2279,6 @@ function pages.header (p)
 end
 
 
-local function parameters (p, req)
-  local t = xhtml.table {}
-  t.header {"name", "value"}
-  for a,b in pairs(p) do
-    t.row {a,b}
-  end
-  for a,b in pairs((req or empty) .GET or empty) do
-    t.row {a,b}
-  end
-  return t
-end
-
 function pages.triggers (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
@@ -2423,26 +2427,19 @@ function pages.history (p)
     return title .. " - scene history", t
   end)
 end
-  
+ 
 function pages.lua (p)
   return scene_page (p, function (scene, title)
-    local readonly = true
     local Lua = scene.definition.lua
     return title .. " - scene Lua", 
-      xhtml.div {code_editor (Lua, 500, "lua", readonly)}
+      xhtml.div {lua_scene_editor (Lua, 500)}
   end)
 end
  
-function pages.action (p, req)
---  local pop = P.create_action_in_group (1)
---  local form = pop[1]
---  return form
-  return parameters(p, req)
-end
-
 function pages.group_actions (p)
   return scene_page (p, function (scene, title)
     local h = xhtml
+    local id = scene.definition.id
     local groups = h.div {class = "w3-container"}
 --    local new_group = P.create_new_delay_group ()
     local new_group = xhtml.button {"+ Delay"; 
@@ -2451,7 +2448,7 @@ function pages.group_actions (p)
       local delay = tonumber (group.delay) or 0
 --      local new_action = P.create_action_in_group (g)
       local new_action = xhtml.button {"+ Action"; class="w3-button w3-round w3-green", 
-        title="create new action\nin this delay group", onclick=X.popMenu ("edit_action&group=" .. g)}
+        title="create new action\nin this delay group", onclick=X.popMenu ("edit_action&new=true&group=" .. g)}
 
       local del_group = X.ButtonLink {"- Delay"; selfref="action=delete&group=" .. g, 
         onclick = "return confirm('Delete Delay Group (and all its actions): Are you sure?')",
@@ -2460,9 +2457,9 @@ function pages.group_actions (p)
       local e = h.div {
         class = "w3-panel w3-padding w3-border-top",             
         h.div {
-          xhtml.div {"Delay ",class="w3-cell w3-cell-middle", dhms(delay)}, 
+          xhtml.div {"Delay: ",class="w3-cell w3-cell-middle w3-container", dhms(delay)}, 
+          del_group, 
           xhtml.div {new_action, class="w3-container w3-cell"}, 
-          del_group,
           dpanels}}
       for i, a in ipairs (group.actions) do
         local desc = h.div {h.strong{a.action}}
@@ -2470,7 +2467,10 @@ function pages.group_actions (p)
           desc[#desc+1] = h.br()
           desc[#desc+1] = h.span {arg.name, '=', arg.value}
         end
-        local w1 = widget_link ("page=action&group=" .. g .. "&edit=".. i, "view/edit action", "icons/edit.svg")
+--        local w1 = widget_link ("page=action&group=" .. g .. "&edit=".. i, "view/edit action", "icons/edit.svg")
+        local w1 = xhtml.img {title="view/edit action", src="icons/edit.svg", style="display:block; float:left;",
+            class="w3-margin-right w3-hover-opacity", height=18, width=18, 
+            onclick=X.popMenu (table.concat {"edit_action&scn=",id,"&group=",g,"&act=",i})}       
         local w2 = delete_link ("group=" .. g .. "&act", i, "action")
         local dno = tonumber (a.device)
         dpanels[i] = generic_panel ({
@@ -2522,54 +2522,6 @@ end
 --
 -- Editor/Viewer - may use Ace editor if configured, else just textarea
 --
-
--- save some user_data.attribute Lua, and for some types, run it and return the printer output
--- two key input parameters: lua_code and codename
--- if both present, then update the relevant userdata code
--- either may be absent - if no code, then codename userdata is run, if code and codename, then it's updated
-function XMLHttpRequest.submit_lua (p)
-  local v, r = "valid", "runnable"
-  local valid_name = {
-    StartupCode = v, ShutdownCode = v,
-    LuaTestCode = r, LuaTestCode2 = r, LuaTestCode3 = r}
-  
-  local newcode = p.lua_code
-  local codename = p.codename
-  if not codename then return "No code name!" end
-  
-  local valid = valid_name[codename]
-  if not valid then return "Named code does not exist in user_data: " .. codename end
-  
-  local code = newcode or userdata.attributes[codename]
-  userdata.attributes[codename] = code        -- possibly update the value
-  if valid ~= "runnable" then return '' end
-  
-  local P = {''}            ---lines and time---
-  local function prt (...)
-    local x = {...}         -- NB: some of these parameters may be nil, hence use of select()
-    for i = 1, select('#', ...) do P[#P+1] = tostring(x[i]); P[#P+1] = ' \t' end
-    P[#P] = '\n'
-  end
-  
-  local cpu = timers.cpu_clock()
-  local ok, err = loader.compile_and_run (code, codename, prt)
-  cpu = ("%0.1f"): format(1000 * (timers.cpu_clock() - cpu))
-  if not ok then prt ("ERROR: " .. err) end
-  
---  local N = #P - 1
---  P[1] = table.concat {"--- ", N, " line", N == 1 and '' or 's', " --- ", cpu, " ms --- ", "\n"}
-
-  local h = xml.createHTMLDocument "Console Output"
-  local printed = table.concat (P)
-  local _, nlines = printed:gsub ('\n',{})    -- the proper way to count lines
-  local header = "––– %d line%s ––– %0.1f ms –––"
-  h.body: appendChild {
-    h.span {style = "background-color: AliceBlue; font-family: sans-serif;",
-      header: format (nlines, nlines == 1 and '' or 's', cpu)},
-    h.pre (printed) }
-  return tostring (h), "text/html"
-end
-
 
 -- editable (but not runnable) pages
 local function lua_edit (codename, height)
@@ -3397,12 +3349,11 @@ function run (wsapi_env)
   
   function ShowHide(id) {
     var x = document.getElementById(id);
-    if (x.className.indexOf("w3-show") == -1) {
-      x.className += " w3-show";
-    } else {
-      x.className = x.className.replace(" w3-show", "");
-    }
-  };
+    if (x.className.indexOf("w3-show") == -1) 
+      {x.className += " w3-show";}
+    else 
+      {x.className = x.className.replace(" w3-show", "");}
+    };
     
   function LoadDoc(id, req, data) {
     const xhttp = new XMLHttpRequest();
@@ -3417,9 +3368,14 @@ function run (wsapi_env)
     document.getElementById("modal").style.display="block";
     };
     
+  function AceEditorSubmit(code, window) {
+    var element = document.getElementById(code);
+    element.value = ace.edit(window).getSession().getValue();
+    element.form.submit();}
+
   ]]}
 
---  local popup = h.div {"MODAL", onclick=X.popup (modal), class ="w3-button"}
+  local popup = h.div {"MODAL", onclick=X.popup (modal), class ="w3-button"}
 
   body = {
     script,
@@ -3428,7 +3384,7 @@ function run (wsapi_env)
     h.div {
       formatted_page,
       h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", 
-        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate, forum, popup} }
+        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate, forum, h.span{popup}} }
     }}
   
   h.documentElement[1]:appendChild {  -- the <HEAD> element

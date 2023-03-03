@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "utility.lua",
-  VERSION       = "2023.02.28",
+  VERSION       = "2023.03.03",
   DESCRIPTION   = "utilities for openLuup console",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -33,7 +33,7 @@ local luup      = require "openLuup.luup"
 local loader    = require "openLuup.loader"       -- for loader.dir()
 local server    = require "openLuup.server"       -- request handler
 local userdata  = require "openLuup.userdata"     -- for plugin info
-
+local timers    = require "openLuup.timers"       -- for timing Lua Test code runs
 local xhtml     = xml.createHTMLDocument ()       -- factory for all HTML tags
 
 local service_data  = loader.service_data         -- for action parameters
@@ -331,8 +331,6 @@ local function unique_id ()
   return "id" .. tostring {} : match "%w+$"
 end
 
-local xtimes = json.decode '["\\u00D7"]' [1]    -- multiplication sign (for close boxes)
-
 -- onclick action for a button to pop up a modal dialog
 -- mode = "none" or "block", default is "block" to make popup visible
 function X.popup (x, mode)
@@ -349,7 +347,7 @@ end
 
 function X.modal (content, id)
   id = id or unique_id ()
-  local closebtn = xhtml.span {class="w3-button w3-round-large w3-display-topright w3-xlarge", xtimes}
+  local closebtn = xhtml.span {class="w3-button w3-round-large w3-display-topright w3-xlarge", '×'}
   local modal = 
     xhtml.div {class="w3-modal", id=id,
       xhtml.div {class="w3-modal-content w3-round-large",
@@ -413,20 +411,17 @@ local modal do
         }}}
 end
 
-local function ace_editor_script (theme, language)
+local function ace_editor_script (theme, language, window)
+  language = language or "lua"
+  window = window or "editor"
   local script = [[
   
-    var editor = ace.edit("editor");
+    var editor = ace.edit("%s");
     editor.setTheme("ace/theme/%s");
     editor.session.setMode("ace/mode/%s");
     editor.session.setOptions({tabSize: 2});
-    function EditorSubmit() {
-      var element = document.getElementById("lua_code");
-      element.value = ace.edit("editor").getSession().getValue();
-      element.form.submit();}
-      
     ]]
-  return xhtml.script {script: format(theme, language)}
+  return xhtml.script {script: format(window, theme, language)}
 end
  
 -- code editor using ACE Javascript or plain textbox
@@ -443,12 +438,14 @@ local function edit_and_submit (code, height, language)
   local theme = options.EditorTheme
   
   if ace_url ~= '' then
-    submit_button = xhtml.input {class=button_class, type="button", onclick = "EditorSubmit()", value="Submit"}
+    submit_button = xhtml.input {class=button_class, type="button", 
+--      onclick = "EditorSubmit()", value="Submit"}
+      onclick = "AceEditorSubmit('lua_code', 'editor')", value="Submit"}
     editor = xhtml.div {
       xhtml.input {type="hidden", name="lua_code", id=id},    -- return field for the edited code
       xhtml.div {id="editor", class="w3-border", style = "width: 100%; height:"..height, code },  -- ace playground
       xhtml.script {src = ace_url, type="text/javascript", charset="utf-8"},    -- ace code
-      ace_editor_script (theme, language)}
+      ace_editor_script (theme, language, "editor")}
   
   else  -- use plain old textarea for editing
     submit_button = xhtml.input {class=button_class, value="Submit", type = "submit"}
@@ -464,7 +461,8 @@ local function edit_and_submit (code, height, language)
   return editor, submit_button
 end
 
--- text editor
+-- text editors
+
 function X.code_editor (code, height, language, readonly, codename)
   codename = codename or ' '
   local editor, submit_button = edit_and_submit (code, height, language)    
@@ -473,15 +471,25 @@ function X.code_editor (code, height, language, readonly, codename)
   else
     submit_button.class = "w3-button w3-round w3-green w3-margin"
   end
-  
   return xhtml.form {
       action="/data_request?id=XMLHttpRequest&action=submit_lua&codename=" .. codename, 
       target="output", 
       method="post",
       editor, 
       submit_button}
-  
 end
+
+function X.lua_scene_editor (code, height)
+  local editor, submit_button = edit_and_submit (code, height)    
+  submit_button.class = "w3-button w3-round w3-green w3-margin"
+  return xhtml.form {
+      action=selfref "action=edit_scene_lua", 
+      target="output", 
+      method="post",
+      editor, 
+      submit_button}
+end
+
 
 ----------------------------------------
 --
@@ -494,11 +502,58 @@ end
 
 -- populated further on by XMLHttpRequest callback handlers
 local XMLHttpRequest = setmetatable ({}, missing_index_metatable "XMLHttpRequest")
-X.XMLHttpRequest = XMLHttpRequest
 
 server.add_callback_handlers {XMLHttpRequest = 
   function (_, p) return XMLHttpRequest[p.action] (p) end}
 
+-- execute Lua Test code
+
+-- save some user_data.attribute Lua, and for some types, run it and return the printer output
+-- two key input parameters: lua_code and codename
+-- if both present, then update the relevant userdata code
+-- either may be absent - if no code, then codename userdata is run, if code and codename, then it's updated
+function XMLHttpRequest.submit_lua (p)
+  local v, r = "valid", "runnable"
+  local valid_name = {
+    StartupCode = v, ShutdownCode = v,
+    LuaTestCode = r, LuaTestCode2 = r, LuaTestCode3 = r}
+  
+  local newcode = p.lua_code
+  local codename = p.codename
+  if not codename then return "No code name!" end
+  
+  local valid = valid_name[codename]
+  if not valid then return "Named code does not exist in user_data: " .. codename end
+  
+  local code = newcode or userdata.attributes[codename]
+  userdata.attributes[codename] = code        -- possibly update the value
+  if valid ~= "runnable" then return '' end
+  
+  local P = {''}            ---lines and time---
+  local function prt (...)
+    local x = {...}         -- NB: some of these parameters may be nil, hence use of select()
+    for i = 1, select('#', ...) do P[#P+1] = tostring(x[i]); P[#P+1] = ' \t' end
+    P[#P] = '\n'
+  end
+  
+  local cpu = timers.cpu_clock()
+  local ok, err = loader.compile_and_run (code, codename, prt)
+  cpu = ("%0.1f"): format(1000 * (timers.cpu_clock() - cpu))
+  if not ok then prt ("ERROR: " .. err) end
+  
+--  local N = #P - 1
+--  P[1] = table.concat {"--- ", N, " line", N == 1 and '' or 's', " --- ", cpu, " ms --- ", "\n"}
+
+  local h = xml.createHTMLDocument "Console Output"
+  local printed = table.concat (P)
+  local _, nlines = printed:gsub ('\n',{})    -- the proper way to count lines
+  local header = "––– %d line%s ––– %0.1f ms –––"
+  h.body: appendChild {
+    h.span {style = "background-color: AliceBlue; font-family: sans-serif;",
+      header: format (nlines, nlines == 1 and '' or 's', cpu)},
+    h.pre (printed) }
+  return tostring (h), "text/html"
+end
 
 -------------------
 --
@@ -656,6 +711,7 @@ return true
 -- (no end statement is required)
 ]]
 
+
 function XMLHttpRequest.edit_trigger (p)
 --  print (pretty {edit_trigger=p}) 
   local name, scn, trg, dno, svc, var, lua
@@ -731,18 +787,51 @@ end
   
 --]]
 
+local relative_time = {
+        {"At a certain time of day", value=''},
+        {"At sunrise", value='R'},
+        {"Before sunrise", value='-R'},
+        {"After sunrise", value='+R'},
+        {"At sunset", value='T'},
+        {"Before sunset", value='-T'},
+        {"After sunset", value='+T'}}
+      
+local interval_unit = {
+        {"days", value='d'},
+        {"hours", value='h'},
+        {"minutes", value='m'},
+        {"seconds", value=''}}
+
 local function relative_to (p)
-  local sign, time, event = (p.time or ''): match "([%+%-]?)(%d+:%d+:%d+)([RT]?)"
-  -- TODO: use these values to select initial option
-  return
-    xhtml.select {name = "relative", class="w3-container w3-border w3-round w3-hover-border-blue", 
-      xhtml.option {"At a certain time of day", value=' '},
-      xhtml.option {"At sunrise", value='R'},
-      xhtml.option {"Before sunrise", value='-R'},
-      xhtml.option {"After sunrise", value='+R'},
-      xhtml.option {"At sunset", value='T'},
-      xhtml.option {"Before sunset", value='-T'},
-      xhtml.option {"After sunset", value='+T'}}
+  local sign, event = (p.time or ''): upper(): match "([%+%-]?)[%d:]*([RT]?)"
+  local signed_event = sign .. event
+  -- use these values to select initial option
+  local sel = xhtml.select {name = "relative", class="w3-container w3-border w3-round w3-hover-border-blue"}
+  for _, rel in ipairs(relative_time) do
+    local opt = xhtml.option (rel)
+    opt.selected = (rel.value == signed_event) or nil
+    sel[#sel+1] = opt
+  end
+  return sel
+end
+
+local function interval_units (p)
+  local time_unit = (p.interval or ''): lower(): match "[dhm]?$"
+  local sel = xhtml.select {name = "units", class="w3-container w3-border w3-round w3-hover-border-blue"}
+  for _, unit in ipairs(interval_unit) do
+    local opt = xhtml.option (unit)
+    opt.selected = (unit.value == time_unit) or nil
+    sel[#sel+1] = opt
+  end
+  return sel
+end
+
+local function unadorned_time(p)          -- strip modifiers from time parameter
+  return (p.time or ''): match "%d+:?%d+"
+end
+
+local function unadorned_interval(p)      -- strip modifiers from interval parameter
+  return (p.interval or ''): match "%d*"
 end
 
 
@@ -751,12 +840,9 @@ local Timer_forms = {
     return 
       xhtml.label {"Repeat every: "; class="w3-cell", 
       xhtml.input {name = "interval", title = "enter time interval", 
-        class="w3-container w3-border w3-hover-border-blue", size=8,  value='', autocomplete="off", required=true},
-      xhtml.select {name = "units", class="w3-container w3-border w3-round w3-hover-border-blue", 
-        xhtml.option {"days", value='d'},
-        xhtml.option {"hours", value='h'},
-        xhtml.option {"minutes", value='m'},
-        xhtml.option {"seconds", value=''}}}
+        class="w3-container w3-border w3-hover-border-blue", size=8,  
+        value=unadorned_interval(p), autocomplete="off", required=true},
+      interval_units(p)}
   end,
   function (p)  -- Day of Week
     local Day_of_Week = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
@@ -769,7 +855,7 @@ local Timer_forms = {
     end
     local runtime = xhtml.div {class="w3-margin-top",
       xhtml.label "Run at: (hh:mm) ",
-      xhtml.input {name = "time", type="time", value="00:00", title="enter time of day"},
+      xhtml.input {name = "time", type="time", value=unadorned_time(p), title="enter time of day"},
       relative_to (p)}
     return
       day_of_week, runtime
@@ -781,7 +867,7 @@ local Timer_forms = {
         class="w3-border w3-border-gray w3-hover-border-light-blue w3-animate-input", value= p.days_of_month or ''} }
     local runtime = xhtml.div {class="w3-margin-top",
       xhtml.label "Run at: (hh:mm) ",
-      xhtml.input {name = "time", type="time", value="00:00", title="enter time of day"},
+      xhtml.input {name = "time", type="time", value=unadorned_time(p), title="enter time of day"},
       relative_to (p)}
     return
       day_of_month, runtime
@@ -789,7 +875,7 @@ local Timer_forms = {
   function (p)   -- Absolute
     return
       xhtml.label "Run once at: (date, hh:mm) ",
-      xhtml.input {name = "datetime", type="datetime-local", title="enter date/time", required=true} 
+      xhtml.input {name = "datetime", type="datetime-local", value=p.time, title="enter date/time", required=true} 
   end}
 
 function XMLHttpRequest.edit_timer (p)
@@ -804,12 +890,13 @@ function XMLHttpRequest.edit_timer (p)
   tim = tonumber(p.tim)
   name = p.name
   
-  if scn and tim then 
+  if scn and tim then     -- copy timer info into parameter list
     local scene = luup.scenes[scn]
     local defn = scene.definition
     local timer = defn.timers[tim]
     name = timer.name
     p.time = timer.time or timer.abstime
+    p.interval = timer.interval
     p.days_of_week = timer.days_of_week
     p.days_of_month = timer.days_of_month
     ttype = tonumber(timer.type)
@@ -828,7 +915,7 @@ function XMLHttpRequest.edit_timer (p)
         target="_parent",
         selfref = "action=create_timer",
         xhtml.h5 (tname), 
-        xhtml.input {type="hidden", name="tim", value=tim},   -- pass along trigger number if editing existing
+        xhtml.input {type="hidden", name="tim", value=tim},   -- pass along timer number if editing existing
         xhtml.input {type="hidden", name="ttype", value=i},
         xhtml.div {class="w3-container",
           xhtml.label "Name",
@@ -846,60 +933,43 @@ function XMLHttpRequest.edit_timer (p)
     form}
 end
 
--- this menu selector returns a complete web page,
--- so needs to use its own local xhtml document
-function XMLHttpRequest.t_menu (p)
-  local xhtml = X.createW3Document ()
-  local dno = tonumber (p.dev)
-  local dev = luup.devices[dno]
-  local json = '{"svc":"%s", "act":"%s"}'
-  local aselect = xhtml.select {class="w3-input w3-border w3-hover-border-blue", name="svc_act", 
-    onchange="this.form.submit()"}
-  aselect[1] = xhtml.option {"Select ...", value = '', selected=true}
-  if dev then
-    for s, svc in sorted (dev.services) do
-      aselect[#aselect+1] = xhtml.optgroup {label=s}
-      for v in sorted (svc.actions) do
-        aselect[#aselect+1] = xhtml.option {v, value= json: format (s,v)}
-      end
-    end
-  end
-  xhtml.body:appendChild {
-    X.Form {class = "w3-form", target="_parent",
-      selfref = "action=create_action",
-      xhtml.input {hidden=1, name="dev", value=dno or 0} ,
-      aselect,
-    }}
-   return tostring(xhtml)
-end
-
-local function get_argument_list (s, a)
+local function get_argument_list (s, a, values)
   local service_actions = (service_data[s] or empty) .actions
   local args = xhtml.div {class="w3-panel w3-light-grey w3-padding-16"}
+  local names = {}
   for _, act in ipairs (service_actions or empty) do
     if act.name == a and act.argumentList then
-      for _, v in ipairs (act.argumentList) do
+      for i, v in ipairs (act.argumentList) do
         if (v.direction or ''): match "in" then 
           local name = v.name
+          names[#names+1] = name
           args[#args+1] = xhtml.div {class="w3-container w3-margin-bottom",
             xhtml.label {name, ": ", class="w3-container w3-third w3-right-align"}, 
-            xhtml.input {name = name, size=50, value='', autocomplete="off",
+            xhtml.input {name = "value_"..i, size=50, value=values[i] or '', autocomplete="off",
               class="w3-container w3-twothird w3-border w3-border-light-gray w3-hover-border-blue"}}
         end
       end
     end
   end
-  if #args == 0 then args[1] = xhtml.span "No parameters" end
+  if #args == 0 then 
+    args[1] = xhtml.span "No parameters" 
+  else
+    args[#args+1] = xhtml.input {type="hidden", name="names", value=json.encode(names)}
+  end
   return args
 end
 
-local function action_selector (dno, svc_act, onchange)
+local function sa_json (s,a)
+  local sajson = '{"svc":"%s", "act":"%s"}'   -- wrap service and action into single JSON entity
+  return sajson: format (s,a)
+end
+
+local function action_selector (dno, svc_act, values, onchange)
   local dev = luup.devices[dno]
   local SVC,ACT
   if type(svc_act) == "table" then
     SVC,ACT = svc_act.svc, svc_act.act
   end
-  local sajson = '{"svc":"%s", "act":"%s"}'
   local aselect = xhtml.select {class="w3-input w3-border w3-hover-border-blue", name="svc_act", 
     required=true, onchange=onchange}
   aselect[1] = xhtml.option {"Select ...", value='', selected=not ACT or nil}
@@ -914,35 +984,53 @@ local function action_selector (dno, svc_act, onchange)
 --    so we use the formal service data definitions
       for _, act in sorted ((service_data[s] or empty).actions or empty) do
         local a = act.name
-        local selected = s == SVC and a == ACT
-        aselect[#aselect+1] = xhtml.option {a, value= sajson: format (s,a), selected=selected or nil}
+        local selected = (s == SVC and a == ACT) or nil
+        aselect[#aselect+1] = xhtml.option {a, value=sa_json(s,a), selected=selected}
         if selected then    -- add parameters
-          aparameters = get_argument_list (s, a)
+          aparameters = get_argument_list (s, a, values)
         end
       end
     end
   end
-  
-  return xhtml.div {
-      aselect,
-      aparameters,
-      }
+  return xhtml.div {aselect, aparameters}
 end
 
 function XMLHttpRequest.edit_action (p)
 --  print (pretty {edit_action=p})
+  if p.new then
+    p = {scn = p.scn, group = p.group}        -- preserve scene and group, but remove anything else
+  end
+  local values = {}                           -- holder for existing argument values
+  if p.scn and p.group and p.act then         -- existing action
+    local scene = luup.scenes[tonumber(p.scn)]
+    local defn = scene.definition
+    local group = defn.groups[tonumber(p.group)]
+    local action = group.actions[tonumber(p.act)]
+    -- set parameters from existing action
+    p.dev = action.device
+    p.svc_act = sa_json (action.service, action.action) 
+    -- action argument
+    for i,a in ipairs (action.arguments or empty) do
+      values[i] = a.value
+    end
+    p.existing = p.act
+    p.act = nil   -- don't revisit this initialization code
+  end
+ 
   local dno = tonumber(p.dev) 
   local svc_act = json.decode (p.svc_act or "{}")    -- do we have a known service action?
-  local group_num = p.group or 1
+  local group_num = tonumber(p.group) or 1
   local form = X.Form {class="w3-container w3-form", name="popupMenu",  -- popup menu must have this name
     action = selfref "action=create_action",
     target = "_parent",
     xhtml.h3 "Action",
-    xhtml.input {name="group", value=group_num, hidden=1},
+    xhtml.input {type="hidden", name="scn", value=p.scn},   -- pass along scene number if editing existing
+    xhtml.input {type="hidden", name="group", value=group_num},   -- ditto group
+    xhtml.input {type="hidden", name="existing", value=p.existing},   -- ditto existing action
     xhtml.label {"Device"},
     device_selector (dno, X.popMenu ("edit_action")),
     xhtml.label {"Action"},
-    action_selector (dno, svc_act, X.popMenu ("edit_action")),
+    action_selector (dno, svc_act, values, X.popMenu ("edit_action")),
     xhtml.input {class="w3-button w3-round w3-light-blue w3-margin", type="submit", value="Submit"}
     }
   return form
@@ -960,6 +1048,35 @@ function XMLHttpRequest.create_new_delay_group ()
     xhtml.input {type="submit", value="Submit", class="w3-button w3-round w3-light-blue w3-margin"}}
   return form
 end
+
+function XMLHttpRequest.view_cache (p)
+  local dno = tonumber(p.dev)
+  local vnum = tonumber(p.var)
+  local d = luup.devices[dno]
+  local title = devname (dno)
+  local v = d and d.variables and d.variables[vnum]
+  local TV = {}
+  if v then
+    local V,T = v:fetch (v:oldest (), os.time())    -- get the whole cache from the oldest available time
+    local NT = #T
+    for i, t in ipairs (T) do TV[NT-i] = {t, V[i]} end   -- reverse sort
+  end
+  local t = X.create_table_from_data ({"time", "value"}, TV, function (row) row[1] = nice (row[1]) end)
+  local scrolling = xhtml.div {style="height:500px; width:350px; overflow:scroll;", class="w3-border w3-margin-left", t}
+  return xhtml.dev {class="w3-container",
+    xhtml.h3 "Cache History",
+    xhtml.h4 (table.concat {title, '.', (v and v.name) or '?'}),
+    xhtml.p {"size = ", #TV, " / ", v.hicache or luup.attr_get "openLuup.Historian.CacheSize" or '?', class="w3-panel"},
+    xhtml.div {class ="w3-panel w3-padding", style="display:inline-block;",scrolling},    -- or, instead of t, scrolling
+    X.Form {name ="popupMenu",
+      selfref = "action=noop",
+      target = "_parent",
+      xhtml.input {type="hidden", name="dev", value=dno},
+      xhtml.input {type="hidden", name="var", value=vnum},
+      xhtml.div {"Refresh", class="w3-button w3-round w3-light-blue w3-margin",
+        onclick=X.popMenu "view_cache"}}}
+end
+
 
 return 
   function (_selfref) 
