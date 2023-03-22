@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.userdata",
-  VERSION       = "2021.04.30",
+  VERSION       = "2023.03.04",
   DESCRIPTION   = "user_data saving and loading, plus utility functions used by HTTP requests",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-present AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-present AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -76,6 +76,8 @@ local ABOUT = {
 -- 2021.03.11   remove commented out code
 -- 2021.03.14   add ThousandsSeparator top-level attribute
 -- 2021.04.30   for json.Lua.encode() for user_data (since RapidJSON formatting uses too much white space)
+
+-- 2023.03.04   change default skin to "openLuup" on completion of console scene UI
 
 
 local json    = require "openLuup.json"
@@ -176,7 +178,7 @@ luup.log "startup code completed"
 --  sections = {},
 --  setup_wizard_finished = "1",
 --  shouldHelpOverlayBeHidden = true,
-  skin = "AltUI",         -- was "mios",
+  skin = "openLuup",    -- was "AltUI", "mios"
 --  static_data = {},
 --  sync_kit = "0000-00-00 00:00:00",
   timeFormat = "24hr",

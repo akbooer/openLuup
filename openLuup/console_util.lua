@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "utility.lua",
-  VERSION       = "2023.03.03",
+  VERSION       = "2023.03.04",
   DESCRIPTION   = "utilities for openLuup console",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -664,7 +664,7 @@ function XMLHttpRequest.plugin (p)
   return app
 end
 
-local function variable_selector (dev, SVC, VAR, onchange)
+local function variable_selector (dev, SVC, VAR)
   local jtable = '{"svc":"%s", "var":"%s"}'
   local selected = dev and SVC and VAR
   local vselect = xhtml.select {class="w3-input w3-border w3-hover-border-blue", name="svc_var", required=true}
@@ -1062,19 +1062,24 @@ function XMLHttpRequest.view_cache (p)
     for i, t in ipairs (T) do TV[NT-i] = {t, V[i]} end   -- reverse sort
   end
   local t = X.create_table_from_data ({"time", "value"}, TV, function (row) row[1] = nice (row[1]) end)
-  local scrolling = xhtml.div {style="height:500px; width:350px; overflow:scroll;", class="w3-border w3-margin-left", t}
+  local scrolling = xhtml.div {style="height:250px; width:350px; overflow:scroll;", class="w3-border w3-margin-left", t}
   return xhtml.dev {class="w3-container",
     xhtml.h3 "Cache History",
     xhtml.h4 (table.concat {title, '.', (v and v.name) or '?'}),
-    xhtml.p {"size = ", #TV, " / ", v.hicache or luup.attr_get "openLuup.Historian.CacheSize" or '?', class="w3-panel"},
-    xhtml.div {class ="w3-panel w3-padding", style="display:inline-block;",scrolling},    -- or, instead of t, scrolling
+    xhtml.p {"size = ", #TV, " / ", v.hicache or luup.attr_get "openLuup.Historian.CacheSize" or '?', 
+      class="w3-margin-left w3-small"},
+    xhtml.div {class ="w3-padding", style="display:inline-block;",scrolling},
     X.Form {name ="popupMenu",
-      selfref = "action=noop",
+      selfref = "page=graphics",
       target = "_parent",
       xhtml.input {type="hidden", name="dev", value=dno},
       xhtml.input {type="hidden", name="var", value=vnum},
+      xhtml.input {type="hidden", name="variable", value=vnum},   -- for graphics page
       xhtml.div {"Refresh", class="w3-button w3-round w3-light-blue w3-margin",
-        onclick=X.popMenu "view_cache"}}}
+        onclick=X.popMenu "view_cache"},
+      xhtml.button {"Graph", class="w3-button w3-round w3-green w3-margin",
+        type="submit"},
+      }}
 end
 
 

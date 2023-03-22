@@ -3375,7 +3375,7 @@ function run (wsapi_env)
 
   ]]}
 
-  local popup = h.div {"MODAL", onclick=X.popup (modal), class ="w3-button"}
+--  local popup = h.div {"MODAL", onclick=X.popup (modal), class ="w3-button"}
 
   body = {
     script,
@@ -3384,8 +3384,8 @@ function run (wsapi_env)
     h.div {
       formatted_page,
       h.div {class="w3-footer w3-small w3-margin-top w3-border-top w3-border-grey", 
-        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate, forum, h.span{popup}} }
-    }}
+        h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate, forum}} }
+    }
   
   h.documentElement[1]:appendChild {  -- the <HEAD> element
     h.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
