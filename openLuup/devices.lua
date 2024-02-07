@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2022.11.15",
+  VERSION       = "2024.01.05",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2022 AKBooer",
+  COPYRIGHT     = "(c) 2013-present AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2022 AK Booer
+  Copyright 2013-present AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -66,6 +66,8 @@ local ABOUT = {
 -- 2022.09.03  add user-defined override function to variable set
 -- 2022.11.14  use new cache_rules to define variable cache length
 
+-- 2024.01.05  move device_list to scheduler
+
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
 local publish   = require "openLuup.mqtt" .publish    -- for instant status
@@ -89,7 +91,7 @@ local function new_userdata_dataversion ()
   dataversion.value = dataversion.value + 1                     -- update this too, for good luck
 end
 
-local device_list  = {}         -- internal list of devices
+local device_list  = scheduler.device_list         -- internal list of devices
 
 local sys_watchers = {}         -- list of system-wide (ie. non-device-specific) watchers
 

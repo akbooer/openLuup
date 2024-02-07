@@ -75,6 +75,8 @@ local ABOUT = {
 
 -- 2022.11.07  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.12.5/ace.js
 
+-- 2024.01.06  global environment prototype moved to scheduler from loader
+
 
 local logs  = require "openLuup.logs"
 local lfs   = require "lfs"
@@ -85,16 +87,13 @@ local function _log (msg, name) logs.send (msg, name or ABOUT.NAME) end
 _log (lfs.currentdir(),":: openLuup STARTUP ")
 logs.banner (ABOUT)   -- for version control
 
-
-local loader = require "openLuup.loader"  -- keep this first... it prototypes the global environment
-
----------------
+local scheduler   = require "openLuup.scheduler"  -- keep this first... it prototypes the global environment
+local loader      = require "openLuup.loader"
 
 luup = require "openLuup.luup"            -- here's the GLOBAL luup environment
 
 loader.req_table {dkjson = json.Rapid}    -- list require module proxies
   
-local scheduler     = require "openLuup.scheduler"
 local client        = require "openLuup.client"     -- HTTP client
 local server        = require "openLuup.server"     -- HTTP server
 local smtp          = require "openLuup.smtp"
@@ -211,7 +210,7 @@ do -- set attributes, possibly decoding if required
 --      Backlog = 100,
 --      CloseIdleSocketAfter = 120,
 --      Port = 1883,
---      Cabon = "graphite/mqtt/"          -- CarbonCache for MQTT server stats
+--      Carbon = "graphite/mqtt/"          -- CarbonCache for MQTT server stats
 --      Bridge_UDP = 2883,
 --      PublishVariableUpdates = "true",  -- publish /update/ messages for individual variable changes
 --      PublishDeviceStatus = 2,          -- publish a single device status every N seconds (0 = never)
@@ -230,7 +229,7 @@ do -- set attributes, possibly decoding if required
     },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
-  local attr = string.char(unpack (attrs))
+  local attr = string.char(table.unpack (attrs))
   loader.shared_environment[attr] = function (info)
     info = (info or ''): gsub (attrs.attr1,attrs.attr2)
     local u = mime.unb64(info)  

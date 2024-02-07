@@ -2,13 +2,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2023.03.21",
+  VERSION       = "2024.02.05",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2020-2023 AKBooer",
+  COPYRIGHT     = "(c) 2020-present AKBooer",
   DOCUMENTATION = "",
   LICENSE       = [[
-  Copyright 2013-2023 AK Booer
+  Copyright 2020-present AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -49,14 +49,19 @@ ABOUT = {
 -- 2022.11.16  basic infrastructure for Shelly Plus (Shelly-NG) devices
 
 -- 2023.01.20  create Shelly Gen2 devices
--- 2023.03.15  add support for ix4 events
--- 2021.03.21  ix4 improvements
+-- 2023.03.15  add support for Plus i4 events
+-- 2023.03.21  Plus i4 improvements
+
+-- 2024.02.05  add Plus H_T
 
 
 local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
 local chdev     = require "openLuup.chdev"            -- to create new bridge devices
 local tables    = require "openLuup.servertables"     -- for standard DEV and SID definitions
+
+--local pretty = require "openLuup.loader" .shared_environment.pretty
+
 
 local DEV = tables.DEV {
     shelly      = "D_GenericShellyDevice.xml",
@@ -186,6 +191,7 @@ local push_event = {
 -- generic actions for all devices
 local function generic (dno, var, value) 
   -- battery level
+  if type(var) ~= "string" then return end
   if var == "sensor/battery" then
     API[dno].HaDevice1.BatteryLevel = value
     return
@@ -307,26 +313,44 @@ end
   "params":{"ts":1678882095.02,"events":[{"component":"input:2", "id":2, "event":"btn_up", "ts":1678882095.02}]}}
 --]]
 
-local function ix4 (dno, info)    -- info is decoded JSON message body
+local function i4 (dno, info)    -- info is decoded JSON message body
   --[[
         {
         "component": "input:2",
         "id": 2,
-        "event": "btn_up",
+        "event": "btn_up",  -- also "single_push", "long_push"
         "ts": 1678882095.02
       }
 --]]
   if info.method == "NotifyEvent" then 
+    local D = API[dno]
+    local altid = D.attr.altid
+    local watched = {single_push = true, long_push=true}
     for _, event in ipairs(info.params.events) do
-      local j = json.encode(event): gsub('%c',' ')
+      local j = json.encode(event): gsub('%c','')
       luup.log (j)
-      local S = API[dno].scene
-      S.sl_SceneActivated = j
-      S.LastSceneTime = os.time()
+      local id = event.id
+      local action = event.event
+      if watched[action] then
+        D[altid]["input_event/" .. id] = j
+        local S = D.scene
+        S.sl_SceneActivated = table.concat {action, '_', id}
+        S.LastSceneTime = os.time()
+      end
     end
   end
 end
 
+local function plus_h_t(dno, info)
+--  print(pretty {PLUS_H_T = info})
+  if info.battery then
+    API[dno].HaDevice1.BatteryLevel = info.battery.percent
+  elseif info.tC then 
+    h_t(dno, "sensor/temperature", info.tC)
+  elseif info.rh then 
+    h_t(dno, "sensor/humidity", info.rh)
+  end
+end
 
 ----------------------
 
@@ -353,8 +377,9 @@ local models = setmetatable (
     ["SHHT-1"]    = model_info (DEV.shelly, h_t,   {DEV.temperature, DEV.humidity}),
     ["SHDM-2"]    = model_info (DEV.shelly, dm_2,  {DEV.dimmer}),
     
-    ["shellyplusi4"]    = model_info (DEV.controller, ix4),    -- TODO: make new PLUS versions of these
+    ["shellyplusi4"]    = model_info (DEV.controller, i4),    -- TODO: make new PLUS versions of these
     ["shellyplus2pm"]   = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light}),
+    ["shellyplusht"]    = model_info (DEV.shelly, plus_h_t, {DEV.temperature, DEV.humidity}),
   },{
     __index = function () return unknown_model end
   })
@@ -377,7 +402,7 @@ local function create_device(info)
   local name, altid, ip = info.id, info.id, info.ip
   
   if info.Gen2 then
-    name = info.name
+    name = info.name or info.id or "New Shelly Plus"
   else
     -- use HTTP request to get device name
     local _, s = luup.inet.wget ("http://" .. ip .. "/settings")
@@ -507,9 +532,9 @@ function _G.Shelly_Plus_Handler (topic, message)
     local msg = json.encode  {id = tostring {}, src = "shelly-gen2-cmd", method = "Shelly.GetConfig"}
     openLuup.mqtt.publish (shelly .. "/rpc", msg)
     
-  elseif subtopic == "events" then
+  elseif subtopic == "events/rpc" or subtopic: match "^status" then
     
-    local info, err = json.decode (message)
+    local info, err = json.Lua.decode (message)
     if err then 
       _log (err) 
       return
@@ -530,7 +555,7 @@ end
 
 -- handler for Gen 2 responses when creating new device
 function _G.Shelly_Gen2_Handler (topic, message)
-  
+ 
 --  init_shelly_bridge ()
   
   if not devNo then return end      -- wait until bridge exists
@@ -567,7 +592,7 @@ end
 
 
 function _G.Shelly_MQTT_Handler (topic, message)
-  
+    
   local shellies = topic: match "^shellies/(.+)"
   if not shellies then return end
   

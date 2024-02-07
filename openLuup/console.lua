@@ -104,7 +104,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2022.12.21  enable history edit on variable page
 
 -- 2023.02.10  add SameSite=Lax cookie attribute (to avoid browser console warning)
--- 2023.02.20  move some code to console_util.lua and reinstate openLuup_console.cssin virtualfilesystem
+-- 2023.02.20  move some code to console_util.lua and reinstate openLuup_console.css in virtualfilesystem
 
 
 --  WSAPI Lua CGI implementation

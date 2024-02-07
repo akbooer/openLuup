@@ -1,15 +1,15 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2023.03.21",
+  VERSION       = "2024.02.07",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2023 AKBooer",
+  COPYRIGHT     = "(c) 2013-present AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   FORUM         = "https://smarthome.community/",
   DONATE        = "https://www.justgiving.com/DataYours/",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2023 AK Booer
+  Copyright 2013-present AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.

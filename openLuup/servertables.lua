@@ -380,7 +380,7 @@ local function svc_synth (sid)
 
   local id1, id2 = sid: match "urn:(.-):serviceId:(.+)"
   if not id1 then 
-    return serviceFile: format(sid), sid    -- special handling for openLuup no-nonsence SID
+    return serviceFile: format(sid), sid    -- special handling for openLuup no-nonsense SID
   end
   local id3 = id2: match "%D+%d?"
   local sfile = serviceFile: format (id3)

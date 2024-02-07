@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.loader",
-  VERSION       = "2021.05.14",
+  VERSION       = "2024.01.06",
   DESCRIPTION   = "Loader for Device, Service, Implementation, and JSON files",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-present AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-present AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -71,12 +71,19 @@ local ABOUT = {
 -- 2021.01.08  remove shared_environment.pretty_old()
 -- 2021.05.06  move require() proxy and req_table here from init()
 
+-- 2024.01.06  move new_environment() to scheduler
+
+
+local scheduler = require "openLuup.scheduler"
+local json      = require "openLuup.json"
+local vfs       = require "openLuup.virtualfilesystem"
+local xml       = require "openLuup.xml"
+local lfs       = require "lfs"
 
 ------------------
 --
 -- require() proxy for module tracking and substitution
 --
-local scheduler             -- forward reference
 
 local req_meta = {}
 
@@ -121,39 +128,11 @@ local function shallow_copy (a)
   return b
 end
 
-local function _pristine_environment ()
-  local ENV
-
-  local function new_environment (name)
-    local new = shallow_copy (ENV)
-    new._NAME = name                -- add environment name global
-    new._G = new                    -- self reference - this IS the new global environment
---    new.table = shallow_copy (ENV.table)    -- can sandbox individual tables like this, if necessary
---    but string library has to be sandboxed quite differently, see scheduler sandbox function
-    return new 
-  end
-
-  ENV = shallow_copy (_G)           -- copy the original _G environment
-  ENV.arg = nil                     -- don't want to expose command line arguments
-  ENV.ABOUT = nil                   -- or this module's ABOUT!
-  ENV.module = function () end      -- module is noop
-  ENV.socket = nil                  -- somehow this got in there (from openLuup.log?)
-  ENV._G = nil                      -- each one gets its own, above
-  return new_environment
-end
-
-local new_environment = _pristine_environment ()
+local new_environment  = scheduler.new_environment
 
 local shared_environment  = new_environment "openLuup_startup_and_scenes"
 
 ------------------
-
-scheduler = require "openLuup.scheduler"  -- for context_switch() [already declared local]
-
-local lfs = require "lfs"
-local json = require "openLuup.json"
-local vfs  = require "openLuup.virtualfilesystem"
-local xml = require "openLuup.xml"
 
 local service_data = {}         -- cache for serviceType and serviceId data, indexed by both
 

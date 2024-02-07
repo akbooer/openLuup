@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2021.03.19",
+  VERSION       = "2024.05.01",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2021 AKBooer",
+  COPYRIGHT     = "(c) 2013-present AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2021 AK Booer
+  Copyright 2013-present AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -71,12 +71,45 @@ local ABOUT = {
 -- 2021.01.16  add state_names (moved from console)
 -- 2021.03.19  add optional user-defined parameter to user callback in socket_callbacks()
 
+-- 2024.01.05  move device_list to here rather than device_list to avoid luup reference
+-- 2024.01.06  move new_environment() to here from openLuup.loader
+
 
 local logs      = require "openLuup.logs"
 local socket    = require "socket"        -- socket library needed to access time in millisecond resolution
 
 --  local _log() and _debug()
 local _log, _debug = logs.register (ABOUT)
+
+-- new environment
+
+local function shallow_copy (a)
+  local b = {}
+  for i,j in pairs (a) do 
+    b[i] = j 
+  end
+  return b
+end
+
+local ENV   -- prototype environment when this module is loaded
+do
+  ENV = shallow_copy (_G)           -- copy the original _G environment
+  ENV.arg = nil                     -- don't want to expose command line arguments
+  ENV.ABOUT = nil                   -- or this module's ABOUT!
+  ENV.module = function () end      -- module is noop
+  ENV.socket = nil                  -- somehow this got in there (from openLuup.log?)
+  ENV._G = nil                      -- each one gets its own, below  
+end
+
+local function new_environment (name)
+  local new = shallow_copy (ENV)
+  new._NAME = name                -- add environment name global
+  new._G = new                    -- self reference - this IS the new global environment
+--    new.table = shallow_copy (ENV.table)    -- can sandbox individual tables like this, if necessary
+--    but string library has to be sandboxed quite differently, see scheduler sandbox function
+  return new 
+end
+
 
 -- LOCAL aliases for timenow() and sleep() functions
 
@@ -117,7 +150,9 @@ end
 
 -- LOCAL variables
 
-local current_device = 0 -- 2015-11-14   moved the current device context luup.device to here
+local device_list  = {}     -- 2024.01.05  moved internal list of devices to here from device_list
+
+local current_device = 0    -- 2015-11-14  moved the current device context to here
 
 local exit_code     -- set to Unix process exit code to stop scheduler
 
@@ -179,7 +214,7 @@ local function context_switch (devNo, fct, ...)
   local cpu  = cpu_clock()                      -- 2019.05.01   measure cpu time used by device
   local wall = timenow()                        -- 2020.06.29   measure wall-clock time used by device
   local function restore (ok, msg, ...) 
-    local dev = luup.devices[current_device] 
+    local dev = device_list[current_device] 
     cpu  = cpu_clock() - cpu                    -- elapsed cpu
     cpu  = cpu - cpu % 1e-6                     -- truncate to microsecond resolution
     wall = timenow() - wall
@@ -196,7 +231,7 @@ local function context_switch (devNo, fct, ...)
     if not ok then
       msg = tostring(msg or '?')                -- 2019.04.19 make sure that string error is returned
       local errmsg = " ERROR: [dev #%s] %s"     -- 2019.10.14 add device number, thanks @Buxton
-      _log (errmsg: format (current_device or '0', msg), "openLuup.context_switch")  -- 2018.08.04 
+      _log (errmsg: format (current_device or '0', msg), "scheduler.context_switch")  -- 2018.08.04 
     end
     current_device = old                        -- restore old device context
     return ok, msg, ... 
@@ -306,7 +341,7 @@ local function sandbox (tbl, name)
     local d = current_device or 0   -- k,v pairs are indexed by current device number
     local vtype = type(v)
     if vtype ~= "function" then fail (d, "attempted to define", name, k, vtype) end
-    _log (devmsg: format (d, "defined", name, k, vtype), ABOUT.NAME..".sandbox")
+    _log (devmsg: format (d, "defined", name, k, vtype), "scheduler.sandbox")
     lookup[d] = lookup[d] or {}
     lookup[d][k] = v
     if not tbl[k] then                  -- proxy only needs to be set once
@@ -321,7 +356,7 @@ local function sandbox (tbl, name)
     local empty = #x
     local function p(l) x[#x+1] = l end
     local function devname (d) 
-      return ((luup.devices[d] or {}).description or "System"): match "^%s*(.+)" 
+      return ((device_list[d] or {}).description or "System"): match "^%s*(.+)" 
     end
     local function sorted(t)
       local y = {}
@@ -384,7 +419,7 @@ local function dispatch (job, method)
   job.expiry = job.now + timeout
   if exit_state[status] then          -- 2019.04.24
     job.expiry = job.now              -- 2019.05.10  retain actual expiry time
-    local d = luup.devices[job.devNo]
+    local d = device_list[job.devNo]
     if d then d:touch() end           -- 2019.04.25
   end
   job.status  = status
@@ -483,7 +518,7 @@ local function run_job (action, arguments, devNo, target_device)
   end
  
   if action.returns then                       -- return arguments list for call_action
-    local dev = (luup or {devices = {}}).devices[target]
+    local dev = device_list[target]
     if dev then
       local svc = dev.services[action.serviceId]      -- find the service variables on the target device
       if svc then
@@ -521,7 +556,7 @@ local function kill_job (jobNo)
   else
     msg = "no such job#" .. jobNo
   end
-  _log (msg, "openLuup.kill_job") 
+  _log (msg, "scheduler.kill_job") 
 end
 
 
@@ -626,7 +661,7 @@ local function socket_callbacks (timeout)
     local dev  = info.devNo
     local ok, msg = context_switch (dev, call, sock, info.parameter)    -- dispatch  
     if not ok then 
-      _log (tostring(info.callback) .. " ERROR: " .. (msg or '?'), "luup.incoming_callback") 
+      _log (tostring(info.callback) .. " ERROR: " .. (msg or '?'), "scheduler.incoming_callback") 
     end
   end
 end
@@ -654,7 +689,7 @@ local function luup_callbacks ()
         if not watcher.silent then
           _log (log_message: format(var.dev, var.srv, var.name, 
                       watcher.devNo or 0, watcher.name or "anon", tostring (user_callback)), 
-                  "luup.watch_callback") 
+                  "scheduler.watch_callback") 
         end
         local ok, msg = context_switch (watcher.devNo, user_callback, 
           var.dev, var.srv, var.name, var.old, var.value, var.time)     -- 2018.06.06 add extra time parameter 
@@ -676,7 +711,7 @@ local function luup_callbacks ()
     if schedule.time <= now then 
       local ok, msg = context_switch (schedule.devNo, schedule.callback, schedule.parameter) 
       local hash = tostring (schedule.callback)
-      if not ok then _log (hash .. " ERROR: " .. (msg or '?'), "luup.delay_callback") end
+      if not ok then _log (hash .. " ERROR: " .. (msg or '?'), "scheduler.delay_callback") end
       delay_log[hash] = (delay_log[hash] or 0) + 1        -- 2019.05.15 count the calls to this routine
       now = timenow()        -- 2017.05.05  update, since dispatched task may have taken a while
     else
@@ -726,6 +761,7 @@ return {
     wait_state        = wait_state,
     -- variables
     job_list          = job_list,
+    device_list       = device_list,
     startup_list      = startup_list,
     delay_log         = delay_log,        -- for console logging
     watch_log         = watch_log,        -- ditto
@@ -738,6 +774,7 @@ return {
     get_socket_list   = function () return socket_list end,
     device_start      = device_start,
     kill_job          = kill_job,
+    new_environment   = new_environment,
     run_job           = run_job,
     status            = status,   
     socket_watch      = socket_watch,

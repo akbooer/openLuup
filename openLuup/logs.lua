@@ -110,7 +110,7 @@ LV_INSTEON_DEBUG    26
 local function formatted_time (date_format, now)
   now = now or socket.gettime()                        -- millisecond resolution
   date_format = date_format or "%Y-%m-%dT%H:%M:%S"     -- ISO 8601
-  local date = os.date (date_format, now)
+  local date = os.date (date_format, math.floor (now))
   local ms = math.floor (1000 * (now % 1)) 
   return ('%s.%03d'):format (date, ms)
 end

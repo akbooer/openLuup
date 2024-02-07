@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2022.12.16",
+  VERSION       = "2023.12.21",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -49,6 +49,7 @@ local ABOUT = {
 -- 2022.12.05   Add PUBCOMP as response to QoS 2 PUBREL
 -- 2022.12.09   Improve error messages in MQTT_packet.receive()
 
+-- 2023.12.21   Correct variable length header size to four (not three) byte (thanks @a-lurker)
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
 -- Each conformance statement has been assigned a reference in the format [MQTT-x.x.x-y]
@@ -193,12 +194,13 @@ do -- MQTT Packet methods
 
   -- receive returns messsage object, or error message
   function MQTT_packet.receive (client)
+    
     local fixed_header_byte1, err = client: receive (1)
     if not fixed_header_byte1 then return nil, "(Fixed Header byte) " .. err end
 
     local nb = 1
     local length = 0
-    for i = 0, 2 do                   -- maximum of 3 bytes encode remaining length, LSB first
+    for i = 0, 3 do                   -- maximum of 4 bytes encode remaining length, LSB first (2023.12.21 thanks @a-lurker)
       local b, err = client: receive (1)
       if not b then return nil, "(Remaining Length bytes) " .. err end
       nb = nb + 1
@@ -488,7 +490,7 @@ function parse.PUBLISH(message)
   -- VARIABLE HEADER
   
   -- The Topic Name MUST be present as the first field in the PUBLISH Packet Variable header [MQTT-3.3.2-1]
-  local TopicName = message: read_string () or ''   -- 20221.08.16 (thanks @ArcherS)
+  local TopicName = message: read_string () or ''   -- 2021.08.16 (thanks @ArcherS)
   -- All Topic Names and Topic Filters MUST be at least one character long [MQTT-4.7.3-1]
   if #TopicName == 0 then
     return nil, "PUBLISH topic MUST be at least one character long"

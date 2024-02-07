@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.server",
-  VERSION       = "2022.08.14",
+  VERSION       = "2024.01.03",
   DESCRIPTION   = "HTTP/HTTPS GET/POST requests server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2022 AKBooer",
@@ -49,11 +49,13 @@ Many people have contributed to finding and fixing bugs over the years, in parti
 
 -- 2022.08.14   fix error message for unknown request type (thanks @Donato)
 
+-- 2023.01.03   use new tcp module for .server.new()
+
 
 local url       = require "socket.url"
 
 local logs      = require "openLuup.logs"
-local ioutil    = require "openLuup.io"                 -- for core server functions
+local tcp       = require "openLuup.tcp"                -- 2024.01.03 for core server functions
 local tables    = require "openLuup.servertables"       -- mimetypes and status_codes
 local servlet   = require "openLuup.servlet"
 local scheduler = require "openLuup.scheduler"          -- just for logging servlet jobs (with execution time)
@@ -311,7 +313,7 @@ local function start (config)
   local port = tostring(config.Port or 3480)
   
   -- start(), create HTTP server
-  return ioutil.server.new {
+  return tcp.server.new {
       port      = port,                                 -- incoming port
       name      = "HTTP:" .. port,                      -- server name
       backlog   = config.Backlog or 2000,               -- queue length
