@@ -229,7 +229,7 @@ do -- set attributes, possibly decoding if required
     },
   }
   local attrs = {attr1 = "(%C)(%C)", 0x5F,0x4B, attr2 = "%2%1", 0x45,0x59}
-  local attr = string.char(table.unpack (attrs))
+  local attr = string.char(unpack (attrs))
   loader.shared_environment[attr] = function (info)
     info = (info or ''): gsub (attrs.attr1,attrs.attr2)
     local u = mime.unb64(info)  
