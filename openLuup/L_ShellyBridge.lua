@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2024.02.05",
+  VERSION       = "2024.02.08",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-present AKBooer",
@@ -259,6 +259,7 @@ local function h_t (dno, var, value)
       D.temp.MinTemp = value              -- implemented through Historian database aggregation
       D.temp.MaxTemp = value              -- ditto
     elseif mtype == 'h' then
+      value = math.floor(value + 0.5)     -- humidity simply isn't this accurate
       P.humid.CurrentLevel = value
       D.humid.CurrentLevel = value
     end
@@ -401,8 +402,9 @@ local function create_device(info)
   
   local name, altid, ip = info.id, info.id, info.ip
   
+  --[[
   if info.Gen2 then
-    name = info.name or info.id or "New Shelly Plus"
+    name = tostring(info.name or info.id or "New Shelly Plus")
   else
     -- use HTTP request to get device name
     local _, s = luup.inet.wget ("http://" .. ip .. "/settings")
@@ -413,6 +415,7 @@ local function create_device(info)
       _log "no Shelly settings name found"
     end
   end
+  --]]
   
   local upnp_file = models[info.model].upnp
   
