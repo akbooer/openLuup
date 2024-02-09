@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2023.12.21",
+  VERSION       = "2024.02.09",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2020-2022 AKBooer",
+  COPYRIGHT     = "(c) 2020-2024 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2020-2022 AK Booer
+  Copyright 2020-2024 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -50,6 +50,9 @@ local ABOUT = {
 -- 2022.12.09   Improve error messages in MQTT_packet.receive()
 
 -- 2023.12.21   Correct variable length header size to four (not three) byte (thanks @a-lurker)
+
+-- 2024.02.09   Suppress fixed header byte read errors
+
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
 -- Each conformance statement has been assigned a reference in the format [MQTT-x.x.x-y]
@@ -196,7 +199,8 @@ do -- MQTT Packet methods
   function MQTT_packet.receive (client)
     
     local fixed_header_byte1, err = client: receive (1)
-    if not fixed_header_byte1 then return nil, "(Fixed Header byte) " .. err end
+--    if not fixed_header_byte1 then return nil, "(Fixed Header byte) " .. err end
+    if not fixed_header_byte1 then return nil, '' end     -- suppress error message
 
     local nb = 1
     local length = 0
@@ -972,7 +976,8 @@ local function incoming (client, credentials, subscriptions)
   
   -- disconnect client on error
   if errmsg then
-    subscriptions: close_and_unsubscribe_from_all (client, table.concat {pname, ": ", errmsg or '?'})
+    errmsg = (#errmsg > 0) and table.concat {pname, ": ", errmsg} 
+    subscriptions: close_and_unsubscribe_from_all (client, errmsg)
   end
 end
 

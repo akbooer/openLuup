@@ -4,13 +4,13 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2023.03.03",
+  VERSION       = "2024.02.08",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2023 AKBooer",
+  COPYRIGHT     = "(c) 2013-2024 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2023 AK Booer
+  Copyright 2013-2024 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -105,6 +105,8 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 
 -- 2023.02.10  add SameSite=Lax cookie attribute (to avoid browser console warning)
 -- 2023.02.20  move some code to console_util.lua and reinstate openLuup_console.css in virtualfilesystem
+
+-- 2024.02.08  2024.02.08  add missing timer number in create_timer()
 
 
 --  WSAPI Lua CGI implementation
@@ -762,6 +764,7 @@ function actions.create_timer (p,req)
   do (Timers[ttype] or tostring) () end
 --  print(pretty {new_timer=timer})
   local tno = tonumber(q.tim) or #timers+1    -- existing, or new
+  timer.id = tno              -- 2024.02.08  add missing timer number
   timers[tno] = timer
   local new_defn = json.encode (scene.definition)
   requests.scene ('', {action="create", json=new_defn})   -- deals with deleting old and rebuilding triggers/timers
