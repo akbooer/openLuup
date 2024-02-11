@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2024.02.08",
+  VERSION       = "2024.02.11",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-present AKBooer",
@@ -53,6 +53,7 @@ ABOUT = {
 -- 2023.03.21  Plus i4 improvements
 
 -- 2024.02.05  add Plus H_T
+-- 2024.02.11  handle devices which may not have assigned IP address (thanks @a-lurker)
 
 
 local json      = require "openLuup.json"
@@ -390,6 +391,10 @@ local function _log (msg)
   luup.log (msg, "luup.shelly")
 end
 
+local function format_mac_address(mac)
+  return (mac or ''):gsub("..", "%1:"):sub(1,-2)
+end
+
 local function create_device(info)
   local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
 
@@ -400,7 +405,7 @@ local function create_device(info)
   end
   local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
-  local name, altid, ip = info.id, info.id, info.ip
+  local name, altid = info.id, info.id
   
   --[[
   if info.Gen2 then
@@ -427,8 +432,8 @@ local function create_device(info)
 --    json_file = json_file,
     parent = devNo,
     room = room,
-    ip = info.ip,                           -- include ip address of Shelly device
-    mac = info.mac,                         -- ditto mac
+    ip = info.ip,                             -- include ip address of Shelly device
+    mac = format_mac_address(info.mac),       -- ditto mac, adding ':' (thanks @a-lurker)
     manufacturer = "Allterco Robotics",
   }
   
@@ -532,7 +537,8 @@ function _G.Shelly_Plus_Handler (topic, message)
   local shelly, subtopic = topic: match "([^/]+)/(.+)"
   
   if subtopic == "online" and message == "true" then    -- get/update configuration
-    local msg = json.encode  {id = tostring {}, src = "shelly-gen2-cmd", method = "Shelly.GetConfig"}
+    local id = (tostring {}): match "%w+$"              -- create unique message id
+    local msg = json.encode  {id = id, src = "shelly-gen2-cmd", method = "Shelly.GetConfig"}
     openLuup.mqtt.publish (shelly .. "/rpc", msg)
     
   elseif subtopic == "events/rpc" or subtopic: match "^status" then
@@ -549,6 +555,9 @@ function _G.Shelly_Plus_Handler (topic, message)
     
     local D = API[child]
     D.hadevice.LastUpdate = timenow                 -- log the latest message arrival
+    if subtopic == "status/wifi" then
+      D.attr.ip = info.sta_ip
+    end
     local model = D.attr.model
 --    D[shelly].Event = 
     models[model].updater (child, info)         -- perform device specific update actions
@@ -579,14 +588,14 @@ function _G.Shelly_Gen2_Handler (topic, message)
   info = info.result
   local sys = info.sys
   if sys and sys.device then
-    newinfo.ip = info.wifi and info.wifi.sta and info.wifi.sta.ip
-    if not newinfo.ip then 
-      _log "No IP address in Shelly Gen 2 configuration response"
-      return
-    end
+    newinfo.ip = info.wifi and info.wifi.sta and info.wifi.sta.ip or ''
+--    if not newinfo.ip then 
+--      _log "No IP address in Shelly Gen 2 configuration response"
+--      return
+--    end
     newinfo.model = info.mqtt.client_id: match "%w+"       -- can't see anywhere else which has this info
-    newinfo.name = sys.device.name
-    newinfo.mac = sys.device.mac
+    newinfo.name = sys.device.name or info.id
+    newinfo.mac = format_mac_address(sys.device.mac)
     newinfo.fw_ver = sys.device.fw_id
   end
 --  _log (json.Lua.encode(newinfo))   -- **
