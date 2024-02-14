@@ -49,7 +49,7 @@ Many people have contributed to finding and fixing bugs over the years, in parti
 
 -- 2022.08.14   fix error message for unknown request type (thanks @Donato)
 
--- 2023.01.03   use new tcp module for .server.new()
+-- 2024.01.03   use new tcp module for .server.new()
 
 
 local url       = require "socket.url"

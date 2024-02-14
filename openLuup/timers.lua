@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.timers",
-  VERSION       = "2021.05.23",
+  VERSION       = "2024.02.12",
   DESCRIPTION   = "all time-related functions (aside from the scheduler itself)",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2021 AKBooer",
@@ -58,6 +58,9 @@ local ABOUT = {
 
 -- 2021.05.08  move ABOUT, TEST, and .util to metatable index, and sol_ra_dec() to .util
 -- 2021.05.23  add sol_rdaa() for solar RA, DEC, ALT, and AZ
+
+-- 2024.02.12 fix J2000 value for non-GMT time zones (thanks @a-lurker)
+
 
 --
 -- The days of the week start on Monday (as in Luup) not Sunday (as in standard Lua.) 
@@ -186,7 +189,10 @@ end
 --
 -- Sun position
 --
-local J2000 = os.time {year = 2000, month=1, day=1, hour = 12}  -- Julian 2000.0 epoch
+--local J2000 = os.time {year = 2000, month=1, day=1, hour = 12}  -- Julian 2000.0 epoch (wrong for non GMT zone!)
+
+-- exactly thirty Julian years (since epoch start) where a year is 365.25 Julian days (thanks @a-lurker)
+local J2000 = 946728000
 
 -- days since Julian epoch "J2000.0"
 local function days_since_J2000(t)

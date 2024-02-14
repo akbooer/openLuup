@@ -54,6 +54,7 @@ ABOUT = {
 
 -- 2024.02.05  add Plus H_T
 -- 2024.02.11  handle devices which may not have assigned IP address (thanks @a-lurker)
+-- 2024.02.14  handle battery level / voltage for Plus devices (thanks @a-lurker)
 
 
 local json      = require "openLuup.json"
@@ -189,7 +190,7 @@ local push_event = {
       LS  = 60,  -- longpush + shortpush 
     }	
 
--- generic actions for all devices
+-- generic actions for all Gen 1 devices
 local function generic (dno, var, value) 
   -- battery level
   if type(var) ~= "string" then return end
@@ -307,6 +308,31 @@ end
 -- Plus model updaters (use RPC syntax)
 --
 
+-- generic actions for all Gen Plus devices
+local function generic_plus (dno, subtopic, info) 
+  
+  print(subtopic, json.encode(info))
+  local D = API[dno]
+  
+   -- battery level
+  if subtopic:match "status/devicepower" then
+    local battery = info.battery
+    local external = info.external
+    local V, percent = '', ''
+    if external and external.present then     -- as per @a-lurker's wishes
+      V = 5
+      percent = 100
+    elseif battery then
+      V = battery.V
+      percent = battery.percent
+    end
+    local S = D.HaDevice1
+    S.BatteryLevel = percent
+    S.voltage = V
+  end
+ 
+end
+
 --[[
 {
   "src":"shellyplusi4-a8032ab0c018",
@@ -345,9 +371,7 @@ end
 
 local function plus_h_t(dno, info)
 --  print(pretty {PLUS_H_T = info})
-  if info.battery then
-    API[dno].HaDevice1.BatteryLevel = info.battery.percent
-  elseif info.tC then 
+  if info.tC then 
     h_t(dno, "sensor/temperature", info.tC)
   elseif info.rh then 
     h_t(dno, "sensor/humidity", info.rh)
@@ -406,21 +430,6 @@ local function create_device(info)
   local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
   local name, altid = info.id, info.id
-  
-  --[[
-  if info.Gen2 then
-    name = tostring(info.name or info.id or "New Shelly Plus")
-  else
-    -- use HTTP request to get device name
-    local _, s = luup.inet.wget ("http://" .. ip .. "/settings")
-    if s then
-      s = json.decode (s)
-      if s and type(s.name) == "string" then name = s.name end
-    else 
-      _log "no Shelly settings name found"
-    end
-  end
-  --]]
   
   local upnp_file = models[info.model].upnp
   
@@ -543,6 +552,9 @@ function _G.Shelly_Plus_Handler (topic, message)
     
   elseif subtopic == "events/rpc" or subtopic: match "^status" then
     
+    local child = shelly_devices[shelly]            -- look up device number
+    if not child then return end
+    
     local info, err = json.Lua.decode (message)
     if err then 
       _log (err) 
@@ -550,17 +562,12 @@ function _G.Shelly_Plus_Handler (topic, message)
     end
     
     local timenow = os.time()
-    local child = shelly_devices[shelly]            -- look up device number
-    if not child then return end
-    
     local D = API[child]
-    D.hadevice.LastUpdate = timenow                 -- log the latest message arrival
-    if subtopic == "status/wifi" then
-      D.attr.ip = info.sta_ip
-    end
+    D.hadevice.LastUpdate = timenow
+    
+    generic_plus (child, subtopic, info)            -- perform generic update actions
     local model = D.attr.model
---    D[shelly].Event = 
-    models[model].updater (child, info)         -- perform device specific update actions
+    models[model].updater (child, info)             -- perform device specific update actions
     
   end
 end
@@ -589,10 +596,6 @@ function _G.Shelly_Gen2_Handler (topic, message)
   local sys = info.sys
   if sys and sys.device then
     newinfo.ip = info.wifi and info.wifi.sta and info.wifi.sta.ip or ''
---    if not newinfo.ip then 
---      _log "No IP address in Shelly Gen 2 configuration response"
---      return
---    end
     newinfo.model = info.mqtt.client_id: match "%w+"       -- can't see anywhere else which has this info
     newinfo.name = sys.device.name or info.id
     newinfo.mac = format_mac_address(sys.device.mac)
@@ -608,8 +611,6 @@ function _G.Shelly_MQTT_Handler (topic, message)
   local shellies = topic: match "^shellies/(.+)"
   if not shellies then return end
   
---  print (os.date "%X  ", "***Topic:", topic)
-  
   init_shelly_bridge ()
   
   if shellies == "announce" then
@@ -619,12 +620,11 @@ function _G.Shelly_MQTT_Handler (topic, message)
     init_device (info)
   end
   
-  local timenow = os.time()
   local  shelly, var = shellies: match "^(.-)/(.+)"
-
   local child = shelly_devices[shelly]
   if not child then return end
   
+  local timenow = os.time()
   local D = API[child]
   D.hadevice.LastUpdate = timenow
   
