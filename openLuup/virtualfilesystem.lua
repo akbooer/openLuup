@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.virtualfilesystem",
-  VERSION       = "2023.01.21",
+  VERSION       = "2024.02.22",
   DESCRIPTION   = "Virtual storage for Device, Implementation, Service XML and JSON files, and more",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -636,6 +636,7 @@ local I_ZWay2_xml do
           local M = require "L_ZWay2"
           ABOUT = M.ABOUT   -- make this global (for InstalledPlugins version update)
           Login = M.Login
+          DEVS = M.DEVS
           SendData = M.SendData
           function startup (...)
             return M.init (...)
