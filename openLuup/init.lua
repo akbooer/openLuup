@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2022.11.28",
+  VERSION       = "2024.02.23",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2022 AKBooer",
+  COPYRIGHT     = "(c) 2013-2024 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2022 AK Booer
+  Copyright 2013-2024 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -76,6 +76,7 @@ local ABOUT = {
 -- 2022.11.07  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.12.5/ace.js
 
 -- 2024.01.06  global environment prototype moved to scheduler from loader
+-- 2024.02.23  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ace.js
 
 
 local logs  = require "openLuup.logs"
@@ -160,7 +161,8 @@ do -- set attributes, possibly decoding if required
     },
     Console = {
       Menu = "",           -- add user-defined menu JSON definition file here
-      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.12.5/ace.js",
+--      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.12.5/ace.js",
+      Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ace.js",
       EditorTheme = "eclipse",
     },
     DataStorageProvider = {

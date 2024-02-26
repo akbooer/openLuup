@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2024.02.08",
+  VERSION       = "2024.02.26",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2024 AKBooer",
@@ -106,7 +106,8 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2023.02.10  add SameSite=Lax cookie attribute (to avoid browser console warning)
 -- 2023.02.20  move some code to console_util.lua and reinstate openLuup_console.css in virtualfilesystem
 
--- 2024.02.08  2024.02.08  add missing timer number in create_timer()
+-- 2024.02.08  add missing timer number in create_timer()
+-- 2024.02.26  improve startup code and diagnostics
 
 
 --  WSAPI Lua CGI implementation
@@ -133,6 +134,9 @@ local panels    = require "openLuup.panels"       -- for default console device 
 local xml       = require "openLuup.xml"          -- for HTML constructors
 local tables    = require "openLuup.servertables" -- for serviceIds
 local devices   = require "openLuup.devices"      -- for cache size
+local https     = require "ssl.https"             -- for w3.css download
+local ltn12     = require "ltn12"                 -- ditto
+
 
 local pretty = loader.shared_environment.pretty   -- for debugging
 
@@ -173,19 +177,7 @@ json = json.Lua         -- 2021.05.01  force native openLuup.json module for enc
 
 local xhtml     = xml.createHTMLDocument ()       -- factory for all HTML tags
 
--- get local copy of w3.css if we haven't got one already
--- so that we can work offline if required
-if not loader.raw_read "w3.css" then 
-  local https = require "ssl.https"
-  local ltn12 = require "ltn12"
-  local css = io.open ("www/w3.css", "wb")
-  https.request{ 
-    url = "https://www.w3schools.com/w3css/4/w3.css", 
-    sink = ltn12.sink.file (css),
-  }
-end
-
-local options = luup.attr_get "openLuup.Console" or {}   -- get configuration parameters
+local options   -- configuration options filled in during initialisation()
 --[[
       Menu ="",           -- add menu JSON definition file here
       Ace_URL = "https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.11/ace.js",
@@ -217,7 +209,9 @@ local pages = setmetatable ({}, missing_index_metatable "Page")
 
 local actions = setmetatable ({}, missing_index_metatable "Action")
 
-local empty = setmetatable ({}, {__newindex = function() error ("read-only", 2) end})
+local readonly_meta = {__newindex = function() error ("read-only", 2) end}
+
+local empty = setmetatable ({}, readonly_meta)
 
 
 ----------------------------------------
@@ -228,7 +222,7 @@ local SID = tables.SID
 local _log    -- defined from WSAPI environment as wsapi.error:write(...) in run() method.
  
 -- switch dynamically between different menu styles
-local menu_json = options.Menu ~= '' and options.Menu or "openLuup_menus.json"
+local menu_json = "openLuup_menus.json"     -- default
 
 -- remove spaces from multi-word names and create index
 local short_name_index = {}       -- long names indexed by short names
@@ -3293,61 +3287,9 @@ local VERSION = luup.devices[2].services.openLuup.variables.Version.value
 -- run()
 --
 
-function run (wsapi_env)
-  _log = function (...) wsapi_env.error:write(...) end      -- set up the log output
-  local function noop() end
-  
-  local res = wsapi.response.new ()
-  local req = wsapi.request.new (wsapi_env)
+local initialised = false
 
-  script_name = req.script_name      -- save to use in links
-  local h = xml.createHTMLDocument "openLuup"    -- the actual return HTML document
-  local body
-
-  local p = req.params  
-  local P = capitalise (p.page or '')
-  if page_groups[P] then p.page = page_groups[P][1] end     -- replace group name with first page in group
-  
-  local cookies = {page = "about", previous = "about",      -- cookie defaults
-    device = "2", scene = "1", room = "All Rooms", 
-    plugin = '',    -- 2020.07.19
-    abc_sort="abc", dev_sort = "Sort by Name", scn_sort = "All Scenes"}
-  for cookie in pairs (cookies) do
-    if p[cookie] then 
-      res: set_cookie (cookie, {value = p[cookie], SameSite="Lax"})                   -- update cookie with URL parameter
-    else
-      p[cookie] = req.cookies[cookie] or cookies[cookie]     -- set any missing parameters from session cookies
-    end
-  end
-  
-  -- ACTIONS
-  if p.action then
-   (actions[p.action] or noop) (p, req)
-  end
-  
-  -- PAGES
-  if p.page ~= p.previous then res: set_cookie ("previous", {value = p.page, SameSite = "Lax"}) end
-  
-  local sheet, message = pages[p.page] (p, req)
-  local navigation = page_nav (p.page, p.previous, message)
-  local formatted_page = div {class = "w3-container", navigation, sheet}
-  
-  static_menu = static_menu or dynamic_menu()    -- build the menu tree just once
-
-  local modal = X.modal (xhtml.div {id="modal_content", h.h1 "Hello"}, "modal")   -- general pop-up use
-  
-  local donate = xhtml.a {
-    title = "If you like openLuup, you could DONATE to Cancer Research UK right here",
-    href="https://www.justgiving.com/DataYours/", target="_blank", " [donate] "}
-  local forum = xhtml.a {class = "w3-text-blue",
-    title = "An independent place for smart home users to share experience", 
-    href=ABOUTopenLuup.FORUM, target="_blank", " [smarthome.community] "}
-
-  local script =  
-    
---    xhtml.script {src = "/openLuup_console_script.js", type="text/javascript", charset="utf-8"},    -- JS util code
-
-    h.script {
+local script_text = 
   [[
   
   function ShowHide(id) {
@@ -3376,7 +3318,106 @@ function run (wsapi_env)
     element.value = ace.edit(window).getSession().getValue();
     element.form.submit();}
 
-  ]]}
+  ]]
+
+local donate = xhtml.a {
+  title = "If you like openLuup, you could DONATE to Cancer Research UK right here",
+  href="https://www.justgiving.com/DataYours/", target="_blank", " [donate] "}
+local forum = xhtml.a {class = "w3-text-blue",
+  title = "An independent place for smart home users to share experience", 
+  href=ABOUTopenLuup.FORUM, target="_blank", " [smarthome.community] "}
+
+local cookies = {page = "about", previous = "about",      -- cookie defaults
+  device = "2", scene = "1", room = "All Rooms", 
+  plugin = '',    -- 2020.07.19
+  abc_sort="abc", dev_sort = "Sort by Name", scn_sort = "All Scenes"}
+
+setmetatable (cookies, readonly_meta)
+
+local function noop() end
+  
+-- get local copy of w3.css if we haven't got one already
+-- so that we can work offline if required
+local function check_for_w3()
+  if loader.raw_read "w3.css" then 
+    _log "./www/w3.css detected"
+    return
+  end
+  _log "downLoading w3.css..."
+  local css = io.open ("www/w3.css", "wb")
+  local _, err = https.request{ 
+    url = "https://www.w3schools.com/w3css/4/w3.css", 
+    sink = ltn12.sink.file (css),
+  }
+  if err == 200 then 
+    _log "...saved to ./www/w3.css"
+  else
+    _log("ERROR loading w3.css: " .. err) 
+  end
+end
+
+local function get_config()
+  options = luup.attr_get "openLuup.Console" or {}   -- get configuration parameters
+  local msg = "openLuup.Console.%s = %s"
+  for a,b in pairs(options) do
+    _log (msg:format(a,b))
+  end
+end
+
+local function initialise(wsapi_env)
+  _log = function (...) wsapi_env.error:write(...) end      -- set up the log output
+  _log "openLuup console starting..."
+  check_for_w3()  
+  get_config()
+  _log "...openLuup console startup complete"
+  initialised = true
+end
+
+
+function run (wsapi_env)
+  
+  if not initialised then initialise(wsapi_env) end
+  
+  local res = wsapi.response.new ()
+  local req = wsapi.request.new (wsapi_env)
+
+  script_name = req.script_name      -- save to use in links
+  local h = xml.createHTMLDocument "openLuup"    -- the actual return HTML document
+  local body
+
+  local p = req.params  
+  local P = capitalise (p.page or '')
+  if page_groups[P] then p.page = page_groups[P][1] end     -- replace group name with first page in group
+  
+  for cookie in pairs (cookies) do
+    if p[cookie] then 
+      res: set_cookie (cookie, {value = p[cookie], SameSite="Lax"})                   -- update cookie with URL parameter
+    else
+      p[cookie] = req.cookies[cookie] or cookies[cookie]     -- set any missing parameters from session cookies
+    end
+  end
+  
+  -- ACTIONS
+  if p.action then
+   (actions[p.action] or noop) (p, req)
+  end
+  
+  -- PAGES
+  if p.page ~= p.previous then res: set_cookie ("previous", {value = p.page, SameSite = "Lax"}) end
+  
+  local sheet, message = pages[p.page] (p, req)
+  local navigation = page_nav (p.page, p.previous, message)
+  local formatted_page = div {class = "w3-container", navigation, sheet}
+  
+  static_menu = static_menu or dynamic_menu()    -- build the menu tree just once
+
+  local modal = X.modal (xhtml.div {id="modal_content", h.h1 "Hello"}, "modal")   -- general pop-up use
+
+  local script =  
+    
+--    xhtml.script {src = "/openLuup_console_script.js", type="text/javascript", charset="utf-8"},    -- JS util code
+
+    h.script {script_text}
 
 --  local popup = h.div {"MODAL", onclick=X.popup (modal), class ="w3-button"}
 

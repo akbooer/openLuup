@@ -55,6 +55,7 @@ ABOUT = {
 -- 2024.02.05  add Plus H_T
 -- 2024.02.11  handle devices which may not have assigned IP address (thanks @a-lurker)
 -- 2024.02.14  handle battery level / voltage for Plus devices (thanks @a-lurker)
+-- 2024.02.25  support for Plus UNI pulse counter (input 2)
 
 
 local json      = require "openLuup.json"
@@ -63,7 +64,6 @@ local chdev     = require "openLuup.chdev"            -- to create new bridge de
 local tables    = require "openLuup.servertables"     -- for standard DEV and SID definitions
 
 --local pretty = require "openLuup.loader" .shared_environment.pretty
-
 
 local DEV = tables.DEV {
     shelly      = "D_GenericShellyDevice.xml",
@@ -76,6 +76,11 @@ local SID = tables.SID {
 
 local openLuup = luup.openLuup
 local API = require "openLuup.api"
+
+-- the empty list - cannot be written to, but saves creating lots of empty lists.
+local empty = setmetatable ({empty = "readonly"},        -- identifiable in debugging
+              {__newindex = function() error "read-only empty list - detected attempted write!" end})
+
 
 --------------------------------------------------
 --
@@ -378,6 +383,31 @@ local function plus_h_t(dno, info)
   end
 end
 
+
+local function plus_UNI(dno, info)
+  local params = info.params
+  if params then
+    local ts = params.ts                          -- timestamp
+    local altid = API[dno].attr.altid
+    local counter = params["input:2"]
+    if counter then
+      local cdno = openLuup.find_device {altid = table.concat {altid, '/', '2'} }
+      if cdno then
+        local D = API[cdno]
+        local last_update = D.hadevice.LastUpdate or ts
+        D.hadevice.LastUpdate = ts
+        local S = D.energy
+        local counts = counter.counts or empty
+        local total = counts.total or 0
+        local pulse = S.Pulse or 1000             -- default to 1000 pulses per kWh unit
+        S.Pulse = pulse
+        S.KWH = total / pulse
+      end
+    end
+  end
+end
+
+
 ----------------------
 
 local function model_info (upnp, updater, children)
@@ -406,6 +436,7 @@ local models = setmetatable (
     ["shellyplusi4"]    = model_info (DEV.controller, i4),    -- TODO: make new PLUS versions of these
     ["shellyplus2pm"]   = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light}),
     ["shellyplusht"]    = model_info (DEV.shelly, plus_h_t, {DEV.temperature, DEV.humidity}),
+    ["shellyplusuni"]   = model_info (DEV.shelly, plus_UNI, {DEV.light, DEV.light, DEV.power}),
   },{
     __index = function () return unknown_model end
   })
