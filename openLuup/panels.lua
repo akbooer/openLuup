@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2023.02.18",
+  VERSION       = "2024.02.27",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2022 AKBooer",
+  COPYRIGHT     = "(c) 2013-2024 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2022 AK Booer
+  Copyright 2013-2024 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -57,9 +57,11 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 
 -- 2023.01.03  add Authorize button for Netatmo Oath2 tokens
 
+-- 2024.02.27  fix servertables require path
+
 
 local xml = require "openLuup.xml"
-local srv = require "servertables"
+local srv = require "openLuup.servertables"
 local API = require "openLuup.api"
 
 local h = xml.createHTMLDocument ()    -- for factory methods

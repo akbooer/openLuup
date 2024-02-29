@@ -211,7 +211,9 @@ local actions = setmetatable ({}, missing_index_metatable "Action")
 
 local readonly_meta = {__newindex = function() error ("read-only", 2) end}
 
-local empty = setmetatable ({}, readonly_meta)
+local READONLY = function(x) return setmetatable (x, readonly_meta) end
+
+local empty = READONLY {}
 
 
 ----------------------------------------
@@ -3327,12 +3329,16 @@ local forum = xhtml.a {class = "w3-text-blue",
   title = "An independent place for smart home users to share experience", 
   href=ABOUTopenLuup.FORUM, target="_blank", " [smarthome.community] "}
 
-local cookies = {page = "about", previous = "about",      -- cookie defaults
+local cookies = READONLY {page = "about", previous = "about",      -- cookie defaults
   device = "2", scene = "1", room = "All Rooms", 
   plugin = '',    -- 2020.07.19
   abc_sort="abc", dev_sort = "Sort by Name", scn_sort = "All Scenes"}
 
-setmetatable (cookies, readonly_meta)
+local head_element = READONLY {  -- the <HEAD> element
+    xhtml.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
+    xhtml.link {rel="stylesheet", href="w3.css"},
+    xhtml.link {rel="stylesheet", href="openLuup_console.css"}}
+
 
 local function noop() end
   
@@ -3358,7 +3364,7 @@ end
 
 local function get_config()
   options = luup.attr_get "openLuup.Console" or {}   -- get configuration parameters
-  local msg = "openLuup.Console.%s = %s"
+  local msg = "Console.%s = %s"
   for a,b in pairs(options) do
     _log (msg:format(a,b))
   end
@@ -3366,10 +3372,10 @@ end
 
 local function initialise(wsapi_env)
   _log = function (...) wsapi_env.error:write(...) end      -- set up the log output
-  _log "openLuup console starting..."
+  _log "console starting..."
   check_for_w3()  
   get_config()
-  _log "...openLuup console startup complete"
+  _log "...console startup complete"
   initialised = true
 end
 
@@ -3431,10 +3437,7 @@ function run (wsapi_env)
         h.p {style="padding-left:4px;", os.date "%c", ', ', VERSION, donate, forum}} }
     }
   
-  h.documentElement[1]:appendChild {  -- the <HEAD> element
-    h.meta {charset="utf-8", name="viewport", content="width=device-width, initial-scale=1"},
-    h.link {rel="stylesheet", href="w3.css"},
-    h.link {rel="stylesheet", href="openLuup_console.css"}}
+  h.documentElement[1]:appendChild (head_element)
     
   h.body.class = "w3-light-grey"
   h.body:appendChild (body)
