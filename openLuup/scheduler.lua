@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2024.05.01",
+  VERSION       = "2024.03.01",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -73,6 +73,7 @@ local ABOUT = {
 
 -- 2024.01.05  move device_list to here rather than device_list to avoid luup reference
 -- 2024.01.06  move new_environment() to here from openLuup.loader
+-- 2024.03.01  use 'empty' readonly table where possible
 
 
 local logs      = require "openLuup.logs"
@@ -122,6 +123,11 @@ local function sleep (milliseconds)
   socket.sleep ((tonumber (milliseconds) or 0)/1000)      -- wait a bit
 end
 
+local function READONLY(x) 
+  return setmetatable (x, {__newindex = function() error ("read-only", 2) end}) 
+end
+
+local empty = READONLY {}
 
 --
 -- CPU clock()
@@ -331,7 +337,7 @@ local function sandbox (tbl, name)
     -- this is the proxy function which actually calls the user-defined function
     local function proxy (...) 
       local d = current_device or 0
-      local fct = (lookup[d] or {}) [k]
+      local fct = (lookup[d] or empty) [k]
       if not fct then
         fail (d, "attempted to reference", name, k, "nil")
       end
@@ -342,7 +348,7 @@ local function sandbox (tbl, name)
     local vtype = type(v)
     if vtype ~= "function" then fail (d, "attempted to define", name, k, vtype) end
     _log (devmsg: format (d, "defined", name, k, vtype), "scheduler.sandbox")
-    lookup[d] = lookup[d] or {}
+    lookup[d] = lookup[d] or {}         -- can't use 'empty' here, because content are updated
     lookup[d][k] = v
     if not tbl[k] then                  -- proxy only needs to be set once
       rawset (meta.__index, k, proxy)
@@ -356,7 +362,7 @@ local function sandbox (tbl, name)
     local empty = #x
     local function p(l) x[#x+1] = l end
     local function devname (d) 
-      return ((device_list[d] or {}).description or "System"): match "^%s*(.+)" 
+      return ((device_list[d] or empty).description or "System"): match "^%s*(.+)" 
     end
     local function sorted(t)
       local y = {}
@@ -433,7 +439,7 @@ end
 -- returns: job_status (number), notes (string)
 local function status (job_number, device)
   local _ = device
-  local info = job_list[job_number] or {}
+  local info = job_list[job_number] or empty
   -- TODO: implement job number filtering
   return info.status, info.notes
 end
@@ -475,7 +481,7 @@ local function create_job (action, arguments, devNo, target_device, priority)
       dispatch  = dispatch,
     }
   
-  for name, value in pairs (arguments or {}) do   -- copy the parameters
+  for name, value in pairs (arguments or empty) do   -- copy the parameters
     newJob.arguments[name] = tostring(value)
   end
   
@@ -500,13 +506,13 @@ local function run_job (action, arguments, devNo, target_device)
   local error_msg
   local jobNo = 0
   local return_arguments = {}
-  local args = arguments or {}      -- local copy
+  local args = arguments or empty      -- local copy
   local target = target_device or devNo
   
   if action.run then              -- run executes immediately and returns true or false
     local ok, response, error_msg = context_switch (devNo, action.run, target, args) 
     local _ = error_msg     -- unused at present
-    args = {}               -- erase input arguments, in case we go on to a <job> (Luup does this)
+    args = empty               -- erase input arguments, in case we go on to a <job> (Luup does this)
     
     if not ok then return -1, response end         -- pcall error return with message in response
     if response == false then return -1 end        -- code has run OK, but returned fail status
@@ -525,7 +531,7 @@ local function run_job (action, arguments, devNo, target_device)
         local vars = svc.variables
         if vars then
           for name, relatedStateVariable in pairs (action.returns) do
-            return_arguments[name] = (vars[relatedStateVariable] or {}).value 
+            return_arguments[name] = (vars[relatedStateVariable] or empty).value 
           end
         end
       end
@@ -533,7 +539,7 @@ local function run_job (action, arguments, devNo, target_device)
   end
   
   -- 2017.02.22 add any extra (non-device-variable) returns
-  for a,b in pairs (action.extra_returns or {}) do 
+  for a,b in pairs (action.extra_returns or empty) do 
     if type(b) == "function" then b = b() end         -- 2020.12.30  evaluate function extra_return parameters
     return_arguments[a] = b 
   end

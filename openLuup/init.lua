@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2024.02.23",
+  VERSION       = "2024.03.02",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2024 AKBooer",
@@ -77,6 +77,7 @@ local ABOUT = {
 
 -- 2024.01.06  global environment prototype moved to scheduler from loader
 -- 2024.02.23  update Ace editor link to https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ace.js
+-- 2024.03.02  tidy up obsolete files in openLuup/
 
 
 local logs  = require "openLuup.logs"
@@ -307,11 +308,11 @@ do -- ensure some extra folders exist
   lfs.mkdir "www"
 end
 
-do -- TODO: tidy up obsolete files
---  os.remove "openLuup/rooms.lua"
---  os.remove "openLuup/hag.lua"
---  os.remove "openLuup/http.lua"
---  os.remove "openLuup/shelly_cgi.lua"
+do -- tidy up obsolete files
+  os.remove "openLuup/rooms.lua"
+  os.remove "openLuup/hag.lua"
+  os.remove "openLuup/http.lua"
+  os.remove "openLuup/shelly_cgi.lua"
 end
 
 local status
