@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2024.02.15",
+  VERSION       = "2024.03.22",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2024 AKBooer",
@@ -55,6 +55,7 @@ local ABOUT = {
 -- 2024.03.09   Separate generic mqtt_lutil.lua from this server code
 -- 2024.03.14   New subscriptions module in util: wildcard '+' now implemented
 -- 2024.03.15   Fix retained messages for wildcard subscriptions
+-- 2024.03.21   Implement KeepAlive timeout watchdog
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -64,6 +65,7 @@ local logs      = require "openLuup.logs"
 local tables    = require "openLuup.servertables"     -- for myIP and serviceIds
 local ioutil    = require "openLuup.io"               -- for core server functions
 local scheduler = require "openLuup.scheduler"        -- for current_device() and context_switch()
+local timers    = require "openLuup.timers"           -- for client watchdog()
 local util      = require "openLuup.mqtt_util"        -- MQTT utilities
 
 --  local _log() and _debug()
@@ -101,6 +103,8 @@ local function Server()
   
   local retained = {}               -- table of retained messages indexed by topic
   
+  local clients = {}                -- table indexed by client with last message time
+  
   local function unsubscribe_client_from_topics (client, topics)
     local name = tostring(client)
     local message = "%s UNSUBSCRIBE from %s %s"
@@ -112,6 +116,7 @@ local function Server()
 
   local function close_and_unsubscribe_from_all (client, log_message)
     client: close()
+    clients[client] = nil
     if log_message then _log (table.concat {log_message, ' ', tostring(client)}) end
     local name = tostring(client)
     local message = "%s UNSUBSCRIBE from ALL %s"
@@ -290,10 +295,11 @@ local function Server()
     end
 
   end
-  
+
   return {
       stats = stats,
       retained = retained,
+      clients = clients,
       
       TEST = {
           subscribed = subs.subscribed,
@@ -351,30 +357,34 @@ local function incoming (client, credentials, server)
     -- send an ack if required
     if ack then
       server.send_to_client (client, ack)
-      _debug (MQTT_packet.name (ack), "ack")
+--      _debug (MQTT_packet.name (ack))
     end
     
     if topic then
       
-      if app_message then
+      if pname == "PUBLISH" then
         
         -- publish topic to subscribers
         server.publish (topic, app_message, retain)
+        _debug("topic", topic)
       
       elseif pname == "SUBSCRIBE" then
         
         -- add any subscriber to table of topics
         server.subscribe_client_to_topics (client, topic)
-        
+        _debug("topic", (next(topic)))
+       
       elseif pname == "UNSUBSCRIBE" then
         
         -- unsubscribe external (IP) clients
         server.unsubscribe_client_from_topics (client, topic)
+        _debug("topic", (next(topic)))
         
       elseif pname == "CONNECT" then
         
-        -- save connect payload (returned in topic) in client object (chiefly for accessing the ClientId)
+        -- save connect payload (returned as table in topic) in client object (chiefly for accessing the ClientId)
         client.MQTT_connect_payload = topic
+        _debug("client", topic.ClientId)
       end
     end
   end
@@ -396,32 +406,65 @@ end
 local function new (config, server)  
   config = config or {}
   
-  local credentials = {                                 -- pull credentials from the config table (not used by ioutil.server)
+  local credentials = {                     -- pull credentials from the config table (not used by ioutil.server)
       Username = config.Username or '',
       Password = config.Password or '',
     }
-  
+    
   server = server or Server()               -- existing, or a whole new server
+  local clients = server.clients            -- table indexed by client with last message time
   
   local function servlet(client)
-    return function () incoming (client, credentials, server) end
+    return function () 
+      clients[client] = os.time()           -- record time of latest client message
+      incoming (client, credentials, server) 
+    end
   end
   
-  local port = config.Port
+  local port = config.Port  
+  
   if port then                                            -- possible to create a purely internal MQTT 'server'
+    local name = "MQTT:" .. port
+    
     ioutil.server.new {
         port      = port,                                 -- incoming port
-        name      = "MQTT:" .. port,                      -- server name
+        name      = name,                                 -- server name
         backlog   = config.Backlog or 100,                -- queue length
         idletime  = config.CloseIdleSocketAfter or 120,   -- connect timeout
         servlet   = servlet,                              -- our own servlet
         connects  = iprequests,                           -- use our own table for console info
       }
+ 
+--[[
+  [MQTT-3.1.2-24]
+  If the Keep Alive value is non-zero and the Server does not receive a Control Packet from the Client within 
+  one and a half times the Keep Alive time period, it MUST disconnect the Network Connection to the Client 
+  as if the network had failed .
+--]]
+    local timeout_message = "KeepAlive = %d. last seen at %s %s %s"
+    local function client_watchdog()
+--      _log ("client timeout watchdog: " .. name)
+      local now = os.time()
+      for client, time in pairs(clients) do
+        local payload = client.MQTT_connect_payload
+        local KeepAlive = payload.KeepAlive
+--        _debug(timeout_message:format(KeepAlive, os.date("%X", time), payload.ClientId, tostring(client)))
+        if KeepAlive and (os.difftime(now, time) > KeepAlive * 1.5) then
+          clients[client] = nil
+          _log(timeout_message:format(KeepAlive, os.date("%X - TIMEOUT -", time), payload.ClientId, tostring(client)))
+          server.close_and_unsubscribe_from_all (client, "WARNING: client timeout")
+        end
+      end
+      timers.call_delay (client_watchdog, 60, '', name .. " client watchdog")   -- call again later
+    end
+    
+    client_watchdog()                                     -- start watching for client timeouts      
   end
-  
+    
   return {
       statistics = server.stats,
       retained = server.retained,
+      clients = clients,
       
       TEST = {
           subscribed = server.TEST.subscribed,

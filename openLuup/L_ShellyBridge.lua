@@ -643,7 +643,7 @@ function _G.Shelly_Plus_Online (topic, message)
   if not shelly: match "^shellyplus" then return end      -- oops, not a shelly plus
 
   if message == "true" and not shelly_devices[shelly] then    -- get/update configuration
-    _log (table.concat ({"ShellyPlus:", topic, message}, ' '))
+--    _log (table.concat ({"ShellyPlus:", topic, message}, ' '))
     luup.register_handler ("Shelly_Plus_Handler", "mqtt:" .. shelly .. "/#")
     
     local id = (tostring {}): match "%w+$"              -- create unique message id
