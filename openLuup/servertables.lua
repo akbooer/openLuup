@@ -1,4 +1,4 @@
-local VERSION = "2024.02.25"
+local VERSION = "2024.03.25"
 
 -- mimetypes
 -- 2016/04/14
@@ -351,6 +351,7 @@ local SID = setmetatable ({
     ZWaveDevice1            = "urn:micasaverde-com:serviceId:ZWaveDevice1",
     
     -- Very Short SIDs
+    openLuup  = "openLuup",  
     altui     = "urn:upnp-org:serviceId:altui1",
     appstore  = "urn:upnp-org:serviceId:AltAppStore1",
     dimming   = "urn:upnp-org:serviceId:Dimming1",
