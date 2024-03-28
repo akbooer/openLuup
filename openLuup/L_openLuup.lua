@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2024.03.23",
+  VERSION       = "2024.03.28",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -67,23 +67,22 @@ ABOUT = {
 -- 2021.05.20  use carbon cache to archive historian and mqtt server metrics
 -- 2021.05.23  add solar RA,DEC and ALT,AZ plus GetSolarCoords service with options (Unix) epoch parameter
 
+-- 2024.03.25  move MQTT subscribers for Shelly-like commands to here from MQTT module
+
 
 local json        = require "openLuup.json"
 local timers      = require "openLuup.timers"       -- for scheduled callbacks
 local ioutil      = require "openLuup.io"           -- NOT the same as luup.io or Lua's io.
 local pop3        = require "openLuup.pop3"
 local hist        = require "openLuup.historian"    -- for metrics archive
-
+local tables      = require "openLuup.servertables" -- for SID{}
 local lfs         = require "lfs"
 local smtp        = require "socket.smtp"             -- smtp.message() for formatting events
 
 local INTERVAL = 120
 local MINUTES  = "2m"
 
-local SID = {
-  openLuup  = "openLuup",                           -- no need for those incomprehensible UPnP serviceIds
-  altui     = "urn:upnp-org:serviceId:altui1",      -- Variables = 'DisplayLine1' and 'DisplayLine2'
-}
+local SID = tables.SID
 
 local ole               -- our own device ID
 local InfluxSocket      -- for the database
@@ -498,20 +497,9 @@ end
 
 -- see: https://mosquitto.org/man/mosquitto-8.html
 local function mqtt_sys_broker_stats ()
-  local mqtt = luup.openLuup.mqtt
   local prefix = "$SYS/broker/"
-  -- augment client stats
-  local stats = mqtt.statistics
-  local nc = 0
-  for _ in pairs(mqtt.iprequests) do nc = nc + 1 end    -- count the clients
-  stats["clients/total"] = nc
-  stats["clients/connected"] = nc
-  stats["clients/maximum"] = math.max (stats["clients/maximum"], nc)
-  
-  local rmc = 0
-  for _ in pairs (mqtt.retained) do rmc = rmc + 1 end   -- count the retained messages
-  stats["retained/messages/count"] = rmc
-
+  local mqtt = luup.openLuup.mqtt
+  local stats = mqtt.statistics()         -- get client stats
   if luup.attr_get "openLuup.MQTT" then   -- 2021.04.08 only publish if MQTT configured
     local mqtt_carbon = hist.CarbonCache["mqtt"]
     for n, v in pairs (stats) do
@@ -522,6 +510,51 @@ local function mqtt_sys_broker_stats ()
     end
   end
   timers.call_delay (mqtt_sys_broker_stats, 60, '', "MQTT $SYS/broker/#")
+end
+
+
+------------------------
+--
+-- MQTT subscriber for Shelly-like commands
+--
+-- relay
+--
+
+local function mqtt_command_log (topic, message)
+  _log (table.concat {"MQTT COMMAND: ", topic," = ", message})
+end  
+-- easy MQTT request to switch a switch
+local function mqtt_relay (topic, message)
+  mqtt_command_log (topic, message)
+  local d = tonumber (topic: match "^relay/(%d+)")
+  local n = tonumber (message)
+  if d and n then 
+    luup.call_action (SID.switch, "SetTarget", {newTargetValue = n}, d)
+  end
+end
+
+-- easy MQTT request to change dimmer level
+local function mqtt_light (topic, message)
+  mqtt_command_log (topic, message)
+  local d = tonumber (topic: match "^light/(%d+)")
+  local n = tonumber (message)
+  if d and n then 
+    luup.call_action (SID.dimming, "SetLoadLevelTarget", {newLoadlevelTarget = n}, d)
+  end
+end
+
+-- easy MQTT request to query a variable (forces publication of an update)
+local function mqtt_query (topic, message)
+  local mqtt = luup.openLuup.mqtt
+  mqtt_command_log (topic, message)
+  local d, s, v = message: match "^(%d+)%.([^%.]+)%.(.+)"
+  d = tonumber(d)
+  if d then 
+    local val = luup.variable_get (SID[s] or s, v, d)
+    if val then
+      mqtt.publish (table.concat ({"openLuup/update",d,s,v}, '/'), val)
+    end
+  end
 end
 
 
@@ -758,6 +791,16 @@ function init (devNo)
     mqtt_round_robin ()   -- ... but start the timer anyway, in case it's turned on later
     luup.log "starting MQTT $SYS/broker statistics"
     mqtt_sys_broker_stats ()
+  end
+  
+  do -- MQTT commands
+    local mqtt = luup.openLuup.mqtt
+    local register_handler = mqtt.register_handler
+    register_handler (mqtt_relay, "relay/#")
+    register_handler (mqtt_light, "light/#")
+    register_handler (mqtt_relay, "openLuup/relay/#")
+    register_handler (mqtt_light, "openLuup/light/#")
+    register_handler (mqtt_query, "openLuup/query")
   end
   
   set ("StartTime", luup.attr_get "openLuup.Status.StartTime")        -- 2018.05.02

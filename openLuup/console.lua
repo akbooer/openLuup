@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2024.02.26",
+  VERSION       = "2024.03.27",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2024 AKBooer",
@@ -108,6 +108,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 
 -- 2024.02.08  add missing timer number in create_timer()
 -- 2024.02.26  improve startup code and diagnostics
+-- 2024.03.24  add subpages to MQTT server page
 
 
 --  WSAPI Lua CGI implementation
@@ -1355,11 +1356,23 @@ function pages.http (p)
         requestTable (tbl, {"request", "#requests  ","status"}) } )
 end
 
-function pages.mqtt ()
+local function mqtt_statistics()
+  local broker = {}
+  local statistics = mqtt.statistics()
+  for n, v in sorted (statistics) do
+    broker[#broker+1] = {n, commas (v)}
+  end
+  local stats = create_table_from_data ({}, broker)
+  return xhtml.div {X.Subtitle "Server statistics: $SYS/broker/#", stats}
+end
+
+local function mqtt_subscriptions()
+  local n = 0
   local tbl = xhtml.table {class = "w3-small"}
   tbl.header {{colspan=2, "subscribers"}, "topic"}
   tbl.header {"#internal", "#external" }
   for topic, subscribers in sorted (mqtt.subscribers) do
+    n = n + 1
     local internal, external = {}, {}
     for _, subs in pairs (subscribers) do
       internal[#internal+1] = subs.devNo
@@ -1367,26 +1380,67 @@ function pages.mqtt ()
     end
     tbl.row {#internal, #external, topic}
   end
-  local broker = {}
-  for n, v in sorted (mqtt.statistics) do
-    broker[#broker+1] = {n, commas (v)}
+  return xhtml.div {X.Subtitle {"Subscribed topics: (", n , ')'}, tbl}
+end
+
+local function mqtt_publications()
+  local n = 0
+  local tbl = xhtml.table {class = "w3-small"}
+  for topic in sorted (mqtt.publications) do
+    n = n + 1
+    tbl.row {topic}
   end
-  local stats = create_table_from_data ({}, broker)
-  
+  return xhtml.div {X.Subtitle {"Published topics: (", n , ')'}, tbl}
+end
+
+local function mqtt_clients()
+  local clients = {}
+  for client in pairs(mqtt.clients) do
+    local b = client.MQTT_connect_payload
+    clients[#clients+1] = {b.ClientId, b.KeepAlive, b.WillTopic, b.WillMessage, b.WillRetain}
+  end
+  table.sort(clients, function(a,b) return a[1] < b[1] end)
+  local title = {"ClientId", "KeepAlive (s)", "WillTopic", "WillMessage", "WillRetain"}
+  local tbl = X.create_table_from_data(title, clients)
+  return xhtml.div {X.Subtitle "Connected Clients:", tbl}
+end
+
+local function mqtt_retained()
   local retained = {}
   for topic, message in sorted (mqtt.retained) do
     local msg = message: gsub ('%c',' ')          -- remove any non-printing chars
     retained[#retained+1] = {topic, msg}
   end
   local ret = create_table_from_data({"topic", "message"}, retained)
+  return xhtml.div {X.Subtitle "Retained messages:", ret}
+end
+
+function pages.mqtt (p)
+      
+  local stats   = "Server Stats"
+  local clients = "Clients"
+  local pubs    = "Publications"
+  local subs    = "Subscriptions"
+  local retain  = "Retained"
+  
+--  local options = {stats, clients, pubs, subs, retain}
+  local options = {stats, clients, subs, retain}
+  
+  local dispatch = {
+      [stats]   = mqtt_statistics,
+      [clients] = mqtt_clients,
+      [pubs]    = mqtt_publications,
+      [subs]    = mqtt_subscriptions,
+      [retain]  = mqtt_retained,
+    }
+  
+  local request_type = p.type or options[1]
+  local selection = sidebar (p, function () return filter_menu (options, request_type, "type=") end)
+  local result = (dispatch[request_type] or mqtt_statistics) ()
   
   return page_wrapper ("MQTT QoS 0 server",
---      selection,
-    X.Panel {class="w3-rest", 
-      X.Subtitle "Server statistics:", stats,
-      X.Subtitle "Subscribed topics:", tbl,
-      X.Subtitle "Retained messages:", ret,
-      })
+      selection,
+    X.Panel {class="w3-rest", result})
 
 end
 

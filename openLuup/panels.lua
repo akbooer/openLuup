@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2024.02.27",
+  VERSION       = "2024.03.28",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2024 AKBooer",
@@ -24,7 +24,9 @@ local ABOUT = {
 
 --[[
 
-Each device panel is described by a table which may define three functions, to return the panel as displayed on the device pages, the icon, and the extended panel seen of the device's control tab page.
+Each device panel is described by a table which may define three functions, 
+to return the panel as displayed on the device pages, the icon, 
+and the extended panel seen on the device's control tab page.
 
   control   -- device control tab
   panel     -- device panel
@@ -58,6 +60,7 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 -- 2023.01.03  add Authorize button for Netatmo Oath2 tokens
 
 -- 2024.02.27  fix servertables require path
+-- 2024.03.26  increase Shelly web page width to 800 from 500
 
 
 local xml = require "openLuup.xml"
@@ -84,7 +87,7 @@ end
 local function ShellyHomePage (devNo)  
   local ip = luup.attr_get ("ip", devNo) or ''
   local src = table.concat {"http://", ip}
-  return div {class = "w3-panel", h.iframe {src = src, width="500", height="300"}}
+  return div {class = "w3-panel", h.iframe {src = src, width="800", height="300"}}
 end
 
 local panels = {
@@ -195,6 +198,15 @@ local panels = {
       local time = luup.variable_get (sid.scene, "LastSceneTime", devNo)
       return tiny_date_time (time)
     end,
+    control = function (devNo)
+      local isShelly = luup.devices[devNo].id: match "^shelly"
+      return isShelly and ShellyHomePage (devNo) or "<p>Scene Controller</p>"
+    end},
+--
+-- RGB(W) controller
+--
+
+  DimmableRGBLight = {
     control = function (devNo)
       local isShelly = luup.devices[devNo].id: match "^shelly"
       return isShelly and ShellyHomePage (devNo) or "<p>Scene Controller</p>"

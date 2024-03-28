@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2024.03.15",
+  VERSION       = "2024.03.28",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-present AKBooer",
@@ -58,6 +58,8 @@ ABOUT = {
 -- 2024.02.14  handle battery level / voltage for Plus devices (thanks @a-lurker)
 -- 2024.02.25  support for Plus UNI pulse counter (input 2)
 -- 2024.03.15  change handling of Plus device initialisation and subscriptions
+-- 2024.03.24  add 'firmware_update' device attribute
+-- 2024.03.28  broaden Gen2 handling of devices... noy just "shellyplus..." (thanks @a-lurker)
 
 
 local json      = require "openLuup.json"
@@ -208,7 +210,7 @@ local function generic (dno, var, value)
   -- battery level
   if type(var) ~= "string" then return end
   if var == "sensor/battery" then
-    API[dno].HaDevice1.BatteryLevel = value
+    API[dno].hadevice.BatteryLevel = value
     return
   end
   -- button pushes behave as scene controller
@@ -315,6 +317,13 @@ local function dm_2 (dno, var, value)
   end
 end
 
+--
+-- RGBW2
+--
+local function rgbw2 ()
+  
+end
+
 
 ----------------------
 --
@@ -371,9 +380,8 @@ local function generic_plus (dno, subtopic, info)
       V = battery.V
       percent = battery.percent
     end
-    local S = D.HaDevice1
-    S.BatteryLevel = percent
-    S.voltage = V
+    D.hadevice.BatteryLevel = percent
+    D.energy.Voltage = V
   end
  
 end
@@ -471,6 +479,7 @@ local models = setmetatable (
     ["SHPLG2-1"]  = model_info (DEV.shelly, sw2_5, {DEV.light}),
     ["SHHT-1"]    = model_info (DEV.shelly, h_t,   {DEV.temperature, DEV.humidity}),
     ["SHDM-2"]    = model_info (DEV.shelly, dm_2,  {DEV.dimmer}),
+    ["SHRGBW2"]   = model_info (DEV.rgb,    rgbw2),
     
     ["shellyplusi4"]    = model_info (DEV.controller, i4),    -- TODO: make new PLUS versions of these
     ["shellyplus2pm"]   = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light}),
@@ -489,7 +498,7 @@ local function format_mac_address(mac)
   return (mac or ''):gsub("..", "%1:"):sub(1,-2)
 end
 
-local function create_device(info)
+local function create_device(altid, model)
   local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
 
   local offset = API[devNo][SID.sBridge].Offset
@@ -499,9 +508,8 @@ local function create_device(info)
   end
   local dno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
   
-  local name, altid = info.id, info.id
-  
-  local upnp_file = models[info.model].upnp
+  local name = altid
+  local upnp_file = models[model].upnp
   
   local dev = chdev.create {
     devNo = dno,
@@ -511,8 +519,6 @@ local function create_device(info)
 --    json_file = json_file,
     parent = devNo,
     room = room,
-    ip = info.ip,                             -- include ip address of Shelly device
-    mac = format_mac_address(info.mac),       -- ditto mac, adding ':' (thanks @a-lurker)
     manufacturer = "Allterco Robotics",
   }
   
@@ -521,7 +527,7 @@ local function create_device(info)
   
   -- create extra child devices if required
   
-  local children = models[info.model].children or empty
+  local children = models[model].children or empty
   local childID = "%s/%s"
   for i, upnp_file2 in ipairs (children) do
     local cdno = openLuup.bridge.nextIdInBlock(offset, 0)  -- assign next device number in block
@@ -541,15 +547,14 @@ local function create_device(info)
   return dno
 end
 
-local function init_device (info)
-  local altid = info.id
+local function init_device (altid, model)
   local dno = shelly_devices[altid]
   if not dno then
     -- device not yet registered
     _log ("New Shelly announced: " .. altid)
     dno = openLuup.find_device {altid = altid} 
                   or 
-                    create_device (info)
+                    create_device (altid, model)
                     
     luup.devices[dno].handle_children = true      -- ensure that it handles child requests
     shelly_devices[altid] = dno                   -- save the device number, indexed by id
@@ -558,29 +563,17 @@ local function init_device (info)
 end
 
 -- the bridge is a standard Luup plugin
-local function create_ShellyBridge()
-  local internal_id, ip, mac, hidden, invisible, parent, room, pluginnum 
-
-  local statevariables
-  
-  return luup.create_device (
-            "ShellyBridge",         -- device_type
-            internal_id,
-            "Shelly",               -- description
-            "D_ShellyBridge.xml",   -- upnp_file
-            "I_ShellyBridge.xml",   -- upnp_impl
-            
-            ip, mac, hidden, invisible, parent, room, pluginnum, 
-            
-            statevariables)  
-end
-
 local function init_shelly_bridge ()
   devNo = devNo       -- ensure that ShellyBridge device exists
             or
               openLuup.find_device {device_type = "ShellyBridge"}
                 or
-                  create_ShellyBridge ()
+                  luup.create_device (
+                    "ShellyBridge",         -- device_type
+                    '',                     -- altid
+                    "Shelly",               -- description
+                    "D_ShellyBridge.xml",   -- upnp_file
+                    "I_ShellyBridge.xml")   -- upnp_impl
   
   local bridge = API[devNo]
   bridge[chdev.bridge.SID].Remote_ID = 543779     -- 2021.0105.10  ensure ID for "ShellyBridge" exists  
@@ -633,14 +626,14 @@ end
 
 -- only used for registering online Shellies with topic "shellyplus..."
 function _G.Shelly_Plus_Online (topic, message)
-  
+
   init_shelly_bridge ()
   
   if not devNo then return end      -- wait until bridge exists
   
   local shelly, subtopic = topic: match "^([^/]+)/(.+)"
   
-  if not shelly: match "^shellyplus" then return end      -- oops, not a shelly plus
+  if not shelly: match "^shelly" then return end      -- oops, not a shelly Gen 2+
 
   if message == "true" and not shelly_devices[shelly] then    -- get/update configuration
 --    _log (table.concat ({"ShellyPlus:", topic, message}, ' '))
@@ -667,29 +660,28 @@ function _G.Shelly_Gen2_Handler (topic, message)
   analyze_plus_components (info.result or empty)
   _debug ''
   
-  -- add old-style info fields...
-  -- info = {"id":"xxx","model":"SHSW-25","mac":"hhh","ip":"...","new_fw":false,"fw_ver":"..."}
-  local newinfo = {Gen2 = true}
-  newinfo.id = info.src    -- id has different meaning in Gen 2
+  local altid = info.src                  -- id has different meaning in Gen 2
+  local model = info.src: match "%w+"
   info = info.result
+  
   local sys = info.sys
-  if sys and sys.device then
-    newinfo.ip = info.wifi and info.wifi.sta and info.wifi.sta.ip or ''
-    newinfo.model = info.mqtt.client_id: match "%w+"       -- can't see anywhere else which has this info
-    newinfo.name = sys.device.name or info.id
-    newinfo.mac = format_mac_address(sys.device.mac)
-    newinfo.fw_ver = sys.device.fw_id
+  local ip, mac, fw_ver
+  local sdev = sys and sys.device
+  if sdev then
+    ip = info.wifi and info.wifi.sta and info.wifi.sta.ip or ''
+    mac = format_mac_address(sys.device.mac)
+    fw_ver = sdev.fw_id
   end
---  _log (json.Lua.encode(newinfo))   -- **
-  local dno = init_device (newinfo)
+  
+  local dno = init_device (altid, model)
   -- update info, it may have changed
-  info = newinfo
-  luup.ip_set (info.ip, dno)
-  luup.mac_set (info.mac, dno)
-  luup.attr_set ("model", info.model, dno)
-  luup.attr_set ("firmware", info.fw_ver, dno)
+  
+  luup.ip_set (ip, dno)
+  luup.mac_set (mac, dno)
+  luup.attr_set ("model", model, dno)
+  luup.attr_set ("firmware", fw_ver, dno)
+--  luup.attr_set ("firmware_update", info.new_fw, dno)   -- TODO: find correct firmware update flag for Plus devices
 end
-
 
 function _G.Shelly_MQTT_Handler (topic, message)
     
@@ -702,12 +694,14 @@ function _G.Shelly_MQTT_Handler (topic, message)
     _log (message)
     local info, err = json.decode (message)
     if not info then _log ("Announce JSON error: " .. (err or '?')) return end
-    local dno = init_device (info)
+    local altid = info.id
+    local dno = init_device (altid, info.model)
   -- update info, it may have changed
     luup.ip_set (info.ip, dno)
-    luup.mac_set (info.mac, dno)
+    luup.mac_set (format_mac_address(info.mac), dno)
     luup.attr_set ("model", info.model, dno)
     luup.attr_set ("firmware", info.fw_ver, dno)
+    luup.attr_set ("firmware_update", tostring(info.new_fw), dno)
   end
   
   local  shelly, var = shellies: match "^(.-)/(.+)"

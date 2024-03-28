@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2024.03.22",
+  VERSION       = "2024.03.27",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2024 AKBooer",
@@ -56,6 +56,7 @@ local ABOUT = {
 -- 2024.03.14   New subscriptions module in util: wildcard '+' now implemented
 -- 2024.03.15   Fix retained messages for wildcard subscriptions
 -- 2024.03.21   Implement KeepAlive timeout watchdog
+-- 2024.03.25   Move MQTT subscribers for Shelly-like commands to L_openLuup
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -73,8 +74,6 @@ local _log, _debug = logs.register (ABOUT)
 
 local iprequests = {}
 
-local SID = tables.SID
-
 -------------------------------------------
 --
 -- MQTT servlet
@@ -83,27 +82,31 @@ local SID = tables.SID
 local MQTT_packet = util.MQTT_packet        -- MQTT formats, etc.
 local parse = util.parse                    -- Parse and process MQTT packets
 local Subscriptions = util.Subscriptions    -- subscription handling
+local Statistics = util.Statistics          -- broker statistics
 
 local function Server()
   
-  local stats = {
-        ["bytes/received"] = 0,             -- bytes received since the broker started.
-        ["bytes/sent"] = 0,                 -- bytes sent since the broker started.
-        ["clients/connected"] = 0,          -- currently connected clients.
-        ["clients/maximum"] = 0,            -- maximum number of clients that have been connected to the broker at the same time.
-        ["clients/total"] = 0,              -- active and inactive clients currently connected and registered.
-        ["messages/received"] = 0,          -- messages of any type received since the broker started.
-        ["messages/sent"] = 0,              -- messages of any type sent since the broker started.
-        ["publish/messages/received"] = 0,  -- PUBLISH messages received since the broker started.
-        ["publish/messages/sent"] = 0,      -- PUBLISH messages sent since the broker started.
-        ["retained/messages/count"] = 0,    -- total number of retained messages active on the broker.
-      }
-  
   local subs = Subscriptions()      -- new subscription handler
+  
+  local stats = Statistics()
   
   local retained = {}               -- table of retained messages indexed by topic
   
   local clients = {}                -- table indexed by client with last message time
+  
+  -- update and return latest stats
+  local function statistics()
+    local nc = 0
+    for _ in pairs(clients) do nc = nc + 1 end    -- count the clients
+    stats["clients/total"] = nc
+    stats["clients/connected"] = nc
+    stats["clients/maximum"] = math.max (stats["clients/maximum"], nc)
+    
+    local rmc = 0
+    for _ in pairs (retained) do rmc = rmc + 1 end   -- count the retained messages
+    stats["retained/messages/count"] = rmc
+    return stats
+  end
   
   local function unsubscribe_client_from_topics (client, topics)
     local name = tostring(client)
@@ -297,23 +300,21 @@ local function Server()
   end
 
   return {
-      stats = stats,
+      -- tables
+      subscribed = subs.subscribed,
+      published = subs.published,
       retained = retained,
       clients = clients,
+      stats = stats,
       
-      TEST = {
-          subscribed = subs.subscribed,
-          published = subs.published,
-        },
-      
+      -- methods
       register_handler = register_handler,      -- callback for subscribed messages
       publish = publish,                        -- publish from within openLuup
-      
       send_to_client = send_to_client,          -- send to a specific client
-      
       subscribe_client_to_topics = subscribe_client_to_topics,
       unsubscribe_client_from_topics = unsubscribe_client_from_topics,
       close_and_unsubscribe_from_all = close_and_unsubscribe_from_all,
+      statistics = statistics,
     }
     
 end
@@ -455,21 +456,18 @@ local function new (config, server)
           server.close_and_unsubscribe_from_all (client, "WARNING: client timeout")
         end
       end
-      timers.call_delay (client_watchdog, 60, '', name .. " client watchdog")   -- call again later
+      timers.call_delay (client_watchdog, 60, '', name .. " client watchdog")   -- call again in a minute
     end
     
     client_watchdog()                                     -- start watching for client timeouts      
   end
     
   return {
+      subscribed = server.subscribed,
+      published = server.published,
       statistics = server.stats,
       retained = server.retained,
       clients = clients,
-      
-      TEST = {
-          subscribed = server.TEST.subscribed,
-          published = server.TEST.published,
-        },
       
       -- note that these instance methods should be called with the colon syntax
       subscribe = function (_, ...) server.register_handler (...) end,     -- callback for subscribed messages
@@ -489,7 +487,8 @@ local function start (config)
   
   local new_server = new(config, server)      -- use main server, already created
   
-  do -- UDP-MQTT bridge
+  if tonumber (config.Bridge_UDP) then                  -- start UDP-MQTT bridge
+    
     -- callback function is called with (port, {datagram = ..., ip = ...}, "udp")
     -- datagram format is topic/=/message
     local function UDP_MQTT_bridge (_, data)
@@ -499,65 +498,8 @@ local function start (config)
       end
     end
     
-    if tonumber (config.Bridge_UDP) then                  -- start UDP-MQTT bridge
-      ioutil.udp.register_handler (UDP_MQTT_bridge, config.Bridge_UDP)
-    end
+    ioutil.udp.register_handler (UDP_MQTT_bridge, config.Bridge_UDP)
   end
-  
-  return new_server
-end
-
-
-------------------------
---
--- MQTT subscriber for Shelly-like commands
---
--- relay
---
-
-local function mqtt_command_log (topic, message)
-  _log (table.concat {"MQTT COMMAND: ", topic," = ", message})
-end  
--- easy MQTT request to switch a switch
-local function mqtt_relay (topic, message)
-  mqtt_command_log (topic, message)
-  local d = tonumber (topic: match "^relay/(%d+)")
-  local n = tonumber (message)
-  if d and n then 
-    luup.call_action (SID.switch, "SetTarget", {newTargetValue = n}, d)
-  end
-end
-
--- easy MQTT request to change dimmer level
-local function mqtt_light (topic, message)
-  mqtt_command_log (topic, message)
-  local d = tonumber (topic: match "^light/(%d+)")
-  local n = tonumber (message)
-  if d and n then 
-    luup.call_action (SID.dimming, "SetLoadLevelTarget", {newLoadlevelTarget = n}, d)
-  end
-end
-
--- easy MQTT request to query a variable (forces publication of an update)
-local function mqtt_query (topic, message)
-  mqtt_command_log (topic, message)
-  local d, s, v = message: match "^(%d+)%.([^%.]+)%.(.+)"
-  d = tonumber(d)
-  if d then 
-    local val = luup.variable_get (SID[s] or s, v, d)
-    if val then
-      server.publish (table.concat ({"openLuup/update",d,s,v}, '/'), val)
-    end
-  end
-end
-
-do -- MQTT commands
-  local register_handler = server.register_handler
-  register_handler (mqtt_relay, "relay/#")
-  register_handler (mqtt_light, "light/#")
-  register_handler (mqtt_relay, "openLuup/relay/#")
-  register_handler (mqtt_light, "openLuup/light/#")
-  register_handler (mqtt_query, "openLuup/query")
 end
 
 
@@ -572,26 +514,29 @@ return setmetatable ({
     start = start,
     register_handler = server.register_handler,  -- callback for subscribed messages
     publish = server.publish,                    -- publish from within openLuup
+    statistics = server.statistics,
     
     new = new,       -- create another new MQTT server
     
     -- variables
-    statistics = server.stats,
     retained = server.retained,
 
   },{
   
-  -- hide some of the more esoteric data structures, only used internally by openLuup
+  -- hide some of the more esoteric data structures, only used internally by openLuup or the console
   
     __index = {
           
     TEST = {          -- for testing only
         packet = MQTT_packet,
         parse = parse,
-        server = server,
       },
     
-    iprequests  = iprequests,
-    subscribers = server.TEST.subscribed,
+--    server = server,
+    
+    iprequests    = iprequests,
+    subscribers   = server.subscribed,
+    publications  = server.published,
+    clients       = server.clients,
     
   }})

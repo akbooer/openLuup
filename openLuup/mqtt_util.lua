@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt_util",
-  VERSION       = "2024.03.18",
+  VERSION       = "2024.03.27",
   DESCRIPTION   = "MQTT v3.1.1 utilities",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2024 AKBooer",
@@ -253,9 +253,9 @@ do -- MQTT Packet methods
   end
   
   function MQTT_packet.CONNACK (ConnectReturnCode)
-    local control_flags = 0 
+    local control_flags = 0
     
-    local SessionPresent = 0                          -- QoS 0 means that there will be no Session State
+    local SessionPresent = 0                          -- Persistent Clients not supported, so no Session State
     ConnectReturnCode = ConnectReturnCode or 0
     local variable_header = string.char (SessionPresent, ConnectReturnCode)
     
@@ -752,22 +752,85 @@ local function Subscriptions()
     return subs
   end
 
+
+
   return {
     
-    -- tables (not to be tampered with! - just for inspection)
+    -- tables
       subscribed = subscribed,
       published  = published,
-      
-      valid_pub_topic = valid_pub_topic,
-      valid_sub_topic = valid_sub_topic,
-      
+     
     -- methods   
       subscribe   = subscribe,
       unsubscribe = unsubscribe,
       subscribers = subscribers,        -- returns table of subscribers to topic
-    }
+      
+      valid_pub_topic = valid_pub_topic,
+      valid_sub_topic = valid_sub_topic,
+     }
 end
 
+
+
+-------------------------------------------
+--
+-- MQTT broker statistics
+-- see: https://mosquitto.org/man/mosquitto-8.html
+--
+
+--[[
+
+$SYS/broker/bytes/received          total number of bytes received since the broker started.
+$SYS/broker/bytes/sent              total number of bytes sent since the broker started.
+
+$SYS/broker/clients/connected       number of currently connected clients.
+$SYS/broker/clients/maximum         maximum number of clients that have been connected to the broker at the same time.
+$SYS/broker/clients/total           total number of active and inactive clients currently connected and registered on the broker
+
+  $SYS/broker/load/#
+
+    The following group of topics all represent time averages. 
+    The value returned represents some quantity for 1 minute, averaged over 1, 5 or 15 minutes.
+    The final "+" of the hierarchy can be 1min, 5min or 15min. 
+
+$SYS/broker/load/connections/+        moving average of the number of CONNECT packets received by the broker
+$SYS/broker/load/bytes/received/+     moving average of the number of bytes received by the broker
+$SYS/broker/load/bytes/sent/+         moving average of the number of bytes sent by the broker
+$SYS/broker/load/messages/received/+  moving average of the number of all types of MQTT messages received by the broker
+$SYS/broker/load/messages/sent/+      moving average of the number of all types of MQTT messages sent by the broker
+$SYS/broker/load/publish/received/+   moving average of the number of publish messages received by the broker
+$SYS/broker/load/publish/sent/+       moving average of the number of publish messages sent by the broker
+$SYS/broker/load/sockets/+            moving average of the number of socket connections opened to the broker
+
+$SYS/broker/messages/received         total number of messages of any type received since the broker started.
+$SYS/broker/messages/sent             total number of messages of any type sent since the broker started.
+
+$SYS/broker/publish/messages/received total number of PUBLISH messages received since the broker started.
+$SYS/broker/publish/messages/sent     total number of PUBLISH messages sent since the broker started.
+
+$SYS/broker/retained messages/count   total number of retained messages active on the broker.
+$SYS/broker/store/messages/bytes      number of bytes currently held by (retained) message payloads in the message store
+
+$SYS/broker/subscriptions/count       total number of subscriptions active on the broker.
+
+$SYS/broker/version                   version of the broker. Static.
+
+--]]
+
+local function Statistics()
+  return {
+    ["bytes/received"] = 0,             -- bytes received since the broker started.
+    ["bytes/sent"] = 0,                 -- bytes sent since the broker started.
+    ["clients/connected"] = 0,          -- currently connected clients.
+    ["clients/maximum"] = 0,            -- maximum number of clients that have been connected to the broker at the same time.
+    ["clients/total"] = 0,              -- active and inactive clients currently connected and registered.
+    ["messages/received"] = 0,          -- messages of any type received since the broker started.
+    ["messages/sent"] = 0,              -- messages of any type sent since the broker started.
+    ["publish/messages/received"] = 0,  -- PUBLISH messages received since the broker started.
+    ["publish/messages/sent"] = 0,      -- PUBLISH messages sent since the broker started.
+    ["retained/messages/count"] = 0,    -- total number of retained messages active on the broker.
+  }
+end
 
 return {
   
@@ -775,4 +838,5 @@ return {
     parse = parse,                      -- packet parsing
     
     Subscriptions = Subscriptions,      -- subscription handling
+    Statistics = Statistics,
   }
