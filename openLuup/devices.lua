@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2024.01.05",
+  VERSION       = "2024.03.29",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -67,6 +67,7 @@ local ABOUT = {
 -- 2022.11.14  use new cache_rules to define variable cache length
 
 -- 2024.01.05  move device_list to scheduler
+-- 2024.03.29  add delete_service()
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -480,6 +481,27 @@ local function new (devNo)
     new_userdata_dataversion ()
   end
   
+  -- function delete_service, 2024.03.2 
+  -- deletes an entire service, both actions and variables
+  local function delete_service(self, name)
+    -- IDs start at zero
+    local v = self.variables
+    local j = 0
+    local vnew = {}
+    -- delete service variables
+    for _, x in ipairs (v) do
+      if x.srv ~= name then
+        x.id = j      -- renumber, offsetting by 1 from array index
+        j = j + 1
+        vnew[j] = x
+      end
+    end
+    if j > 0 then
+      self.variables = vnew           -- replace with remaining variables
+      self.services[name] = nil       -- remove the service (and actions)
+    end
+  end
+  
   -- function delete_var
   -- removes a single var
   -- this is harder than it seems, 
@@ -648,6 +670,7 @@ local function new (devNo)
       variable_get        = variable_get,
       version_get         = function () return version end,
       
+      delete_service      = delete_service,     -- 2024.03.29
       delete_single_var   = delete_single_var,  -- 2019.08.12
       delete_vars         = delete_vars,        -- 2018.01.31
       touch               = touch,              -- 2019.04.25
@@ -678,7 +701,7 @@ return {
   publish_variable_updates  = publish_variable_updates,
 
   set_cache_size  = function(s) CacheSize = s end,
-  get_cache_size  = function(s) return CacheSize end,
+  get_cache_size  = function()  return CacheSize end,
   
 }
 

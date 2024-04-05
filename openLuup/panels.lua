@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "panels.lua",
-  VERSION       = "2024.03.28",
+  VERSION       = "2024.04.03",
   DESCRIPTION   = "built-in console device panel HTML functions",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2024 AKBooer",
@@ -61,6 +61,7 @@ Each function returns HTML - either plain text or openLuup DOM model - which def
 
 -- 2024.02.27  fix servertables require path
 -- 2024.03.26  increase Shelly web page width to 800 from 500
+-- 2024.03.30  add panel and control for ShellyBridge, with firmware status
 
 
 local xml = require "openLuup.xml"
@@ -86,8 +87,13 @@ end
 
 local function ShellyHomePage (devNo)  
   local ip = luup.attr_get ("ip", devNo) or ''
-  local src = table.concat {"http://", ip}
+  local src = table.concat {"http://", ip, "/"}
   return div {class = "w3-panel", h.iframe {src = src, width="800", height="300"}}
+end
+
+local function link(link)
+  return h.span {style ="text-align:right", h.a {href= link,  title="link",
+  h.img {height=14, width=14, class="w3-hover-opacity", alt="goto", src="icons/link-solid.svg"}}}
 end
 
 local panels = {
@@ -219,6 +225,27 @@ local panels = {
     control = ShellyHomePage,
   },
   
+  ShellyBridge = {
+    control = function(bridge)
+      local tbl = h.table {class = "w3-small"}
+      tbl.header {"dev #", "name", '', "firmware", "update"}
+      local shelly = {}
+      local devs = luup.devices
+      for i,d in pairs (devs) do
+        if d.device_num_parent == bridge then
+          shelly[#shelly+1] = i
+        end
+      end
+      table.sort(shelly)
+      for _,i in ipairs (shelly) do
+        local d = devs[i]
+        local attr = d.attributes
+        tbl.row {i,d.description, 
+          link("?page=control&device=" .. i),
+          attr.firmware, attr.firmware_update}
+      end
+      return div {p "Shelly devices", tbl}
+    end},
     
 --
 -- Zigbee2MQTT

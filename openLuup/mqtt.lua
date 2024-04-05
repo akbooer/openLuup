@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt",
-  VERSION       = "2024.03.27",
+  VERSION       = "2024.04.02",
   DESCRIPTION   = "MQTT v3.1.1 QoS 0 server",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2024 AKBooer",
@@ -57,6 +57,7 @@ local ABOUT = {
 -- 2024.03.15   Fix retained messages for wildcard subscriptions
 -- 2024.03.21   Implement KeepAlive timeout watchdog
 -- 2024.03.25   Move MQTT subscribers for Shelly-like commands to L_openLuup
+-- 2024.04.02   Publish retained message $SYS/broker/version 
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -253,6 +254,22 @@ local function Server()
       Retained = Retained}
     return setmetatable (message, meta)
   end
+
+  -- publish message to single subscriber
+  local function publish_to_one (subscriber, message)
+    local s, m = subscriber, message
+    s.count = (s.count or 0) + 1
+    local ok, err
+    if s.callback then
+      ok, err = scheduler.context_switch (s.devNo, s.callback, m.TopicName, m.ApplicationMessage, s.parameter, m.Retained)
+    elseif s.client then
+      ok, err = send_to_client (s.client, m.MQTT_packet) -- publish to external subscribers
+      if ok then 
+        stats["publish/messages/sent"] = stats["publish/messages/sent"] + 1
+      end
+    end
+    return ok, err
+  end
   
   -- deliver message to all subscribers
   local function publish (TopicName, ApplicationMessage, Retained)
@@ -265,22 +282,6 @@ local function Server()
     
     -- statistics
     stats["publish/messages/received"] = stats["publish/messages/received"] + 1
-
-    -- publish message to single subscriber
-    local function publish_to_one (subscriber, message)
-      local s, m = subscriber, message
-      s.count = (s.count or 0) + 1
-      local ok, err
-      if s.callback then
-        ok, err = scheduler.context_switch (s.devNo, s.callback, m.TopicName, m.ApplicationMessage, s.parameter, m.Retained)
-      elseif s.client then
-        ok, err = send_to_client (s.client, m.MQTT_packet) -- publish to external subscribers
-        if ok then 
-          stats["publish/messages/sent"] = stats["publish/messages/sent"] + 1
-        end
-      end
-      return ok, err
-    end
     
     -- publish message to all subscribers
     
@@ -403,7 +404,7 @@ end
 -- MQTT server
 --
 
--- create additional MQTT servers (on different ports - or no port at all!)
+-- create MQTT servers (on different ports - or no port at all!)
 local function new (config, server)  
   config = config or {}
   
@@ -461,7 +462,9 @@ local function new (config, server)
     
     client_watchdog()                                     -- start watching for client timeouts      
   end
-    
+  
+  server.publish("$SYS/broker/version", ABOUT.VERSION, true)    -- retained message
+  
   return {
       subscribed = server.subscribed,
       published = server.published,

@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2024.03.28",
+  VERSION       = "2024.04.03",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-present AKBooer",
@@ -59,13 +59,16 @@ ABOUT = {
 -- 2024.02.25  support for Plus UNI pulse counter (input 2)
 -- 2024.03.15  change handling of Plus device initialisation and subscriptions
 -- 2024.03.24  add 'firmware_update' device attribute
--- 2024.03.28  broaden Gen2 handling of devices... noy just "shellyplus..." (thanks @a-lurker)
+-- 2024.03.28  broaden Gen2+ handling of devices... not just "shellyplus..." (thanks @a-lurker)
+-- 2024.04.04  override CJson or RapidJson... lost faith in them... producing functions in some decodes!
 
 
 local json      = require "openLuup.json"
 local luup      = require "openLuup.luup"
 local chdev     = require "openLuup.chdev"            -- to create new bridge devices
 local tables    = require "openLuup.servertables"     -- for standard DEV and SID definitions
+
+json = json.Lua  -- 2024.04.04  override CJson or RapidJson
 
 --local pretty = require "openLuup.loader" .shared_environment.pretty
 
@@ -184,6 +187,15 @@ end
 local shelly_devices = {}      -- gets filled with device info on MQTT connection
 local devNo                    -- bridge device number (set on startup)
 
+
+local function _log (msg)
+  luup.log (msg, "luup.shelly")
+end
+
+local function format_mac_address(mac)
+  return (mac or ''):gsub("..", "%1:"):sub(1,-2)
+end
+
 ----------------------
 --
 -- device specific variable updaters
@@ -230,11 +242,11 @@ end
 
 local function ix3 ()
   -- all the work done in generic actions above
-  --  luup.log ("ix3 - update: " .. var)
+  --  _log ("ix3 - update: " .. var)
 end
 
 local function sw2_5(dno, var, value) 
---  luup.log ("sw2.5 - update: " .. var)
+--  _log ("sw2.5 - update: " .. var)
   local action, child, attr = var: match "^(%a+)/(%d)/?(.*)"
   if child then
     local altid = luup.attr_get ("altid", dno)
@@ -330,48 +342,62 @@ end
 -- Plus model updaters (use RPC syntax)
 --
 
-local function analyze_plus_components (info)
-  _debug("analysing components:")
-  for a,b in pairs(info or empty) do
-    _debug('',a)
-    local component, cno = a: match "(%w+):(%d)"
-    if component then
-      
-    end
-  end
+-- generic switch
+local function switch(dno, info)
+--  print "SWITCH"
 end
 
+-- return text version of value
+local function convert(value)
+  if (type(value) == "table") then
+    local j,e = json.encode(value)
+    value = j or e
+    if e then _log("JSON convert ERROR: " .. e) end
+  end
+  return value
+end 
+  -- rename and reformat values for device variables
+local function analyze_plus_components (params, components)
+  params = params or empty
+  local info = {}
+  -- component variables
+  for a,b in pairs(params) do
+    local component, cno = a: match "(%w+):(%d)"      -- treat numbered names as components to save
+    local cname
+    if component and type(b) == "table" then
+      if components then                                            -- list of components for configuration
+        components[component] = (components[component] or 0) + 1    -- count components of each type
+      end
+      local cname = cname or (component .. '/' .. cno)
+      for n,value in pairs(b) do
+        local name = cname .. '/' .. n
+        info[name] = convert(value)
+      end
+    else
+      info[a] = convert(b)
+    end
+  end
+  return info
+end
 
--- generic actions for all Gen Plus devices
-local function generic_plus (dno, subtopic, info) 
-  
---  _debug(subtopic, json.encode(info))
+-- generic parameter handling for all Gen Plus devices
+local function generic_plus (dno, params) 
+  params = params or empty
   local D = API[dno]
+  D.hadevice.LastUpdate = os.time()
   local sid = D.attributes.altid: match "%w+"
   local S = D[sid]
   
   -- component variables
-  for a,b in pairs(info.params or empty) do
-    local component, cno = a: match "(%w+):(%d)"
-    local cname
-    if component and type(b) == "table" then
-      local cname = cname or (component .. '/' .. cno)
-      for n,value in pairs(b) do
-        local name = cname .. '/' .. n
---        _debug('>>>', name)
-        if (type(value) == "table") then
-          local j,e = json.encode(value)
-          value = j or e
-        end
-        S[name] = value
-      end
-    end
+  local info = analyze_plus_components(params)
+  for a,b in pairs(info) do
+    S[a] = b                      -- write to device variables
   end
   
   -- battery level
-  if subtopic:match "status/devicepower" then
-    local battery = info.battery
-    local external = info.external
+  local battery = params.battery
+  local external = params.external
+  if battery or external then
     local V, percent = '', ''
     if external and external.present then     -- as per @a-lurker's wishes
       V = 5
@@ -383,7 +409,29 @@ local function generic_plus (dno, subtopic, info)
     D.hadevice.BatteryLevel = percent
     D.energy.Voltage = V
   end
- 
+
+  local device  = params.device
+  local sys     = params.sys
+  local wifi    = params.wifi
+  
+  -- IP and mac address
+  if wifi and wifi.sta_ip then
+    D.attr.ip = wifi.sta_ip or ''
+  end
+  if sys and sys.mac then
+    D.attr.mac = format_mac_address(sys.mac)
+  end
+  
+  -- firmware revision and updates
+  if device and device.fw_id then
+    D.attr.firmware = device.fw_id
+  end
+  local update = ''
+  if sys and type(sys.available_updates) == "table" then
+    local stable = sys.available_updates.stable
+    if stable then update = stable end
+  end
+  D.attr.firmware_update = update
 end
 
 --[[
@@ -406,14 +454,15 @@ local function i4 (dno, info)    -- info is decoded JSON message body
   if info.method == "NotifyEvent" then 
     local D = API[dno]
     local altid = D.attr.altid
-    local watched = {single_push = true, long_push=true}
+    local sid = altid: match "%w+"
+    local watched = {single_push = true, long_push=true}    -- ignore button up/down
     for _, event in ipairs(info.params.events) do
       local j = json.encode(event): gsub('%c','')
       luup.log (j)
       local id = event.id
       local action = event.event
       if watched[action] then
-        D[altid]["input_event/" .. id] = j
+        D[sid]["input_event/" .. id] = j
         local S = D.scene
         S.sl_SceneActivated = table.concat {action, '_', id}
         S.LastSceneTime = os.time()
@@ -482,21 +531,12 @@ local models = setmetatable (
     ["SHRGBW2"]   = model_info (DEV.rgb,    rgbw2),
     
     ["shellyplusi4"]    = model_info (DEV.controller, i4),    -- TODO: make new PLUS versions of these
-    ["shellyplus2pm"]   = model_info (DEV.shelly, sw2_5, {DEV.light, DEV.light}),
+    ["shellyplus2pm"]   = model_info (DEV.shelly, switch, {DEV.light, DEV.light}),
     ["shellyplusht"]    = model_info (DEV.shelly, plus_h_t, {DEV.temperature, DEV.humidity}),
     ["shellyplusuni"]   = model_info (DEV.shelly, plus_UNI, {DEV.light, DEV.light, DEV.power}),
   },{
     __index = function () return unknown_model end
   })
-
-
-local function _log (msg)
-  luup.log (msg, "luup.shelly")
-end
-
-local function format_mac_address(mac)
-  return (mac or ''):gsub("..", "%1:"):sub(1,-2)
-end
 
 local function create_device(altid, model)
   local room = luup.rooms.create "Shellies"     -- create new device in Shellies room
@@ -522,6 +562,7 @@ local function create_device(altid, model)
     manufacturer = "Allterco Robotics",
   }
   
+  dev.attributes.model = model
   dev.handle_children = true                -- ensure that any child devices are handled
   luup.devices[dno] = dev                   -- add to Luup devices
   
@@ -593,62 +634,13 @@ end
 -- shellies/shellyplusi4-a8032ab0c018/rpc {"id":123,"method":"Mqtt.GetConfig"}
 --
 
-function _G.Shelly_Plus_Handler (topic, message)
-  _log (table.concat ({"ShellyPlus:", topic, message}, ' '))
-  
-  init_shelly_bridge ()
-  
+-----
+
+local rpc = "openLuup-ShellyBridge"             -- handler for Gen 2+ RPC responses
+ 
+_G[rpc] = function(topic, message)  
   if not devNo then return end      -- wait until bridge exists
-  
-  local shelly, subtopic = topic: match "([^/]+)/(.+)"
-  
-  if subtopic == "events/rpc" or subtopic: match "^status" then
-    
-    local child = shelly_devices[shelly]            -- look up device number
-    if not child then return end
-    
-    local info, err = json.Lua.decode (message)
-    if err then 
-      _log (err) 
-      return
-    end
-    
-    local timenow = os.time()
-    local D = API[child]
-    D.hadevice.LastUpdate = timenow
-    
-    generic_plus (child, subtopic, info)            -- perform generic update actions
-    local model = D.attr.model
-    models[model].updater (child, info)             -- perform device specific update actions
-    
-  end
-end
-
--- only used for registering online Shellies with topic "shellyplus..."
-function _G.Shelly_Plus_Online (topic, message)
-
-  init_shelly_bridge ()
-  
-  if not devNo then return end      -- wait until bridge exists
-  
-  local shelly, subtopic = topic: match "^([^/]+)/(.+)"
-  
-  if not shelly: match "^shelly" then return end      -- oops, not a shelly Gen 2+
-
-  if message == "true" and not shelly_devices[shelly] then    -- get/update configuration
---    _log (table.concat ({"ShellyPlus:", topic, message}, ' '))
-    luup.register_handler ("Shelly_Plus_Handler", "mqtt:" .. shelly .. "/#")
-    
-    local id = (tostring {}): match "%w+$"              -- create unique message id
-    local msg = json.encode  {id = id, src = "shelly-gen2-cmd", method = "Shelly.GetConfig"}
-    openLuup.mqtt.publish (shelly .. "/rpc", msg)
-  end
-end
-
--- handler for Gen 2 responses when creating new device
-function _G.Shelly_Gen2_Handler (topic, message)  
-  if not devNo then return end      -- wait until bridge exists
-  _log (table.concat ({"ShellyGen2:", topic, message}, ' '))
+  _log (table.concat ({rpc, topic, message}, ' '))
   
   local info, err = json.decode (message)
   if err then 
@@ -656,37 +648,62 @@ function _G.Shelly_Gen2_Handler (topic, message)
     return
   end
   
-  _debug ("---GET CONFIG---", info.src)
-  analyze_plus_components (info.result or empty)
-  _debug ''
+--  local verify, err2 = json.encode {RPC_response = info}
+--  _log (verify or err2) 
   
-  local altid = info.src                  -- id has different meaning in Gen 2
-  local model = info.src: match "%w+"
-  info = info.result
-  
-  local sys = info.sys
-  local ip, mac, fw_ver
-  local sdev = sys and sys.device
-  if sdev then
-    ip = info.wifi and info.wifi.sta and info.wifi.sta.ip or ''
-    mac = format_mac_address(sys.device.mac)
-    fw_ver = sdev.fw_id
+  local dno = shelly_devices[info.src]
+  local result = info.result
+  if dno and result then
+    generic_plus(dno, result)
   end
-  
-  local dno = init_device (altid, model)
-  -- update info, it may have changed
-  
-  luup.ip_set (ip, dno)
-  luup.mac_set (mac, dno)
-  luup.attr_set ("model", model, dno)
-  luup.attr_set ("firmware", fw_ver, dno)
---  luup.attr_set ("firmware_update", info.new_fw, dno)   -- TODO: find correct firmware update flag for Plus devices
 end
 
-function _G.Shelly_MQTT_Handler (topic, message)
+luup.register_handler (rpc, "mqtt:" .. rpc .. "/rpc")  -- rpc response
+
+-----
+
+local gen2 = "Shelly_Gen_2+"
+local valid = {NotifyStatus = true,  NotifyEvent = true}   -- valid methods
+
+_G[gen2] = function(topic, message)
+  
+  local shelly = topic: match "^shelly[^/]+"  
+  if not shelly then return end                 -- oops, not a Shelly Gen 2+ device
+  init_shelly_bridge()                          -- make sure the bridge is up and running
+  
+  local dno = shelly_devices[shelly]            -- look up device number
+  local model = shelly: match "%w+"             -- TODO: find ACTUAL model type?
+  if not dno then                               -- create new device, if necessary
+    dno = init_device(shelly, model)
+  
+    -- ask for config details
+    local id = (tostring {}): match "%w+$"              -- create unique message id
+    local msg = json.encode  {id = id, src = rpc, method = "Sys.GetConfig"}
+    openLuup.mqtt.publish (shelly .. "/rpc", msg)
+  end
+
+  local info, err = json.decode (message)
+  if err then 
+    _log (err) 
+    return
+  end
+  
+  generic_plus (dno, info.params)                       -- perform generic update actions
+  if valid[info.method] then
+    models[model].updater (dno, info)                   -- perform device specific update actions
+  end
+end
+
+luup.register_handler (gen2, "mqtt:+/events/rpc", '')   -- Gen 2+ devices
+
+-----
+
+local gen1 = "Shelly_Gen_1"
+
+_G[gen1] = function(topic, message)
     
   local shellies = topic: match "^shellies/(.+)"
-  if not shellies then return end
+  if not shellies then return end                 -- not a Shelly Gen 1 device
   
   init_shelly_bridge ()
   
@@ -701,7 +718,10 @@ function _G.Shelly_MQTT_Handler (topic, message)
     luup.mac_set (format_mac_address(info.mac), dno)
     luup.attr_set ("model", info.model, dno)
     luup.attr_set ("firmware", info.fw_ver, dno)
-    luup.attr_set ("firmware_update", tostring(info.new_fw), dno)
+    luup.attr_set ("firmware_update", tostring(info.new_fw or ''), dno)
+    
+    luup.devices[dno]: delete_service(altid)      -- remove old-style service
+    
   end
   
   local  shelly, var = shellies: match "^(.-)/(.+)"
@@ -712,7 +732,8 @@ function _G.Shelly_MQTT_Handler (topic, message)
   local D = API[child]
   D.hadevice.LastUpdate = timenow
   
-  local S = D[shelly]
+  local sid = shelly: match "%w+"
+  local S = D[sid]
   local old = S[var]
   if message ~= old then
     S[var] = message                                  -- save the raw message
@@ -722,8 +743,6 @@ function _G.Shelly_MQTT_Handler (topic, message)
   end
 end
 
-luup.register_handler ("Shelly_MQTT_Handler", "mqtt:shellies/#")   -- * * * MQTT wildcard subscription * * *
-luup.register_handler ("Shelly_Plus_Online", "mqtt:+/online")
-luup.register_handler ("Shelly_Gen2_Handler", "mqtt:shelly-gen2-cmd/rpc")  -- rpc response
+luup.register_handler (gen1, "mqtt:shellies/#")            -- Gen 1 devices
 
 -----

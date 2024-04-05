@@ -1,13 +1,13 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2023.01.06",
+  VERSION       = "2024.04.04",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2023 AKBooer",
+  COPYRIGHT     = "(c) 2013-2024 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   DEBUG         = false,
   LICENSE       = [[
-  Copyright 2013-2023 AK Booer
+  Copyright 2013-2024 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -90,6 +90,8 @@ local ABOUT = {
 -- 2021.05.14  restore luup.openLuup with explicit extensions (NOT, now, the openLuuup API)
 
 -- 2023.01.06  remove leading and trailing spaces from room names (thanks @a-lurker)
+
+-- 2024.04.04  add luup.openLuup.pretty() for easy access
 
 
 local logs          = require "openLuup.logs"
@@ -1210,6 +1212,8 @@ local openLuup_extensions = {
     
     find_device = devutil.find,     -- 2021.02.03  find device by attribute: name / id / altid / etc...
     find_scene = sceneutil.find,    -- 2021.03.05  find scene by name
+    
+    pretty = loader.shared_environment.pretty,    -- 2024.04.04
   
     cpu_table  = function() return time_table "cpu(s)"  end,
     wall_table = function() return time_table "wall(s)" end,
