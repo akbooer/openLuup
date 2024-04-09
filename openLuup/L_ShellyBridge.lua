@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "mqtt_shelly",
-  VERSION       = "2024.04.03",
+  VERSION       = "2024.04.08",
   DESCRIPTION   = "Shelly MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-present AKBooer",
@@ -61,6 +61,7 @@ ABOUT = {
 -- 2024.03.24  add 'firmware_update' device attribute
 -- 2024.03.28  broaden Gen2+ handling of devices... not just "shellyplus..." (thanks @a-lurker)
 -- 2024.04.04  override CJson or RapidJson... lost faith in them... producing functions in some decodes!
+-- 2024.04.08  fully embrace Shelly component concept for Gen2+ 
 
 
 local json      = require "openLuup.json"
@@ -70,7 +71,7 @@ local tables    = require "openLuup.servertables"     -- for standard DEV and SI
 
 json = json.Lua  -- 2024.04.04  override CJson or RapidJson
 
---local pretty = require "openLuup.loader" .shared_environment.pretty
+local pretty = luup.openLuup.pretty
 
 local DEV = tables.DEV {
     shelly      = "D_GenericShellyDevice.xml",
@@ -97,6 +98,54 @@ local function _debug(...) if ABOUT.DEBUG then print("Shelly", ...) end; end
 
 --------------------------------------------------
 --
+-- utilities
+--
+
+-- convert openLuup device number into shelly id and unit number
+-- expecting "shellyxxxx" or "shellyxxxx/n"  
+local function shelly_unit(dno)
+  local id = luup.attr_get ("altid", dno)
+  local shelly, unit = id: match "^([^/]+)/?(%d*)$"    -- expecting "shellyxxxx" or "shellyxxxx/n"
+  unit = tonumber(unit) or 0
+  return shelly, unit
+end
+
+-- cache device number indexed by altid
+local lookup_meta = {}
+function lookup_meta:__index(altid)
+  local dno = openLuup.find_device {altid = altid}
+  self[altid] = dno
+  return dno
+end
+
+local dev_lookup = setmetatable({}, lookup_meta)
+
+-- use base altid (ie. without /0, etc.) to determine whether or not a Gen2+ device
+local function is_gen1(shelly)
+  local dno = dev_lookup[shelly]
+  local model = API[dno].attr.model
+  return model: match "^%u"       -- Gen2+ model is uooercase
+end
+
+-- generate a unique id for rpc messages
+local unique_id do
+  local id = 0
+  unique_id = function()
+    id = id + 1
+    return id
+  end
+end
+
+-- return Shelly device type relay/light/color given device number
+local function shelly_type(dno)
+  local dfile = luup.attr_get ("device_file", dno)
+  return  (dfile == DEV.dimmer and "light") 
+      or  (dfile == DEV.rgb and "color")
+      or "relay"
+end
+  
+--------------------------------------------------
+--
 -- Shelly MQTT Bridge - CONTROL
 --
 -- this part runs as a standard device
@@ -104,17 +153,27 @@ local function _debug(...) if ABOUT.DEBUG then print("Shelly", ...) end; end
 --
 do
   local devNo             -- bridge device number (set on startup)
-
+  
   local function SetTarget (dno, args)
     local id = luup.attr_get ("altid", dno)
-    local dfile = luup.attr_get ("device_file", dno)
-    local dtype = dfile == DEV.dimmer and "light" or "relay"
-    local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
+    local dtype = shelly_type(dno)
+    local shelly, unit = shelly_unit(dno)
+    local on_off
     if shelly then
       local val = tostring(tonumber (args.newTargetValue) or 0)
       API[dno].switch.Target = val
-      local on_off = val == '1' and "on" or "off"
-      shelly = table.concat {"shellies/", shelly, '/', dtype, '/', relay, "/command"}
+      if is_gen1(shelly) then
+        on_off = val == '1' and "on" or "off"
+        shelly = table.concat {"shellies/", shelly, '/', dtype, '/', unit, "/command"}
+      else
+        shelly = shelly .. "/rpc"
+        local state = (val == '1')      -- boolean parameter
+        on_off = json.encode {
+            id = unique_id(),
+            src = "openLuup-response",
+            method = "Switch.Set",
+            params = {id = unit, on = state}}
+      end
       openLuup.mqtt.publish (shelly, on_off)
     else 
       return false
@@ -127,18 +186,46 @@ do
   end
 
   local function SetLoadLevelTarget (dno, args)
-    local id = luup.attr_get ("altid", dno)
-    local shelly, relay = id: match "^([^/]+)/(%d)$"    -- expecting "shellyxxxx/n"
+    --[[
+          args = {
+          DeviceNum = "30009",
+          action = "SetLoadLevelTarget",
+          newLoadlevelTarget = "100",
+          serviceId = "urn:upnp-org:serviceId:Dimming1"}
+    --]]
+    local dtype = shelly_type(dno)
+    local shelly, unit = shelly_unit(dno)
     if shelly then
       local val_n = tonumber (args.newLoadlevelTarget) or 0
       local val = tostring(val_n)
       API[dno].dimming.LoadLevelTarget = val
-      -- shellies/shellydimmer-<deviceid>/light/0/set 	
-      -- accepts a JSON payload in the format 
-      -- {"brightness": 100, "turn": "on", "transition": 500}
-      shelly = table.concat {"shellies/", shelly, '/light/', relay, "/set"}
-      local command = json.encode {brightness = val_n}
+      local command
+      if is_gen1(shelly) then
+        -- shellies/shellydimmer-<deviceid>/light/0/set 	
+        -- accepts a JSON payload in the format 
+        -- {"brightness": 100, "turn": "on", "transition": 500}
+--        shelly = table.concat {"shellies/", shelly, '/light/', unit, "/set"}
+        shelly = table.concat {"shellies/", shelly, '/', dtype, '/', unit, "/set"}
+--        command = json.encode {brightness = val_n}    -- possibly this for monochrome dimmer ???
+        command = json.encode {gain = val_n}
+      else
+        -- TODO: Gen2+ dimming here
+      end
       openLuup.mqtt.publish (shelly, command)
+    else 
+      return false
+    end
+  end
+  
+  -- {newColorRGBTarget = "144,198,95"}  all 0..255
+  local function SetColorRGB (dno, args)
+    local shelly, unit = shelly_unit(dno)
+    if shelly then
+      -- shellies/shellyrgbw2-<deviceid>/color/0/set
+      shelly = table.concat {"shellies/", shelly, '/color/', unit, "/set"}
+      local r,g,b,w = (args.newColorRGBTarget or ''):match "(%d+),(%d+),(%d+),?(%d*)"
+      local command = json.encode {red = r, green = g, blue = b, white = w}
+      openLuup.mqtt.publish (shelly,command)
     else 
       return false
     end
@@ -155,6 +242,7 @@ do
         [SID.switch]    = {SetTarget = SetTarget},
         [SID.hadevice]  = {ToggleState = ToggleState},
         [SID.dimming]   = {SetLoadLevelTarget = SetLoadLevelTarget},
+        [SID.color]     = {SetColorRGB = SetColorRGB},
       }
     
     local service = SRV[serviceId] or {}
@@ -191,6 +279,8 @@ local devNo                    -- bridge device number (set on startup)
 local function _log (msg)
   luup.log (msg, "luup.shelly")
 end
+
+local function noop() end
 
 local function format_mac_address(mac)
   return (mac or ''):gsub("..", "%1:"):sub(1,-2)
@@ -250,7 +340,7 @@ local function sw2_5(dno, var, value)
   local action, child, attr = var: match "^(%a+)/(%d)/?(.*)"
   if child then
     local altid = luup.attr_get ("altid", dno)
-    local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
+    local cdno = dev_lookup[table.concat{altid, '/', child}]
     if cdno then
       local D = API[cdno]
       if action == "relay" then
@@ -278,7 +368,7 @@ local function h_t (dno, var, value)
   local altid = luup.attr_get ("altid", dno)
   local children = {t = 0, h = 1}   -- altid suffixes for child device types
   local child = children[mtype]
-  local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
+  local cdno = dev_lookup[table.concat{altid, '/', child}]
   if cdno then
     local D = API[cdno]
     local P = API[dno]                -- parent device
@@ -302,7 +392,7 @@ local function dm_2 (dno, var, value)
   local action, child, attr = var: match "^(%a+)/(%d)/?(.*)"
   if child then
     local altid = luup.attr_get ("altid", dno)
-    local cdno = openLuup.find_device {altid = table.concat {altid, '/', child} }
+    local cdno = dev_lookup[table.concat{altid, '/', child}]
     if cdno then
       local D = API[cdno]
       if action == "light" then
@@ -332,8 +422,40 @@ end
 --
 -- RGBW2
 --
-local function rgbw2 ()
+local function rgbw2_color (dno, var, value)
+  local D = API[dno]
+  if var == "color/0/status" then
+    local status = json.decode(value)
+    if type(status) == "table" then
+      local r,g,b,w = status.red, status.green, status.blue, status.white
+      local wrgb = "0=%d,1=%d,2=%d,3=%d"
+      if r and g and b and w then
+        D.color.CurrentColor = wrgb: format(w,r,g,b)
+      end
+    end
+    if status.ison ~= nil then
+      D.switch.Status = status.ison and '1' or '0'
+    end
+    if status.gain ~= nil then
+      D.dimming.LoadLevelStatus = status.gain
+    end
+  elseif var == "color/0/power" then
+    D.energy.Watts = value
+  elseif var == "" then
+
+  end
+end
+
+local function rgbw2_white (dno, var, value)
   
+end
+
+local function rgbw2 (dno, var, value)
+  if var:match "^color" then
+    rgbw2_color(dno, var, value)
+  else
+    rgbw2_white(dno, var, value)
+  end
 end
 
 
@@ -342,61 +464,154 @@ end
 -- Plus model updaters (use RPC syntax)
 --
 
--- generic switch
-local function switch(dno, info)
---  print "SWITCH"
+----------------------
+--
+-- Gen2+ components
+--
+
+local plus_component = {}
+
+function plus_component.switch(dno, info)
+  local D = API[dno]
+  local shelly, unit = shelly_unit(dno)
+  local sid = shelly: match "%w+"
+  local name = table.concat {"switch/", unit, "/output"}
+  local value = D[sid][name] == "true" and '1' or '0'
+--  D.switch.Status = value  
 end
 
--- return text version of value
-local function convert(value)
-  if (type(value) == "table") then
-    local j,e = json.encode(value)
-    value = j or e
-    if e then _log("JSON convert ERROR: " .. e) end
-  end
-  return value
-end 
-  -- rename and reformat values for device variables
-local function analyze_plus_components (params, components)
-  params = params or empty
-  local info = {}
-  -- component variables
-  for a,b in pairs(params) do
-    local component, cno = a: match "(%w+):(%d)"      -- treat numbered names as components to save
-    local cname
-    if component and type(b) == "table" then
-      if components then                                            -- list of components for configuration
-        components[component] = (components[component] or 0) + 1    -- count components of each type
-      end
-      local cname = cname or (component .. '/' .. cno)
-      for n,value in pairs(b) do
-        local name = cname .. '/' .. n
-        info[name] = convert(value)
-      end
-    else
-      info[a] = convert(b)
+function plus_component.temperature(D, info)
+--  print("TEMPERATURE", pretty(info))
+  local value = info.tC
+  if value then 
+    D.temp.CurrentTemperature = value
+    local cdno = dev_lookup[D.attr.altid .. "/0"]
+    if cdno then
+      local S = API[cdno].temp
+      S.CurrentTemperature = value
+      S.MinTemp = value              -- implemented through Historian database aggregation
+      S.MaxTemp = value              -- ditto
     end
   end
-  return info
 end
 
--- generic parameter handling for all Gen Plus devices
-local function generic_plus (dno, params) 
-  params = params or empty
-  local D = API[dno]
-  D.hadevice.LastUpdate = os.time()
-  local sid = D.attributes.altid: match "%w+"
-  local S = D[sid]
-  
-  -- component variables
-  local info = analyze_plus_components(params)
-  for a,b in pairs(info) do
-    S[a] = b                      -- write to device variables
+function plus_component.humidity(D, info)
+--  print("HUMIDITY", pretty(info))
+  local value = info.rh
+  if value then 
+    value = math.floor(value + 0.5)
+    D.humid.CurrentLevel = value
+    local cdno = dev_lookup[D.attr.altid .. "/1"]
+    if cdno then
+      local S = API[cdno].humid
+      S.CurrentLevel = value
+    end
+  end
+end
+
+function plus_component.device(D, info)
+--  print("DEVICE", pretty(info))
+  local fw = info.fw_id 
+  if fw then
+    D.attr.firmware = fw
+  end
+  -- also mac and name are here
+end
+
+function plus_component.sys(D, info)
+--  print("SYS", pretty(info))
+  local mac = info.mac
+  if mac then
+    D.attr.mac = format_mac_address(mac)
   end
   
+  local update = ''
+  local available = info.available_updates
+  if type(available) == "table" then
+    local updates = {}
+    for up in pairs(available) do 
+      updates[#updates+1] = up
+    end
+    update = table.concat(updates, ' ')
+  end
+  D.attr.firmware_update = update
+end
+
+function plus_component.wifi(D, info)
+  local ip = info.sta_ip 
+  if ip then
+    D.attr.ip = ip
+  end
+end
+
+function plus_component.ethernet(D, info)
+  local ip = info.sta_ip 
+  if ip then
+    D.attr.ip = ip
+  end
+end
+
+-- inputs may be placed in child devices or the main parent, depending on configuration
+-- single true/false switch states currently ignored
+-- events are handled as scene inputs
+function plus_component.input(D, info, cno)
+--  print("INPUT", pretty(info))
+  local altid = D.attr.altid
+  local cdno = dev_lookup[altid .. "/" .. cno]      -- child device, or...
+                or dev_lookup[altid]                -- ..parent
+  if not cdno then return end
+  
+  local CD = API[cdno]
+  local last_update = D.hadevice.LastUpdate
+  CD.hadevice.LastUpdate = last_update
+  
+  -- on/off switch
+  local state = info.state        -- generic update has already set variable... no equivalent MiOS variable?
+  
+  -- counter (assume it's an energy meter)
+  local counts = info.counts
+  if counts then
+    local S = CD.energy
+    local total = counts.total or 0
+    local pulse = S.Pulse or 1000             -- default to 1000 pulses per kWh unit
+    S.Count = total
+    S.Pulse = pulse
+    S.KWH = total / pulse
+  end
+end
+
+function plus_component.voltmeter(D, info)
+--  print("VOLTMETER", pretty(info))
+  
+end
+
+function plus_component.switch(D, info, cno)
+--  print("SWITCH", pretty(info))
+  local id = tonumber(info.id)
+  local output = info.output 
+--  if id ~= cno then
+--    _log "ERROR component id does not match component number"
+--  end
+  if id and output ~= nil then     -- state could be true or false
+    local cdno = dev_lookup[D.attr.altid .. '/' .. id]
+    if cdno then
+      API[cdno].switch.Status = output and '1' or '0'
+    else 
+      _log "ERROR: no child device for switch component"
+    end
+  end
+end
+
+function plus_component.light(D, info, cno)
+  print("LIGHT", pretty(info))
+  
+end
+
+function plus_component.devicepower(D, info)
+--  print("DEVICEPOWER", pretty(info))
   -- battery level
-  local battery = params.battery
-  local external = params.external
+  local battery = info.battery
+  local external = info.external
   if battery or external then
     local V, percent = '', ''
     if external and external.present then     -- as per @a-lurker's wishes
@@ -409,99 +624,87 @@ local function generic_plus (dno, params)
     D.hadevice.BatteryLevel = percent
     D.energy.Voltage = V
   end
-
-  local device  = params.device
-  local sys     = params.sys
-  local wifi    = params.wifi
-  
-  -- IP and mac address
-  if wifi and wifi.sta_ip then
-    D.attr.ip = wifi.sta_ip or ''
-  end
-  if sys and sys.mac then
-    D.attr.mac = format_mac_address(sys.mac)
-  end
-  
-  -- firmware revision and updates
-  if device and device.fw_id then
-    D.attr.firmware = device.fw_id
-  end
-  local update = ''
-  if sys and type(sys.available_updates) == "table" then
-    local stable = sys.available_updates.stable
-    if stable then update = stable end
-  end
-  D.attr.firmware_update = update
 end
 
---[[
-{
-  "src":"shellyplusi4-a8032ab0c018",
-  "dst":"shellyplusi4-a8032ab0c018/events",
-  "method":"NotifyEvent",
-  "params":{"ts":1678882095.02,"events":[{"component":"input:2", "id":2, "event":"btn_up", "ts":1678882095.02}]}}
---]]
+-- not really a component, but an error return
+function plus_component.error(D, event)
+  _log ("ERROR: " .. (event.message or '?'))
+end
 
-local function i4 (dno, info)    -- info is decoded JSON message body
-  --[[
-        {
-        "component": "input:2",
-        "id": 2,
-        "event": "btn_up",  -- also "single_push", "long_push"
-        "ts": 1678882095.02
-      }
---]]
-  if info.method == "NotifyEvent" then 
-    local D = API[dno]
-    local altid = D.attr.altid
-    local sid = altid: match "%w+"
-    local watched = {single_push = true, long_push=true}    -- ignore button up/down
-    for _, event in ipairs(info.params.events) do
-      local j = json.encode(event): gsub('%c','')
-      luup.log (j)
-      local id = event.id
-      local action = event.event
-      if watched[action] then
-        D[sid]["input_event/" .. id] = j
-        local S = D.scene
-        S.sl_SceneActivated = table.concat {action, '_', id}
-        S.LastSceneTime = os.time()
+-- not really a component, convert a button event into a scene activation
+
+local watched_event = {single_push = true, long_push=true}    -- ignore button up/down
+
+function plus_component.event(D, event)
+  local j = json.encode(event): gsub('%c','')
+  _log (j)
+  local id = event.id
+  local action = event.event
+  if watched_event[action] then
+    local S = D.scene
+    S.sl_SceneActivated = table.concat {action, '_', id}
+    S.LastSceneTime = os.time()
+  end
+end
+
+
+function plus_component.XXX(_, info, _, component)
+--  print (component:upper(), pretty(info))
+end
+
+
+-- return text version of value
+local function convert(value)
+  if (type(value) == "table") then
+    local j,e = json.encode(value)
+    value = j or e
+    if e then _log("JSON convert ERROR: " .. e) end
+  end
+  return value
+end 
+  
+
+----------------------
+--
+-- Plus model updaters 
+--
+
+
+-- generic parameter handling for all Gen Plus devices
+local function generic_plus (dno, params) 
+--  print("GENERIC PLUS", pretty(params))
+-- rename and reformat values for device variables
+  local D = API[dno]
+  D.hadevice.LastUpdate = os.time()
+  local sid = D.attributes.altid: match "%w+"
+  local S = D[sid]
+  
+  -- component variables
+  for a,b in pairs(params) do
+    local component, cno = a: match "(%w+):?(%d*)"      -- treat numbered names as components to save
+    cno = tonumber(cno) 
+    -- component updates
+    local dispatch = plus_component[component] or plus_component.XXX
+    dispatch(D, b, cno, component)
+    -- top-level device variables
+    if cno and type(b) == "table" then
+      local cname = component .. '/' .. cno
+      for name, value in pairs(b) do
+        local compound_name = cname .. '/' .. name
+        S[compound_name] = convert(value)
       end
+    else
+      S[a] = convert(b)
     end
   end
-end
-
-local function plus_h_t(dno, info)
---  _debug(pretty {PLUS_H_T = info})
-  if info.tC then 
-    h_t(dno, "sensor/temperature", info.tC)
-  elseif info.rh then 
-    h_t(dno, "sensor/humidity", info.rh)
+  
+  -- events
+  for _, event in ipairs(params.events or empty) do
+    local component, cno = event.component: match "(%w+):?(%d*)"      -- treat numbered names as components to save
+    cno = tonumber(cno) 
+    plus_component.event(D, event)
   end
-end
-
-
-local function plus_UNI(dno, info)
-  local params = info.params
-  if params then
-    local ts = params.ts                          -- timestamp
-    local altid = API[dno].attr.altid
-    local counter = params["input:2"]
-    if counter then
-      local cdno = openLuup.find_device {altid = table.concat {altid, '/', '2'} }
-      if cdno then
-        local D = API[cdno]
-        local last_update = D.hadevice.LastUpdate or ts
-        D.hadevice.LastUpdate = ts
-        local S = D.energy
-        local counts = counter.counts or empty
-        local total = counts.total or 0
-        local pulse = S.Pulse or 1000             -- default to 1000 pulses per kWh unit
-        S.Pulse = pulse
-        S.KWH = total / pulse
-      end
-    end
-  end
+  
 end
 
 ----------------------
@@ -530,10 +733,10 @@ local models = setmetatable (
     ["SHDM-2"]    = model_info (DEV.shelly, dm_2,  {DEV.dimmer}),
     ["SHRGBW2"]   = model_info (DEV.rgb,    rgbw2),
     
-    ["shellyplusi4"]    = model_info (DEV.controller, i4),    -- TODO: make new PLUS versions of these
-    ["shellyplus2pm"]   = model_info (DEV.shelly, switch, {DEV.light, DEV.light}),
-    ["shellyplusht"]    = model_info (DEV.shelly, plus_h_t, {DEV.temperature, DEV.humidity}),
-    ["shellyplusuni"]   = model_info (DEV.shelly, plus_UNI, {DEV.light, DEV.light, DEV.power}),
+    ["shellyplusi4"]    = model_info (DEV.controller, noop),
+    ["shellyplus2pm"]   = model_info (DEV.shelly, noop, {DEV.light, DEV.light}),
+    ["shellyplusht"]    = model_info (DEV.shelly, noop, {DEV.temperature, DEV.humidity}),
+    ["shellyplusuni"]   = model_info (DEV.shelly, noop, {DEV.light, DEV.light, DEV.power}),
   },{
     __index = function () return unknown_model end
   })
@@ -593,7 +796,7 @@ local function init_device (altid, model)
   if not dno then
     -- device not yet registered
     _log ("New Shelly announced: " .. altid)
-    dno = openLuup.find_device {altid = altid} 
+    dno = dev_lookup[altid] 
                   or 
                     create_device (altid, model)
                     
@@ -648,10 +851,11 @@ _G[rpc] = function(topic, message)
     return
   end
   
---  local verify, err2 = json.encode {RPC_response = info}
+  local verify, err2 = json.encode {RPC_response = info}
 --  _log (verify or err2) 
   
   local dno = shelly_devices[info.src]
+--  _debug("RPC", json.encode(info))
   local result = info.result
   if dno and result then
     generic_plus(dno, result)
@@ -662,8 +866,8 @@ luup.register_handler (rpc, "mqtt:" .. rpc .. "/rpc")  -- rpc response
 
 -----
 
-local gen2 = "Shelly_Gen_2+"
-local valid = {NotifyStatus = true,  NotifyEvent = true}   -- valid methods
+local gen2 = "Shelly_Gen_2_Plus"
+--local valid = {NotifyFullStatus = true, NotifyStatus = true,  NotifyEvent = true}   -- valid methods
 
 _G[gen2] = function(topic, message)
   
@@ -677,7 +881,7 @@ _G[gen2] = function(topic, message)
     dno = init_device(shelly, model)
   
     -- ask for config details
-    local id = (tostring {}): match "%w+$"              -- create unique message id
+    local id = unique_id()                      -- create unique message id
     local msg = json.encode  {id = id, src = rpc, method = "Sys.GetConfig"}
     openLuup.mqtt.publish (shelly .. "/rpc", msg)
   end
@@ -688,9 +892,13 @@ _G[gen2] = function(topic, message)
     return
   end
   
-  generic_plus (dno, info.params)                       -- perform generic update actions
-  if valid[info.method] then
-    models[model].updater (dno, info)                   -- perform device specific update actions
+  info = info.params or info.result or info       -- last option is a vanilla status message
+  generic_plus (dno, info)                        -- perform generic update actions
+  local updater = models[model].updater
+  if updater then 
+    updater(dno, info)               -- perform device specific update actions
+  else
+    _log("ERROR - no such model: " .. tostring(model))
   end
 end
 
@@ -723,7 +931,7 @@ _G[gen1] = function(topic, message)
     luup.devices[dno]: delete_service(altid)      -- remove old-style service
     
   end
-  
+   
   local  shelly, var = shellies: match "^(.-)/(.+)"
   local child = shelly_devices[shelly]
   if not child then return end
@@ -746,3 +954,34 @@ end
 luup.register_handler (gen1, "mqtt:shellies/#")            -- Gen 1 devices
 
 -----
+
+local test = "Shelly_Test"
+
+_G[test] = function(topic, message)
+    
+--  local shellies = topic: match "^shell"
+--  if not shellies then return end
+
+  print(os.date "%X", test, topic)
+end
+
+--luup.register_handler (test, "mqtt:#") 
+
+-----
+
+local status = "Status"
+
+_G[status] = function(topic, message)         -- reformat status messages
+    
+  local shelly, component = topic: match "^(shelly[^/]+)/status/(.+)"
+  local dno = shelly_devices[shelly]
+  if not shelly and component then return end
+
+  local new_msg = ('{"%s": %s}'): format(component, message)
+--  _G[gen2] (topic, new_msg)       -- pass it on to usual Gen2+ handler
+  print(os.date "%X", status, component, topic, message)
+  print('', "new_msg", pretty(json.decode(new_msg)))
+end
+
+luup.register_handler (status, "mqtt:+/status/#", '')   -- Gen 2+ devices
+

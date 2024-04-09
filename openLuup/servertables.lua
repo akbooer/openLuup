@@ -1,4 +1,4 @@
-local VERSION = "2024.03.25"
+local VERSION = "2024.04.05"
 
 -- mimetypes
 -- 2016/04/14
@@ -349,11 +349,13 @@ local SID = setmetatable ({
     SceneController1        = "urn:micasaverde-com:serviceId:SceneController1",
     TemperatureSensor1      = "urn:upnp-org:serviceId:TemperatureSensor1",
     ZWaveDevice1            = "urn:micasaverde-com:serviceId:ZWaveDevice1",
+    Color1                  = "urn:micasaverde-com:serviceId:Color1",
     
     -- Very Short SIDs
     openLuup  = "openLuup",  
     altui     = "urn:upnp-org:serviceId:altui1",
     appstore  = "urn:upnp-org:serviceId:AltAppStore1",
+    color     = "urn:micasaverde-com:serviceId:Color1",
     dimming   = "urn:upnp-org:serviceId:Dimming1",
     energy    = "urn:micasaverde-com:serviceId:EnergyMetering1",
     generic   = "urn:micasaverde-com:serviceId:GenericSensor1",

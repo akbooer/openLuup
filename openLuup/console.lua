@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2024.03.27",
+  VERSION       = "2024.04.09",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2024 AKBooer",
@@ -109,6 +109,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2024.02.08  add missing timer number in create_timer()
 -- 2024.02.26  improve startup code and diagnostics
 -- 2024.03.24  add subpages to MQTT server page
+-- 2024.04.09  on/off switch toggles to opposite STATUS, not TARGET
 
 
 --  WSAPI Lua CGI implementation
@@ -554,7 +555,8 @@ function actions.switch (_, req)
   local devNo = tonumber(q.dev)
   local dev = luup.devices[devNo]
   if dev then 
-    local v = luup.variable_get (SID.switch, "Target", devNo)
+--    local v = luup.variable_get (SID.switch, "Target", devNo)
+    local v = luup.variable_get (SID.switch, "Status", devNo)     -- 2024.04.09  toggle to opposite STATUS
     local target = v == '1' and '0' or '1'    -- toggle action
     -- this uses luup.call_action() so that bridged device actions are handled by VeraBridge
     local a,b,j = luup.call_action (SID.switch, "SetTarget", {newTargetValue=target}, devNo) 
