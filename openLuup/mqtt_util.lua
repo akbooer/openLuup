@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.mqtt_util",
-  VERSION       = "2024.03.27",
+  VERSION       = "2024.04.14",
   DESCRIPTION   = "MQTT v3.1.1 utilities",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2024 AKBooer",
@@ -31,6 +31,7 @@ local ABOUT = {
 
 -- 2024.03.08  separate into separate file from MQTT server
 -- 2024.03.17  fix PUBLISH check for illegal characters in topic
+-- 2024.04.14  add $SYS/broker/load/# statistics
 
 
 -- see OASIS standard: http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.pdf
@@ -817,19 +818,69 @@ $SYS/broker/version                   version of the broker. Static.
 
 --]]
 
-local function Statistics()
-  return {
-    ["bytes/received"] = 0,             -- bytes received since the broker started.
-    ["bytes/sent"] = 0,                 -- bytes sent since the broker started.
+
+local function Statistics ()              -- create a new statistics table
+  
+  local stats = {
     ["clients/connected"] = 0,          -- currently connected clients.
     ["clients/maximum"] = 0,            -- maximum number of clients that have been connected to the broker at the same time.
     ["clients/total"] = 0,              -- active and inactive clients currently connected and registered.
-    ["messages/received"] = 0,          -- messages of any type received since the broker started.
-    ["messages/sent"] = 0,              -- messages of any type sent since the broker started.
-    ["publish/messages/received"] = 0,  -- PUBLISH messages received since the broker started.
-    ["publish/messages/sent"] = 0,      -- PUBLISH messages sent since the broker started.
     ["retained/messages/count"] = 0,    -- total number of retained messages active on the broker.
   }
+  
+  local averaged = {
+    "bytes/received",                   -- bytes received since the broker started.
+    "bytes/sent",                       -- bytes sent since the broker started.
+    "messages/received",                -- messages of any type received since the broker started.
+    "messages/sent",                    -- messages of any type sent since the broker started.
+    "publish/messages/received",        -- PUBLISH messages received since the broker started.
+    "publish/messages/sent",            -- PUBLISH messages sent since the broker started.
+  }
+  
+  local past = {} 
+  local old = {}                          -- old value of metrics
+  
+  local meta = {}
+
+  local function average(x, n)
+    local total= 0
+    for i = 1, n do
+      total = total + (x[i] or 0)
+    end
+    return math.floor(total / n + 0.5)
+  end
+  
+  -- this is called once every minute
+  function meta:load_average()          -- update statistics table with $SYS/broker/load/# averages
+    local load_avg = {}
+    local prefix = "load/"
+    
+    for _, stat in ipairs(averaged) do
+      local value = stats[stat]
+      -- update the current value histories
+      local diff = value - (old[stat] or 0)   -- store the differences
+      old[stat] = value                       -- save the new (old) value
+      local prev = past[stat]
+      table.insert(prev, 1, diff)             -- insert at start
+      prev[16] = nil                          -- truncate to 15 elements
+    
+      -- calculate 1, 5, and 15 minute averages
+      local avg_name = prefix .. stat      
+      stats[avg_name ..  "/1min"] = diff
+      stats[avg_name ..  "/5min"] = average(prev,  5)
+      stats[avg_name .. "/15min"] = average(prev, 15)
+    end
+    
+    return load_avg
+  end
+  
+  -- initialise the averaged stats
+  for _, stat in ipairs(averaged) do 
+    stats[stat] = 0 
+    past[stat] = {}                      -- 15 minute histories of averaged stats
+  end    
+  
+  return setmetatable(stats, {__index = meta})    -- hide load_average call
 end
 
 return {

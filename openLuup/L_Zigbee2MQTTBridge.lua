@@ -2,7 +2,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "Zigbee2MQTT Bridge",
-  VERSION       = "2022.12.11",
+  VERSION       = "2024.04.10",
   DESCRIPTION   = "Zigbee2MQTT bridge",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2020-2022 AKBooer",
@@ -27,6 +27,8 @@ ABOUT = {
 
 -- 2022.11.27  new bridge for @a-lurker (based on Tasmota bridge framework)
 -- 2022.12.11  add variable initialisation for new scene controllers
+
+-- 2024.04.10  correct line #376 configure() call parameter (thanks @a-lurker)
 
 
 local json      = require "openLuup.json"
@@ -372,7 +374,7 @@ local function zigbee_device(adev)
     manufacturer = props.manufacturer or "could be anyone",
   }
   
-  configure (dev)     
+  configure (dno)                           -- 2024.04.10  correct parameter
   configure_children (children, dno)
   
   return dno

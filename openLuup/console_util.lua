@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "utility.lua",
-  VERSION       = "2023.03.04",
+  VERSION       = "2023.04.15",
   DESCRIPTION   = "utilities for openLuup console",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -80,7 +80,7 @@ end
 -- add thousands comma to numbers
 local ThousandsSeparator = luup.attr_get "ThousandsSeparator" or ','
 local function commas (n, ...)
-  local a, b = tostring (n or 0): match "(%d-)(%d?%d?%d)$"
+  local a, b = tostring (math.floor(n + 0.5) or 0): match "(%d-)(%d?%d?%d)$"
   return a ~= '' and commas (a, b, ...) or table.concat ({b, ...}, ThousandsSeparator)
 end
 

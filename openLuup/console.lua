@@ -4,7 +4,7 @@ module(..., package.seeall)
 
 ABOUT = {
   NAME          = "console.lua",
-  VERSION       = "2024.04.09",
+  VERSION       = "2024.04.14",
   DESCRIPTION   = "console UI for openLuup",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2024 AKBooer",
@@ -109,7 +109,7 @@ local ABOUTopenLuup = luup.devices[2].environment.ABOUT   -- use openLuup about,
 -- 2024.02.08  add missing timer number in create_timer()
 -- 2024.02.26  improve startup code and diagnostics
 -- 2024.03.24  add subpages to MQTT server page
--- 2024.04.09  on/off switch toggles to opposite STATUS, not TARGET
+-- 2024.04.09  on/off switch toggles to opposite STATUS, not TARGET, add action.color() for color pickers
 
 
 --  WSAPI Lua CGI implementation
@@ -537,6 +537,26 @@ end
 function actions.run_scene (p)
   local scene = luup.scenes[tonumber (p.scn)]
   if scene then scene: run (nil, nil, {actor = "openLuup console"}) end    -- TODO: run this asynchronously?
+end
+
+-- input from an HTML color picker
+-- color parameter is hex #RRGGBB
+function actions.color (_, req)
+  local q = req.params        -- works for GET or POST
+  local devNo = tonumber(q.dev)
+  local dev = luup.devices[devNo]
+  if dev then 
+    local color = q.color or ''
+    local r,g,b = color: match "#(%x%x)(%x%x)(%x%x)"
+    r = tonumber(r, 16) or 0
+    g = tonumber(g, 16) or 0
+    b = tonumber(b, 16) or 0
+    local w = 0
+    local rgbw = table.concat ({r,g,b,w}, ',')
+    -- use luup.call_action() so that child device actions are handled by parent, if necessary
+    local aa,bb,j = luup.call_action (SID.color, "SetColorRGB", {newColorRGBTarget=rgbw}, devNo) 
+    local _={aa,bb,j}   -- TODO: status return to messages?
+  end
 end
 
 function actions.slider (_, req)
@@ -1359,13 +1379,30 @@ function pages.http (p)
 end
 
 local function mqtt_statistics()
-  local broker = {}
+  local stats = {}
   local statistics = mqtt.statistics()
   for n, v in sorted (statistics) do
-    broker[#broker+1] = {n, commas (v)}
+    local interval = n: match "(%d+)min" or '0'   -- '0', '1', '5', or '15'
+    local tab = stats[interval] or {}
+    stats[interval] = tab
+    tab[#tab+1] = {n, commas (v)}
   end
-  local stats = create_table_from_data ({}, broker)
-  return xhtml.div {X.Subtitle "Server statistics: $SYS/broker/#", stats}
+  
+  local title = {"", "load averages"}
+  local totals = create_table_from_data ({}, stats['0'] or empty)
+
+  local avgs = {}
+  local t1, t5, t15 = stats['1'], stats['5'], stats['15']
+  for i = 1,#t1 do
+    local a1, a5, a15 = t1[i][2], t5[i][2], t15[i][2]
+    local name = t1[i][1]: gsub("1min", '#')
+    avgs[#avgs+1] = {name, a1, a5, a15}
+  end
+  local averages = create_table_from_data ({"Load Averages (per min)", "1 min", "5 min", "15 min"}, avgs)
+  
+  return xhtml.div {
+    X.Subtitle "Server statistics: $SYS/broker/#",
+    totals, averages}
 end
 
 local function mqtt_subscriptions()
@@ -1404,7 +1441,7 @@ local function mqtt_clients()
   table.sort(clients, function(a,b) return a[1] < b[1] end)
   local title = {"ClientId", "KeepAlive (s)", "WillTopic", "WillMessage", "WillRetain"}
   local tbl = X.create_table_from_data(title, clients)
-  return xhtml.div {X.Subtitle "Connected Clients:", tbl}
+  return xhtml.div {X.Subtitle {"Connected Clients: (", #clients, ')'}, tbl}
 end
 
 local function mqtt_retained()
@@ -1900,7 +1937,7 @@ local function get_display_variables (d)
 end
 
 local function device_controls (d)
-  local switch, slider = ' ',' '
+  local switch, slider, colour = ' ',' ', ' '
   local on_off_size = 20
   local srv = d.services[SID.switch]
   if srv then    -- we need an on/off switch
@@ -1934,7 +1971,29 @@ local function device_controls (d)
           value=LoadLevelStatus, min=0, max=100, step=1},
       }
   end
-  return switch, slider
+  srv = d.services[SID.color]
+  if srv then    -- we need a colour picker
+--    local LoadLevelTarget = (srv.variables.LoadLevelTarget or empty).value or 0
+    local CurrentColor = (srv.variables.CurrentColor or empty).value or ''  -- format: "0=%d,1=%d,2=%d,3=%d" ie. wrgb
+    local colors = {}
+    for color, value in CurrentColor: gmatch "(%d)=(%d+)" do
+      colors[color] = value
+    end
+    print(pretty(colors))
+    local HexColor = '#'
+    for color in ("123"): gmatch "%d" do       -- just RGB at the moment
+      local hex = ("%02x"): format(colors[color] or 0)
+      HexColor = HexColor .. hex
+    end
+    print("HEX", HexColor)
+    colour = X.Form {
+      oninput="LoadLevelTarget.value = slider.valueAsNumber + ' %'",
+        X.Hidden {action = "color", dev = d.attributes.id},
+        xhtml.input {type="color", name="color", onchange="this.form.submit();",
+          value=HexColor},
+      }
+  end
+  return switch, slider, colour
 end
 
 local function device_panel (self)          -- 2019.05.12
@@ -1965,12 +2024,13 @@ local function device_panel (self)          -- 2019.05.12
     elseif line1 or line2 then
       main_panel = div {line1 or '', xhtml.br{}, line2 or ''}
     else
-      local switch, slider = device_controls(self)
+      local switch, slider, color = device_controls(self)
       local time = self: variable_get (SID.security, "LastTrip")
       time = time and div {class = "w3-tiny w3-display-bottomright", todate(tonumber(time.value)) or ''} or nil
       main_panel = div {
         div {class="w3-display-topright w3-padding-small", switch},
         div {class="w3-display-bottommiddle", slider},
+        div {class="w3-display-topmiddle w3-padding-small", color},      -- 2024.04.09
         time}
     end
   end

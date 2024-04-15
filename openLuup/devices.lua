@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.devices",
-  VERSION       = "2024.03.29",
+  VERSION       = "2024.04.11",
   DESCRIPTION   = "low-level device/service/variable objects",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -68,6 +68,7 @@ local ABOUT = {
 
 -- 2024.01.05  move device_list to scheduler
 -- 2024.03.29  add delete_service()
+-- 2024.04.11  add dev:variable_silence() to turn on/off logging of variable changes
 
 
 local scheduler = require "openLuup.scheduler"        -- for watch callbacks and actions
@@ -559,6 +560,14 @@ local function new (devNo)
     return var, srv
   end 
    
+  -- 2024.04.11  turn on/off logging of variable changes
+  local function variable_silence (self, state)
+    local vars = self.variables
+    for _,v in ipairs(vars) do
+      v.silent = state
+    end
+  end    
+  
   -- function: action_set ()
   -- parameters: service (string) name (string), action_tags (table)
   -- returns: nothing
@@ -668,6 +677,8 @@ local function new (devNo)
       
       variable_set        = variable_set, 
       variable_get        = variable_get,
+      variable_silence    = variable_silence,   -- 2024.04.11
+      
       version_get         = function () return version end,
       
       delete_service      = delete_service,     -- 2024.03.29

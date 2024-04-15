@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.scheduler",
-  VERSION       = "2024.03.01",
+  VERSION       = "2024.04.11",
   DESCRIPTION   = "openLuup job scheduler",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -74,6 +74,7 @@ local ABOUT = {
 -- 2024.01.05  move device_list to here rather than device_list to avoid luup reference
 -- 2024.01.06  move new_environment() to here from openLuup.loader
 -- 2024.03.01  use 'empty' readonly table where possible
+-- 2024.04.11  capture watched variable values before callbacks.  Also, some refromatting
 
 
 local logs      = require "openLuup.logs"
@@ -169,43 +170,11 @@ local socket_list = {}                -- table of socket watch callbacks (for in
 local watch_log = {}                  -- hashed table of variable watch invocations (for console)
 local delay_log = {}                  -- ditto for delay callbacks
 
--- adds a function to the delay list
--- note optional final parameters which define:
---    device context in which to run, and text name
-local function add_to_delay_list (fct, seconds, data, devNo, type)  
-  delay_list[#delay_list+1] = {
-    callback = fct,
-    delay = seconds,
-    devNo = devNo or current_device,
-    type = type,
-    time = timenow() + seconds, 
-    parameter = data, 
-  }
-end
 
--- adds a changed variable to the callback list
--- NOTE: that the variable itself has a list of watchers (with their device contexts)
-local function watch_callback (var)
-  watch_list[#watch_list+1] = var 
-end
-
-
--- socket_watch (socket, action_with_incoming_tag),  add socket to list watched for incoming
--- optional io parameter is pointer to a device's I/O table with an intercept flag
-local function socket_watch (sock, action, io, name)  
-  socket_list[sock] = {
-    callback = action,
-    devNo = current_device,
-    io = io or {intercept = false},   -- assume no intercepts: incoming data is passed to handler
-    time = timenow (),                -- just for the console Sockets page
-    name = name or "anon",            -- ditto
-  }
-end
-
--- socket_unwatch (),  remove socket from list watched for incoming
-local function socket_unwatch (sock)  
-  socket_list[sock] = nil
-end
+----------------------------------------
+--
+-- Context switching, basically the heart of the scheduler
+--
 
 local CPU, WALL = 0, 0    -- hold cpu and wall-clock times for most recent context switch
 
@@ -245,7 +214,132 @@ local function context_switch (devNo, fct, ...)
   return restore (pcall (fct, ...))
 end
 
+
+----------------------------------------
+--
+-- Delay callbacks
+--
+
+-- adds a function to the delay list
+-- note optional final parameters which define:
+--    device context in which to run, and text name
+local function add_to_delay_list (fct, seconds, data, devNo, type)  
+  delay_list[#delay_list+1] = {
+    callback = fct,
+    delay = seconds,
+    devNo = devNo or current_device,
+    type = type,
+    time = timenow() + seconds, 
+    parameter = data, 
+  }
+end
+
+local function run_delay_callbacks()
+  local now = timenow()
+  local old_list = delay_list 
+  delay_list = {}                        -- new list, because callbacks may add to delay list
+  for _, schedule in ipairs (old_list) do 
+    if schedule.time <= now then 
+      local ok, msg = context_switch (schedule.devNo, schedule.callback, schedule.parameter) 
+      local hash = tostring (schedule.callback)
+      if not ok then _log (hash .. " ERROR: " .. (msg or '?'), "scheduler.delay_callback") end
+      delay_log[hash] = (delay_log[hash] or 0) + 1        -- 2019.05.15 count the calls to this routine
+      now = timenow()        -- 2017.05.05  update, since dispatched task may have taken a while
+    else
+      delay_list[#delay_list+1] = schedule   -- carry forward into new list      
+    end
+  end
+end
+
+
+----------------------------------------
+--
+-- Variable watch callbacks
+--
+
+-- adds a changed variable to the callback list
+-- NOTE: that the variable itself has a list of watchers (with their device contexts)
+local function watch_callback (var)
+  -- 2024.04.11  importantly, copy variable values which may be changed again before callback executes!
+  local new = {
+      old = var.old, 
+      value = var.value, 
+      time = var.time,
+    }
+  watch_list[#watch_list+1] = setmetatable(new, {__index = var})
+end
+
+local function run_watch_callbacks()
+  local old_watch_list = watch_list
+  watch_list = {}                       -- new list, because callbacks may change some variables!
+  local log_message = "%s.%s.%s called [%s]%s() %s"
+  for _, callback in ipairs (old_watch_list) do
+    for _, watcher in ipairs (callback.watchers) do   -- single variable may have multiple watchers
+      local var = callback.var
+      local user_callback = watcher.callback
+      if not watcher.silent then
+        _log (log_message: format(var.dev, var.srv, var.name, 
+                    watcher.devNo or 0, watcher.name or "anon", tostring (user_callback)), 
+                "scheduler.watch_callback") 
+      end
+      local ok, msg = context_switch (watcher.devNo, user_callback, 
+        var.dev, var.srv, var.name, var.old, var.value, var.time)     -- 2018.06.06 add extra time parameter 
+      local hash = watcher.hash
+      watch_log[hash] = (watch_log[hash] or 0) + 1    -- 2019.05.15 count the calls to this watcher
+      if not ok then
+        _log (("%s.%s.%s ERROR %s %s"): format(var.dev or '?', var.srv, var.name, 
+                                            msg or '?', tostring (user_callback))) 
+      end
+    end
+  end
+end
+
+
+----------------------------------------
+--
+-- Socket callbacks (incoming data)
+--
+
+-- socket_watch (socket, action_with_incoming_tag),  add socket to list watched for incoming
+-- optional io parameter is pointer to a device's I/O table with an intercept flag
+local function socket_watch (sock, action, io, name)  
+  socket_list[sock] = {
+    callback = action,
+    devNo = current_device,
+    io = io or {intercept = false},   -- assume no intercepts: incoming data is passed to handler
+    time = timenow (),                -- just for the console Sockets page
+    name = name or "anon",            -- ditto
+  }
+end
+
+-- socket_unwatch (),  remove socket from list watched for incoming
+local function socket_unwatch (sock)  
+  socket_list[sock] = nil
+end
+
+local function run_socket_callbacks (timeout)
+  local list = {}
+  for sock, io in pairs (socket_list) do
+    if not io.intercept then    -- io.intercept will stop the incoming handler from receiving data
+      list[#list + 1] = sock
+    end
+  end  
+  local recvt = socket.select (list, nil, timeout)  -- wait for something to happen (but not for too long)
+  for _,sock in ipairs (recvt) do
+    local info = socket_list[sock]
+    local call = info.callback        -- registered callback handler
+    local dev  = info.devNo
+    local ok, msg = context_switch (dev, call, sock, info.parameter)    -- dispatch  
+    if not ok then 
+      _log (tostring(info.callback) .. " ERROR: " .. (msg or '?'), "scheduler.incoming_callback") 
+    end
+  end
+end
+
+----------------------------------------
+--
 -- CONSTANTS
+--
 
 local job_linger = 180        -- number of seconds before finished job is forgotten
 
@@ -302,7 +396,7 @@ local job_list = setmetatable (
     } 
   )
 
--------------
+----------------------------------------
 --
 -- Sandbox for system libraries
 --
@@ -389,7 +483,7 @@ sandbox (string, "string")
 
 --
 --
--------------
+----------------------------------------
 
 
  local function missing (idx)   -- handle missing job tag
@@ -432,8 +526,10 @@ local function dispatch (job, method)
   job.timeout = timeout
 end
  
- 
+----------------------------------------
+-- 
 -- METHODS
+--
 
 -- parameters: job_number (number), device (string or number)
 -- returns: job_status (number), notes (string)
@@ -589,7 +685,7 @@ local function device_start (entry_point, devNo, name, priority)
 end    
 
 -- step through one cycle of task processing
-local function task_callbacks ()
+local function run_task_callbacks ()
   local N = 0       -- loop iteration count
   repeat
     N = N + 1
@@ -648,83 +744,6 @@ local function task_callbacks ()
         or N > 5                      -- or too many iterations
 end
 
-----
---
--- Socket callbacks (incoming data)
---
-
-local function socket_callbacks (timeout)
-  local list = {}
-  for sock, io in pairs (socket_list) do
-    if not io.intercept then    -- io.intercept will stop the incoming handler from receiving data
-      list[#list + 1] = sock
-    end
-  end  
-  local recvt = socket.select (list, nil, timeout)  -- wait for something to happen (but not for too long)
-  for _,sock in ipairs (recvt) do
-    local info = socket_list[sock]
-    local call = info.callback        -- registered callback handler
-    local dev  = info.devNo
-    local ok, msg = context_switch (dev, call, sock, info.parameter)    -- dispatch  
-    if not ok then 
-      _log (tostring(info.callback) .. " ERROR: " .. (msg or '?'), "scheduler.incoming_callback") 
-    end
-  end
-end
-
-
-----
---
--- Luup callbacks
---
-
-local function luup_callbacks ()
-  
-  -- variable_watch list
-  -- call handler with parameters: device, service, variable, value_old, value_new.
-  local N = 0       -- loop iteration count
---  repeat
-    N = N + 1
-    local old_watch_list = watch_list
-    watch_list = {}                       -- new list, because callbacks may change some variables!
-    local log_message = "%s.%s.%s called [%s]%s() %s"
-    for _, callback in ipairs (old_watch_list) do
-      for _, watcher in ipairs (callback.watchers) do   -- single variable may have multiple watchers
-        local var = callback.var
-        local user_callback = watcher.callback
-        if not watcher.silent then
-          _log (log_message: format(var.dev, var.srv, var.name, 
-                      watcher.devNo or 0, watcher.name or "anon", tostring (user_callback)), 
-                  "scheduler.watch_callback") 
-        end
-        local ok, msg = context_switch (watcher.devNo, user_callback, 
-          var.dev, var.srv, var.name, var.old, var.value, var.time)     -- 2018.06.06 add extra time parameter 
-        local hash = watcher.hash
-        watch_log[hash] = (watch_log[hash] or 0) + 1    -- 2019.05.15 count the calls to this watcher
-        if not ok then
-          _log (("%s.%s.%s ERROR %s %s"): format(var.dev or '?', var.srv, var.name, 
-                                              msg or '?', tostring (user_callback))) 
-        end
-      end
-    end
---  until #watch_list == 0 or N > 5   -- guard against race condition: a changes b, b changes a
-  
-  -- call_delay list  
-  local now = timenow()
-  local old_list = delay_list 
-  delay_list = {}                        -- new list, because callbacks may add to delay list
-  for _, schedule in ipairs (old_list) do 
-    if schedule.time <= now then 
-      local ok, msg = context_switch (schedule.devNo, schedule.callback, schedule.parameter) 
-      local hash = tostring (schedule.callback)
-      if not ok then _log (hash .. " ERROR: " .. (msg or '?'), "scheduler.delay_callback") end
-      delay_log[hash] = (delay_log[hash] or 0) + 1        -- 2019.05.15 count the calls to this routine
-      now = timenow()        -- 2017.05.05  update, since dispatched task may have taken a while
-    else
-      delay_list[#delay_list+1] = schedule   -- carry forward into new list      
-    end
-  end
-end
 
 local function stop (code)
   local _ = code          -- unused at present
@@ -735,27 +754,26 @@ end
 -- Main execution loop (only stopped by "exit" request)
 local function start ()
   _log "starting"
-  repeat                        -- this is the main scheduling loop!
-    
-    task_callbacks ()                     -- run tasks/jobs
-    luup_callbacks ()                     -- do Luup callbacks (variable_watch, call_delay)
-    
-    -- it is the following call which throttles the whole round-robin scheduler if there is no work to do
-    socket_callbacks (0.1)                -- 2019.04.25        
-    
+  local timeout = 0.1 -- throttle the whole round-robin scheduler if there is no work to do
+  
+  repeat                              -- this is the main scheduling loop!
+    run_task_callbacks ()             -- run tasks/jobs
+    run_watch_callbacks()             -- call variable watchers
+    run_delay_callbacks()             -- call_delay list  
+    run_socket_callbacks (timeout)    -- wait for I/O        
   until exit_code
+  
   _log ("exiting with code " .. tostring (exit_code))
   _log (next_job_number .. " jobs completed ")
   return exit_code
 end
-
 
 ---- export variables and methods
 
 return {
     ABOUT = ABOUT,
     TEST = {                      -- for testing only
-      step        = task_callbacks,
+      step        = run_task_callbacks,
     },
     
     -- constants

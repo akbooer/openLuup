@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2024.04.04",
+  VERSION       = "2024.04.12",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2024 AKBooer",
@@ -92,6 +92,7 @@ local ABOUT = {
 -- 2023.01.06  remove leading and trailing spaces from room names (thanks @a-lurker)
 
 -- 2024.04.04  add luup.openLuup.pretty() for easy access
+-- 2024.04.12  add "log_level" device attribute.  "off" = don't log this device
 
 
 local logs          = require "openLuup.logs"
@@ -1085,7 +1086,7 @@ local ir = {
     local rate
     rate, pronto = pronto: match "^%s*%x+%s+(%x+)%s+%x+%s+%x+%s+(.+)" -- extract preamble
     
-    local PRONTO_PWM_HZ = 4145152  -- a constant measured in Hz and is the PWM frequencyof Philip's Pronto remotes
+    local PRONTO_PWM_HZ = 4145152  -- a constant measured in Hz and is the PWM frequency of Philip's Pronto remotes
     rate = math.floor ( PRONTO_PWM_HZ / (tonumber(rate, 16) or 100) )
     
     local gc100 = {rate, 1, 1}
@@ -1096,6 +1097,15 @@ local ir = {
     return table.concat(gc100, ',')
   end
 }
+
+local function log (msg, level) 
+  local dno = scheduler.current_device()
+  local mute = devices[dno].attributes.log_level    -- 2024.04.12  add "log_level" device attribute
+  if mute ~= "off" then
+    logs.send (msg, level, dno) 
+  end
+end
+
 
 --
 -- CPU and wall-clock time tables (taken from device attributes)
@@ -1181,7 +1191,7 @@ local luup = {
     is_ready            = is_ready,
     job                 = job, 
     job_watch           = job_watch,
-    log                 = function (msg, level) logs.send (msg, level, scheduler.current_device()) end,
+    log                 = log,
     mac_set             = mac_set,
     modelID             = modelID,
     register_handler    = register_handler, 

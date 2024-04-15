@@ -1,6 +1,6 @@
 ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2024.04.08",
+  VERSION       = "2024.04.15",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -500,6 +500,7 @@ local function mqtt_sys_broker_stats ()
   local prefix = "$SYS/broker/"
   local mqtt = luup.openLuup.mqtt
   local stats = mqtt.statistics()         -- get client stats
+  stats: load_average()                   -- and update the latest one-minute averages
   if luup.attr_get "openLuup.MQTT" then   -- 2021.04.08 only publish if MQTT configured
     local mqtt_carbon = hist.CarbonCache["mqtt"]
     for n, v in pairs (stats) do

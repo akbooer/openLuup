@@ -155,7 +155,6 @@ do
   local devNo             -- bridge device number (set on startup)
   
   local function SetTarget (dno, args)
-    local id = luup.attr_get ("altid", dno)
     local dtype = shelly_type(dno)
     local shelly, unit = shelly_unit(dno)
     local on_off
@@ -447,7 +446,7 @@ local function rgbw2_color (dno, var, value)
 end
 
 local function rgbw2_white (dno, var, value)
-  
+  local _ = dno, var, value
 end
 
 local function rgbw2 (dno, var, value)
@@ -477,7 +476,7 @@ function plus_component.switch(dno, info)
   local sid = shelly: match "%w+"
   local name = table.concat {"switch/", unit, "/output"}
   local value = D[sid][name] == "true" and '1' or '0'
---  D.switch.Status = value  
+--  TODO: D.switch.Status = value  -- ...or something like that
 end
 
 function plus_component.temperature(D, info)
@@ -566,7 +565,7 @@ function plus_component.input(D, info, cno)
   CD.hadevice.LastUpdate = last_update
   
   -- on/off switch
-  local state = info.state        -- generic update has already set variable... no equivalent MiOS variable?
+--  local state = info.state        --TODO: generic update has already set variable... no equivalent MiOS variable?
   
   -- counter (assume it's an energy meter)
   local counts = info.counts
@@ -851,7 +850,7 @@ _G[rpc] = function(topic, message)
     return
   end
   
-  local verify, err2 = json.encode {RPC_response = info}
+--  local verify, err2 = json.encode {RPC_response = info}
 --  _log (verify or err2) 
   
   local dno = shelly_devices[info.src]
@@ -922,11 +921,17 @@ _G[gen1] = function(topic, message)
     local altid = info.id
     local dno = init_device (altid, info.model)
   -- update info, it may have changed
-    luup.ip_set (info.ip, dno)
-    luup.mac_set (format_mac_address(info.mac), dno)
-    luup.attr_set ("model", info.model, dno)
-    luup.attr_set ("firmware", info.fw_ver, dno)
-    luup.attr_set ("firmware_update", tostring(info.new_fw or ''), dno)
+    local A = API[dno].attr
+--    luup.ip_set (info.ip, dno)
+--    luup.mac_set (format_mac_address(info.mac), dno)
+--    luup.attr_set ("model", info.model, dno)
+--    luup.attr_set ("firmware", info.fw_ver, dno)
+--    luup.attr_set ("firmware_update", tostring(info.new_fw or ''), dno)
+    A.ip  = info.ip
+    A.mac = format_mac_address(info.mac)
+    A.model = info.model
+    A.firmware = info.fw_ver
+    A.firmware_update = tostring(info.new_fw or '')
     
     luup.devices[dno]: delete_service(altid)      -- remove old-style service
     
@@ -962,7 +967,7 @@ _G[test] = function(topic, message)
 --  local shellies = topic: match "^shell"
 --  if not shellies then return end
 
-  print(os.date "%X", test, topic)
+  print(os.date "%X", test, topic, message)
 end
 
 --luup.register_handler (test, "mqtt:#") 
