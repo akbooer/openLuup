@@ -1,6 +1,6 @@
 local ABOUT = {
   NAME          = "openLuup.luup",
-  VERSION       = "2024.04.12",
+  VERSION       = "2024.04.26",
   DESCRIPTION   = "emulation of luup.xxx(...) calls",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-2024 AKBooer",
@@ -93,6 +93,7 @@ local ABOUT = {
 
 -- 2024.04.04  add luup.openLuup.pretty() for easy access
 -- 2024.04.12  add "log_level" device attribute.  "off" = don't log this device
+-- 2024.04.26  fix existence error in log().   Thanks @a-lurker
 
 
 local logs          = require "openLuup.logs"
@@ -1100,10 +1101,17 @@ local ir = {
 
 local function log (msg, level) 
   local dno = scheduler.current_device()
-  local mute = devices[dno].attributes.log_level    -- 2024.04.12  add "log_level" device attribute
-  if mute ~= "off" then
-    logs.send (msg, level, dno) 
+  local dev = devices[dno]
+  if dev then                         -- 2024.04.26  belt and braces test for existence
+    local attr = dev.attributes
+    if attr then
+      local mute = attr.log_level     -- 2024.04.12  add "log_level" device attribute
+      if mute == "off" then
+        return
+      end
+    end
   end
+  logs.send (msg, level, dno) 
 end
 
 
