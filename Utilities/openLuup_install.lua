@@ -6,6 +6,8 @@
 
 -- 2019.02.15  fix tslv1_2 protocol error (properly, this time!)
 
+-- 2024.10.28  fix moved dkjson url (thanks @nodecentral)
+
 
 local lua = "lua5.1"     -- change this to "lua" if required
 
@@ -38,7 +40,7 @@ x ("rm -r openLuup-" .. branch .. "/")
    
 p "getting dkjson.lua..."
 _, code = http.request{
-    url = "http://dkolf.de/src/dkjson-lua.fsl/raw/dkjson.lua?name=16cbc26080996d9da827df42cb0844a25518eeb3",
+    url = "http://dkolf.de/dkjson-lua/dkjson-2.8.lua",
     sink = ltn12.sink.file(io.open("dkjson.lua", "wb")),
   }
 
