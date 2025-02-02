@@ -1,6 +1,6 @@
-ABOUT = {
+_G.ABOUT = {
   NAME          = "L_openLuup",
-  VERSION       = "2024.04.26",
+  VERSION       = "2025.02.02b",
   DESCRIPTION   = "openLuup device plugin for openLuup!!",
   AUTHOR        = "@akbooer",
   COPYRIGHT     = "(c) 2013-present AKBooer",
@@ -78,6 +78,8 @@ local hist        = require "openLuup.historian"    -- for metrics archive
 local tables      = require "openLuup.servertables" -- for SID{}
 local lfs         = require "lfs"
 local smtp        = require "socket.smtp"             -- smtp.message() for formatting events
+
+local luup = _G.luup
 
 local INTERVAL = 120
 local MINUTES  = "2m"
