@@ -1,4 +1,4 @@
-local VERSION = "2024.04.05"
+local VERSION = "2025.02.02"
 
 -- mimetypes
 -- 2016/04/14
@@ -39,6 +39,10 @@ local VERSION = "2024.04.05"
 -- 2022.11.14  change cache_rules to define variable cache length
 
 -- 2023.01.05  fix long-standing issue with myIP() on some LuaSocket library versions
+
+-- 2024.09.02  add rules for precipitation (from Met Office DataHub)
+
+-- 2025.02.02  add rules for HourKWH, DayKWH, WeekKWH, and MonthKWH
 
 
 -- http://forums.coronalabs.com/topic/21105-found-undocumented-way-to-get-your-devices-ip-address-from-lua-socket/
@@ -274,9 +278,19 @@ local archive_rules = {
     },{
       patterns = {
         "*.*.Current*",                               -- temperature, humidity, generic sensors, setpoint...
-        "*.*.{Temperature,Humidity,Pressure}",        -- Tasmota-style
+        "*.*.{Temperature,Humidity,Pressure}",
         },
       retentions = "10m:7d,1h:30d,3h:1y,1d:10y",
+    },{
+      patterns = {"*.*.[Pp]recipitationRate"},                -- hourly precipitation rate
+      retentions = "1h:7d,1d:10y",
+      xFilesFactor = 0,
+      aggregationMethod = "average",
+    },{
+      patterns = {"*.*.[Tt]otalPrecipAmount"},                -- total (daily) precipitation rate
+      retentions = "1h:7d,1d:10y",
+      xFilesFactor = 0,
+      aggregationMethod = "sum",
     },{
       patterns = {"*.*.MaxTemp"},                    -- special for H&T max/min values
       retentions = "10m:1d,1d:10y",
@@ -288,6 +302,22 @@ local archive_rules = {
     },{
       patterns = {"*.*EnergyMetering*.{KWH,Watts,kWh24, Voltage, Current}"},
       retentions = "20m:30d,3h:1y,1d:10y",
+    },{
+      patterns = {"*.*EnergyMetering*.{HourKWH}"},
+      retentions = "30m:1h,1h:90d",
+      aggregationMethod = "sum",
+    },{
+      patterns = {"*.*EnergyMetering*.{DayKWH}"},
+      retentions = "30m:1h,1h:1d,1d:10y",
+      aggregationMethod = "sum",
+    },{
+      patterns = {"*.*EnergyMetering*.{WeekKWH}"},
+      retentions = "30m:1h,1h:7d,7d:21y",
+      aggregationMethod = "sum",
+    },{
+      patterns = {"*.*EnergyMetering*.{MonthKWH}"},
+      retentions = "30m:1h,1h:28d,28d:28y",
+      aggregationMethod = "sum",
     },{
       patterns = {},
       retentions = "1h:90d,3h:1y,1d:10y",

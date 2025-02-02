@@ -1,12 +1,12 @@
 local ABOUT = {
   NAME          = "openLuup.init",
-  VERSION       = "2024.03.02",
+  VERSION       = "2025.02.02",
   DESCRIPTION   = "initialize Luup engine with user_data, run startup code, start scheduler",
   AUTHOR        = "@akbooer",
-  COPYRIGHT     = "(c) 2013-2024 AKBooer",
+  COPYRIGHT     = "(c) 2013-2025 AKBooer",
   DOCUMENTATION = "https://github.com/akbooer/openLuup/tree/master/Documentation",
   LICENSE       = [[
-  Copyright 2013-2024 AK Booer
+  Copyright 2013-2025 AK Booer
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
